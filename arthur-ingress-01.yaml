@@ -1,0 +1,169 @@
+substitutions:
+  name: arthur-ingress-01
+  friendly_name: "Arthur-Ingress-01"
+  ota_pass: "a34faad05c552f271c3c0df492007f93"
+  hotspot_ssid: "Arthur-Ingress-01"
+  hotspot_pw: "j8YVCEoaC6cs"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.5.0
+
+esp32:
+  board: esp32s3box
+  flash_size: 16MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_HEAP_MEMORY_BALANCED: "y"
+      CONFIG_LWIP_MAX_SOCKETS: "16"
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "e7ByVtSY4FxmmADoilThgl01PH4/bR6VpWWnLxH0UMg="
+
+ota:
+  - platform: esphome
+    password: ${ota_pass}
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: ${hotspot_ssid}
+    password: ${hotspot_pw}
+
+captive_portal:
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+output:
+  - platform: ledc
+    pin: GPIO47
+    id: backlight_output
+
+light:
+  - platform: monochromatic
+    id: lcd_backlight
+    output: backlight_output
+    restore_mode: RESTORE_DEFAULT_ON
+
+i2c:
+  scl: GPIO18
+  sda: GPIO8
+
+spi:
+  - id: spi_bus
+    clk_pin: 7
+    mosi_pin: 6
+
+i2s_audio:
+  - id: i2s_audio_bus
+    i2s_lrclk_pin: GPIO45
+    i2s_bclk_pin: GPIO17
+    i2s_mclk_pin: GPIO2
+
+audio_adc:
+  - platform: es7210
+    id: es7210_adc
+    bits_per_sample: 16bit
+    sample_rate: 16000
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    bits_per_sample: 16bit
+    sample_rate: 48000
+
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    sample_rate: 16000
+    i2s_din_pin: GPIO16
+    bits_per_sample: 16bit
+    adc_type: external
+
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_dout_pin: GPIO15
+    dac_type: external
+    sample_rate: 48000
+    bits_per_sample: 16bit
+    channel: left
+    audio_dac: es8311_dac
+    buffer_duration: 100ms
+
+micro_wake_word:
+  id: mww
+  models:
+    - okay_nabu
+
+voice_assistant:
+  id: va
+  microphone: box_mic
+  speaker: box_speaker
+  use_wake_word: true
+  micro_wake_word: mww
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  volume_multiplier: 2.0
+
+switch:
+  - platform: gpio
+    name: Speaker Enable
+    pin: GPIO46
+    restore_mode: RESTORE_DEFAULT_ON
+    internal: true
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    id: left_button
+    internal: true
+    on_press:
+      - voice_assistant.start_continuous
+    on_release:
+      - voice_assistant.stop
+
+display:
+  - platform: ili9xxx
+    id: s3_box_lcd
+    model: S3BOX
+    cs_pin: 5
+    dc_pin: 4
+    invert_colors: false
+    reset_pin:
+      number: 48
+      inverted: true
+    spi_id: spi_bus
+    data_rate: 40MHz
+    update_interval: 1s
+    lambda: |-
+      it.fill(Color::BLACK);
+      it.printf(160, 120, id(default_font), TextAlign::CENTER, "Listening...");
+
+font:
+  - file: "gfonts://Roboto"
+    id: default_font
+    size: 20
+
