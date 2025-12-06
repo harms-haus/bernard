@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build a factory binary for arthur-ingress-01 using the ESPHome Docker image.
+# Build a factory binary for bernard-ingress-01 using the ESPHome Docker image.
 # Uses a RAM-backed cache (/dev/shm) by default to speed up builds.
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-YAML_NAME="arthur-ingress-01.yaml"
-NODE_NAME="arthur-ingress-01"
+YAML_NAME="bernard-ingress-01.yaml"
+NODE_NAME="bernard-ingress-01"
 
 # Allow overriding the container tag; defaults to latest.
 ESPHOME_IMAGE="${ESPHOME_IMAGE:-esphome/esphome:latest}"
@@ -25,7 +25,7 @@ chown -R "$(id -u):$(id -g)" "${PROJECT_DIR}/.esphome"
 
 # Where the factory image should be copied.
 BIN_DIR="${PROJECT_DIR}/bin"
-FACTORY_OUT="${BIN_DIR}/arthur-ingress-01.factory.bin"
+FACTORY_OUT="${BIN_DIR}/bernard-ingress-01.factory.bin"
 
 BUILD_DIR="${PROJECT_DIR}/.esphome/build/${NODE_NAME}"
 FACTORY_SRC="${BUILD_DIR}/.pioenvs/${NODE_NAME}/firmware.factory.bin"

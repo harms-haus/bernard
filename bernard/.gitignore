@@ -1,8 +1,4 @@
-
-secrets.yaml
-.esphome
-bin
-
+# bernard Next.js app
 .next
 node_modules
 .env.local

@@ -1,7 +1,7 @@
 {
-  "name": "arthur",
+  "name": "bernard",
   "version": "0.1.0",
-  "description": "Arthur agent API with LangGraph tools and token auth",
+  "description": "bernard agent API with LangGraph tools and token auth",
   "private": true,
   "scripts": {
     "dev": "next dev",

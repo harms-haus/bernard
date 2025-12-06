@@ -1,4 +1,4 @@
-# Arthur agent API (Next.js + LangGraph)
+# bernard agent API (Next.js + LangGraph)
 
 Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web search, timer, weather) and Redis-backed named tokens.
 
@@ -43,6 +43,8 @@ curl -N http://localhost:3000/api/agent \
 ## Notes
 
 - Tools: `web_search`, `set_timer`, `get_weather`.
-- Redis keys are namespaced under `arthur:tokens:*`.
+- Redis keys are namespaced under `bernard:tokens:*`.
 - The graph is built with LangGraph + ChatOpenAI targeting OpenRouter by default. Update `OPENROUTER_*` envs to point at another endpoint if needed.
+
+
 

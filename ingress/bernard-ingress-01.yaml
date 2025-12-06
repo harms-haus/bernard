@@ -1,7 +1,7 @@
 ---
 substitutions:
-  name: arthur-ingress-01
-  friendly_name: "Arthur-Ingress-01"
+  name: bernard-ingress-01
+  friendly_name: "bernard-Ingress-01"
   loading_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/loading_320_240.png
   idle_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/idle_320_240.png
   listening_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/listening_320_240.png

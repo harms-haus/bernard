@@ -10,7 +10,7 @@ export type TokenMetadata = {
 
 export type TokenRecord = TokenMetadata & { token: string };
 
-const DEFAULT_NAMESPACE = "arthur:tokens";
+const DEFAULT_NAMESPACE = "bernard:tokens";
 
 export class TokenStore {
   private readonly namespace: string;
