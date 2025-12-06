@@ -2,3 +2,12 @@
 secrets.yaml
 .esphome
 bin
+
+# Arthur Next.js app
+arthur/.next
+arthur/node_modules
+arthur/.env.local
+arthur/.env
+arthur/.turbo
+arthur/.cache
+arthur/.npm
