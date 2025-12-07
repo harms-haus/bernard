@@ -1,0 +1,15 @@
+{
+  "type": "micro",
+  "wake_word": "bernard",
+  "author": "harms-haus",
+  "model": "bernard.tflite",
+  "trained_languages": ["en"],
+  "version": 2,
+  "micro": {
+    "probability_cutoff": 0.6,
+    "feature_step_size": 10,
+    "sliding_window_size": 5,
+    "tensor_arena_size": 250000,
+    "minimum_esphome_version": "2024.7.0"
+  }
+}

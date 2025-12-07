@@ -1,7 +1,9 @@
 ---
 substitutions:
   name: bernard-ingress-01
-  friendly_name: "bernard-Ingress-01"
+  friendly_name: "bernard-ingress-01"
+  hotspot_ssid: bernard-ingress-01_ap
+  hotspot_pw: carrotstick
   loading_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/loading_320_240.png
   idle_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/idle_320_240.png
   listening_illustration_file: https://github.com/esphome/wake-word-voice-assistants/raw/main/casita/listening_320_240.png
@@ -69,7 +71,7 @@ psram:
 
 api:
   encryption:
-    key: "e7ByVtSY4FxmmADoilThgl01PH4/bR6VpWWnLxH0UMg="
+    key: "DkFBLyeX6Cok900gHtxkHbQn8nzBkmv05ZCwDZQ3y90="
   on_client_connected:
     - script.execute: draw_display
   on_client_disconnected:
@@ -225,21 +227,20 @@ media_player:
             - script.execute: set_idle_or_mute_phase
             - script.execute: draw_display
 
-micro_wake_word:
-  id: mww
-  models:
-    - okay_nabu
-    - hey_mycroft
-    - hey_jarvis
-  on_wake_word_detected:
-    - voice_assistant.start:
-        wake_word: !lambda return wake_word;
+# micro_wake_word:
+#   id: mww
+#   models:
+#     # Custom wake word packaged in ingress/wake-words (mounted at /config/wake-words)
+#     - model: /config/wake-words/bernard.json
+#   on_wake_word_detected:
+#     - voice_assistant.start:
+#         wake_word: !lambda return wake_word;
 
 voice_assistant:
   id: va
   microphone: box_mic
   media_player: speaker_media_player
-  micro_wake_word: mww
+  # micro_wake_word: mww
   noise_suppression_level: 2
   auto_gain: 31dBFS
   volume_multiplier: 2.0
@@ -285,7 +286,7 @@ voice_assistant:
           - lambda: return id(wake_word_engine_location).state == "On device";
         then:
           - lambda: id(va).set_use_wake_word(false);
-          - micro_wake_word.start:
+          # - micro_wake_word.start:
     - script.execute: set_idle_or_mute_phase
     - script.execute: draw_display
     # Clear text sensors
@@ -494,7 +495,7 @@ script:
               - lambda: return id(wake_word_engine_location).state == "On device";
           then:
             - lambda: id(va).set_use_wake_word(false);
-            - micro_wake_word.start:
+            # - micro_wake_word.start:
       - if:
           condition:
             and:
@@ -517,7 +518,7 @@ script:
           condition:
             lambda: return id(wake_word_engine_location).state == "On device";
           then:
-            - micro_wake_word.stop:
+            # - micro_wake_word.stop:
   # Set the voice assistant phase to idle or muted, depending on if the software mute switch is activated
   - id: set_idle_or_mute_phase
     then:
@@ -606,7 +607,7 @@ select:
                 condition:
                   lambda: return x == "In Home Assistant";
                 then:
-                  - micro_wake_word.stop
+                  # - micro_wake_word.stop
                   - delay: 500ms
                   - if:
                       condition:
@@ -625,7 +626,7 @@ select:
                       condition:
                         switch.is_off: mute
                       then:
-                        - micro_wake_word.start
+                        # - micro_wake_word.start
 
 globals:
   - id: init_in_progress
