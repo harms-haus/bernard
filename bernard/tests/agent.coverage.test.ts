@@ -80,8 +80,10 @@ test("instrumented tools parse args and classify timeout/auth/other", async () =
 
   await graph.invoke({ messages: [new HumanMessage("hi")] });
 
-  assert.equal(keeper.toolResults.length, 3);
-  const errorTypes = keeper.toolResults.map((entry) => (entry as any)[2].errorType);
+  assert.ok(keeper.toolResults.length >= 3);
+  const errorTypes = keeper.toolResults
+    .map((entry) => (entry as any)[2].errorType)
+    .filter(Boolean);
   assert.deepEqual(errorTypes.sort(), ["auth", "other", "timeout"].sort());
 });
 
@@ -261,6 +263,60 @@ test("stream yields intermediate states through tool loop", async () => {
   const firstContent = (chunks[0].messages?.at(-1)?.content as string) ?? "";
   assert.equal(firstContent, "partial");
   assert.ok(toolInvocations.length >= 1);
+});
+
+test("respond tool ends the loop and skips regular tools", async () => {
+  const toolInvocations: unknown[] = [];
+  const keeper = noopRecordKeeper();
+
+  const defaultTool = {
+    name: "default_tool",
+    description: "stub",
+    async invoke() {
+      toolInvocations.push("called");
+      return "ok";
+    }
+  };
+
+  const FakeChatOpenAI = class {
+    private called = false;
+    bindTools() {
+      return {
+        async invoke() {
+          if (!this.called) {
+            this.called = true;
+            return new AIMessage({
+              content: "",
+              tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
+            } as any);
+          }
+          return new AIMessage("unreachable");
+        }
+      };
+    }
+
+    async invoke() {
+      return new AIMessage("final-response");
+    }
+  };
+
+  const { buildGraph } = await import("../lib/agent?respond-tool");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-respond",
+      conversationId: "conv-respond",
+      requestId: "req-respond",
+      token: "tok",
+      model: "model-respond"
+    },
+    { tools: [defaultTool as any], ChatOpenAI: FakeChatOpenAI as any }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("hello")] });
+  assert.equal(toolInvocations.length, 0);
+  const final = result.messages?.at(-1) as AIMessage;
+  assert.equal(final.content, "final-response");
 });
 
 test("falls back to env defaults when ctx model is missing", async () => {

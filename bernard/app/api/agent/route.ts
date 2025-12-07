@@ -112,6 +112,16 @@ function findLastUserMessage(messages: BaseMessage[]): BaseMessage | null {
   return null;
 }
 
+function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!message) continue;
+    const candidate = message as { _getType?: () => string };
+    if (candidate._getType?.() === "ai") return message;
+  }
+  return null;
+}
+
 function extractChunkText(chunk: unknown): string {
   if (!chunk) return "";
   if (Array.isArray(chunk)) {
@@ -302,7 +312,11 @@ export async function POST(req: NextRequest) {
         status: "ok",
         latencyMs: Date.now() - requestStart
       });
-      return Response.json({ messages: allMessages });
+      const finalAssistant = findLastAssistantMessage(allMessages);
+      const finalContent = contentFromMessage(finalAssistant) ?? "";
+      return new Response(finalContent, {
+        headers: { "Content-Type": "text/plain" }
+      });
     } catch (err) {
       if (isRateLimit(err)) {
         await keeper.recordRateLimit(token, responseModel);
@@ -388,7 +402,8 @@ export async function POST(req: NextRequest) {
           await keeper.appendMessages(conversationId, newMessages);
         }
 
-        const finalContent = contentFromMessages(latestMessages ?? []) ?? latestContent;
+        const finalAssistant = latestMessages ? findLastAssistantMessage(latestMessages) : null;
+        const finalContent = contentFromMessage(finalAssistant) ?? latestContent;
         if (finalContent) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: finalContent })}\n\n`));
         }

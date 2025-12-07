@@ -158,12 +158,14 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
   assert.equal(toolInvocations.length, 1);
   assert.deepEqual(toolInvocations[0], { value: "hi" });
 
-  assert.equal(keeper.toolResults.length, 1);
+  assert.equal(keeper.toolResults.length, 2);
   const [turnId, toolName, toolRes] = keeper.toolResults[0] as [string, string, Record<string, unknown>];
   assert.equal(turnId, "turn-1");
   assert.equal(toolName, "stub_tool");
   assert.equal(toolRes.ok, true);
   assert.equal(typeof toolRes.latencyMs, "number");
+  const respondEntry = keeper.toolResults.find(([, name]) => name === "respond");
+  assert.ok(respondEntry);
 
   assert.equal(keeper.modelResults.length, 3);
   const [, , firstModelMetrics] = keeper.modelResults[0] as [string, string, Record<string, number>];
@@ -203,7 +205,9 @@ test("short-circuits when no tool calls are requested", { timeout: 2000 }, async
 
   assert.equal(finalMessage?.content, "Final response");
   assert.equal(toolInvocations.length, 0);
-  assert.equal(keeper.toolResults.length, 0);
+  assert.equal(keeper.toolResults.length, 1);
+  const respondEntry = keeper.toolResults.find(([, name]) => name === "respond");
+  assert.ok(respondEntry);
   assert.equal(keeper.modelResults.length, 2);
 });
 
@@ -330,10 +334,12 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
     assert.match(String((toolMessage as any).content ?? ""), /Location: Paris/);
     assert.equal(finalMessage?.content, "done");
 
-    assert.equal(keeper.toolResults.length, 1);
-    const [, toolName, toolRes] = keeper.toolResults[0] as [string, string, Record<string, unknown>];
-    assert.equal(toolName, "get_weather");
-    assert.equal(toolRes.ok, true);
+    assert.equal(keeper.toolResults.length, 2);
+    const weatherEntry = keeper.toolResults.find(([, name]) => name === "get_weather") as
+      | [string, string, Record<string, unknown>]
+      | undefined;
+    assert.ok(weatherEntry);
+    assert.equal(weatherEntry?.[2].ok, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

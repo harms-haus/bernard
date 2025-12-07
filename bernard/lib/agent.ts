@@ -122,6 +122,30 @@ function hasToolCall(messages: BaseMessage[]): boolean {
   );
 }
 
+function isRespondToolCall(call: ToolCallRecord): boolean {
+  const name = call?.name ?? call.function?.name;
+  return name === "respond";
+}
+
+function extractToolCallsFromMessage(message: { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } } | null | undefined): ToolCallRecord[] {
+  if (!message) return [];
+  const direct = (message as { tool_calls?: unknown[] }).tool_calls;
+  const nested = (message as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
+  if (Array.isArray(direct) && direct.length) return normalizeToolCalls(direct);
+  if (Array.isArray(nested) && nested.length) return normalizeToolCalls(nested);
+  return [];
+}
+
+function latestToolCalls(messages: BaseMessage[]): ToolCallRecord[] {
+  if (!messages.length) return [];
+  const last = messages[messages.length - 1];
+  return extractToolCallsFromMessage(last as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } });
+}
+
+function dropRespondToolCalls(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((message) => !extractToolCallsFromMessage(message as any).some(isRespondToolCall));
+}
+
 type InstrumentedTool = {
   name: string;
   description: string;
@@ -213,38 +237,6 @@ function callIntentModel(
   };
 }
 
-function callResponseModel(ctx: AgentContext, modelName: string, model: ChatOpenAI) {
-  return async (state: { messages: BaseMessage[] }) => {
-    const start = Date.now();
-    const rawResult: unknown = await model.invoke(state.messages);
-    if (!rawResult || typeof rawResult !== "object") {
-      throw new Error("Model returned invalid result");
-    }
-    const result = rawResult as BaseMessage;
-    const latency = Date.now() - start;
-    const usage = extractTokenUsage(result);
-
-    const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
-    const tokensOut = usage.completion_tokens ?? usage.output_tokens;
-
-    const openRouterResult: {
-      ok: boolean;
-      latencyMs: number;
-      tokensIn?: number;
-      tokensOut?: number;
-    } = {
-      ok: true,
-      latencyMs: latency
-    };
-    if (typeof tokensIn === "number") openRouterResult.tokensIn = tokensIn;
-    if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
-
-    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
-
-    return { messages: [result] };
-  };
-}
-
 type GraphDeps = {
   model?: ChatOpenAI;
   intentModel?: ChatOpenAI;
@@ -287,10 +279,17 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     });
 
   const instrumentedTools = instrumentTools(ctx, deps.tools);
+  const respondTool = toolFactory(async () => "respond", {
+    name: "respond",
+    description:
+      "Use this when you are ready to stop gathering data and deliver the final answer to the user. " +
+      "Do not request additional tools after calling this."
+  });
+  const intentTools = [...instrumentedTools, respondTool];
+
   const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
-  const intentStep = callIntentModel(ctx, intentModelName, intentLLM, instrumentedTools);
-  const responseStep = callResponseModel(ctx, responseModelName, responseLLM);
-  const streamingIntentModel = intentLLM.bindTools(instrumentedTools);
+  const intentStep = callIntentModel(ctx, intentModelName, intentLLM, intentTools);
+  const streamingIntentModel = intentLLM.bindTools(intentTools);
   const maxIterations = 8;
   const onUpdateHook = deps.onUpdate;
 
@@ -304,39 +303,119 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     return [];
   };
 
+  const responseContext = (messages: BaseMessage[]) => dropRespondToolCalls(messages);
+
+  const recordRespondMetrics = async (usage: TokenUsage, latencyMs: number, ok: boolean, errorType?: string) => {
+    const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
+    const tokensOut = usage.completion_tokens ?? usage.output_tokens;
+
+    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, responseModelName, {
+      ok,
+      latencyMs,
+      ...(typeof tokensIn === "number" ? { tokensIn } : {}),
+      ...(typeof tokensOut === "number" ? { tokensOut } : {})
+    });
+
+    await ctx.recordKeeper.recordToolResult(ctx.turnId, "respond", {
+      ok,
+      latencyMs,
+      ...(errorType ? { errorType } : {})
+    });
+  };
+
+  const invokeRespond = async (messages: BaseMessage[]) => {
+    const start = Date.now();
+    try {
+      const filtered = responseContext(messages);
+      const rawResult: unknown = await responseLLM.invoke(filtered);
+      if (!rawResult || typeof rawResult !== "object") {
+        throw new Error("Response model returned invalid result");
+      }
+      const result = rawResult as BaseMessage;
+      const usage = extractTokenUsage(result);
+      await recordRespondMetrics(usage, Date.now() - start, true);
+      return result;
+    } catch (err) {
+      await recordRespondMetrics({}, Date.now() - start, false, classifyError(err));
+      throw err;
+    }
+  };
+
+  async function* streamRespond(messages: BaseMessage[]) {
+    const start = Date.now();
+    const filtered = responseContext(messages);
+    let responseAggregated: AIMessageChunk | null = null;
+
+    try {
+      const responseStream = await responseLLM.stream(filtered);
+
+      for await (const chunk of responseStream) {
+        responseAggregated = responseAggregated ? responseAggregated.concat(chunk) : chunk;
+        const currentMessages = [...messages, responseAggregated];
+        if (onUpdateHook) await onUpdateHook(currentMessages);
+        yield { messages: currentMessages };
+      }
+
+      if (!responseAggregated) {
+        throw new Error("Response model returned no chunks");
+      }
+
+      const usage = extractTokenUsage(responseAggregated);
+      await recordRespondMetrics(usage, Date.now() - start, true);
+      const finalMessages = [...messages, responseAggregated];
+      if (onUpdateHook) await onUpdateHook(finalMessages);
+      yield { messages: finalMessages };
+      return finalMessages;
+    } catch (err) {
+      await recordRespondMetrics({}, Date.now() - start, false, classifyError(err));
+      throw err;
+    }
+  }
+
   const execute = async (
     initialMessages: BaseMessage[],
     onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
   ): Promise<BaseMessage[]> => {
     let messages = initialMessages;
+    let responded = false;
     for (let i = 0; i < maxIterations; i++) {
       const modelResult = await intentStep({ messages });
       const nextMessages = modelResult.messages ?? [];
       messages = [...messages, ...nextMessages];
       await onUpdate(messages);
-      if (!hasToolCall(messages)) break;
+      const toolCalls = latestToolCalls(messages);
+      const wantsRespond = toolCalls.some(isRespondToolCall);
+      if (!toolCalls.length || wantsRespond) {
+        const responseMessage = await invokeRespond(messages);
+        messages = [...messages, responseMessage];
+        await onUpdate(messages);
+        responded = true;
+        break;
+      }
       const toolMessages = await runTools(messages);
       messages = [...messages, ...toolMessages];
       await onUpdate(messages);
     }
 
-    const responseResult = await responseStep({ messages });
-    const responseMessages = responseResult.messages ?? [];
-    messages = [...messages, ...responseMessages];
-    await onUpdate(messages);
+    if (!responded) {
+      const responseMessage = await invokeRespond(messages);
+      messages = [...messages, responseMessage];
+      await onUpdate(messages);
+    }
     return messages;
   };
 
   /* c8 ignore start */
   async function* streamMessages(initialMessages: BaseMessage[]) {
     let messages = initialMessages;
+    let responded = false;
 
     for (let i = 0; i < maxIterations; i++) {
       const start = Date.now();
       const stream = await streamingIntentModel.stream(messages);
 
       let aggregated: AIMessageChunk | null = null;
-      let latestToolCalls: unknown[] | undefined;
+      let latestToolCalls: ToolCallRecord[] | undefined;
       let latestToolCallChunks: unknown[] | undefined;
       for await (const chunk of stream) {
         const chunkToolCalls =
@@ -358,7 +437,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         }
         const currentMessages = [...messages, aggregated];
         if (onUpdateHook) await onUpdateHook(currentMessages);
-        yield { messages: currentMessages };
+        const isResponding = latestToolCalls?.some(isRespondToolCall);
+        if (!isResponding) {
+          yield { messages: currentMessages };
+        }
       }
 
       if (!aggregated) {
@@ -383,7 +465,16 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       });
 
       messages = [...messages, aggregated];
-      if (!hasToolCall(messages)) break;
+      const toolCalls = latestToolCalls ?? [];
+      const wantsRespond = toolCalls.some(isRespondToolCall);
+      if (!toolCalls.length || wantsRespond) {
+        for await (const responseChunk of streamRespond(messages)) {
+          messages = responseChunk.messages ?? messages;
+          yield responseChunk;
+        }
+        responded = true;
+        break;
+      }
 
       const toolMessages = await runTools(messages);
       messages = [...messages, ...toolMessages];
@@ -391,34 +482,12 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       yield { messages };
     }
 
-    const responseStart = Date.now();
-    const responseStream = await responseLLM.stream(messages);
-    let responseAggregated: AIMessageChunk | null = null;
-
-    for await (const chunk of responseStream) {
-      responseAggregated = responseAggregated ? responseAggregated.concat(chunk) : chunk;
-      const currentMessages = [...messages, responseAggregated];
-      if (onUpdateHook) await onUpdateHook(currentMessages);
-      yield { messages: currentMessages };
+    if (!responded) {
+      for await (const responseChunk of streamRespond(messages)) {
+        messages = responseChunk.messages ?? messages;
+        yield responseChunk;
+      }
     }
-
-    if (!responseAggregated) {
-      throw new Error("Response model returned no chunks");
-    }
-
-    const responseUsage = extractTokenUsage(responseAggregated);
-    const responseTokensIn = responseUsage.prompt_tokens ?? responseUsage.input_tokens;
-    const responseTokensOut = responseUsage.completion_tokens ?? responseUsage.output_tokens;
-    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, responseModelName, {
-      ok: true,
-      latencyMs: Date.now() - responseStart,
-      ...(typeof responseTokensIn === "number" ? { tokensIn: responseTokensIn } : {}),
-      ...(typeof responseTokensOut === "number" ? { tokensOut: responseTokensOut } : {})
-    });
-
-    messages = [...messages, responseAggregated];
-    if (onUpdateHook) await onUpdateHook(messages);
-    yield { messages };
   }
   /* c8 ignore end */
 
