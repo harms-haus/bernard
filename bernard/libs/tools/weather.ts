@@ -331,7 +331,7 @@ async function analyzeAirQualityIfNotable(geo: GeocodeResult, anchorDate: string
 export const weatherTool = tool(
   async ({ location, units }) => {
     try {
-      const trimmedLocation = location.trim();
+      const trimmedLocation = (location ?? "").trim();
       if (!trimmedLocation) return "Please provide a location (city, region, or coordinates).";
 
       const unitChoice = resolveUnits(units);
@@ -363,7 +363,7 @@ export const weatherTool = tool(
     description:
       "Get today's weather and the forecast two days out using Open-Meteo, optionally noting unusual conditions or air quality.",
     schema: z.object({
-      location: z.string().min(2),
+      location: z.string().min(2).optional(),
       units: z.enum(["metric", "imperial"]).optional()
     })
   }

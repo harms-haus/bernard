@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, AIMessageChunk, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
 const noopRecordKeeper = () => {
   const toolResults: unknown[] = [];
@@ -201,17 +201,23 @@ test("stream yields intermediate states through tool loop", async () => {
     private called = false;
     bindTools() {
       return {
-        async invoke() {
-          if (!this.called) {
-            this.called = true;
-            return new AIMessage({
-              content: "",
-              tool_calls: [
-                { id: "t1", type: "tool_call", name: "default_tool", args: '{"foo":"bar"}' } as any
-              ]
-            } as any);
+        async stream() {
+          const self = this;
+          async function* gen() {
+            if (!self.called) {
+              self.called = true;
+              yield new AIMessageChunk({ content: "partial" } as any);
+              yield new AIMessageChunk({
+                content: "",
+                tool_calls: [
+                  { id: "t1", type: "tool_call", function: { name: "default_tool", arguments: '{"foo":"bar"}' } }
+                ]
+              } as any);
+              return;
+            }
+            yield new AIMessageChunk({ content: "done" } as any);
           }
-          return new AIMessage("done");
+          return gen();
         }
       };
     }
@@ -227,12 +233,14 @@ test("stream yields intermediate states through tool loop", async () => {
     model: "model-stream"
   }, { tools: [defaultTool as any], ChatOpenAI: FakeChatOpenAI as any });
 
-  const chunks: unknown[] = [];
+  const chunks: Array<{ messages?: { content?: unknown }[] }> = [];
   for await (const chunk of await graph.stream({ messages: [new HumanMessage("hello")] })) {
     chunks.push(chunk);
   }
 
   assert.ok(chunks.length >= 2, "expected intermediate stream updates");
+  const firstContent = (chunks[0].messages?.at(-1)?.content as string) ?? "";
+  assert.equal(firstContent, "partial");
   assert.ok(toolInvocations.length >= 1);
 });
 

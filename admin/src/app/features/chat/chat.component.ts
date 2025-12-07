@@ -5,18 +5,38 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputTextareaModule } from 'primeng/inputtextarea';
+import { RippleModule } from 'primeng/ripple';
+import { PrimeNGConfig } from 'primeng/api';
 import { TagModule } from 'primeng/tag';
 import { MessageModule } from 'primeng/message';
 
 import { environment } from '../../config/environment';
 
-type ChatMessage = {
+type ToolCallStatus = 'waiting' | 'in-progress' | 'ended-success' | 'ended-failure';
+
+type ToolCallMessage = {
+  kind: 'tool';
   id: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: 'tool';
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+  response?: string;
+  status: ToolCallStatus;
+  collapsed: boolean;
+  createdAt: number;
+};
+
+type ChatMessage = {
+  kind: 'chat';
+  id: string;
+  role: 'user' | 'assistant' | 'system';
   content: string;
   pending?: boolean;
   createdAt: number;
 };
+
+type ChatItem = ChatMessage | ToolCallMessage;
 
 @Component({
   selector: 'app-chat',
@@ -26,6 +46,7 @@ type ChatMessage = {
     ButtonModule,
     InputTextModule,
     InputTextareaModule,
+    RippleModule,
     TagModule,
     MessageModule
   ],
@@ -35,10 +56,11 @@ type ChatMessage = {
 })
 export class ChatComponent {
   private readonly fb = inject(FormBuilder);
+  private readonly primeng = inject(PrimeNGConfig);
   private readonly tokenStorageKey = 'bernard:chatToken';
   private readonly endpointStorageKey = 'bernard:chatEndpoint';
 
-  protected readonly messages = signal<ChatMessage[]>([]);
+  protected readonly messages = signal<ChatItem[]>([]);
   protected readonly sending = signal<boolean>(false);
   protected readonly error = signal<string | null>(null);
   protected readonly conversationId = signal<string>(this.createId());
@@ -61,6 +83,10 @@ export class ChatComponent {
     const message = (this.messageValue() ?? '').trim();
     return !this.sending() && Boolean(message);
   });
+
+  constructor() {
+    this.primeng.ripple = true;
+  }
 
   protected resetConversation() {
     this.messages.set([]);
@@ -103,6 +129,7 @@ export class ChatComponent {
     this.persistPreferences(token, endpoint);
 
     const userMessage: ChatMessage = {
+      kind: 'chat',
       id: this.createId(),
       role: 'user',
       content: text,
@@ -113,7 +140,14 @@ export class ChatComponent {
     const history = [...this.messages(), userMessage];
     this.messages.set([
       ...history,
-      { id: assistantId, role: 'assistant', content: '', createdAt: Date.now(), pending: true }
+      {
+        kind: 'chat',
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        createdAt: Date.now(),
+        pending: true
+      }
     ]);
     this.form.controls.message.setValue('');
     this.sending.set(true);
@@ -140,7 +174,7 @@ export class ChatComponent {
     endpoint: string;
     token: string;
     conversationId: string;
-    history: ChatMessage[];
+    history: ChatItem[];
     assistantId: string;
   }) {
     const payload = {
@@ -206,10 +240,15 @@ export class ChatComponent {
       const errorMessage = this.extractErrorMessage(chunk);
       if (errorMessage) {
         this.error.set(errorMessage);
+        this.markLatestToolFailure(errorMessage);
         this.updateAssistant(assistantId, `Request failed: ${errorMessage}`, false);
         return;
       }
-      const content = this.extractContent(chunk);
+      const toolEvents = this.extractToolEvents(chunk);
+      toolEvents.calls.forEach((call) => this.upsertToolCall(call));
+      toolEvents.responses.forEach((response) => this.updateToolResponse(response));
+
+      const content = this.extractAssistantContent(chunk);
       if (content !== null) {
         this.updateAssistant(assistantId, content, true);
       }
@@ -257,8 +296,24 @@ export class ChatComponent {
   }
 
   private assistantContent(id: string) {
-    const message = this.messages().find((m) => m.id === id);
+    const message = this.messages().find((m) => m.id === id && m.kind === 'chat') as ChatMessage | undefined;
     return message?.content ?? '';
+  }
+
+  private extractAssistantContent(chunk: unknown): string | null {
+    const messages = this.coalesceMessages(chunk as Record<string, unknown>);
+    if (!messages.length) {
+      return this.extractContent(chunk);
+    }
+
+    const assistantCandidates = messages.filter((msg) => !this.isToolResponse(msg));
+    if (assistantCandidates.length) {
+      const last = assistantCandidates[assistantCandidates.length - 1] as Record<string, unknown>;
+      const content = this.extractMessageContent(last);
+      if (content !== null) return content;
+    }
+
+    return this.extractContent(chunk);
   }
 
   private extractContent(chunk: unknown): string | null {
@@ -271,12 +326,47 @@ export class ChatComponent {
       return topLevel;
     }
 
+    const fromTopLevel = this.contentFromCandidates(this.coalesceMessages(chunk as Record<string, unknown>));
+    if (fromTopLevel !== null) {
+      return fromTopLevel;
+    }
+
     const data = (chunk as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
     if (!data) {
       return null;
     }
 
-    const candidates = this.coalesceMessages(data);
+    return this.contentFromCandidates(this.coalesceMessages(data));
+  }
+
+  private coalesceMessages(data: Record<string, unknown>): unknown[] {
+    const messages = (data as Record<string, unknown>)['messages'];
+    if (Array.isArray(messages)) {
+      return messages;
+    }
+
+    const agent = (data as Record<string, unknown>)['agent'];
+    const agentMessages =
+      agent && typeof agent === 'object'
+        ? (agent as Record<string, unknown>)['messages']
+        : undefined;
+    if (Array.isArray(agentMessages)) {
+      return agentMessages;
+    }
+
+    const tools = (data as Record<string, unknown>)['tools'];
+    const toolMessages =
+      tools && typeof tools === 'object'
+        ? (tools as Record<string, unknown>)['messages']
+        : undefined;
+    if (Array.isArray(toolMessages)) {
+      return toolMessages;
+    }
+
+    return [];
+  }
+
+  private contentFromCandidates(candidates: unknown[]): string | null {
     if (!candidates.length) {
       return null;
     }
@@ -318,37 +408,180 @@ export class ChatComponent {
     return null;
   }
 
-  private coalesceMessages(data: Record<string, unknown>): unknown[] {
-    const messages = (data as Record<string, unknown>)['messages'];
-    if (Array.isArray(messages)) {
-      return messages;
+  private extractMessageContent(msg: Record<string, unknown>): string | null {
+    const fromDirect = (msg as { content?: unknown }).content;
+    if (typeof fromDirect === 'string') return fromDirect;
+
+    const kwargs = (msg as { kwargs?: Record<string, unknown> }).kwargs ?? (msg as Record<string, unknown>)['kwargs'];
+    if (kwargs && typeof kwargs === 'object') {
+      const kwContent = (kwargs as { content?: unknown }).content;
+      if (typeof kwContent === 'string') return kwContent;
     }
 
-    const agent = (data as Record<string, unknown>)['agent'];
-    const agentMessages =
-      agent && typeof agent === 'object'
-        ? (agent as Record<string, unknown>)['messages']
-        : undefined;
-    if (Array.isArray(agentMessages)) {
-      return agentMessages;
+    return null;
+  }
+
+  private isToolResponse(msg: unknown): boolean {
+    if (!msg || typeof msg !== 'object') return false;
+    const toolCallId = (msg as { tool_call_id?: unknown }).tool_call_id ?? (msg as { kwargs?: { tool_call_id?: unknown } }).kwargs?.tool_call_id;
+    const toolCalls = (msg as { tool_calls?: unknown[] }).tool_calls ?? (msg as { kwargs?: { tool_calls?: unknown[] } }).kwargs?.tool_calls;
+    const role = (msg as { type?: unknown }).type;
+    return Boolean(toolCallId) || role === 'tool' || (Array.isArray(toolCalls) && !toolCalls.length);
+  }
+
+  private extractToolEvents(chunk: unknown): {
+    calls: Array<{ id: string; name: string; args: unknown }>;
+    responses: Array<{ toolCallId: string; content: string; ok: boolean }>;
+  } {
+    const messages = this.coalesceMessages(chunk as Record<string, unknown>);
+    const calls: Array<{ id: string; name: string; args: unknown }> = [];
+    const responses: Array<{ toolCallId: string; content: string; ok: boolean }> = [];
+
+    for (const msg of messages) {
+      if (!msg || typeof msg !== 'object') continue;
+
+      const toolCalls =
+        (msg as { tool_calls?: unknown[] }).tool_calls ??
+        (msg as { kwargs?: { tool_calls?: unknown[] } }).kwargs?.tool_calls ??
+        (msg as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
+      if (Array.isArray(toolCalls)) {
+        for (const call of toolCalls) {
+          if (!call || typeof call !== 'object') continue;
+          const name =
+            (call as { name?: unknown }).name ??
+            (call as { function?: { name?: unknown } }).function?.name ??
+            'tool';
+          const rawArgs =
+            (call as { function?: { arguments?: unknown } }).function?.arguments ??
+            (call as { arguments?: unknown }).arguments;
+          calls.push({
+            id:
+              (call as { id?: unknown }).id?.toString() ??
+              (call as { function?: { name?: unknown } }).function?.name?.toString() ??
+              this.createId(),
+            name: typeof name === 'string' ? name : 'tool',
+            args: this.parseArgs(rawArgs)
+          });
+        }
+      }
+
+      const toolCallId =
+        (msg as { tool_call_id?: unknown }).tool_call_id ??
+        (msg as { kwargs?: { tool_call_id?: unknown } }).kwargs?.tool_call_id ??
+        (msg as { additional_kwargs?: { tool_call_id?: unknown } }).additional_kwargs?.tool_call_id;
+      if (toolCallId) {
+        const content =
+          this.extractMessageContent(msg as Record<string, unknown>) ??
+          this.contentFromCandidates([msg]) ??
+          '';
+        responses.push({
+          toolCallId: String(toolCallId),
+          content,
+          ok: true
+        });
+      }
     }
 
-    const tools = (data as Record<string, unknown>)['tools'];
-    const toolMessages =
-      tools && typeof tools === 'object'
-        ? (tools as Record<string, unknown>)['messages']
-        : undefined;
-    if (Array.isArray(toolMessages)) {
-      return toolMessages;
-    }
+    return { calls, responses };
+  }
 
-    return [];
+  private parseArgs(raw: unknown): unknown {
+    if (typeof raw !== 'string') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+
+  private upsertToolCall(call: { id: string; name: string; args: unknown }) {
+    this.messages.update((list) => {
+      const existingIndex = list.findIndex(
+        (item) => item.kind === 'tool' && item.toolCallId === call.id
+      );
+      const working = [...list];
+
+      if (existingIndex !== -1) {
+        const existing = working[existingIndex] as ToolCallMessage;
+        working.splice(existingIndex, 1);
+        const merged: ToolCallMessage = { ...existing, toolName: call.name, args: call.args };
+        const assistantIndex = this.latestAssistantIndex(working);
+        if (assistantIndex !== -1) {
+          working.splice(assistantIndex, 0, merged);
+          return working;
+        }
+        working.push(merged);
+        return working;
+      }
+
+      const toolMessage: ToolCallMessage = {
+        kind: 'tool',
+        id: this.createId(),
+        role: 'tool',
+        toolCallId: call.id,
+        toolName: call.name,
+        args: call.args,
+        status: 'in-progress',
+        collapsed: true,
+        createdAt: Date.now()
+      };
+      const assistantIndex = this.latestAssistantIndex(working);
+      if (assistantIndex !== -1) {
+        working.splice(assistantIndex, 0, toolMessage);
+        return working;
+      }
+      return [...working, toolMessage];
+    });
+  }
+
+  private latestAssistantIndex(list: ChatItem[]): number {
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const item = list[i];
+      if (item.kind === 'chat' && item.role === 'assistant') {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private updateToolResponse(response: { toolCallId: string; content: string; ok: boolean }) {
+    this.messages.update((list) =>
+      list.map((item) =>
+        item.kind === 'tool' && item.toolCallId === response.toolCallId
+          ? {
+              ...item,
+              response: response.content,
+              status: response.ok ? 'ended-success' : 'ended-failure',
+              collapsed: true
+            }
+          : item
+      )
+    );
+  }
+
+  private markLatestToolFailure(reason: string) {
+    this.messages.update((list) => {
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const item = list[i];
+        if (item.kind === 'tool') {
+          const combined = `${reason}\n\nTool call payload:\n${this.formatArgs(item.args)}`;
+          const updated: ToolCallMessage = {
+            ...item,
+            response: combined,
+            status: 'ended-failure',
+            collapsed: false
+          };
+          return [...list.slice(0, i), updated, ...list.slice(i + 1)];
+        }
+      }
+      return list;
+    });
   }
 
   private updateAssistant(id: string, content: string, streaming: boolean) {
     this.messages.update((list) =>
       list.map((item) =>
-        item.id === id
+        item.kind === 'chat' && item.id === id
           ? {
               ...item,
               content,
@@ -359,15 +592,16 @@ export class ChatComponent {
     );
   }
 
-  private toOpenAI(history: ChatMessage[]) {
+  private toOpenAI(history: ChatItem[]) {
     return history
       .filter(
         (message) =>
-          message.role === 'user' || message.role === 'assistant' || message.role === 'system'
+          message.kind === 'chat' &&
+          (message.role === 'user' || message.role === 'assistant' || message.role === 'system')
       )
       .map((message) => ({
-        role: message.role === 'assistant' ? 'assistant' : message.role,
-        content: message.content
+        role: (message as ChatMessage).role === 'assistant' ? 'assistant' : (message as ChatMessage).role,
+        content: (message as ChatMessage).content
       }));
   }
 
@@ -409,6 +643,112 @@ export class ChatComponent {
 
   private createId() {
     return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
+  }
+
+  protected formatArgs(args: unknown): string {
+    if (args === null || args === undefined) return '—';
+    if (typeof args === 'string') return args;
+    try {
+      return JSON.stringify(args, null, 2);
+    } catch {
+      return String(args);
+    }
+  }
+
+  protected formatToolSignature(name: string, args: unknown): string {
+    return `${name}${this.inlineArgs(args)}`;
+  }
+
+  protected toggleToolResponse(id: string) {
+    this.messages.update((list) =>
+      list.map((item) =>
+        item.kind === 'tool' && item.id === id ? { ...item, collapsed: !item.collapsed } : item
+      )
+    );
+  }
+
+  private inlineArgs(args: unknown): string {
+    if (args === null || args === undefined) return '()';
+    if (typeof args === 'string') return `(${this.compactString(args) || '…'})`;
+    if (typeof args === 'number' || typeof args === 'boolean') return `(${String(args)})`;
+
+    if (Array.isArray(args)) {
+      const preview = args.map((value) => this.inlineValue(value)).join(', ');
+      return `(${this.compactString(preview) || '…'})`;
+    }
+
+    if (typeof args === 'object') {
+      const record = args as Record<string, unknown>;
+      const lat = this.pickCoordinate(record, ['lat', 'latitude']);
+      const lon = this.pickCoordinate(record, ['lon', 'longitude']);
+      if (lat !== null && lon !== null) {
+        return `(${lat}, ${lon})`;
+      }
+
+      const entries = Object.entries(record);
+      if (!entries.length) return '()';
+
+      const preview = entries
+        .slice(0, 3)
+        .map(([key, value]) => `${key}: ${this.inlineValue(value)}`)
+        .join(', ');
+      const suffix = entries.length > 3 ? ' …' : '';
+
+      return `(${this.compactString(preview + suffix) || '…'})`;
+    }
+
+    return `(${this.compactString(String(args)) || '…'})`;
+  }
+
+  private inlineValue(value: unknown): string {
+    if (value === null || value === undefined) return '—';
+    if (typeof value === 'string') return this.compactString(value, 30) || '…';
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+      const rendered = value.slice(0, 2).map((entry) => this.inlineValue(entry)).join(', ');
+      return `[${rendered}${value.length > 2 ? ', …' : ''}]`;
+    }
+    if (typeof value === 'object') return '{…}';
+    return this.compactString(String(value), 30) || '…';
+  }
+
+  private pickCoordinate(record: Record<string, unknown>, keys: string[]): number | null {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number') {
+        return Number(value);
+      }
+    }
+    return null;
+  }
+
+  private compactString(value: string, max = 80): string {
+    const singleLine = value.replace(/\s+/g, ' ').trim();
+    if (!singleLine) return '';
+    return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
+  }
+
+  protected roleLabel(role: ChatMessage['role']): string {
+    if (role === 'assistant') return 'Bernard';
+    if (role === 'user') return 'You';
+    if (role === 'system') return 'System';
+    return role;
+  }
+
+  protected isLastChatRole(index: number): boolean {
+    const list = this.messages();
+    if (index < 0 || index >= list.length) return false;
+
+    const current = list[index];
+    if (current.kind !== 'chat') return false;
+
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const item = list[i];
+      if (item.kind === 'chat' && item.role === current.role) {
+        return i === index;
+      }
+    }
+    return false;
   }
 }
 

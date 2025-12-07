@@ -119,9 +119,15 @@ function extractChunkText(chunk: unknown): string {
   return "";
 }
 
-function extractMessagesFromChunk(chunk: GraphStreamChunk): BaseMessage[] | null {
-  const data = chunk.data;
-  if (!data) return null;
+function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
+  if (!chunk || typeof chunk !== "object") return null;
+
+  const direct = (chunk as { messages?: unknown }).messages;
+  if (Array.isArray(direct)) return direct as BaseMessage[];
+
+  const data = (chunk as GraphStreamChunk).data;
+  if (!data || typeof data !== "object") return null;
+
   if (Array.isArray(data.messages)) return data.messages;
   if (Array.isArray(data.agent?.messages)) return data.agent.messages;
   if (Array.isArray(data.tools?.messages)) return data.tools.messages;
@@ -297,8 +303,7 @@ export async function POST(req: NextRequest) {
           if (process.env["DEBUG_STREAM"] === "1") {
             console.warn("agent stream chunk", JSON.stringify(chunk));
           }
-          const maybeMessages =
-            extractMessagesFromChunk(chunk) ?? findMessages((chunk as { data?: unknown }).data);
+          const maybeMessages = extractMessagesFromChunk(chunk) ?? findMessages(chunk);
           if (maybeMessages) {
             latestMessages = maybeMessages;
             const content = contentFromMessages(maybeMessages);
@@ -369,4 +374,7 @@ export async function POST(req: NextRequest) {
     }
   });
 }
+
+// Exposed for focused tests
+export const __agentRouteTestHooks = { extractMessagesFromChunk };
 

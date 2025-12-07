@@ -30,7 +30,11 @@ test.afterEach(() => {
 function mockFetchSequence(responses: Array<Response | Error>) {
   const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ input, init });
+    if (init === undefined) {
+      calls.push({ input });
+    } else {
+      calls.push({ input, init });
+    }
     const next = responses.shift();
     if (!next) {
       throw new Error("Unexpected fetch call");
@@ -46,18 +50,27 @@ function mockFetchSequence(responses: Array<Response | Error>) {
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
     status: init?.status ?? 200,
-    statusText: init?.statusText,
+    ...(init?.statusText !== undefined ? { statusText: init.statusText } : {}),
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) }
   });
 }
 
 function textResponse(text: string, init?: ResponseInit) {
-  return new Response(text, { status: init?.status ?? 200, statusText: init?.statusText });
+  return new Response(text, {
+    status: init?.status ?? 200,
+    ...(init?.statusText !== undefined ? { statusText: init.statusText } : {})
+  });
 }
 
 void test("returns prompt for blank location", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([]);
   const result = await weatherTool.invoke({ location: "   ", units: "metric" });
+  assert.equal(result, "Please provide a location (city, region, or coordinates).");
+});
+
+void test("returns prompt when location is missing", { timeout: TEST_TIMEOUT }, async () => {
+  mockFetchSequence([]);
+  const result = await weatherTool.invoke({});
   assert.equal(result, "Please provide a location (city, region, or coordinates).");
 });
 

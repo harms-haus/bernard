@@ -1,5 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
@@ -88,10 +88,35 @@ function classifyError(err: unknown): string {
   return "other";
 }
 
+type ToolCallRecord = { name?: string; function?: { name?: string; arguments?: unknown }; [key: string]: unknown };
+
+function normalizeToolCalls(toolCalls: unknown[]): ToolCallRecord[] {
+  return toolCalls.map((call) => {
+    if (call && typeof call === "object") {
+      const record = call as ToolCallRecord;
+      const fnName = record.function?.name;
+      if (fnName && !record.name) {
+        record.name = fnName;
+      }
+      return record;
+    }
+    return { name: String(call) } as ToolCallRecord;
+  });
+}
+
 function hasToolCall(messages: BaseMessage[]): boolean {
   const last = messages[messages.length - 1];
-  const toolCalls = (last as { tool_calls?: unknown[] } | undefined)?.tool_calls;
-  return Array.isArray(toolCalls) && toolCalls.length > 0;
+  const toolCalls = (last as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } } | undefined)?.tool_calls;
+  const nestedToolCalls = (last as { additional_kwargs?: { tool_calls?: unknown[] } } | undefined)?.additional_kwargs?.tool_calls;
+  const toolCallChunks = (last as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } } | undefined)?.tool_call_chunks;
+  const nestedToolCallChunks = (last as { additional_kwargs?: { tool_call_chunks?: unknown[] } } | undefined)?.additional_kwargs?.tool_call_chunks;
+
+  return (
+    (Array.isArray(toolCalls) && toolCalls.length > 0) ||
+    (Array.isArray(nestedToolCalls) && nestedToolCalls.length > 0) ||
+    (Array.isArray(toolCallChunks) && toolCallChunks.length > 0) ||
+    (Array.isArray(nestedToolCallChunks) && nestedToolCallChunks.length > 0)
+  );
 }
 
 type InstrumentedTool = {
@@ -204,6 +229,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const instrumentedTools = instrumentTools(ctx, deps.tools);
   const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
   const modelStep = callModel(ctx, model, instrumentedTools);
+  const streamingModel = model.bindTools(instrumentedTools);
   const maxIterations = 8;
   const onUpdateHook = deps.onUpdate;
 
@@ -239,13 +265,61 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   /* c8 ignore start */
   async function* streamMessages(initialMessages: BaseMessage[]) {
     let messages = initialMessages;
+
     for (let i = 0; i < maxIterations; i++) {
-      const modelResult = await modelStep({ messages });
-      const nextMessages = modelResult.messages ?? [];
-      messages = [...messages, ...nextMessages];
-      if (onUpdateHook) await onUpdateHook(messages);
-      yield { messages };
+      const start = Date.now();
+      const stream = await streamingModel.stream(messages);
+
+      let aggregated: AIMessageChunk | null = null;
+      let latestToolCalls: unknown[] | undefined;
+      let latestToolCallChunks: unknown[] | undefined;
+      for await (const chunk of stream) {
+        const chunkToolCalls =
+          (chunk as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } }).tool_calls ??
+          (chunk as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
+        const chunkToolCallChunks =
+          (chunk as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
+          (chunk as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
+
+        if (Array.isArray(chunkToolCalls) && chunkToolCalls.length) latestToolCalls = normalizeToolCalls(chunkToolCalls);
+        if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) latestToolCallChunks = chunkToolCallChunks;
+
+        aggregated = aggregated ? aggregated.concat(chunk) : chunk;
+        if (aggregated && latestToolCalls) {
+          (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
+        }
+        if (aggregated && latestToolCallChunks) {
+          (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
+        }
+        const currentMessages = [...messages, aggregated];
+        if (onUpdateHook) await onUpdateHook(currentMessages);
+        yield { messages: currentMessages };
+      }
+
+      if (!aggregated) {
+        throw new Error("Model returned no chunks");
+      }
+
+      if (latestToolCalls) {
+        (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
+      }
+      if (latestToolCallChunks) {
+        (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
+      }
+
+      const usage = extractTokenUsage(aggregated);
+      const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
+      const tokensOut = usage.completion_tokens ?? usage.output_tokens;
+      await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, ctx.model, {
+        ok: true,
+        latencyMs: Date.now() - start,
+        ...(typeof tokensIn === "number" ? { tokensIn } : {}),
+        ...(typeof tokensOut === "number" ? { tokensOut } : {})
+      });
+
+      messages = [...messages, aggregated];
       if (!hasToolCall(messages)) break;
+
       const toolMessages = await runTools(messages);
       messages = [...messages, ...toolMessages];
       if (onUpdateHook) await onUpdateHook(messages);

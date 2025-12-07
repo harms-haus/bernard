@@ -53,18 +53,68 @@
       <p class="muted empty">Start chatting to see messages here.</p>
     } @else {
       <div class="messages">
-        @for (message of messages(); track message.id) {
-          <div class="message" [class.outgoing]="message.role === 'user'">
-            <div class="bubble" [attr.data-role]="message.role">
-              <div class="meta">
-                <span class="role-label">{{ message.role === 'assistant' ? 'Bernard' : 'You' }}</span>
-                @if (message.pending) {
-                  <span class="pending">responding…</span>
+        @for (message of messages(); track message.id; let i = $index) {
+          @switch (message.kind) {
+            @case ('tool') {
+              <div class="tool-block" [class.expanded]="!message.collapsed">
+                <button
+                  type="button"
+                  class="tool-header"
+                  pRipple
+                  [attr.aria-expanded]="!message.collapsed"
+                  [attr.aria-controls]="!message.collapsed ? 'tool-response-' + message.id : null"
+                  (click)="toggleToolResponse(message.id)"
+                >
+                  <span
+                    class="status-indicator"
+                    [class.waiting]="message.status === 'waiting'"
+                    [class.in-progress]="message.status === 'in-progress'"
+                    [class.ended-success]="message.status === 'ended-success'"
+                    [class.ended-failure]="message.status === 'ended-failure'"
+                    aria-label="tool status"
+                  ></span>
+                  <div class="tool-meta">
+                    <div class="tool-name" [title]="formatArgs(message.args)">
+                      {{ formatToolSignature(message.toolName, message.args) }}
+                    </div>
+                  </div>
+                  <span class="chevron" aria-hidden="true">
+                    <i
+                      class="pi"
+                      [class.pi-chevron-down]="message.collapsed"
+                      [class.pi-chevron-up]="!message.collapsed"
+                    ></i>
+                  </span>
+                </button>
+                @if (!message.collapsed) {
+                  <div class="tool-response" [id]="'tool-response-' + message.id">
+                    @if (message.response) {
+                      <pre>{{ message.response }}</pre>
+                    } @else {
+                      <div class="pending-response">Waiting for response…</div>
+                    }
+                  </div>
                 }
               </div>
-              <p>{{ message.content || '…' }}</p>
-            </div>
-          </div>
+            }
+            @default {
+              <div class="message" [class.outgoing]="message.role === 'user'">
+                <div class="bubble" [attr.data-role]="message.role">
+                  @if (message.pending) {
+                    <div class="meta">
+                      <span class="pending">responding…</span>
+                    </div>
+                  }
+                  <p>{{ message.content || '…' }}</p>
+                </div>
+                @if (isLastChatRole(i)) {
+                  <div class="role-footer" [class.outgoing]="message.role === 'user'">
+                    {{ roleLabel(message.role) }}
+                  </div>
+                }
+              </div>
+            }
+          }
         }
       </div>
     }
@@ -86,4 +136,5 @@
     </div>
   </form>
 </section>
+
 
