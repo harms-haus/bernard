@@ -10,6 +10,7 @@ import {
   CreateTokenRequest,
   HistoryQuery,
   Paginated,
+  RecordKeeperStatus,
   ServiceConfig,
   Token,
   UpdateServiceRequest,
@@ -18,7 +19,8 @@ import {
 
 /**
  * REST contracts (backend to align with):
- * - GET    /api/status                      -> BernardStatus
+ * - GET    /api/status                      -> BernardStatus (includes recordKeeper)
+ * - GET    /api/recordkeeper/status         -> { status: RecordKeeperStatus }
  * - GET    /api/tokens                      -> { tokens: Token[] }
  * - POST   /api/tokens                      -> Token (CreateTokenRequest) // includes secret once
  * - GET    /api/tokens/:id                  -> { token: Token }
@@ -30,6 +32,7 @@ import {
  */
 export interface ApiClient {
   getStatus(): Observable<BernardStatus>;
+  getRecordKeeperStatus(): Observable<RecordKeeperStatus>;
   listTokens(): Observable<Token[]>;
   createToken(body: CreateTokenRequest): Observable<Token>;
   updateToken(id: string, body: UpdateTokenRequest): Observable<Token>;
@@ -68,6 +71,12 @@ class HttpApiClient implements ApiClient {
 
   getStatus() {
     return this.http.get<BernardStatus>(`${this.baseUrl}/status`, this.options());
+  }
+
+  getRecordKeeperStatus() {
+    return this.http
+      .get<{ status: RecordKeeperStatus }>(`${this.baseUrl}/recordkeeper/status`, this.options())
+      .pipe(map((res) => res.status));
   }
 
   listTokens() {
@@ -121,12 +130,27 @@ class MockApiClient implements ApiClient {
     uptimeSeconds: 86_400 + 3200,
     startedAt: new Date(Date.now() - 89_600_000).toISOString(),
     version: '0.1.0',
-    lastMessageAt: new Date().toISOString(),
+    lastActivityAt: new Date().toISOString(),
     activeConversations: 3,
     tokensActive: 5,
     queueSize: 0,
-    notes: 'Mock data; wire up real API to replace.'
+    notes: 'Mock data; wire up real API to replace.',
+    recordKeeper: {
+      namespace: 'bernard:rk',
+      metricsNamespace: 'bernard:rk:metrics',
+      idleMs: 10 * 60 * 1000,
+      summarizerEnabled: true,
+      activeConversations: 3,
+      closedConversations: 12,
+      totalRequests: 240,
+      totalTurns: 260,
+      errorTurns: 3,
+      tokensActive: 5,
+      lastActivityAt: new Date().toISOString()
+    }
   };
+
+  private readonly recordKeeperStatus: RecordKeeperStatus = this.status.recordKeeper;
 
   private tokens: Token[] = [
     {
@@ -229,6 +253,10 @@ class MockApiClient implements ApiClient {
 
   getStatus() {
     return of(this.status).pipe(delay(120));
+  }
+
+  getRecordKeeperStatus() {
+    return of(this.recordKeeperStatus).pipe(delay(80));
   }
 
   listTokens() {

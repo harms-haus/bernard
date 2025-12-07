@@ -30,6 +30,11 @@ curl -X POST http://localhost:3000/api/tokens \
 - `DELETE /api/tokens/:id` removes a token entirely.
 - Disabled tokens are rejected by `/api/agent` and `/api/history`.
 
+## Status (admin)
+
+- `GET /api/status` (bearer `$ADMIN_API_KEY`) returns the Bernard status snapshot, including RecordKeeper details.
+- `GET /api/recordkeeper/status` (bearer `$ADMIN_API_KEY`) returns `{ status: RecordKeeperStatus }` for debugging and dashboards.
+
 ## History/recall endpoint
 
 - `GET /api/history` with bearer token to search conversations; query params: `conversationId`, `place`, `keywords`, `since`, `until`, `limit`, `includeMessages=true`, `messageLimit`.

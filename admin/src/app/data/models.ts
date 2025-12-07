@@ -1,15 +1,31 @@
 export type HealthStatus = 'online' | 'degraded' | 'offline';
 
+export interface RecordKeeperStatus {
+  namespace: string;
+  metricsNamespace: string;
+  idleMs: number;
+  summarizerEnabled: boolean;
+  activeConversations: number;
+  closedConversations: number;
+  totalRequests: number;
+  totalTurns: number;
+  errorTurns: number;
+  tokensActive: number;
+  lastActivityAt?: string;
+}
+
 export interface BernardStatus {
   status: HealthStatus;
   uptimeSeconds: number;
   startedAt: string;
   version?: string;
+  lastActivityAt?: string;
   lastMessageAt?: string;
   activeConversations: number;
   tokensActive: number;
   queueSize?: number;
   notes?: string;
+  recordKeeper: RecordKeeperStatus;
 }
 
 export interface Token {

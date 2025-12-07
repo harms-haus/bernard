@@ -195,6 +195,11 @@ export class FakeRedis {
     return Promise.resolve(sliced.map((i) => i.member));
   }
 
+  zcard(key: string): Promise<number> {
+    const arr = this.zsets.get(key) ?? [];
+    return Promise.resolve(arr.length);
+  }
+
   rpush(key: string, value: string): Promise<number> {
     const list = this.lists.get(key) ?? [];
     list.push(value);

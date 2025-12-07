@@ -76,6 +76,20 @@ export type OpenRouterResult = {
   tokensOut?: number;
 };
 
+export type RecordKeeperStatus = {
+  namespace: string;
+  metricsNamespace: string;
+  idleMs: number;
+  summarizerEnabled: boolean;
+  activeConversations: number;
+  closedConversations: number;
+  totalRequests: number;
+  totalTurns: number;
+  errorTurns: number;
+  tokensActive: number;
+  lastActivityAt?: string;
+};
+
 export type RecallQuery = {
   conversationId?: string;
   token?: string;
@@ -421,6 +435,48 @@ export class RecordKeeper {
     }
   }
 
+  async getStatus(): Promise<RecordKeeperStatus> {
+    const [activeIds, closedCount, requestMetrics, turnMetrics, mostRecentClosed] = await Promise.all([
+      this.redis.zrevrangebyscore(this.key("convs:active"), Number.MAX_SAFE_INTEGER, 0),
+      this.redis.zcard(this.key("convs:closed")),
+      this.redis.hgetall(this.metricsKey("requests")),
+      this.redis.hgetall(this.metricsKey("turns")),
+      this.redis.zrevrangebyscore(this.key("convs:closed"), Number.MAX_SAFE_INTEGER, 0, "LIMIT", 0, 1)
+    ]);
+
+    const tokensActive = await this.countActiveTokens(activeIds);
+
+    let lastActivityAt: string | undefined;
+    const mostRecentActiveId = activeIds[0];
+    if (mostRecentActiveId) {
+      const lastTouched = await this.redis.hget(this.key(`conv:${mostRecentActiveId}`), "lastTouchedAt");
+      if (lastTouched) {
+        lastActivityAt = lastTouched;
+      }
+    } else if (mostRecentClosed[0]) {
+      const closedTouch =
+        (await this.redis.hget(this.key(`conv:${mostRecentClosed[0]}`), "lastTouchedAt")) ??
+        (await this.redis.hget(this.key(`conv:${mostRecentClosed[0]}`), "closedAt"));
+      if (closedTouch) {
+        lastActivityAt = closedTouch;
+      }
+    }
+
+    return {
+      namespace: this.namespace,
+      metricsNamespace: this.metricsNamespace,
+      idleMs: this.idleMs,
+      summarizerEnabled: Boolean(this.summarizer),
+      activeConversations: activeIds.length,
+      closedConversations: closedCount,
+      totalRequests: parseInt(requestMetrics["count"] ?? "0", 10),
+      totalTurns: parseInt(turnMetrics["count"] ?? "0", 10),
+      errorTurns: parseInt(turnMetrics["error"] ?? "0", 10),
+      tokensActive,
+      ...(lastActivityAt ? { lastActivityAt } : {})
+    };
+  }
+
   async recallConversation(query: RecallQuery): Promise<RecallConversation[]> {
     if (query.conversationId) {
       const conversation = await this.getConversation(query.conversationId);
@@ -623,6 +679,16 @@ export class RecordKeeper {
     parseJsonArray(existing ?? undefined)?.forEach((v) => set.add(v));
     values.filter(Boolean).forEach((v) => set.add(v));
     await this.redis.hset(convKey, field, JSON.stringify(Array.from(set)));
+  }
+
+  private async countActiveTokens(conversationIds: string[]): Promise<number> {
+    if (!conversationIds.length) return 0;
+    const tokens = new Set<string>();
+    for (const id of conversationIds) {
+      const tokenSet = await this.redis.hget(this.key(`conv:${id}`), "tokenSet");
+      parseJsonArray(tokenSet ?? undefined)?.forEach((token) => tokens.add(token));
+    }
+    return tokens.size;
   }
 }
 

@@ -5,7 +5,7 @@ import type Redis from "ioredis";
 
 import { RecordKeeper, type MessageRecord } from "../lib/recordKeeper";
 import { FakeRedis } from "./fakeRedis";
-import type { SummaryResult } from "../lib/conversationSummary";
+import type { ConversationSummaryService, SummaryResult } from "../lib/conversationSummary";
 
 class StubSummarizer {
   summarize(_conversationId: string, _messages: MessageRecord[]): Promise<SummaryResult> {
@@ -33,7 +33,10 @@ void test("reuses conversation within idle window", async () => {
 void test("closes idle conversation and writes summary", async () => {
   const redis = new FakeRedis();
   const redisClient = redis as unknown as Redis;
-  const keeper = new RecordKeeper(redisClient, { idleMs: 10, summarizer: new StubSummarizer() });
+  const keeper = new RecordKeeper(redisClient, {
+    idleMs: 10,
+    summarizer: new StubSummarizer() as unknown as ConversationSummaryService
+  });
 
   const { conversationId } = await keeper.startRequest("t1", "m1");
   await keeper.appendMessages(conversationId, []);
@@ -55,12 +58,12 @@ void test("records tool and model metrics", async () => {
   await keeper.recordOpenRouterResult(turnId, "modelA", { ok: true, latencyMs: 100, tokensIn: 10, tokensOut: 20 });
 
   const toolMetrics = await redisClient.hgetall("bernard:rk:metrics:tool:toolX");
-  assert.equal(toolMetrics.ok, "1");
-  assert.equal(toolMetrics.fail, "1");
+  assert.equal(toolMetrics["ok"], "1");
+  assert.equal(toolMetrics["fail"], "1");
 
   const modelMetrics = await redisClient.hgetall("bernard:rk:metrics:model:modelA:openrouter");
-  assert.equal(modelMetrics.ok, "1");
-  assert.equal(modelMetrics.fail ?? "0", modelMetrics.fail ?? "0");
+  assert.equal(modelMetrics["ok"], "1");
+  assert.equal(modelMetrics["fail"] ?? "0", "0");
 });
 
 void test("recall and reopen conversation", async () => {
@@ -75,5 +78,25 @@ void test("recall and reopen conversation", async () => {
   const reopened = await keeper.reopenConversation(conversationId, "tokenB");
   assert.ok(reopened);
   assert.ok(reopened?.tokenSet?.includes("tokenB"));
+});
+
+void test("reports status snapshot", async () => {
+  const redis = new FakeRedis();
+  const redisClient = redis as unknown as Redis;
+  const keeper = new RecordKeeper(redisClient, { idleMs: 5 * 60 * 1000 });
+
+  const { requestId, conversationId } = await keeper.startRequest("token-status", "model-x");
+  await keeper.appendMessages(conversationId, []);
+  const turnId = await keeper.startTurn(requestId, conversationId, "token-status", "model-x");
+  await keeper.endTurn(turnId, { status: "ok", latencyMs: 42 });
+
+  const status = await keeper.getStatus();
+
+  assert.equal(status.activeConversations, 1);
+  assert.equal(status.tokensActive, 1);
+  assert.equal(status.totalRequests, 1);
+  assert.equal(status.totalTurns, 1);
+  assert.equal(status.errorTurns, 0);
+  assert.ok(status.lastActivityAt);
 });
 
