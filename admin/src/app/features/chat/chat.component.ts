@@ -188,6 +188,7 @@ export class ChatComponent {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
         Authorization: `Bearer ${params.token}`
       },
       body: JSON.stringify(payload)
@@ -301,6 +302,19 @@ export class ChatComponent {
   }
 
   private extractAssistantContent(chunk: unknown): string | null {
+    // OpenAI-style streaming delta support
+    const choiceDelta = (chunk as { choices?: Array<{ delta?: { content?: unknown }; message?: { content?: unknown }; finish_reason?: unknown }> }).choices?.[0];
+    if (choiceDelta) {
+      const deltaContent = choiceDelta.delta?.content;
+      if (typeof deltaContent === 'string') {
+        return deltaContent;
+      }
+      const fullMessageContent = choiceDelta.message?.content;
+      if (typeof fullMessageContent === 'string') {
+        return fullMessageContent;
+      }
+    }
+
     const messages = this.coalesceMessages(chunk as Record<string, unknown>);
     if (!messages.length) {
       return this.extractContent(chunk);

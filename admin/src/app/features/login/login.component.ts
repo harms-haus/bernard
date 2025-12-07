@@ -12,9 +12,11 @@ import { CardModule } from 'primeng/card';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoginComponent {
-  startLogin() {
-    const redirect = encodeURIComponent('/');
-    window.location.href = `/api/auth/login?redirect=${redirect}`;
+  startLogin(provider: 'google' | 'github') {
+    const redirectTarget = `${window.location.origin}/`;
+    const redirect = encodeURIComponent(redirectTarget);
+    const path = provider === 'google' ? '/api/auth/google/login' : '/api/auth/github/login';
+    window.location.href = `${path}?redirect=${redirect}`;
   }
 }
 

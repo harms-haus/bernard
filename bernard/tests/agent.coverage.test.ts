@@ -212,14 +212,13 @@ test("stream yields intermediate states through tool loop", async () => {
   };
 
   const FakeChatOpenAI = class {
-    private called = false;
     bindTools() {
+      let called = false;
       return {
         async stream() {
-          const self = this;
           async function* gen() {
-            if (!self.called) {
-              self.called = true;
+            if (!called) {
+              called = true;
               yield new AIMessageChunk({ content: "partial" } as any);
               yield new AIMessageChunk({
                 content: "",

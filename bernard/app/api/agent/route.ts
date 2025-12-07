@@ -230,7 +230,13 @@ export async function POST(req: NextRequest) {
   const responseModel = body.model ?? getPrimaryModel("response");
   const intentModel = getPrimaryModel("intent", { fallback: [responseModel] });
   const inputMessages = mapOpenAIToMessages(body.messages);
-  const shouldStream = body.stream ?? true;
+  const accept = req.headers.get("accept")?.toLowerCase() ?? "";
+  const acceptWantsStream = accept.includes("text/event-stream") ? true : undefined;
+  const bodyStream =
+    typeof body.stream === "boolean"
+      ? body.stream
+      : undefined;
+  const shouldStream = bodyStream ?? acceptWantsStream ?? true;
 
   const requestStart = Date.now();
   const requestOpts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string } = {};
@@ -293,7 +299,7 @@ export async function POST(req: NextRequest) {
 
   let iterator: AsyncIterable<GraphStreamChunk>;
   try {
-    iterator = graph.stream({ messages: inputMessages }, { streamMode: "messages" as const });
+    iterator = graph.stream({ messages: inputMessages }, { streamMode: "updates" as const });
   } catch (err) {
     if (isRateLimit(err)) {
       await keeper.recordRateLimit(token, responseModel);
@@ -318,11 +324,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const chunkEnvelope = (payload: Record<string, unknown>) => ({
+    id: requestId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: responseModel,
+    channel: "text",
+    ...payload
+  });
+
   const stream = new ReadableStream({
     async start(controller) {
       let latestMessages: BaseMessage[] | null = null;
       let latestContent: string | null = null;
+      let started = false;
       try {
+        // Emit initial assistant role delta for OpenAI-compatible streams
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify(
+              chunkEnvelope({
+                choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }]
+              })
+            )}\n\n`
+          )
+        );
+        started = true;
+
         for await (const chunk of iterator) {
           if (process.env["DEBUG_STREAM"] === "1") {
             console.warn("agent stream chunk", JSON.stringify(chunk));
@@ -339,20 +367,30 @@ export async function POST(req: NextRequest) {
           const chunkDelta = extractChunkText(chunk);
           if (chunkDelta) {
             latestContent = (latestContent ?? "") + chunkDelta;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify(
+                  chunkEnvelope({
+                    choices: [{ index: 0, delta: { content: chunkDelta }, finish_reason: null }]
+                  })
+                )}\n\n`
+              )
+            );
           }
 
           const chunkContent = contentFromChunkPayload(chunk);
           if (chunkContent !== null && !chunkDelta) {
             latestContent = chunkContent;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify(
+                  chunkEnvelope({
+                    choices: [{ index: 0, delta: { content: chunkContent }, finish_reason: null }]
+                  })
+                )}\n\n`
+              )
+            );
           }
-
-          const basePayload =
-            Array.isArray(chunk) || typeof chunk !== "object" || chunk === null
-              ? { chunk }
-              : chunk;
-          const payload =
-            latestContent !== null ? { ...basePayload, content: latestContent } : basePayload;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
         }
 
         if (latestMessages && latestMessages.length > inputMessages.length) {
@@ -361,10 +399,22 @@ export async function POST(req: NextRequest) {
         }
 
         const finalAssistant = latestMessages ? findLastAssistantMessage(latestMessages) : null;
-        const finalContent = contentFromMessage(finalAssistant) ?? latestContent;
-        if (finalContent) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: finalContent })}\n\n`));
-        }
+        const finalContent = latestContent ?? contentFromMessage(finalAssistant) ?? "";
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify(
+              chunkEnvelope({
+                choices: [
+                  {
+                    index: 0,
+                    delta: finalContent ? { content: finalContent } : {},
+                    finish_reason: "stop"
+                  }
+                ]
+              })
+            )}\n\n`
+          )
+        );
 
         await keeper.completeRequest(requestId, Date.now() - requestStart);
         await keeper.endTurn(turnId, {

@@ -1,5 +1,5 @@
-import type { BaseMessage } from "@langchain/core/messages";
-import { AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import type { AIMessageChunk, BaseMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
@@ -92,6 +92,7 @@ function classifyError(err: unknown): string {
 }
 
 type ToolCallRecord = { name?: string; function?: { name?: string; arguments?: unknown }; [key: string]: unknown };
+type ToolCallMessage = { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } };
 
 function normalizeToolCalls(toolCalls: unknown[]): ToolCallRecord[] {
   return toolCalls.map((call) => {
@@ -143,7 +144,7 @@ function latestToolCalls(messages: BaseMessage[]): ToolCallRecord[] {
 }
 
 function dropRespondToolCalls(messages: BaseMessage[]): BaseMessage[] {
-  return messages.filter((message) => !extractToolCallsFromMessage(message as any).some(isRespondToolCall));
+  return messages.filter((message) => !extractToolCallsFromMessage(message as ToolCallMessage).some(isRespondToolCall));
 }
 
 type InstrumentedTool = {
@@ -279,7 +280,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     });
 
   const instrumentedTools = instrumentTools(ctx, deps.tools);
-  const respondTool = toolFactory(async () => "respond", {
+  const respondTool = toolFactory(() => "respond", {
     name: "respond",
     description:
       "Use this when you are ready to stop gathering data and deliver the final answer to the user. " +

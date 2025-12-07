@@ -5,6 +5,6 @@ import { handleOAuthCallback } from "@/lib/oauth";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  return handleOAuthCallback("default", req);
+  return handleOAuthCallback("github", req);
 }
 

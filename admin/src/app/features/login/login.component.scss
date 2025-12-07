@@ -9,3 +9,9 @@ p-card {
   width: 360px;
 }
 
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+

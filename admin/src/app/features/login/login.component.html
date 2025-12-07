@@ -1,7 +1,10 @@
 <section class="login">
   <p-card header="Bernard Admin">
-    <p>Sign in with OAuth to manage Bernard.</p>
-    <button pButton type="button" icon="pi pi-sign-in" label="Continue with OAuth" (click)="startLogin()"></button>
+    <p>Sign in with Google or GitHub to manage Bernard.</p>
+    <div class="actions">
+      <button pButton type="button" icon="pi pi-google" label="Login with Google" (click)="startLogin('google')"></button>
+      <button pButton type="button" icon="pi pi-github" label="Login with GitHub" (click)="startLogin('github')"></button>
+    </div>
   </p-card>
 </section>
 

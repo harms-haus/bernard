@@ -79,15 +79,19 @@ function orderedEntries(metadata: MetadataMap): Array<[MetadataKey | string, Met
     }
   }
   for (const [key, value] of Object.entries(metadata)) {
-    if (!seen.has(key)) entries.push([key, value as MetadataValue]);
+    if (!seen.has(key)) entries.push([key, value]);
   }
   return entries;
 }
 
+const SPECIAL_QUOTE_CHARS = new Set(["{", "}", "[", "]", ",", "&", "*", "#", "?", "!", "|", ">", "'", '"', "%", "@", "`"]);
+
 function needsQuoting(value: string): boolean {
   if (value === "") return true;
   if (/^\s|\s$|\n/.test(value)) return true;
-  if (/[{}\[\],&*#?!|>'"%@`]/.test(value)) return true;
+  for (const char of SPECIAL_QUOTE_CHARS) {
+    if (value.includes(char)) return true;
+  }
   if (/:/.test(value) && /\s/.test(value)) return true;
   return false;
 }

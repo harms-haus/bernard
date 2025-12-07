@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    return await startOAuthLogin("default", req);
+    return await startOAuthLogin("google", req);
   } catch (err) {
     return new Response(JSON.stringify({ error: (err as Error).message ?? "Unable to start login" }), {
       status: 500

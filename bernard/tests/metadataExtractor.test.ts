@@ -92,7 +92,7 @@ void test("metadata tool returns YAML for requested categories", async () => {
 
   try {
     const result = await metadataTool.invoke({ message: "hi", category: "topic" } as any);
-    const output = String(result);
+    const output = typeof result === "string" ? result : JSON.stringify(result);
     assert.match(output, /mentioned_topic: topic/);
     assert.match(output, /message_topic: topic/);
     assert.equal(/mentioned_time:/.test(output), false);
