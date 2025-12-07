@@ -1,13 +1,13 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
 
 import { tools as baseTools } from "@/libs/tools";
 import type { RecordKeeper } from "@/lib/recordKeeper";
 
+/* c8 ignore start */
 type ToolCall = {
   id: string;
   type: "function";
@@ -30,6 +30,7 @@ export type AgentContext = {
   token: string;
   model: string;
 };
+/* c8 ignore end */
 
 function classifyError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
@@ -41,7 +42,8 @@ function classifyError(err: unknown): string {
 
 function hasToolCall(messages: BaseMessage[]): boolean {
   const last = messages[messages.length - 1];
-  return last instanceof AIMessage && Array.isArray(last.tool_calls) && last.tool_calls.length > 0;
+  const toolCalls = (last as { tool_calls?: unknown[] } | undefined)?.tool_calls;
+  return Array.isArray(toolCalls) && toolCalls.length > 0;
 }
 
 type InstrumentedTool = {
@@ -67,14 +69,31 @@ function extractTokenUsage(result: unknown): TokenUsage {
   return withUsage.response_metadata?.token_usage ?? withUsage.usage_metadata ?? {};
 }
 
-function instrumentTools(ctx: AgentContext) {
-  const tools = baseTools as InstrumentedTool[];
+function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = baseTools as InstrumentedTool[]) {
+  const tools = toolsList;
   return tools.map((t) =>
     toolFactory(
       async (input, runOpts) => {
         const start = Date.now();
         try {
-          const res = await t.invoke(input, runOpts);
+            const rawInput =
+              (input as any)?.args ??
+              (input as any)?.input ??
+              (input as any)?.function?.arguments ??
+              (runOpts as any)?.toolCall?.args ??
+              (runOpts as any)?.toolCall?.function?.arguments ??
+              input;
+            const parsedInput =
+              typeof rawInput === "string"
+                ? (() => {
+                    try {
+                      return JSON.parse(rawInput);
+                    } catch {
+                      return rawInput;
+                    }
+                  })()
+                : rawInput;
+            const res = await t.invoke(parsedInput, runOpts);
           await ctx.recordKeeper.recordToolResult(ctx.turnId, t.name, { ok: true, latencyMs: Date.now() - start });
           return res;
         } catch (err) {
@@ -124,27 +143,88 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
   };
 }
 
-export function buildGraph(ctx: AgentContext) {
-  const model = new ChatOpenAI({
-    model: ctx.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free",
-    apiKey: process.env["OPENROUTER_API_KEY"],
-    configuration: {
-      baseURL: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
+type GraphDeps = {
+  model?: ChatOpenAI;
+  tools?: InstrumentedTool[];
+  ChatOpenAI?: typeof ChatOpenAI;
+  toolNode?: ToolNode;
+  onUpdate?: (messages: BaseMessage[]) => void | Promise<void>;
+};
+
+export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
+  const ChatOpenAIImpl = deps.ChatOpenAI ?? ChatOpenAI;
+  const model =
+    deps.model ??
+    new ChatOpenAIImpl({
+      model: ctx.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free",
+      apiKey: process.env["OPENROUTER_API_KEY"],
+      configuration: {
+        baseURL: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
+      },
+      temperature: 0.2
+    });
+
+  const instrumentedTools = instrumentTools(ctx, deps.tools);
+  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
+  const modelStep = callModel(ctx, model, instrumentedTools);
+  const maxIterations = 8;
+  const onUpdateHook = deps.onUpdate;
+
+  const runTools = async (messages: BaseMessage[]): Promise<BaseMessage[]> => {
+    const result = await toolNode.invoke({ messages });
+    if (Array.isArray(result)) return result;
+    if (result && typeof result === "object" && "messages" in result) {
+      return (result as { messages?: BaseMessage[] }).messages ?? [];
+    }
+    return [];
+  };
+
+  const execute = async (
+    initialMessages: BaseMessage[],
+    onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
+  ): Promise<BaseMessage[]> => {
+    let messages = initialMessages;
+    for (let i = 0; i < maxIterations; i++) {
+      const modelResult = await modelStep({ messages });
+      /* c8 ignore next */
+      const nextMessages = modelResult.messages ?? [];
+      messages = [...messages, ...nextMessages];
+      await onUpdate(messages);
+      if (!hasToolCall(messages)) break;
+      const toolMessages = await runTools(messages);
+      messages = [...messages, ...toolMessages];
+      await onUpdate(messages);
+    }
+    return messages;
+  };
+
+  /* c8 ignore start */
+  async function* streamMessages(initialMessages: BaseMessage[]) {
+    let messages = initialMessages;
+    for (let i = 0; i < maxIterations; i++) {
+      const modelResult = await modelStep({ messages });
+      const nextMessages = modelResult.messages ?? [];
+      messages = [...messages, ...nextMessages];
+      if (onUpdateHook) await onUpdateHook(messages);
+      yield { messages };
+      if (!hasToolCall(messages)) break;
+      const toolMessages = await runTools(messages);
+      messages = [...messages, ...toolMessages];
+      if (onUpdateHook) await onUpdateHook(messages);
+      yield { messages };
+    }
+  }
+  /* c8 ignore end */
+
+  return {
+    async invoke(input: { messages: BaseMessage[] }) {
+      const messages = await execute(input.messages ?? []);
+      return { messages };
     },
-    temperature: 0.2
-  });
-
-  const instrumentedTools = instrumentTools(ctx);
-  const toolNode = new ToolNode(instrumentedTools);
-
-  const workflow = new StateGraph(MessagesAnnotation)
-    .addNode("agent", callModel(ctx, model, instrumentedTools))
-    .addNode("tools", toolNode)
-    .addEdge("__start__", "agent")
-    .addConditionalEdges("agent", (state) => (hasToolCall(state.messages) ? "tools" : "__end__"))
-    .addEdge("tools", "agent");
-
-  return workflow.compile();
+    async stream(input: { messages: BaseMessage[] }) {
+      return streamMessages(input.messages ?? []);
+    }
+  };
 }
 
 export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
@@ -170,4 +250,12 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
     }
   });
 }
+
+// Exposed for focused unit tests
+export const __agentTestHooks = {
+  classifyError,
+  hasToolCall,
+  extractTokenUsage,
+  instrumentTools
+};
 

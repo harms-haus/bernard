@@ -9,8 +9,8 @@ class FakeMulti {
 
   constructor(private readonly redis: FakeRedis) {}
 
-  hset(key: string, values: Record<string, string | number>): this {
-    this.actions.push(() => this.redis.hset(key, values));
+  hset(key: string, values: Record<string, string | number> | string, value?: string | number): this {
+    this.actions.push(() => this.redis.hset(key, values as any, value as any));
     return this;
   }
 
@@ -124,10 +124,16 @@ export class FakeRedis {
     return Promise.resolve(Array.from(set));
   }
 
-  hset(key: string, values: Record<string, string | number>): Promise<null> {
+  hset(key: string, values: Record<string, string | number>): Promise<null>;
+  hset(key: string, field: string, value: string | number): Promise<null>;
+  hset(key: string, fieldOrValues: Record<string, string | number> | string, value?: string | number): Promise<null> {
     const map = this.hashes.get(key) ?? new Map<string, string>();
-    for (const [k, v] of Object.entries(values)) {
-      map.set(k, String(v));
+    if (typeof fieldOrValues === "string") {
+      map.set(fieldOrValues, String(value ?? ""));
+    } else {
+      for (const [k, v] of Object.entries(fieldOrValues)) {
+        map.set(k, String(v));
+      }
     }
     this.hashes.set(key, map);
     return Promise.resolve(null);
@@ -193,6 +199,25 @@ export class FakeRedis {
     const filtered = arr.filter((i) => i.score <= max && i.score >= min).sort((a, b) => b.score - a.score);
     const sliced = filtered.slice(offset, count ? offset + count : undefined);
     return Promise.resolve(sliced.map((i) => i.member));
+  }
+
+  zrevrange(key: string, start: number, stop: number, withScores?: "WITHSCORES"): Promise<string[]> {
+    const arr = [...(this.zsets.get(key) ?? [])].sort((a, b) => b.score - a.score);
+    const normalizeIndex = (idx: number) => (idx < 0 ? Math.max(arr.length + idx, 0) : idx);
+    const slice = arr.slice(normalizeIndex(start), normalizeIndex(stop) + 1);
+    if (withScores === "WITHSCORES") {
+      const flattened: string[] = [];
+      slice.forEach(({ member, score }) => {
+        flattened.push(member, String(score));
+      });
+      return Promise.resolve(flattened);
+    }
+    return Promise.resolve(slice.map((item) => item.member));
+  }
+
+  llen(key: string): Promise<number> {
+    const list = this.lists.get(key) ?? [];
+    return Promise.resolve(list.length);
   }
 
   zcard(key: string): Promise<number> {
