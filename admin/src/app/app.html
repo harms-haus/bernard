@@ -1,0 +1,33 @@
+<div class="shell">
+  <div class="container">
+    <header class="shell-header">
+      <div class="brand">
+        <i class="pi pi-shield"></i>
+        <div>
+          <span class="brand-title">Bernard Admin</span>
+          <p class="brand-subtitle">Monitor uptime, tokens, and requests</p>
+        </div>
+      </div>
+      <a
+        class="docs-link"
+        href="https://github.com"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Project docs"
+      >
+        Docs
+      </a>
+    </header>
+
+    <p-tabMenu
+      class="primary-tabs"
+      [model]="items()"
+      [activeItem]="activeItem()"
+      (activeItemChange)="onTabChange($event)"
+    ></p-tabMenu>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

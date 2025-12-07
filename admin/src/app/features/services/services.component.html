@@ -1,0 +1,42 @@
+<section class="services">
+  <div class="section-header">
+    <div>
+      <h1>Services</h1>
+      <p class="muted">Manage API keys and provider options.</p>
+    </div>
+    <button pButton type="button" icon="pi pi-refresh" label="Reload" (click)="load()" [disabled]="loading()" severity="secondary"></button>
+  </div>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="muted">Loading services…</p>
+  } @else {
+    <div class="cards">
+      @for (service of services(); track service.id) {
+        <p-card [header]="service.name" [subheader]="service.description">
+          <form class="form" [formGroup]="formFor(service)">
+            <label class="field">
+              <span class="label">API key</span>
+              <input pInputText type="password" formControlName="apiKey" placeholder="sk-****" />
+            </label>
+
+            @for (key of optionKeys(service); track key) {
+              <label class="field">
+                <span class="label">{{ key }}</span>
+                <input pInputText type="text" [formControlName]="key" />
+              </label>
+            }
+
+            <div class="actions">
+              <span class="muted small">Last updated {{ service.updatedAt ? (service.updatedAt | date: 'short') : 'n/a' }}</span>
+              <button pButton type="button" label="Save" [loading]="savingId() === service.id" (click)="save(service)"></button>
+            </div>
+          </form>
+        </p-card>
+      }
+    </div>
+  }
+</section>

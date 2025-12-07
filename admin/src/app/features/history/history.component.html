@@ -1,0 +1,93 @@
+<section class="history">
+  <div class="section-header">
+    <div>
+      <h1>History</h1>
+      <p class="muted">Inspect conversations and tool activations.</p>
+    </div>
+    <div class="search">
+      <input
+        #searchBox
+        pInputText
+        type="search"
+        placeholder="Search conversations"
+        [value]="search()"
+        (input)="onSearch((searchBox.value || '').toString())"
+      />
+      <button pButton type="button" icon="pi pi-search" (click)="onSearch(searchBox.value)"></button>
+    </div>
+  </div>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <p-table [value]="conversations()" [loading]="loading()" responsiveLayout="stack">
+    <ng-template pTemplate="header">
+      <tr>
+        <th></th>
+        <th>Source</th>
+        <th>Summary</th>
+        <th>Status</th>
+        <th>Messages</th>
+        <th>Tool calls</th>
+        <th>Updated</th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-convo>
+      <tr>
+        <td>
+          <button
+            pButton
+            type="button"
+            icon="pi pi-chevron-down"
+            (click)="toggle(convo.id)"
+            [text]="true"
+            [class.rotated]="expandedId() === convo.id"
+          ></button>
+        </td>
+        <td>{{ convo.userLabel }}</td>
+        <td>{{ convo.summary }}</td>
+        <td><p-tag [value]="convo.status" [severity]="statusSeverity(convo.status)"></p-tag></td>
+        <td>{{ convo.messageCount }}</td>
+        <td>{{ convo.toolCallCount }}</td>
+        <td>{{ convo.updatedAt | date: 'short' }}</td>
+      </tr>
+      @if (expandedId() === convo.id) {
+        <tr class="expand-row">
+          <td colspan="7">
+            <div class="activations">
+              <div class="activations-header">
+                <h4>Activations</h4>
+                <span class="muted">{{ convo.activations.length }} entries</span>
+              </div>
+              @if (!convo.activations.length) {
+                <p class="muted">No activations recorded.</p>
+              } @else {
+                @for (act of convo.activations; track act.id) {
+                  <div class="activation">
+                    <div class="row">
+                      <p-tag
+                        [value]="act.type === 'tool' ? act.toolName ?? 'tool' : 'model'"
+                        [severity]="act.type === 'tool' ? 'info' : 'secondary'"
+                      ></p-tag>
+                      <span class="muted">{{ act.createdAt | date: 'short' }}</span>
+                    </div>
+                    <p class="label">Input</p>
+                    <p class="mono">{{ act.inputPreview }}</p>
+                    <p class="label">Output</p>
+                    <p class="mono">{{ act.outputPreview }}</p>
+                  </div>
+                }
+              }
+            </div>
+          </td>
+        </tr>
+      }
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="7">No history yet.</td>
+      </tr>
+    </ng-template>
+  </p-table>
+</section>
