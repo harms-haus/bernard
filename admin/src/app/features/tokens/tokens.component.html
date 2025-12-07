@@ -8,27 +8,29 @@
   </div>
 
   @if (error()) {
-    <p class="error">{{ error() }}</p>
+    <p-message severity="error" [text]="error() ?? ''" styleClass="w-full"></p-message>
   }
 
   @if (latestSecret()) {
-    <div class="callout" role="status" aria-live="polite">
-      <p class="callout-title">Token created</p>
-      <p class="callout-body">
-        This is the only time the token for "{{ latestSecret()?.name }}" will be shown. Copy and store it securely.
-      </p>
-      <div class="secret-row">
-        <input
-          #secretInput
-          class="secret-input"
-          type="text"
-          [value]="latestSecret()?.token"
-          readonly
-          aria-label="New token value"
-        />
-        <button pButton type="button" icon="pi pi-copy" label="Copy" (click)="copyLatestSecret(secretInput)"></button>
-      </div>
-    </div>
+    <p-message severity="success" styleClass="w-full" aria-live="polite">
+      <ng-template pTemplate>
+        <p class="m-0 font-bold">Token created</p>
+        <p class="m-0 mb-2">
+          This is the only time the token for "{{ latestSecret()?.name }}" will be shown. Copy and store it securely.
+        </p>
+        <div class="flex align-items-center gap-2">
+          <input
+            #secretInput
+            class="w-full"
+            type="text"
+            [value]="latestSecret()?.token"
+            readonly
+            aria-label="New token value"
+          />
+          <button pButton type="button" icon="pi pi-copy" label="Copy" (click)="copyLatestSecret(secretInput)"></button>
+        </div>
+      </ng-template>
+    </p-message>
   }
 
   <p-table [value]="tokens()" [loading]="loading()" responsiveLayout="stack">
@@ -92,7 +94,7 @@
       </label>
 
       @if (createError()) {
-        <p class="error">{{ createError() }}</p>
+        <p-message severity="error" [text]="createError() ?? ''" styleClass="w-full"></p-message>
       }
 
       <div class="dialog-actions">

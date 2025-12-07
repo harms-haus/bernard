@@ -6,6 +6,7 @@ import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputTextareaModule } from 'primeng/inputtextarea';
 import { TagModule } from 'primeng/tag';
+import { MessageModule } from 'primeng/message';
 
 import { environment } from '../../config/environment';
 
@@ -19,7 +20,15 @@ type ChatMessage = {
 
 @Component({
   selector: 'app-chat',
-  imports: [CommonModule, ReactiveFormsModule, ButtonModule, InputTextModule, InputTextareaModule, TagModule],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    ButtonModule,
+    InputTextModule,
+    InputTextareaModule,
+    TagModule,
+    MessageModule
+  ],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

@@ -1,16 +1,21 @@
-@import 'primeng/resources/themes/lara-light-blue/theme.css';
 @import 'primeng/resources/primeng.css';
 @import 'primeicons/primeicons.css';
 @import 'primeflex/primeflex.css';
 
 :root {
+  --surface-background: var(--surface-ground, #f4f6fb);
+  --surface-panel: var(--surface-card, #ffffff);
+  --text-primary: var(--text-color, #0f172a);
+  --text-secondary: var(--text-color-secondary, #475569);
+  --brand: var(--primary-color, #2563eb);
+}
+
+:root:not(.app-dark) {
   color-scheme: light;
-  --surface-background: #f4f6fb;
-  --surface-panel: #ffffff;
-  --surface-border: #e3e7ef;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --brand: #2563eb;
+}
+
+:root.app-dark {
+  color-scheme: dark;
 }
 
 *,

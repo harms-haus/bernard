@@ -8,7 +8,7 @@
   </div>
 
   @if (error()) {
-    <p class="error">{{ error() }}</p>
+    <p-message severity="error" [text]="error() ?? ''" styleClass="w-full"></p-message>
   }
 
   @if (loading()) {

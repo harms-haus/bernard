@@ -6,13 +6,14 @@ import { finalize } from 'rxjs';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
 import { ServiceConfig } from '../../data/models';
 
 @Component({
   selector: 'app-services',
-  imports: [CommonModule, ReactiveFormsModule, CardModule, ButtonModule, InputTextModule],
+  imports: [CommonModule, ReactiveFormsModule, CardModule, ButtonModule, InputTextModule, MessageModule],
   templateUrl: './services.component.html',
   styleUrl: './services.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

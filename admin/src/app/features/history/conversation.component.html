@@ -8,7 +8,6 @@
     </div>
     <div class="status">
       <div class="status-row">
-        <span class="status-light" [class.active]="isActive()"></span>
         <p-tag [value]="isActive() ? 'Active' : 'Closed'" [severity]="isActive() ? 'success' : 'secondary'"></p-tag>
       </div>
       <p class="muted small">
@@ -21,7 +20,7 @@
   </div>
 
   @if (error()) {
-    <p class="error">{{ error() }}</p>
+    <p-message severity="error" [text]="error() ?? ''" styleClass="w-full"></p-message>
   }
 
   <div class="messages" [class.loading]="loading()">
@@ -41,7 +40,7 @@
             [class.tool]="message.role === 'tool'"
           >
             <div class="message-header">
-              <span class="badge">{{ messageRole(message) }}</span>
+              <p-tag [value]="messageLabel(message)" [severity]="messageSeverity(message)"></p-tag>
               <span class="muted">{{ message.createdAt | date: 'short' }}</span>
               @if (message.tool_calls?.length) {
                 <span class="muted">Tool calls: {{ message.tool_calls?.length ?? 0 }}</span>

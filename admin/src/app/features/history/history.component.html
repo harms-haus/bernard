@@ -5,14 +5,14 @@
       <p class="muted">Monitor active and recent conversations.</p>
     </div>
     <div class="actions">
-      <div class="pill success">Active: {{ stats().active }}</div>
-      <div class="pill muted">Total: {{ stats().total }}</div>
+      <p-tag [value]="'Active: ' + stats().active" severity="success"></p-tag>
+      <p-tag [value]="'Total: ' + stats().total" severity="secondary"></p-tag>
       <button pButton type="button" icon="pi pi-refresh" label="Refresh" (click)="load()" [loading]="loading()"></button>
     </div>
   </div>
 
   @if (error()) {
-    <p class="error">{{ error() }}</p>
+    <p-message severity="error" [text]="error() ?? ''" styleClass="w-full"></p-message>
   }
 
   <p-table [value]="conversations()" [loading]="loading()" responsiveLayout="stack" [rowHover]="true">
@@ -35,10 +35,7 @@
         [class.active]="convo.status === 'open'"
       >
         <td>
-          <div class="status-cell">
-            <span class="status-light" [class.active]="convo.status === 'open'"></span>
-            <span class="status-label">{{ statusLabel(convo.status) }}</span>
-          </div>
+          <p-tag [value]="statusLabel(convo.status)" [severity]="convo.status === 'open' ? 'success' : 'secondary'"></p-tag>
         </td>
         <td>
           <div class="source">

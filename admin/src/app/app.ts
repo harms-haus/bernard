@@ -1,60 +1,90 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { filter } from 'rxjs';
+import { ChangeDetectionStrategy, Component, effect, signal } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import { MenuItem } from 'primeng/api';
-import { TabMenuModule } from 'primeng/tabmenu';
+import { MenubarModule } from 'primeng/menubar';
+import { ButtonModule } from 'primeng/button';
+
+const THEME_STORAGE_KEY = 'bernard-admin-theme';
+const PRIME_NG_THEME_VERSION = '17.18.6';
+
+const prefersDark = (): boolean =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
+
+const loadStoredThemePreference = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === 'dark') {
+    return true;
+  }
+
+  if (stored === 'light') {
+    return false;
+  }
+
+  return prefersDark();
+};
 
 @Component({
   selector: 'app-root',
   imports: [
     RouterOutlet,
-    TabMenuModule
+    MenubarModule,
+    ButtonModule
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class App {
-  private readonly router = inject(Router);
-
-  protected readonly items = signal<MenuItem[]>([
+  readonly items = signal<MenuItem[]>([
     { label: 'Dashboard', icon: 'pi pi-home', routerLink: '/dashboard', routerLinkActiveOptions: { exact: true } },
     { label: 'Access Tokens', icon: 'pi pi-key', routerLink: '/tokens' },
     { label: 'Services', icon: 'pi pi-server', routerLink: '/services' },
     { label: 'History', icon: 'pi pi-history', routerLink: '/history' }
   ]);
 
-  protected readonly activeItem = signal<MenuItem | undefined>(undefined);
+  readonly darkModeEnabled = signal<boolean>(loadStoredThemePreference());
 
   constructor() {
-    this.syncActiveItem(this.router.url);
-
-    this.router.events
-      .pipe(
-        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
-        takeUntilDestroyed()
-      )
-      .subscribe((event) => this.syncActiveItem(event.urlAfterRedirects));
-  }
-
-  protected onTabChange(item: MenuItem) {
-    this.activeItem.set(item);
-  }
-
-  private syncActiveItem(url: string) {
-    const match = this.items().find((item) => {
-      const link = item.routerLink;
-      if (typeof link === 'string') {
-        return url === link || url.startsWith(`${link}/`);
-      }
-      if (Array.isArray(link)) {
-        const path = link.join('/');
-        return url === `/${path}` || url.startsWith(`/${path}/`);
-      }
-      return false;
+    effect(() => {
+      const isDark = this.darkModeEnabled();
+      applyDocumentTheme(isDark);
+      persistThemePreference(isDark);
     });
+  }
 
-    this.activeItem.set(match ?? undefined);
+  toggleDarkMode(): void {
+    this.darkModeEnabled.update((value) => !value);
   }
 }
+
+const persistThemePreference = (isDark: boolean): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+};
+
+const applyDocumentTheme = (isDark: boolean): void => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.classList.toggle('app-dark', isDark);
+
+  const themeLink = document.getElementById('primeng-theme') as HTMLLinkElement | null;
+  if (!themeLink) {
+    return;
+  }
+
+  const themeName = isDark ? 'lara-dark-blue' : 'lara-light-blue';
+  const nextHref = `https://unpkg.com/primeng@${PRIME_NG_THEME_VERSION}/resources/themes/${themeName}/theme.css`;
+
+  if (themeLink.getAttribute('href') !== nextHref) {
+    themeLink.setAttribute('href', nextHref);
+  }
+};

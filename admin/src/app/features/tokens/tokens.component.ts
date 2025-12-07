@@ -10,13 +10,24 @@ import { ConfirmPopupModule } from 'primeng/confirmpopup';
 import { ConfirmationService } from 'primeng/api';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
+import { MessageModule } from 'primeng/message';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
 import { Token } from '../../data/models';
 
 @Component({
   selector: 'app-tokens',
-  imports: [CommonModule, ReactiveFormsModule, TableModule, ButtonModule, DialogModule, InputTextModule, TagModule, ConfirmPopupModule],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    TableModule,
+    ButtonModule,
+    DialogModule,
+    InputTextModule,
+    TagModule,
+    ConfirmPopupModule,
+    MessageModule
+  ],
   templateUrl: './tokens.component.html',
   styleUrl: './tokens.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,26 +39,26 @@ export class TokensComponent {
   private readonly confirm = inject(ConfirmationService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly loading = signal<boolean>(true);
-  protected readonly saving = signal<boolean>(false);
-  protected readonly showDialog = signal<boolean>(false);
-  protected readonly tokens = signal<Token[]>([]);
-  protected readonly error = signal<string | null>(null);
-  protected readonly latestSecret = signal<{ name: string; token: string } | null>(null);
-  protected readonly editingId = signal<string | null>(null);
-  protected readonly createError = signal<string | null>(null);
+  readonly loading = signal<boolean>(true);
+  readonly saving = signal<boolean>(false);
+  readonly showDialog = signal<boolean>(false);
+  readonly tokens = signal<Token[]>([]);
+  readonly error = signal<string | null>(null);
+  readonly latestSecret = signal<{ name: string; token: string } | null>(null);
+  readonly editingId = signal<string | null>(null);
+  readonly createError = signal<string | null>(null);
 
-  protected readonly form = this.fb.nonNullable.group({
+  readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required]
   });
 
-  protected readonly dialogTitle = computed(() => (this.editingId() ? 'Rename token' : 'Create token'));
+  readonly dialogTitle = computed(() => (this.editingId() ? 'Rename token' : 'Create token'));
 
   constructor() {
     this.loadTokens();
   }
 
-  protected loadTokens() {
+  loadTokens() {
     this.loading.set(true);
     this.api
       .listTokens()
@@ -64,21 +75,21 @@ export class TokensComponent {
       });
   }
 
-  protected openDialog() {
+  openDialog() {
     this.editingId.set(null);
     this.form.reset();
     this.createError.set(null);
     this.showDialog.set(true);
   }
 
-  protected edit(token: Token) {
+  edit(token: Token) {
     this.editingId.set(token.id);
     this.form.reset({ name: token.name });
     this.createError.set(null);
     this.showDialog.set(true);
   }
 
-  protected save() {
+  save() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -122,7 +133,7 @@ export class TokensComponent {
       });
   }
 
-  protected toggleStatus(token: Token) {
+  toggleStatus(token: Token) {
     const nextStatus = token.status === 'active' ? 'disabled' : 'active';
     this.api
       .updateToken(token.id, { status: nextStatus })
@@ -133,7 +144,7 @@ export class TokensComponent {
       });
   }
 
-  protected confirmDelete(event: Event, id: string, name: string) {
+  confirmDelete(event: Event, id: string, name: string) {
     this.confirm.confirm({
       target: event.target as HTMLElement,
       message: `Delete token "${name}"? This cannot be undone.`,
@@ -156,14 +167,14 @@ export class TokensComponent {
       });
   }
 
-  protected statusSeverity(token: Token) {
+  statusSeverity(token: Token) {
     if (token.status === 'active') {
       return 'success';
     }
     return 'warning';
   }
 
-  protected copyLatestSecret(input: HTMLInputElement) {
+  copyLatestSecret(input: HTMLInputElement) {
     const value = input.value;
     if (!value) return;
     navigator.clipboard?.writeText(value).catch(() => {

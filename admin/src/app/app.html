@@ -9,25 +9,24 @@
         </div>
       </div>
       <div class="header-actions">
-        <a class="chat-link" routerLink="/chat" aria-label="Open chat with Bernard">Chat</a>
-        <a
-          class="docs-link"
-          href="https://github.com"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Project docs"
-        >
-          Docs
-        </a>
+        <button
+          pButton
+          type="button"
+          text
+          [label]="darkModeEnabled() ? 'Light mode' : 'Dark mode'"
+          [icon]="darkModeEnabled() ? 'pi pi-sun' : 'pi pi-moon'"
+          (click)="toggleDarkMode()"
+          [attr.aria-pressed]="darkModeEnabled()"
+          [attr.aria-label]="darkModeEnabled() ? 'Switch to light mode' : 'Switch to dark mode'">
+        </button>
       </div>
     </header>
 
-    <p-tabMenu
-      class="primary-tabs"
-      [model]="items()"
-      [activeItem]="activeItem()"
-      (activeItemChange)="onTabChange($event)"
-    ></p-tabMenu>
+    <p-menubar [model]="items()">
+      <ng-template pTemplate="end">
+        <button pButton type="button" icon="pi pi-comments" routerLink="/chat" aria-label="Open chat with Bernard" text></button>
+      </ng-template>
+    </p-menubar>
 
     <main class="content">
       <router-outlet />

@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
+import { MessageModule } from 'primeng/message';
 import { finalize, interval, Subscription } from 'rxjs';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
@@ -11,7 +12,7 @@ import { ConversationDetail, ConversationMessage } from '../../data/models';
 
 @Component({
   selector: 'app-conversation',
-  imports: [CommonModule, ButtonModule, TagModule],
+  imports: [CommonModule, ButtonModule, TagModule, MessageModule],
   templateUrl: './conversation.component.html',
   styleUrl: './conversation.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -22,12 +23,12 @@ export class ConversationComponent {
   private readonly router = inject(Router);
   private pollSub: Subscription | null = null;
 
-  protected readonly loading = signal<boolean>(true);
-  protected readonly error = signal<string | null>(null);
-  protected readonly conversation = signal<ConversationDetail | null>(null);
-  protected readonly messages = signal<ConversationMessage[]>([]);
+  readonly loading = signal<boolean>(true);
+  readonly error = signal<string | null>(null);
+  readonly conversation = signal<ConversationDetail | null>(null);
+  readonly messages = signal<ConversationMessage[]>([]);
 
-  protected readonly isActive = computed(() => this.conversation()?.status === 'open');
+  readonly isActive = computed(() => this.conversation()?.status === 'open');
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -42,11 +43,11 @@ export class ConversationComponent {
     });
   }
 
-  protected back() {
+  back() {
     void this.router.navigate(['/history']);
   }
 
-  protected renderContent(message: ConversationMessage): string {
+  renderContent(message: ConversationMessage): string {
     const content = message.content;
     if (typeof content === 'string') {
       return content;
@@ -58,8 +59,30 @@ export class ConversationComponent {
     }
   }
 
-  protected messageRole(message: ConversationMessage) {
-    return message.role === 'assistant' ? 'assistant' : message.role;
+  messageLabel(message: ConversationMessage) {
+    if (message.role === 'assistant') {
+      return 'Assistant';
+    }
+    if (message.role === 'tool') {
+      return 'Tool';
+    }
+    if (message.role === 'system') {
+      return 'System';
+    }
+    return 'User';
+  }
+
+  messageSeverity(message: ConversationMessage) {
+    if (message.role === 'assistant') {
+      return 'success';
+    }
+    if (message.role === 'tool') {
+      return 'warning';
+    }
+    if (message.role === 'system') {
+      return 'secondary';
+    }
+    return 'info';
   }
 
   private load(id: string, withLoader: boolean) {
