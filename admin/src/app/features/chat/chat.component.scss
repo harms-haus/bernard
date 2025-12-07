@@ -1,0 +1,154 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.muted {
+  color: var(--text-secondary);
+  margin: 0.25rem 0 0;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field label {
+  font-weight: 700;
+}
+
+.field input {
+  width: 100%;
+}
+
+.chat-frame {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: #f8fafc;
+  min-height: 320px;
+  padding: 1rem;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.message {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message.outgoing {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(780px, 72%);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.bubble[data-role='assistant'] {
+  background: #eef2ff;
+  border-color: #cbd5e1;
+}
+
+.bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.role-label {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pending {
+  font-style: italic;
+}
+
+.empty {
+  margin: 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.composer-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.composer textarea {
+  width: 100%;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 600;
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .composer-row {
+    flex-direction: column;
+  }
+
+  .bubble {
+    max-width: 100%;
+  }
+}
+

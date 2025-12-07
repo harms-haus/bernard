@@ -20,6 +20,12 @@
   gap: 1rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -54,6 +60,25 @@
 
 .docs-link:hover {
   border-color: #cbd5e1;
+}
+
+.chat-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.25);
+}
+
+.chat-link:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 :host ::ng-deep .primary-tabs.p-tabmenu {

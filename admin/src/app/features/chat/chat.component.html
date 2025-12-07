@@ -1,0 +1,88 @@
+<section class="chat">
+  <div class="section-header">
+    <div>
+      <h1>Chat with Bernard</h1>
+      <p class="muted">Sends live requests to {{ endpointLabel() }}.</p>
+    </div>
+    <div class="section-actions">
+      <p-tag value="Live" severity="success"></p-tag>
+      <button
+        pButton
+        type="button"
+        icon="pi pi-refresh"
+        label="New conversation"
+        [disabled]="sending()"
+        (click)="resetConversation()"
+        severity="secondary"
+      ></button>
+    </div>
+  </div>
+
+  <div class="config">
+    <div class="field">
+      <label for="endpoint">API endpoint</label>
+      <input
+        id="endpoint"
+        pInputText
+        placeholder="http://localhost:3000/api/agent"
+        autocomplete="url"
+        [formControl]="form.controls.endpoint"
+      />
+      <small class="muted">Defaults to the running Bernard instance (localhost:3000).</small>
+    </div>
+    <div class="field">
+      <label for="token">Bearer token</label>
+      <input
+        id="token"
+        type="password"
+        pInputText
+        placeholder="Paste a Bernard token"
+        autocomplete="off"
+        [formControl]="form.controls.token"
+      />
+      <small class="muted">Use a valid Bernard token; admin keys are not accepted.</small>
+    </div>
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="chat-frame" aria-live="polite">
+    @if (messages().length === 0) {
+      <p class="muted empty">Start chatting to see messages here.</p>
+    } @else {
+      <div class="messages">
+        @for (message of messages(); track message.id) {
+          <div class="message" [class.outgoing]="message.role === 'user'">
+            <div class="bubble" [attr.data-role]="message.role">
+              <div class="meta">
+                <span class="role-label">{{ message.role === 'assistant' ? 'Bernard' : 'You' }}</span>
+                @if (message.pending) {
+                  <span class="pending">responding…</span>
+                }
+              </div>
+              <p>{{ message.content || '…' }}</p>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <form class="composer" (ngSubmit)="send()">
+    <label for="message">Message</label>
+    <div class="composer-row">
+      <textarea
+        id="message"
+        rows="3"
+        pInputTextarea
+        autoResize="true"
+        placeholder="Ask Bernard to check status, set a timer, or search the web…"
+        [formControl]="form.controls.message"
+      ></textarea>
+      <button pButton type="submit" label="Send" icon="pi pi-send" [disabled]="!canSend()"></button>
+    </div>
+  </form>
+</section>
+

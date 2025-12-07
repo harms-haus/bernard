@@ -18,5 +18,9 @@ export const routes: Routes = [
     path: 'history',
     loadComponent: () => import('./features/history/history.component').then((m) => m.HistoryComponent)
   },
+  {
+    path: 'chat',
+    loadComponent: () => import('./features/chat/chat.component').then((m) => m.ChatComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];
