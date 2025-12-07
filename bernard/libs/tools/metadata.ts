@@ -17,6 +17,9 @@ function getExtractor(): MetadataExtractor {
 
 export const metadataTool = tool(
   async ({ message, category, current_location }) => {
+    if (!message || !category) {
+      return "Metadata tool needs both 'message' and 'category' (options: time, relative_time, date, relative_date, place, relative_place, room, person, topic, current_time, current_date, current_location, intent, summary).";
+    }
     try {
       const extractor = getExtractor();
       const result = await extractor.extract({
@@ -40,10 +43,11 @@ export const metadataTool = tool(
       )} or "all". ` +
       "Provide a comma-separated list to run multiple categories in parallel. Returns YAML key/value pairs (null when absent).",
     schema: z.object({
-      message: z.string().min(1).describe("User message to analyze for metadata."),
+      message: z.string().min(1).optional().describe("User message to analyze for metadata."),
       category: z
         .string()
         .min(3)
+        .optional()
         .describe(
           `Category name or comma-separated categories (e.g., "time", "topic,person", or "all"). Options: ${METADATA_CATEGORIES.join(", ")}.`
         ),

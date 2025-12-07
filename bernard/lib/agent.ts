@@ -1,12 +1,14 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import type { AIMessageChunk, BaseMessage } from "@langchain/core/messages";
+import type { AIMessageChunk, AIMessageFields, BaseMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
+import { z } from "zod";
 
 import { tools as baseTools } from "@/libs/tools";
 import type { RecordKeeper } from "@/lib/recordKeeper";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
+import { bernardSystemPrompt } from "./systemPrompt";
 
 /* c8 ignore start */
 type ToolCall = {
@@ -37,6 +39,29 @@ export type AgentContext = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const VALID_ROLES = new Set<OpenAIMessage["role"]>(["system", "user", "assistant", "tool"]);
+const DEBUG_UPSTREAM = process.env["DEBUG_UPSTREAM"] === "1";
+
+function containsChatMLMarkers(value: unknown): boolean {
+  if (typeof value === "string") return value.includes("<|") || value.includes("|>");
+  if (Array.isArray(value)) return value.some((part) => containsChatMLMarkers(part));
+  if (value && typeof value === "object") {
+    const maybeText = (value as { text?: unknown }).text;
+    if (maybeText !== undefined && containsChatMLMarkers(maybeText)) return true;
+    const maybeContent = (value as { content?: unknown }).content;
+    if (maybeContent !== undefined && containsChatMLMarkers(maybeContent)) return true;
+  }
+  return false;
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 type ToolFunctionArgs = { arguments?: unknown };
@@ -145,6 +170,12 @@ function latestToolCalls(messages: BaseMessage[]): ToolCallRecord[] {
 
 function dropRespondToolCalls(messages: BaseMessage[]): BaseMessage[] {
   return messages.filter((message) => !extractToolCallsFromMessage(message as ToolCallMessage).some(isRespondToolCall));
+}
+
+function ensureSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
+  const hasSystem = messages.some((message) => (message as { _getType?: () => string })._getType?.() === "system");
+  if (hasSystem) return messages;
+  return [new SystemMessage({ content: bernardSystemPrompt }), ...messages];
 }
 
 type InstrumentedTool = {
@@ -280,15 +311,16 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     });
 
   const instrumentedTools = instrumentTools(ctx, deps.tools);
-  const respondTool = toolFactory(() => "respond", {
+  const respondTool = toolFactory(async () => "respond", {
     name: "respond",
     description:
       "Use this when you are ready to stop gathering data and deliver the final answer to the user. " +
-      "Do not request additional tools after calling this."
-  });
+      "Do not request additional tools after calling this.",
+    schema: z.object({})
+  }) as ReturnType<typeof instrumentTools>[number];
   const intentTools = [...instrumentedTools, respondTool];
 
-  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
+  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: true });
   const intentStep = callIntentModel(ctx, intentModelName, intentLLM, intentTools);
   const streamingIntentModel = intentLLM.bindTools(intentTools);
   const maxIterations = 8;
@@ -346,11 +378,16 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     const start = Date.now();
     const filtered = responseContext(messages);
     let responseAggregated: AIMessageChunk | null = null;
+    let lastResponseChunk: unknown;
 
     try {
       const responseStream = await responseLLM.stream(filtered);
 
       for await (const chunk of responseStream) {
+        lastResponseChunk = chunk;
+        if (DEBUG_UPSTREAM) {
+          console.warn("response upstream chunk", safeStringify(chunk));
+        }
         responseAggregated = responseAggregated ? responseAggregated.concat(chunk) : chunk;
         const currentMessages = [...messages, responseAggregated];
         if (onUpdateHook) await onUpdateHook(currentMessages);
@@ -368,6 +405,13 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       yield { messages: finalMessages };
       return finalMessages;
     } catch (err) {
+      if (DEBUG_UPSTREAM) {
+        console.error(
+          "response upstream error",
+          err instanceof Error ? err.message : String(err),
+          safeStringify(lastResponseChunk)
+        );
+      }
       await recordRespondMetrics({}, Date.now() - start, false, classifyError(err));
       throw err;
     }
@@ -377,7 +421,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     initialMessages: BaseMessage[],
     onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
   ): Promise<BaseMessage[]> => {
-    let messages = initialMessages;
+    let messages = ensureSystemPrompt(initialMessages);
     let responded = false;
     for (let i = 0; i < maxIterations; i++) {
       const modelResult = await intentStep({ messages });
@@ -408,40 +452,68 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   /* c8 ignore start */
   async function* streamMessages(initialMessages: BaseMessage[]) {
-    let messages = initialMessages;
+    let messages = ensureSystemPrompt(initialMessages);
     let responded = false;
+    let lastIntentChunk: unknown;
 
     for (let i = 0; i < maxIterations; i++) {
       const start = Date.now();
-      const stream = await streamingIntentModel.stream(messages);
+      let stream: AsyncIterable<AIMessageChunk>;
+      try {
+        stream = await streamingIntentModel.stream(messages);
+      } catch (err) {
+        if (DEBUG_UPSTREAM) {
+          console.error(
+            "intent upstream error (stream acquisition)",
+            err instanceof Error ? err.message : String(err),
+            safeStringify(messages)
+          );
+        }
+        throw err;
+      }
 
       let aggregated: AIMessageChunk | null = null;
       let latestToolCalls: ToolCallRecord[] | undefined;
       let latestToolCallChunks: unknown[] | undefined;
-      for await (const chunk of stream) {
-        const chunkToolCalls =
-          (chunk as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } }).tool_calls ??
-          (chunk as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
-        const chunkToolCallChunks =
-          (chunk as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
-          (chunk as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
+      try {
+        for await (const chunk of stream) {
+          lastIntentChunk = chunk;
+          if (DEBUG_UPSTREAM) {
+            console.warn("intent upstream chunk", safeStringify(chunk));
+          }
+          const chunkToolCalls =
+            (chunk as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } }).tool_calls ??
+            (chunk as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
+          const chunkToolCallChunks =
+            (chunk as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
+            (chunk as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
 
-        if (Array.isArray(chunkToolCalls) && chunkToolCalls.length) latestToolCalls = normalizeToolCalls(chunkToolCalls);
-        if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) latestToolCallChunks = chunkToolCallChunks;
+          if (Array.isArray(chunkToolCalls) && chunkToolCalls.length) latestToolCalls = normalizeToolCalls(chunkToolCalls);
+          if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) latestToolCallChunks = chunkToolCallChunks;
 
-        aggregated = aggregated ? aggregated.concat(chunk) : chunk;
-        if (aggregated && latestToolCalls) {
-          (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
+          aggregated = aggregated ? aggregated.concat(chunk) : chunk;
+          if (aggregated && latestToolCalls) {
+            (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
+          }
+          if (aggregated && latestToolCallChunks) {
+            (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
+          }
+          const currentMessages = [...messages, aggregated];
+          if (onUpdateHook) await onUpdateHook(currentMessages);
+          const isResponding = latestToolCalls?.some(isRespondToolCall);
+          if (!isResponding) {
+            yield { messages: currentMessages };
+          }
         }
-        if (aggregated && latestToolCallChunks) {
-          (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
+      } catch (err) {
+        if (DEBUG_UPSTREAM) {
+          console.error(
+            "intent upstream error (during stream)",
+            err instanceof Error ? err.message : String(err),
+            safeStringify(lastIntentChunk)
+          );
         }
-        const currentMessages = [...messages, aggregated];
-        if (onUpdateHook) await onUpdateHook(currentMessages);
-        const isResponding = latestToolCalls?.some(isRespondToolCall);
-        if (!isResponding) {
-          yield { messages: currentMessages };
-        }
+        throw err;
       }
 
       if (!aggregated) {
@@ -484,9 +556,20 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     }
 
     if (!responded) {
-      for await (const responseChunk of streamRespond(messages)) {
-        messages = responseChunk.messages ?? messages;
-        yield responseChunk;
+      try {
+        for await (const responseChunk of streamRespond(messages)) {
+          messages = responseChunk.messages ?? messages;
+          yield responseChunk;
+        }
+      } catch (err) {
+        if (DEBUG_UPSTREAM) {
+          console.error(
+            "intent -> response error",
+            err instanceof Error ? err.message : String(err),
+            safeStringify(lastIntentChunk)
+          );
+        }
+        throw err;
       }
     }
   }
@@ -506,6 +589,12 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
   return input.map((msg) => {
     const content = msg.content ?? "";
+    if (!VALID_ROLES.has(msg.role)) {
+      throw new Error(`Unsupported role "${String(msg.role)}"`);
+    }
+    if (containsChatMLMarkers(content)) {
+      throw new Error("Unsupported ChatML markers in message content");
+    }
     switch (msg.role) {
       case "system":
         return new SystemMessage({ content });
@@ -520,11 +609,12 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
               name: call.function.name,
               arguments: call.function.arguments
             }
-          })) ?? [];
-        return new AIMessage({
-          content,
-          tool_calls: toolCalls.length ? (toolCalls as AIMessage["tool_calls"]) : undefined
-        });
+          })) as AIMessage["tool_calls"] | undefined;
+        const aiFields: AIMessageFields = { content };
+        if (toolCalls && toolCalls.length) {
+          (aiFields as { tool_calls?: AIMessage["tool_calls"] }).tool_calls = toolCalls;
+        }
+        return new AIMessage(aiFields);
       }
       case "tool":
         return new ToolMessage({

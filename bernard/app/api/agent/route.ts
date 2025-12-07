@@ -229,7 +229,18 @@ export async function POST(req: NextRequest) {
 
   const responseModel = body.model ?? getPrimaryModel("response");
   const intentModel = getPrimaryModel("intent", { fallback: [responseModel] });
-  const inputMessages = mapOpenAIToMessages(body.messages);
+  let inputMessages: BaseMessage[];
+  try {
+    inputMessages = mapOpenAIToMessages(body.messages);
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        error: "Invalid message role",
+        reason: err instanceof Error ? err.message : String(err)
+      }),
+      { status: 400 }
+    );
+  }
   const accept = req.headers.get("accept")?.toLowerCase() ?? "";
   const acceptWantsStream = accept.includes("text/event-stream") ? true : undefined;
   const bodyStream =
