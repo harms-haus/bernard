@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, InjectionToken, Provider } from '@angular/core';
 import { delay, map, Observable, of } from 'rxjs';
 
@@ -10,13 +10,16 @@ import {
   ConversationListItem,
   ConversationMessage,
   CreateTokenRequest,
+  CreateUserRequest,
   HistoryQuery,
   HistoryListResponse,
   RecordKeeperStatus,
   ServiceConfig,
   Token,
   UpdateServiceRequest,
-  UpdateTokenRequest
+  UpdateTokenRequest,
+  UpdateUserRequest,
+  User
 } from './models';
 
 /**
@@ -32,6 +35,13 @@ import {
  * - PUT    /api/services/:id                -> ServiceConfig (UpdateServiceRequest)
  * - GET    /api/admin/history               -> HistoryListResponse
  * - GET    /api/admin/history/:id           -> ConversationDetailResponse
+ * - GET    /api/auth/me                     -> { user: User | null }
+ * - POST   /api/auth/logout                 -> 204
+ * - GET    /api/users                       -> { users: User[] }
+ * - POST   /api/users                       -> { user: User }
+ * - PATCH  /api/users/:id                   -> { user: User }
+ * - DELETE /api/users/:id                   -> { user: User }
+ * - POST   /api/users/:id/reset             -> { reset: true }
  */
 export interface ApiClient {
   getStatus(): Observable<BernardStatus>;
@@ -44,6 +54,13 @@ export interface ApiClient {
   updateService(id: string, body: UpdateServiceRequest): Observable<ServiceConfig>;
   listHistory(query?: HistoryQuery): Observable<HistoryListResponse>;
   getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
+  getMe(): Observable<User | null>;
+  listUsers(): Observable<User[]>;
+  createUser(body: CreateUserRequest): Observable<User>;
+  updateUser(id: string, body: UpdateUserRequest): Observable<User>;
+  deleteUser(id: string): Observable<User>;
+  resetUser(id: string): Observable<void>;
+  logout(): Observable<void>;
 }
 
 export const API_CLIENT = new InjectionToken<ApiClient>('API_CLIENT');
@@ -55,22 +72,18 @@ export const provideApiClient = (): Provider => ({
     if (environment.useMocks) {
       return new MockApiClient();
     }
-    return new HttpApiClient(http, environment.apiBaseUrl, environment.adminToken);
+    return new HttpApiClient(http, environment.apiBaseUrl);
   }
 });
 
 class HttpApiClient implements ApiClient {
   constructor(
     private readonly http: HttpClient,
-    private readonly baseUrl: string,
-    private readonly adminToken?: string
+    private readonly baseUrl: string
   ) {}
 
   private options() {
-    if (!this.adminToken) {
-      return {};
-    }
-    return { headers: new HttpHeaders({ Authorization: `Bearer ${this.adminToken}` }) };
+    return { withCredentials: true };
   }
 
   getStatus() {
@@ -138,6 +151,42 @@ class HttpApiClient implements ApiClient {
       params
     });
   }
+
+  getMe() {
+    return this.http
+      .get<{ user: User | null }>(`${this.baseUrl}/auth/me`, this.options())
+      .pipe(map((res) => res.user ?? null));
+  }
+
+  listUsers() {
+    return this.http
+      .get<{ users: User[] }>(`${this.baseUrl}/users`, this.options())
+      .pipe(map((res) => res.users ?? []));
+  }
+
+  createUser(body: CreateUserRequest) {
+    return this.http.post<{ user: User }>(`${this.baseUrl}/users`, body, this.options()).pipe(map((res) => res.user));
+  }
+
+  updateUser(id: string, body: UpdateUserRequest) {
+    return this.http
+      .patch<{ user: User }>(`${this.baseUrl}/users/${id}`, body, this.options())
+      .pipe(map((res) => res.user));
+  }
+
+  deleteUser(id: string) {
+    return this.http
+      .delete<{ user: User }>(`${this.baseUrl}/users/${id}`, this.options())
+      .pipe(map((res) => res.user));
+  }
+
+  resetUser(id: string) {
+    return this.http.post<void>(`${this.baseUrl}/users/${id}/reset`, {}, this.options());
+  }
+
+  logout() {
+    return this.http.post<void>(`${this.baseUrl}/auth/logout`, {}, this.options());
+  }
 }
 
 class MockApiClient implements ApiClient {
@@ -182,6 +231,18 @@ class MockApiClient implements ApiClient {
       createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
       lastUsedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
       status: 'disabled'
+    }
+  ];
+
+  private users: User[] = [
+    {
+      id: 'admin@example.com',
+      displayName: 'Admin User',
+      isAdmin: true,
+      status: 'active',
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString()
     }
   ];
 
@@ -452,6 +513,67 @@ class MockApiClient implements ApiClient {
       conversation,
       messages: limitedMessages
     }).pipe(delay(120));
+  }
+
+  getMe() {
+    return of({ ...this.users[0] }).pipe(delay(40));
+  }
+
+  listUsers() {
+    return of(this.users).pipe(delay(80));
+  }
+
+  createUser(body: CreateUserRequest) {
+    const user: User = {
+      id: body.id,
+      displayName: body.displayName,
+      isAdmin: body.isAdmin,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.users = [...this.users, user];
+    return of(user).pipe(delay(120));
+  }
+
+  updateUser(id: string, body: UpdateUserRequest) {
+    this.users = this.users.map((user) =>
+      user.id === id
+        ? {
+            ...user,
+            ...(body.displayName ? { displayName: body.displayName } : {}),
+            ...(typeof body.isAdmin === 'boolean' ? { isAdmin: body.isAdmin } : {}),
+            ...(body.status ? { status: body.status } : {}),
+            updatedAt: new Date().toISOString()
+          }
+        : user
+    );
+    const user = this.users.find((u) => u.id === id) as User;
+    return of(user).pipe(delay(120));
+  }
+
+  deleteUser(id: string) {
+    this.users = this.users.map((user) =>
+      user.id === id
+        ? {
+            ...user,
+            displayName: `deleted-${user.displayName}`,
+            isAdmin: false,
+            status: 'deleted',
+            updatedAt: new Date().toISOString()
+          }
+        : user
+    );
+    const user = this.users.find((u) => u.id === id) as User;
+    return of(user).pipe(delay(60));
+  }
+
+  resetUser(_id: string) {
+    return of(void 0).pipe(delay(40));
+  }
+
+  logout() {
+    return of(void 0).pipe(delay(40));
   }
 
   private createId() {

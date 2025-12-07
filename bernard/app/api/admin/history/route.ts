@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 
+import { requireAdmin } from "@/lib/auth";
 import { RecordKeeper } from "@/lib/recordKeeper";
 import { getRedis } from "@/lib/redis";
 import { TokenStore } from "@/lib/tokenStore";
@@ -28,17 +29,8 @@ type AdminConversation = {
   tokenIds: string[];
 };
 
-function isAdmin(req: NextRequest) {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  if (!adminKey) return false;
-  const header = req.headers.get("authorization");
-  if (!header) return false;
-  const [scheme, token] = header.split(" ");
-  return scheme?.toLowerCase() === "bearer" && token === adminKey;
-}
-
 export async function GET(req: NextRequest) {
-  if (!isAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
 

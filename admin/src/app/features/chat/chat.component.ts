@@ -619,7 +619,7 @@ export class ChatComponent {
     if (stored) {
       return stored;
     }
-    return environment.adminToken ?? '';
+    return '';
   }
 
   private persistPreferences(token: string, endpoint: string) {

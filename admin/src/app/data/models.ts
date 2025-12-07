@@ -113,3 +113,25 @@ export type ConversationDetailResponse = {
   conversation: ConversationDetail;
   messages: ConversationMessage[];
 };
+
+export type UserStatus = 'active' | 'disabled' | 'deleted';
+
+export type User = {
+  id: string;
+  displayName: string;
+  isAdmin: boolean;
+  status: UserStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+};
+
+export type CreateUserRequest = {
+  id: string;
+  displayName: string;
+  isAdmin: boolean;
+};
+
+export type UpdateUserRequest = Partial<Pick<CreateUserRequest, 'displayName' | 'isAdmin'>> & {
+  status?: Extract<UserStatus, 'active' | 'disabled'>;
+};

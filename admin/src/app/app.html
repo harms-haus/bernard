@@ -19,6 +19,20 @@
           [attr.aria-pressed]="darkModeEnabled()"
           [attr.aria-label]="darkModeEnabled() ? 'Switch to light mode' : 'Switch to dark mode'">
         </button>
+        @if (user()) {
+          <p-menu #profileMenu [model]="profileMenuItems()" [popup]="true"></p-menu>
+          <button
+            pButton
+            type="button"
+            class="profile-button"
+            (click)="profileMenu.toggle($event)"
+            aria-haspopup="menu"
+            aria-label="Open profile menu">
+            <p-avatar [label]="profileInitial()" shape="circle"></p-avatar>
+          </button>
+        } @else {
+          <button pButton type="button" label="Login" routerLink="/login" severity="secondary" text></button>
+        }
       </div>
     </header>
 

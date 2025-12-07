@@ -1,23 +1,15 @@
 import type { NextRequest } from "next/server";
 
+import { requireAdmin } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { TokenStore, type TokenStatus } from "@/lib/tokenStore";
 
 export const runtime = "nodejs";
 
-function isAdmin(req: NextRequest) {
-  const adminKey = process.env["ADMIN_API_KEY"];
-  if (!adminKey) return false;
-  const header = req.headers.get("authorization");
-  if (!header) return false;
-  const [scheme, token] = header.split(" ");
-  return scheme?.toLowerCase() === "bearer" && token === adminKey;
-}
-
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  if (!isAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
   const store = new TokenStore(getRedis());
@@ -30,7 +22,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  if (!isAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
   const store = new TokenStore(getRedis());
@@ -55,7 +47,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  if (!isAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
   const store = new TokenStore(getRedis());
