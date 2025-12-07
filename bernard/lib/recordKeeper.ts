@@ -153,7 +153,7 @@ export class RecordKeeper {
   private readonly namespace: string;
   private readonly metricsNamespace: string;
   private readonly idleMs: number;
-  private readonly summarizer?: ConversationSummaryService;
+  private readonly summarizer: ConversationSummaryService | undefined;
 
   constructor(
     private readonly redis: Redis,
@@ -263,13 +263,20 @@ export class RecordKeeper {
     opts: { status: TurnStatus; tokensIn?: number; tokensOut?: number; latencyMs: number; errorType?: string }
   ) {
     const turnKey = this.key(`turn:${turnId}`);
-    const updates: Record<string, string | number> = {
+    const updates: {
+      status: TurnStatus;
+      latencyMs: number;
+      tokensIn?: number;
+      tokensOut?: number;
+      errorType?: string;
+    } = {
       status: opts.status,
       latencyMs: opts.latencyMs
     };
-    if (typeof opts.tokensIn === "number") updates.tokensIn = opts.tokensIn;
-    if (typeof opts.tokensOut === "number") updates.tokensOut = opts.tokensOut;
-    if (opts.errorType) updates.errorType = opts.errorType;
+    const { tokensIn, tokensOut, errorType } = opts;
+    if (typeof tokensIn === "number") updates.tokensIn = tokensIn;
+    if (typeof tokensOut === "number") updates.tokensOut = tokensOut;
+    if (errorType) updates.errorType = errorType;
     await this.redis.hset(turnKey, updates);
     if (opts.status === "error") {
       await this.redis.hincrby(this.metricsKey("turns"), "error", 1);
@@ -325,23 +332,26 @@ export class RecordKeeper {
       multi.hincrby(latencyKey, "count", 1);
     }
 
-    const turnUpdates: Record<string, number | string> = {
-      latencyMs: result.latencyMs
-    };
+    const turnUpdates: { latencyMs?: number; tokensIn?: number; tokensOut?: number; errorType?: string } = {};
+    if (typeof result.latencyMs === "number") {
+      turnUpdates.latencyMs = result.latencyMs;
+    }
     if (typeof result.tokensIn === "number") {
       multi.hincrbyfloat(tokensKey, "in", result.tokensIn);
       multi.hincrbyfloat(turnKey, "tokensIn", result.tokensIn);
+      turnUpdates.tokensIn = result.tokensIn;
     }
     if (typeof result.tokensOut === "number") {
       multi.hincrbyfloat(tokensKey, "out", result.tokensOut);
       multi.hincrbyfloat(turnKey, "tokensOut", result.tokensOut);
+      turnUpdates.tokensOut = result.tokensOut;
     }
     if (!result.ok && result.errorType) {
       turnUpdates.errorType = result.errorType;
     }
 
     if (Object.keys(turnUpdates).length) {
-      multi.hset(turnKey, turnUpdates);
+      multi.hset(turnKey, turnUpdates as Record<string, number | string>);
     }
     await multi.exec();
   }
@@ -358,7 +368,9 @@ export class RecordKeeper {
   async closeConversation(conversationId: string, reason: string = "idle") {
     const convKey = this.key(`conv:${conversationId}`);
     const convo = await this.redis.hgetall(convKey);
-    if (!convo || convo.status === "closed") return;
+    if (!convo) return;
+    const status = convo["status"];
+    if (status === "closed") return;
 
     const closedAt = nowIso();
     const now = Date.now();
@@ -369,7 +381,17 @@ export class RecordKeeper {
       summary = await this.summarizer.summarize(conversationId, messages);
     }
 
-    const updates: Record<string, string> = {
+    const updates: {
+      status: ConversationStatus;
+      closedAt: string;
+      closeReason: string;
+      lastTouchedAt: string;
+      summary?: string;
+      tags?: string;
+      flags?: string;
+      keywords?: string;
+      placeTags?: string;
+    } = {
       status: "closed",
       closedAt,
       closeReason: reason,
@@ -404,7 +426,9 @@ export class RecordKeeper {
       const conversation = await this.getConversation(query.conversationId);
       if (!conversation) return [];
       const messages = query.includeMessages ? await this.getMessages(query.conversationId, query.messageLimit) : undefined;
-      return [{ conversation, messages }];
+      const payload: RecallConversation = { conversation };
+      if (messages) payload.messages = messages;
+      return [payload];
     }
 
     const since = query.timeRange?.since ?? 0;
@@ -442,7 +466,9 @@ export class RecordKeeper {
       }
 
       const messages = query.includeMessages ? await this.getMessages(id, query.messageLimit) : undefined;
-      results.push({ conversation, messages });
+      const payload: RecallConversation = { conversation };
+      if (messages) payload.messages = messages;
+      results.push(payload);
       if (results.length >= limit) break;
     }
 
@@ -474,22 +500,38 @@ export class RecordKeeper {
 
   async getConversation(id: string): Promise<Conversation | null> {
     const data = await this.redis.hgetall(this.key(`conv:${id}`));
-    if (!data || !data.status) return null;
-    return {
+    if (!data) return null;
+    const status = data["status"];
+    const startedAt = data["startedAt"];
+    const lastTouchedAt = data["lastTouchedAt"];
+    if (!status || !startedAt || !lastTouchedAt) return null;
+    const conversation: Conversation = {
       id,
-      status: data.status as ConversationStatus,
-      startedAt: data.startedAt,
-      lastTouchedAt: data.lastTouchedAt,
-      closedAt: data.closedAt || undefined,
-      summary: data.summary || undefined,
-      tags: parseJsonArray(data.tags),
-      flags: data.flags ? (JSON.parse(data.flags) as Conversation["flags"]) : undefined,
-      modelSet: parseJsonArray(data.modelSet),
-      tokenSet: parseJsonArray(data.tokenSet),
-      placeTags: parseJsonArray(data.placeTags),
-      keywords: parseJsonArray(data.keywords),
-      closeReason: data.closeReason || undefined
+      status: status as ConversationStatus,
+      startedAt,
+      lastTouchedAt
     };
+    const closedAt = data["closedAt"];
+    const summaryField = data["summary"];
+    const tags = parseJsonArray(data["tags"]);
+    const flags = data["flags"] ? (JSON.parse(data["flags"]) as Conversation["flags"]) : undefined;
+    const modelSet = parseJsonArray(data["modelSet"]);
+    const tokenSet = parseJsonArray(data["tokenSet"]);
+    const placeTags = parseJsonArray(data["placeTags"]);
+    const keywords = parseJsonArray(data["keywords"]);
+    const closeReason = data["closeReason"];
+
+    if (closedAt) conversation.closedAt = closedAt;
+    if (summaryField) conversation.summary = summaryField;
+    if (tags) conversation.tags = tags;
+    if (flags) conversation.flags = flags;
+    if (modelSet) conversation.modelSet = modelSet;
+    if (tokenSet) conversation.tokenSet = tokenSet;
+    if (placeTags) conversation.placeTags = placeTags;
+    if (keywords) conversation.keywords = keywords;
+    if (closeReason) conversation.closeReason = closeReason;
+
+    return conversation;
   }
 
   async getMessages(conversationId: string, limit?: number): Promise<MessageRecord[]> {
@@ -522,9 +564,11 @@ export class RecordKeeper {
       1
     );
     if (!ids.length) return null;
-    const conversation = await this.redis.hgetall(this.key(`conv:${ids[0]}`));
-    if (!conversation || conversation.status !== "open") return null;
-    return ids[0];
+    const candidate = ids[0];
+    if (!candidate) return null;
+    const conversation = await this.redis.hgetall(this.key(`conv:${candidate}`));
+    if (!conversation || conversation["status"] !== "open") return null;
+    return candidate;
   }
 
   private key(suffix: string) {
@@ -548,20 +592,29 @@ export class RecordKeeper {
     const metadata = base.response_metadata;
     const tokenUsage = base.usage_metadata;
 
-    return {
+    let tokenDeltas: { in?: number; out?: number } | undefined;
+    if (tokenUsage && (tokenUsage.input_tokens || tokenUsage.output_tokens)) {
+      tokenDeltas = {};
+      if (typeof tokenUsage.input_tokens === "number") tokenDeltas.in = tokenUsage.input_tokens;
+      if (typeof tokenUsage.output_tokens === "number") tokenDeltas.out = tokenUsage.output_tokens;
+      if (!tokenDeltas.in && !tokenDeltas.out) {
+        tokenDeltas = undefined;
+      }
+    }
+
+    const message: MessageRecord = {
       id: uniqueId("msg"),
       role,
       content,
-      name: base.name,
-      tool_call_id: toolCallId,
-      tool_calls: toolCalls,
-      createdAt: nowIso(),
-      tokenDeltas:
-        tokenUsage && (tokenUsage.input_tokens || tokenUsage.output_tokens)
-          ? { in: tokenUsage.input_tokens, out: tokenUsage.output_tokens }
-          : undefined,
-      metadata
+      createdAt: nowIso()
     };
+    if (base.name) message.name = base.name;
+    if (toolCallId) message.tool_call_id = toolCallId;
+    if (toolCalls) message.tool_calls = toolCalls;
+    if (tokenDeltas) message.tokenDeltas = tokenDeltas;
+    if (metadata) message.metadata = metadata;
+
+    return message;
   }
 
   private async mergeSetField(convKey: string, field: string, values: string[]) {

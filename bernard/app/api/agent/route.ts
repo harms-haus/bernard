@@ -96,19 +96,19 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.warn("Summarizer unavailable:", err);
   }
-  const keeper = new RecordKeeper(redis, { summarizer });
+  const keeper = new RecordKeeper(redis, summarizer ? { summarizer } : {});
   await keeper.closeIfIdle();
 
-  const model = body.model ?? process.env.OPENROUTER_MODEL ?? "kwaipilot/KAT-coder-v1:free";
+  const model = body.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free";
   const inputMessages = mapOpenAIToMessages(body.messages);
   const shouldStream = body.stream ?? true;
 
   const requestStart = Date.now();
-  const { requestId, conversationId } = await keeper.startRequest(token, model, {
-    place: body.place,
-    clientMeta: body.clientMeta,
-    conversationId: body.conversationId
-  });
+  const requestOpts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string } = {};
+  if (body.place) requestOpts.place = body.place;
+  if (body.clientMeta) requestOpts.clientMeta = body.clientMeta;
+  if (body.conversationId) requestOpts.conversationId = body.conversationId;
+  const { requestId, conversationId } = await keeper.startRequest(token, model, requestOpts);
   await keeper.appendMessages(conversationId, inputMessages);
   const turnId = await keeper.startTurn(requestId, conversationId, token, model);
 
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     requestId,
     token,
     model
-  }) as AgentGraph;
+  }) as unknown as AgentGraph;
 
   const encoder = new TextEncoder();
 

@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, InjectionToken, Provider } from '@angular/core';
-import { delay, Observable, of } from 'rxjs';
+import { delay, map, Observable, of } from 'rxjs';
 
 import { environment } from '../config/environment';
 import {
@@ -12,7 +12,6 @@ import {
   Paginated,
   ServiceConfig,
   Token,
-  TokenUsage,
   UpdateServiceRequest,
   UpdateTokenRequest
 } from './models';
@@ -20,11 +19,11 @@ import {
 /**
  * REST contracts (backend to align with):
  * - GET    /api/status                      -> BernardStatus
- * - GET    /api/tokens                      -> Token[]
- * - POST   /api/tokens                      -> Token (CreateTokenRequest)
- * - PATCH  /api/tokens/:id                  -> Token (UpdateTokenRequest)
- * - DELETE /api/tokens/:id                  -> void
- * - GET    /api/tokens/:id/usage            -> TokenUsage
+ * - GET    /api/tokens                      -> { tokens: Token[] }
+ * - POST   /api/tokens                      -> Token (CreateTokenRequest) // includes secret once
+ * - GET    /api/tokens/:id                  -> { token: Token }
+ * - PATCH  /api/tokens/:id                  -> { token: Token }
+ * - DELETE /api/tokens/:id                  -> { removed: boolean }
  * - GET    /api/services                    -> ServiceConfig[]
  * - PUT    /api/services/:id                -> ServiceConfig (UpdateServiceRequest)
  * - GET    /api/history?search&limit&cursor -> Paginated<Conversation>
@@ -35,7 +34,6 @@ export interface ApiClient {
   createToken(body: CreateTokenRequest): Observable<Token>;
   updateToken(id: string, body: UpdateTokenRequest): Observable<Token>;
   deleteToken(id: string): Observable<void>;
-  listTokenUsage(id: string): Observable<TokenUsage>;
   listServices(): Observable<ServiceConfig[]>;
   updateService(id: string, body: UpdateServiceRequest): Observable<ServiceConfig>;
   listHistory(query?: HistoryQuery): Observable<Paginated<Conversation>>;
@@ -73,7 +71,9 @@ class HttpApiClient implements ApiClient {
   }
 
   listTokens() {
-    return this.http.get<Token[]>(`${this.baseUrl}/tokens`, this.options());
+    return this.http
+      .get<{ tokens: Token[] }>(`${this.baseUrl}/tokens`, this.options())
+      .pipe(map((res) => res.tokens ?? []));
   }
 
   createToken(body: CreateTokenRequest) {
@@ -81,15 +81,13 @@ class HttpApiClient implements ApiClient {
   }
 
   updateToken(id: string, body: UpdateTokenRequest) {
-    return this.http.patch<Token>(`${this.baseUrl}/tokens/${id}`, body, this.options());
+    return this.http
+      .patch<{ token: Token }>(`${this.baseUrl}/tokens/${id}`, body, this.options())
+      .pipe(map((res) => res.token));
   }
 
   deleteToken(id: string) {
     return this.http.delete<void>(`${this.baseUrl}/tokens/${id}`, this.options());
-  }
-
-  listTokenUsage(id: string) {
-    return this.http.get<TokenUsage>(`${this.baseUrl}/tokens/${id}/usage`, this.options());
   }
 
   listServices() {
@@ -135,31 +133,15 @@ class MockApiClient implements ApiClient {
       id: this.createId(),
       name: 'Home Assistant',
       createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      metadata: { scope: 'home', owner: 'ha' },
       lastUsedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-      usage: {
-        window: '24h',
-        calls: 34,
-        promptTokens: 18200,
-        completionTokens: 9200,
-        lastUsedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString()
-      },
       status: 'active'
     },
     {
       id: this.createId(),
       name: 'Mobile Client',
       createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      metadata: { scope: 'mobile', owner: 'me' },
       lastUsedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      usage: {
-        window: '24h',
-        calls: 12,
-        promptTokens: 6400,
-        completionTokens: 3200,
-        lastUsedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-      },
-      status: 'active'
+      status: 'disabled'
     }
   ];
 
@@ -257,10 +239,9 @@ class MockApiClient implements ApiClient {
     const token: Token = {
       id: this.createId(),
       name: body.name,
-      metadata: body.metadata,
       createdAt: new Date().toISOString(),
-      usage: { window: '24h', calls: 0, promptTokens: 0, completionTokens: 0 },
-      status: 'active'
+      status: 'active',
+      token: `tok-${this.createId()}`
     };
     this.tokens = [...this.tokens, token];
     return of(token).pipe(delay(120));
@@ -273,9 +254,7 @@ class MockApiClient implements ApiClient {
         id,
         name: body.name ?? 'unknown',
         createdAt: new Date().toISOString(),
-        status: body.status ?? 'active',
-        usage: { window: '24h', calls: 0, promptTokens: 0, completionTokens: 0 },
-        metadata: body.metadata
+        status: body.status ?? 'active'
       };
       return of(placeholder).pipe(delay(120));
     }
@@ -285,7 +264,6 @@ class MockApiClient implements ApiClient {
         ? {
             ...token,
             ...('name' in body && body.name ? { name: body.name } : {}),
-            ...('metadata' in body && body.metadata ? { metadata: body.metadata } : {}),
             ...('status' in body && body.status ? { status: body.status } : {})
           }
         : token
@@ -298,17 +276,6 @@ class MockApiClient implements ApiClient {
   deleteToken(id: string) {
     this.tokens = this.tokens.filter((t) => t.id !== id);
     return of(void 0).pipe(delay(80));
-  }
-
-  listTokenUsage(id: string) {
-    const token = this.tokens.find((t) => t.id === id);
-    const usage: TokenUsage = token?.usage ?? {
-      window: '24h',
-      calls: 0,
-      promptTokens: 0,
-      completionTokens: 0
-    };
-    return of(usage).pipe(delay(80));
   }
 
   listServices() {

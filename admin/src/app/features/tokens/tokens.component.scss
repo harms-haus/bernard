@@ -20,7 +20,9 @@
 }
 
 .actions {
-  text-align: right;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 .form {
@@ -38,4 +40,31 @@
 .error {
   color: #b91c1c;
   font-weight: 600;
+}
+
+.callout {
+  border: 1px solid var(--surface-border);
+  border-left: 4px solid var(--primary-color);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: var(--surface-card);
+}
+
+.callout-title {
+  margin: 0 0 0.25rem 0;
+  font-weight: 700;
+}
+
+.callout-body {
+  margin: 0 0 0.5rem 0;
+}
+
+.token-value {
+  display: inline-block;
+  padding: 0.35rem 0.5rem;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }

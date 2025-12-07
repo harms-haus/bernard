@@ -18,18 +18,18 @@ export class ConversationSummaryService {
   private readonly model: ChatOpenAI;
 
   constructor(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
-    const model = opts?.model ?? process.env.SUMMARY_MODEL ?? process.env.OPENROUTER_MODEL;
+    const model = opts?.model ?? process.env["SUMMARY_MODEL"] ?? process.env["OPENROUTER_MODEL"];
     if (!model) {
       throw new Error("SUMMARY_MODEL or OPENROUTER_MODEL is required for summarization");
     }
-    const apiKey = opts?.apiKey ?? process.env.OPENROUTER_API_KEY;
+    const apiKey = opts?.apiKey ?? process.env["OPENROUTER_API_KEY"];
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is required for summarization");
 
     this.model = new ChatOpenAI({
       model,
       apiKey,
       configuration: {
-        baseURL: opts?.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1"
+        baseURL: opts?.baseURL ?? process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
       },
       temperature: 0
     });

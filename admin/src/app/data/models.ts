@@ -12,33 +12,22 @@ export interface BernardStatus {
   notes?: string;
 }
 
-export interface TokenUsage {
-  window: '24h' | '7d' | '30d';
-  calls: number;
-  promptTokens: number;
-  completionTokens: number;
-  lastUsedAt?: string;
-}
-
 export interface Token {
   id: string;
   name: string;
   createdAt: string;
-  metadata?: Record<string, string>;
   lastUsedAt?: string;
-  usage: TokenUsage;
-  status: 'active' | 'revoked';
+  status: 'active' | 'disabled';
+  token?: string; // present only immediately after creation
 }
 
 export type CreateTokenRequest = {
   name: string;
-  metadata?: Record<string, string>;
 };
 
 export type UpdateTokenRequest = {
   name?: string;
-  metadata?: Record<string, string>;
-  status?: 'active' | 'revoked';
+  status?: Token['status'];
 };
 
 export interface ServiceConfig {

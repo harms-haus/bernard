@@ -45,16 +45,28 @@ export async function GET(req: NextRequest) {
         .filter(Boolean)
     : undefined;
 
-  const results = await keeper.recallConversation({
-    conversationId,
-    token,
-    place,
-    keywords,
-    timeRange: { since, until },
-    limit,
-    includeMessages,
-    messageLimit
-  });
+  const timeRange: { since?: number; until?: number } = {};
+  if (since !== undefined) timeRange.since = since;
+  if (until !== undefined) timeRange.until = until;
+
+  const recallArgs: {
+    conversationId?: string;
+    token: string;
+    place?: string;
+    keywords?: string[];
+    timeRange?: { since?: number; until?: number };
+    limit?: number;
+    includeMessages?: boolean;
+    messageLimit?: number;
+  } = { token, includeMessages };
+  if (place) recallArgs.place = place;
+  if (keywords) recallArgs.keywords = keywords;
+  if (typeof limit === "number") recallArgs.limit = limit;
+  if (typeof messageLimit === "number") recallArgs.messageLimit = messageLimit;
+  if (conversationId) recallArgs.conversationId = conversationId;
+  if (Object.keys(timeRange).length) recallArgs.timeRange = timeRange;
+
+  const results = await keeper.recallConversation(recallArgs);
 
   return Response.json({ results });
 }

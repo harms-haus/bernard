@@ -4,7 +4,7 @@ Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web searc
 
 ## Setup
 
-1. Copy `env.example` to `.env.local` and fill values:
+1. Copy `env.example` to `.env` and fill values:
    - `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`
    - `REDIS_URL`
    - `SEARCH_API_KEY` (e.g., Brave search), `WEATHER_API_KEY` (OpenWeather)
@@ -20,11 +20,15 @@ Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web searc
 curl -X POST http://localhost:3000/api/tokens \
   -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name":"ops","note":"ops usage"}'
+  -d '{"name":"ops"}'
 ```
 
-- `GET /api/tokens` lists metadata (no secrets).
-- `DELETE /api/tokens` with body `{"name":"ops"}` removes a token.
+- `POST /api/tokens` returns the token secret once (id, name, status, createdAt, token).
+- `GET /api/tokens` returns `{ tokens: Token[] }` (no secrets).
+- `GET /api/tokens/:id` returns `{ token: Token }` (no secrets).
+- `PATCH /api/tokens/:id` to rename or toggle status (`active` | `disabled`).
+- `DELETE /api/tokens/:id` removes a token entirely.
+- Disabled tokens are rejected by `/api/agent` and `/api/history`.
 
 ## History/recall endpoint
 

@@ -1,6 +1,8 @@
 type HashStore = Map<string, Map<string, string>>;
 type ListStore = Map<string, string[]>;
 type ZSetStore = Map<string, Array<{ score: number; member: string }>>;
+type StringStore = Map<string, string>;
+type SetStore = Map<string, Set<string>>;
 
 class FakeMulti {
   private actions: Array<() => void> = [];
@@ -12,6 +14,16 @@ class FakeMulti {
     return this;
   }
 
+  set(key: string, value: string): this {
+    this.actions.push(() => this.redis.set(key, value));
+    return this;
+  }
+
+  del(key: string): this {
+    this.actions.push(() => this.redis.del(key));
+    return this;
+  }
+
   zadd(key: string, score: number, member: string): this {
     this.actions.push(() => this.redis.zadd(key, score, member));
     return this;
@@ -19,6 +31,16 @@ class FakeMulti {
 
   zrem(key: string, member: string): this {
     this.actions.push(() => this.redis.zrem(key, member));
+    return this;
+  }
+
+  sadd(key: string, member: string): this {
+    this.actions.push(() => this.redis.sadd(key, member));
+    return this;
+  }
+
+  srem(key: string, member: string): this {
+    this.actions.push(() => this.redis.srem(key, member));
     return this;
   }
 
@@ -47,13 +69,59 @@ export class FakeRedis {
   private hashes: HashStore = new Map();
   private lists: ListStore = new Map();
   private zsets: ZSetStore = new Map();
+  private strings: StringStore = new Map();
+  private sets: SetStore = new Map();
 
   multi() {
     return new FakeMulti(this);
   }
 
   exists(key: string): Promise<number> {
-    return Promise.resolve(this.hashes.has(key) ? 1 : 0);
+    return Promise.resolve(
+      this.hashes.has(key) || this.strings.has(key) || this.lists.has(key) || this.zsets.has(key) || this.sets.has(key)
+        ? 1
+        : 0
+    );
+  }
+
+  set(key: string, value: string): Promise<"OK"> {
+    this.strings.set(key, value);
+    return Promise.resolve("OK");
+  }
+
+  get(key: string): Promise<string | null> {
+    return Promise.resolve(this.strings.get(key) ?? null);
+  }
+
+  del(key: string): Promise<number> {
+    let removed = 0;
+    if (this.strings.delete(key)) removed++;
+    if (this.hashes.delete(key)) removed++;
+    if (this.lists.delete(key)) removed++;
+    if (this.zsets.delete(key)) removed++;
+    if (this.sets.delete(key)) removed++;
+    return Promise.resolve(removed);
+  }
+
+  sadd(key: string, member: string): Promise<number> {
+    const set = this.sets.get(key) ?? new Set<string>();
+    const sizeBefore = set.size;
+    set.add(member);
+    this.sets.set(key, set);
+    return Promise.resolve(set.size - sizeBefore);
+  }
+
+  srem(key: string, member: string): Promise<number> {
+    const set = this.sets.get(key);
+    if (!set) return Promise.resolve(0);
+    const existed = set.delete(member);
+    return Promise.resolve(existed ? 1 : 0);
+  }
+
+  smembers(key: string): Promise<string[]> {
+    const set = this.sets.get(key);
+    if (!set) return Promise.resolve([]);
+    return Promise.resolve(Array.from(set));
   }
 
   hset(key: string, values: Record<string, string | number>): Promise<null> {
@@ -96,7 +164,11 @@ export class FakeRedis {
     const arr = this.zsets.get(key) ?? [];
     const existingIdx = arr.findIndex((item) => item.member === member);
     if (existingIdx >= 0) {
-      arr[existingIdx].score = score;
+      if (arr[existingIdx]) {
+        arr[existingIdx].score = score;
+      } else {
+        arr.push({ score, member });
+      }
     } else {
       arr.push({ score, member });
     }

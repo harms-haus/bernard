@@ -2,11 +2,11 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 const GEOCODING_API_URL =
-  process.env.OPEN_METEO_GEOCODING_URL ?? "https://geocoding-api.open-meteo.com/v1/search";
-const FORECAST_API_URL = process.env.OPEN_METEO_FORECAST_URL ?? "https://api.open-meteo.com/v1/forecast";
-const HISTORICAL_API_URL = process.env.OPEN_METEO_HISTORICAL_URL ?? "https://archive-api.open-meteo.com/v1/archive";
+  process.env["OPEN_METEO_GEOCODING_URL"] ?? "https://geocoding-api.open-meteo.com/v1/search";
+const FORECAST_API_URL = process.env["OPEN_METEO_FORECAST_URL"] ?? "https://api.open-meteo.com/v1/forecast";
+const HISTORICAL_API_URL = process.env["OPEN_METEO_HISTORICAL_URL"] ?? "https://archive-api.open-meteo.com/v1/archive";
 const AIR_QUALITY_API_URL =
-  process.env.OPEN_METEO_AIR_QUALITY_URL ?? "https://air-quality-api.open-meteo.com/v1/air-quality";
+  process.env["OPEN_METEO_AIR_QUALITY_URL"] ?? "https://air-quality-api.open-meteo.com/v1/air-quality";
 
 async function safeJson(res: Response): Promise<unknown> {
   try {
@@ -72,7 +72,8 @@ function percentile(values: number[], p: number): number {
   if (!values.length) return NaN;
   const sorted = [...values].sort((a, b) => a - b);
   const rank = ((p / 100) * (sorted.length - 1)) | 0;
-  return sorted[rank];
+  const value = sorted[rank];
+  return typeof value === "number" ? value : NaN;
 }
 
 function average(values: number[]): number {
@@ -192,11 +193,16 @@ async function fetchForecast(
     };
   };
 
+  const anchorDate = daily.time[0];
+  if (!anchorDate) {
+    throw new Error("Forecast data missing anchor date.");
+  }
+
   return {
     timezone: data.timezone ?? geo.timezone ?? "auto",
     today: buildDay(0),
     dayPlusTwo: buildDay(2),
-    anchorDate: daily.time[0]
+    anchorDate
   };
 }
 

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BERNARD_PORT="${BERNARD_PORT:-3000}"
 ADMIN_PORT="${ADMIN_PORT:-4200}"
+REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
+REDIS_PORT="${REDIS_PORT:-6379}"
 export NG_CLI_ANALYTICS="${NG_CLI_ANALYTICS:-false}"
 export NEXT_TELEMETRY_DISABLED="${NEXT_TELEMETRY_DISABLED:-1}"
 
@@ -20,8 +22,46 @@ cleanup() {
       wait "${pid}" 2>/dev/null || true
     fi
   done
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker stop -t 1 "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT INT TERM
+
+ping_redis() {
+  printf "PING\r\n" | nc -w1 "${REDIS_HOST}" "${REDIS_PORT}" 2>/dev/null | grep -q "+PONG"
+}
+
+ensure_redis() {
+  echo "Ensuring redis on ${REDIS_HOST}:${REDIS_PORT}..."
+  if ping_redis; then
+    echo "Redis already running."
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required to start redis automatically but was not found." >&2
+    exit 1
+  fi
+
+  docker rm -f bernard-redis >/dev/null 2>&1 || true
+  REDIS_CONTAINER=$(docker run -d --name bernard-redis -p "${REDIS_PORT}:6379" redis:7)
+  echo "Started redis container: ${REDIS_CONTAINER}"
+
+  retries=40
+  until ping_redis; do
+    retries=$((retries - 1))
+    if [[ "${retries}" -le 0 ]]; then
+      echo "Redis did not become ready in time." >&2
+      exit 1
+    fi
+    sleep 0.25
+  done
+  echo "Redis is ready."
+}
+
+ensure_redis
+export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
 echo "Starting bernard dev server on port ${BERNARD_PORT}..."
 npm run dev --prefix "${ROOT_DIR}/bernard" -- --port "${BERNARD_PORT}" &

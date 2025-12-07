@@ -86,11 +86,11 @@ function instrumentTools(ctx: AgentContext) {
           throw err;
         }
       },
-      {
+      ({
         name: t.name,
         description: t.description,
-        schema: t.schema
-      }
+        ...(t.schema ? { schema: t.schema as any } : {})
+      } as any)
     )
   );
 }
@@ -106,12 +106,19 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
     const tokensOut = usage.completion_tokens ?? usage.output_tokens;
 
-    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, ctx.model, {
+    const openRouterResult: {
+      ok: boolean;
+      latencyMs: number;
+      tokensIn?: number;
+      tokensOut?: number;
+    } = {
       ok: true,
-      latencyMs: latency,
-      tokensIn: typeof tokensIn === "number" ? tokensIn : undefined,
-      tokensOut: typeof tokensOut === "number" ? tokensOut : undefined
-    });
+      latencyMs: latency
+    };
+    if (typeof tokensIn === "number") openRouterResult.tokensIn = tokensIn;
+    if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
+
+    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, ctx.model, openRouterResult);
 
     return { messages: [result] };
   };
@@ -119,10 +126,10 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
 
 export function buildGraph(ctx: AgentContext) {
   const model = new ChatOpenAI({
-    model: ctx.model ?? process.env.OPENROUTER_MODEL ?? "kwaipilot/KAT-coder-v1:free",
-    apiKey: process.env.OPENROUTER_API_KEY,
+    model: ctx.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free",
+    apiKey: process.env["OPENROUTER_API_KEY"],
     configuration: {
-      baseURL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1"
+      baseURL: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
     },
     temperature: 0.2
   });
@@ -152,7 +159,7 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
         return new AIMessage({
           content,
           tool_calls: msg.tool_calls as AIMessage["tool_calls"]
-        });
+        } as any);
       case "tool":
         return new ToolMessage({
           tool_call_id: msg.tool_call_id ?? msg.name ?? "unknown_tool_call",

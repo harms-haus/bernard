@@ -6,6 +6,6 @@ export type EnvironmentConfig = {
 
 export const environment: EnvironmentConfig = {
   apiBaseUrl: '/api',
-  adminToken: '',
-  useMocks: true
+  adminToken: 'super-secret-admin-token',
+  useMocks: false
 };
