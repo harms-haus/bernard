@@ -9,6 +9,8 @@ Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web searc
    - `REDIS_URL`
    - `SEARCH_API_KEY` (e.g., Brave search), `WEATHER_API_KEY` (OpenWeather)
    - `ADMIN_API_KEY` (used to create/list/delete tokens)
+   - `SUMMARY_MODEL` (optional; defaults to `OPENROUTER_MODEL` for conversation summaries)
+   - `RK_NAMESPACE` (optional; defaults to `bernard:rk` for the ledger)
 2. Install deps: `npm install`
 3. Run dev server: `npm run dev`
 
@@ -23,6 +25,11 @@ curl -X POST http://localhost:3000/api/tokens \
 
 - `GET /api/tokens` lists metadata (no secrets).
 - `DELETE /api/tokens` with body `{"name":"ops"}` removes a token.
+
+## History/recall endpoint
+
+- `GET /api/history` with bearer token to search conversations; query params: `conversationId`, `place`, `keywords`, `since`, `until`, `limit`, `includeMessages=true`, `messageLimit`.
+- `POST /api/history` with body `{"conversationId":"...","token?":"..."}` reopens a conversation and attaches it to the provided (or current) token.
 
 ## Chat endpoint
 

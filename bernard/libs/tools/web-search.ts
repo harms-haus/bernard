@@ -5,7 +5,7 @@ const SEARCH_API_URL =
   process.env.SEARCH_API_URL ?? "https://api.search.brave.com/res/v1/web/search";
 const SEARCH_API_KEY = process.env.SEARCH_API_KEY ?? process.env.BRAVE_API_KEY;
 
-async function safeJson(res: Response) {
+async function safeJson(res: Response): Promise<unknown> {
   try {
     return await res.json();
   } catch (err) {

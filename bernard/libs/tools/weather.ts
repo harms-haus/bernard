@@ -8,7 +8,7 @@ const HISTORICAL_API_URL = process.env.OPEN_METEO_HISTORICAL_URL ?? "https://arc
 const AIR_QUALITY_API_URL =
   process.env.OPEN_METEO_AIR_QUALITY_URL ?? "https://air-quality-api.open-meteo.com/v1/air-quality";
 
-async function safeJson(res: Response) {
+async function safeJson(res: Response): Promise<unknown> {
   try {
     return await res.json();
   } catch (err) {

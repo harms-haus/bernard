@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { getRedis } from "@/lib/redis";
 import { TokenStore } from "@/lib/tokenStore";
