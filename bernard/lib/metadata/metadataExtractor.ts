@@ -2,6 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 
 import { METADATA_EXTRACTORS, METADATA_KEYS, type MetadataMap, type MetadataValue } from "./extractors";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "../models";
 
 type ChatModel = Pick<ChatOpenAI, "invoke">;
 
@@ -20,18 +21,17 @@ export class MetadataExtractor {
   private readonly model: ChatModel;
 
   constructor(opts: { model?: ChatModel } = {}) {
-    if (!opts.model && !process.env["OPENROUTER_API_KEY"]) {
+    const apiKey = resolveApiKey();
+    if (!opts.model && !apiKey) {
       throw new Error("OPENROUTER_API_KEY is required for metadata extraction");
     }
 
     this.model =
       opts.model ??
       new ChatOpenAI({
-        model: process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free",
-        apiKey: process.env["OPENROUTER_API_KEY"],
-        configuration: {
-          baseURL: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
-        },
+        model: getPrimaryModel("aggregation"),
+        apiKey,
+        configuration: { baseURL: resolveBaseUrl() },
         temperature: 0
       });
   }

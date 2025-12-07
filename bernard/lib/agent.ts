@@ -6,6 +6,7 @@ import { tool as toolFactory } from "@langchain/core/tools";
 
 import { tools as baseTools } from "@/libs/tools";
 import type { RecordKeeper } from "@/lib/recordKeeper";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
 
 /* c8 ignore start */
 type ToolCall = {
@@ -28,7 +29,9 @@ export type AgentContext = {
   conversationId: string;
   requestId: string;
   token: string;
-  model: string;
+  model?: string;
+  intentModel?: string;
+  responseModel?: string;
 };
 /* c8 ignore end */
 
@@ -172,7 +175,12 @@ function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = base
   );
 }
 
-function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeof instrumentTools>) {
+function callIntentModel(
+  ctx: AgentContext,
+  modelName: string,
+  model: ChatOpenAI,
+  tools: ReturnType<typeof instrumentTools>
+) {
   const bound = model.bindTools(tools);
   return async (state: { messages: BaseMessage[] }) => {
     const start = Date.now();
@@ -199,7 +207,39 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
     if (typeof tokensIn === "number") openRouterResult.tokensIn = tokensIn;
     if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
 
-    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, ctx.model, openRouterResult);
+    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
+
+    return { messages: [result] };
+  };
+}
+
+function callResponseModel(ctx: AgentContext, modelName: string, model: ChatOpenAI) {
+  return async (state: { messages: BaseMessage[] }) => {
+    const start = Date.now();
+    const rawResult: unknown = await model.invoke(state.messages);
+    if (!rawResult || typeof rawResult !== "object") {
+      throw new Error("Model returned invalid result");
+    }
+    const result = rawResult as BaseMessage;
+    const latency = Date.now() - start;
+    const usage = extractTokenUsage(result);
+
+    const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
+    const tokensOut = usage.completion_tokens ?? usage.output_tokens;
+
+    const openRouterResult: {
+      ok: boolean;
+      latencyMs: number;
+      tokensIn?: number;
+      tokensOut?: number;
+    } = {
+      ok: true,
+      latencyMs: latency
+    };
+    if (typeof tokensIn === "number") openRouterResult.tokensIn = tokensIn;
+    if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
+
+    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
 
     return { messages: [result] };
   };
@@ -207,6 +247,8 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
 
 type GraphDeps = {
   model?: ChatOpenAI;
+  intentModel?: ChatOpenAI;
+  responseModel?: ChatOpenAI;
   tools?: InstrumentedTool[];
   ChatOpenAI?: typeof ChatOpenAI;
   toolNode?: ToolNode;
@@ -215,21 +257,40 @@ type GraphDeps = {
 
 export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const ChatOpenAIImpl = deps.ChatOpenAI ?? ChatOpenAI;
-  const model =
+  const baseURL = resolveBaseUrl();
+  const apiKey = resolveApiKey();
+  const responseModelName = ctx.responseModel ?? ctx.model ?? getPrimaryModel("response");
+  const intentModelName = ctx.intentModel ?? getPrimaryModel("intent", { fallback: [responseModelName] });
+
+  if (!apiKey && !deps.model && !deps.intentModel && !deps.responseModel && !deps.ChatOpenAI) {
+    throw new Error("OPENROUTER_API_KEY is required for agent model access");
+  }
+
+  const intentLLM =
+    deps.intentModel ??
     deps.model ??
     new ChatOpenAIImpl({
-      model: ctx.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free",
-      apiKey: process.env["OPENROUTER_API_KEY"],
-      configuration: {
-        baseURL: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1"
-      },
+      model: intentModelName,
+      apiKey,
+      configuration: { baseURL },
+      temperature: 0
+    });
+
+  const responseLLM =
+    deps.responseModel ??
+    deps.model ??
+    new ChatOpenAIImpl({
+      model: responseModelName,
+      apiKey,
+      configuration: { baseURL },
       temperature: 0.2
     });
 
   const instrumentedTools = instrumentTools(ctx, deps.tools);
   const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
-  const modelStep = callModel(ctx, model, instrumentedTools);
-  const streamingModel = model.bindTools(instrumentedTools);
+  const intentStep = callIntentModel(ctx, intentModelName, intentLLM, instrumentedTools);
+  const responseStep = callResponseModel(ctx, responseModelName, responseLLM);
+  const streamingIntentModel = intentLLM.bindTools(instrumentedTools);
   const maxIterations = 8;
   const onUpdateHook = deps.onUpdate;
 
@@ -249,8 +310,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   ): Promise<BaseMessage[]> => {
     let messages = initialMessages;
     for (let i = 0; i < maxIterations; i++) {
-      const modelResult = await modelStep({ messages });
-      /* c8 ignore next */
+      const modelResult = await intentStep({ messages });
       const nextMessages = modelResult.messages ?? [];
       messages = [...messages, ...nextMessages];
       await onUpdate(messages);
@@ -259,6 +319,11 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       messages = [...messages, ...toolMessages];
       await onUpdate(messages);
     }
+
+    const responseResult = await responseStep({ messages });
+    const responseMessages = responseResult.messages ?? [];
+    messages = [...messages, ...responseMessages];
+    await onUpdate(messages);
     return messages;
   };
 
@@ -268,7 +333,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
     for (let i = 0; i < maxIterations; i++) {
       const start = Date.now();
-      const stream = await streamingModel.stream(messages);
+      const stream = await streamingIntentModel.stream(messages);
 
       let aggregated: AIMessageChunk | null = null;
       let latestToolCalls: unknown[] | undefined;
@@ -310,7 +375,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const usage = extractTokenUsage(aggregated);
       const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
       const tokensOut = usage.completion_tokens ?? usage.output_tokens;
-      await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, ctx.model, {
+      await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, intentModelName, {
         ok: true,
         latencyMs: Date.now() - start,
         ...(typeof tokensIn === "number" ? { tokensIn } : {}),
@@ -325,6 +390,35 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       if (onUpdateHook) await onUpdateHook(messages);
       yield { messages };
     }
+
+    const responseStart = Date.now();
+    const responseStream = await responseLLM.stream(messages);
+    let responseAggregated: AIMessageChunk | null = null;
+
+    for await (const chunk of responseStream) {
+      responseAggregated = responseAggregated ? responseAggregated.concat(chunk) : chunk;
+      const currentMessages = [...messages, responseAggregated];
+      if (onUpdateHook) await onUpdateHook(currentMessages);
+      yield { messages: currentMessages };
+    }
+
+    if (!responseAggregated) {
+      throw new Error("Response model returned no chunks");
+    }
+
+    const responseUsage = extractTokenUsage(responseAggregated);
+    const responseTokensIn = responseUsage.prompt_tokens ?? responseUsage.input_tokens;
+    const responseTokensOut = responseUsage.completion_tokens ?? responseUsage.output_tokens;
+    await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, responseModelName, {
+      ok: true,
+      latencyMs: Date.now() - responseStart,
+      ...(typeof responseTokensIn === "number" ? { tokensIn: responseTokensIn } : {}),
+      ...(typeof responseTokensOut === "number" ? { tokensOut: responseTokensOut } : {})
+    });
+
+    messages = [...messages, responseAggregated];
+    if (onUpdateHook) await onUpdateHook(messages);
+    yield { messages };
   }
   /* c8 ignore end */
 

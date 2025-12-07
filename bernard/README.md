@@ -5,11 +5,11 @@ Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web searc
 ## Setup
 
 1. Copy `env.example` to `.env` and fill values:
-   - `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`
+   - Model lists (comma-separated fallbacks): `RESPONSE_MODELS`, `INTENT_MODELS`, `AGGREGATION_MODELS`, `UTILITY_MODELS`
+   - OpenRouter: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`
    - `REDIS_URL`
    - `SEARCH_API_KEY` (e.g., Brave search), `WEATHER_API_KEY` (OpenWeather)
    - `ADMIN_API_KEY` (used to create/list/delete tokens)
-   - `SUMMARY_MODEL` (optional; defaults to `OPENROUTER_MODEL` for conversation summaries)
    - `RK_NAMESPACE` (optional; defaults to `bernard:rk` for the ledger)
 2. Install deps: `npm install`
 3. Run dev server: `npm run dev`
@@ -60,7 +60,7 @@ curl -N http://localhost:3000/api/agent \
 
 - Tools: `web_search`, `set_timer`, `get_weather`.
 - Redis keys are namespaced under `bernard:tokens:*`.
-- The graph is built with LangGraph + ChatOpenAI targeting OpenRouter by default. Update `OPENROUTER_*` envs to point at another endpoint if needed.
+- The graph is built with LangGraph + ChatOpenAI targeting OpenRouter by default. Update `OPENROUTER_*` envs and the category model lists to point at another endpoint if needed.
 
 
 

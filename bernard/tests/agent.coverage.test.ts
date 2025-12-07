@@ -59,6 +59,10 @@ test("instrumented tools parse args and classify timeout/auth/other", async () =
         }
       };
     }
+
+    async invoke() {
+      return new AIMessage("done");
+    }
   }
 
   const { buildGraph } = await import("../lib/agent");
@@ -120,6 +124,10 @@ test("default buildGraph path constructs ChatOpenAI and parses string args", asy
         }
       };
     }
+
+    async invoke() {
+      return new AIMessage({ content: "done" } as any);
+    }
   };
 
   const { buildGraph } = await import("../lib/agent?default-path");
@@ -165,6 +173,10 @@ test("instrumented tool falls back to raw input when JSON parse fails", async ()
           } as any);
         }
       };
+    }
+
+    async invoke() {
+      return new AIMessage("done" as any);
     }
   };
 
@@ -221,6 +233,13 @@ test("stream yields intermediate states through tool loop", async () => {
         }
       };
     }
+
+    async stream() {
+      async function* responseGen() {
+        yield new AIMessageChunk({ content: "response-final" } as any);
+      }
+      return responseGen();
+    }
   };
 
   const { buildGraph } = await import("../lib/agent?streaming");
@@ -267,6 +286,10 @@ test("falls back to env defaults when ctx model is missing", async () => {
           return new AIMessage("done");
         }
       };
+    }
+
+    async invoke() {
+      return new AIMessage("done");
     }
   };
 
@@ -320,6 +343,10 @@ test("uses baked-in defaults when no ctx or env model configured", async () => {
           return new AIMessage("done");
         }
       };
+    }
+
+    async invoke() {
+      return new AIMessage("done");
     }
   };
 
@@ -379,6 +406,10 @@ test("supports custom tool node and onUpdate hooks", async () => {
         }
       };
     }
+
+    async invoke() {
+      return new AIMessage("final");
+    }
   };
 
   const customToolNode = {
@@ -436,6 +467,10 @@ test("handles unexpected tool node output gracefully", async () => {
         }
       };
     }
+
+    async invoke() {
+      return new AIMessage("done");
+    }
   };
 
   const oddToolNode = {
@@ -478,6 +513,13 @@ test("records token usage from response_metadata path", async () => {
           } as any);
         }
       };
+    }
+
+    async invoke() {
+      return new AIMessage({
+        content: "done",
+        response_metadata: { token_usage: { prompt_tokens: 4, completion_tokens: 2 } }
+      } as any);
     }
   };
 
@@ -552,6 +594,10 @@ test("test hooks cover edge branches", async () => {
   const FakeChatOpenAI = class {
     bindTools() {
       return { invoke: async () => new AIMessage("done") };
+    }
+
+    async invoke() {
+      return new AIMessage("done");
     }
   };
   await buildGraph(

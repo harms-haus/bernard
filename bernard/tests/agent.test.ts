@@ -53,32 +53,38 @@ const stubTool = {
 class FakeChatOpenAI {
   constructor(_opts?: unknown) {}
 
+  private consume(messages: BaseMessage[]) {
+    modelInvocations.push({ messages });
+    const next = pendingResponses.shift();
+    if (!next) {
+      throw new Error("No fake response queued");
+    }
+    const msg = new AIMessage({
+      content: next.content,
+      tool_calls: next.toolCalls?.map((tc) => ({
+        id: tc.id,
+        type: "tool_call",
+        name: tc.name,
+        args: tc.args,
+        function: { name: tc.name, arguments: tc.args }
+      }))
+    });
+    if (next.usagePath === "usage_metadata") {
+      (msg as any).usage_metadata = next.usage ?? {};
+    } else {
+      (msg as any).response_metadata = { token_usage: next.usage ?? {} };
+    }
+    return msg;
+  }
+
   bindTools(_tools: unknown) {
     return {
-      async invoke(messages: BaseMessage[]) {
-        modelInvocations.push({ messages });
-        const next = pendingResponses.shift();
-        if (!next) {
-          throw new Error("No fake response queued");
-        }
-        const msg = new AIMessage({
-          content: next.content,
-          tool_calls: next.toolCalls?.map((tc) => ({
-            id: tc.id,
-            type: "tool_call",
-            name: tc.name,
-            args: tc.args,
-            function: { name: tc.name, arguments: tc.args }
-          }))
-        });
-        if (next.usagePath === "usage_metadata") {
-          (msg as any).usage_metadata = next.usage ?? {};
-        } else {
-          (msg as any).response_metadata = { token_usage: next.usage ?? {} };
-        }
-        return msg;
-      }
+      invoke: async (messages: BaseMessage[]) => this.consume(messages)
     };
+  }
+
+  async invoke(messages: BaseMessage[]) {
+    return this.consume(messages);
   }
 }
 
@@ -125,9 +131,14 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
       usagePath: "response_metadata"
     },
     {
-      content: "done",
+      content: "Tools complete",
       usage: { input_tokens: 11, output_tokens: 6 },
       usagePath: "usage_metadata"
+    },
+    {
+      content: "done",
+      usage: { prompt_tokens: 4, completion_tokens: 2 },
+      usagePath: "response_metadata"
     }
   );
   const keeper = makeKeeper();
@@ -154,13 +165,16 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
   assert.equal(toolRes.ok, true);
   assert.equal(typeof toolRes.latencyMs, "number");
 
-  assert.equal(keeper.modelResults.length, 2);
+  assert.equal(keeper.modelResults.length, 3);
   const [, , firstModelMetrics] = keeper.modelResults[0] as [string, string, Record<string, number>];
   const [, , secondModelMetrics] = keeper.modelResults[1] as [string, string, Record<string, number>];
+  const [, , thirdModelMetrics] = keeper.modelResults[2] as [string, string, Record<string, number>];
   assert.equal(firstModelMetrics.tokensIn, 5);
   assert.equal(firstModelMetrics.tokensOut, 2);
   assert.equal(secondModelMetrics.tokensIn, 11);
   assert.equal(secondModelMetrics.tokensOut, 6);
+  assert.equal(thirdModelMetrics.tokensIn, 4);
+  assert.equal(thirdModelMetrics.tokensOut, 2);
 });
 
 test("short-circuits when no tool calls are requested", { timeout: 2000 }, async () => {
@@ -168,6 +182,10 @@ test("short-circuits when no tool calls are requested", { timeout: 2000 }, async
   queueResponses({
     content: "No tools needed",
     usage: { prompt_tokens: 3, completion_tokens: 1 },
+    usagePath: "response_metadata"
+  }, {
+    content: "Final response",
+    usage: { prompt_tokens: 2, completion_tokens: 1 },
     usagePath: "response_metadata"
   });
   const keeper = makeKeeper();
@@ -183,10 +201,10 @@ test("short-circuits when no tool calls are requested", { timeout: 2000 }, async
   const result = await withSilentConsole(() => graph.invoke({ messages: [new HumanMessage("hello")] }));
   const finalMessage = result.messages?.[result.messages.length - 1] as AIMessage | undefined;
 
-  assert.equal(finalMessage?.content, "No tools needed");
+  assert.equal(finalMessage?.content, "Final response");
   assert.equal(toolInvocations.length, 0);
   assert.equal(keeper.toolResults.length, 0);
-  assert.equal(keeper.modelResults.length, 1);
+  assert.equal(keeper.modelResults.length, 2);
 });
 
 test("records tool errors and classifies rate limits", { timeout: 2000 }, async () => {
@@ -277,6 +295,11 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
       toolCalls: [{ id: "w1", name: "get_weather", args: { location: "Paris", units: "metric" } }],
       usage: { prompt_tokens: 5, completion_tokens: 2 },
       usagePath: "response_metadata"
+    },
+    {
+      content: "Tool complete",
+      usage: { input_tokens: 6, output_tokens: 3 },
+      usagePath: "usage_metadata"
     },
     {
       content: "done",

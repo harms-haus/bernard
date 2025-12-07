@@ -8,6 +8,7 @@ import { MetadataExtractor, type MetadataMap } from "@/lib/metadata";
 import { getRedis } from "@/lib/redis";
 import { RecordKeeper } from "@/lib/recordKeeper";
 import { TokenStore } from "@/lib/tokenStore";
+import { getPrimaryModel } from "@/lib/models";
 
 export const runtime = "nodejs";
 
@@ -228,7 +229,8 @@ export async function POST(req: NextRequest) {
   const keeper = new RecordKeeper(redis, summarizer ? { summarizer } : {});
   await keeper.closeIfIdle();
 
-  const model = body.model ?? process.env["OPENROUTER_MODEL"] ?? "kwaipilot/KAT-coder-v1:free";
+  const responseModel = body.model ?? getPrimaryModel("response");
+  const intentModel = getPrimaryModel("intent", { fallback: [responseModel] });
   const inputMessages = mapOpenAIToMessages(body.messages);
   const shouldStream = body.stream ?? true;
 
@@ -237,7 +239,7 @@ export async function POST(req: NextRequest) {
   if (body.place) requestOpts.place = body.place;
   if (body.clientMeta) requestOpts.clientMeta = body.clientMeta;
   if (body.conversationId) requestOpts.conversationId = body.conversationId;
-  const { requestId, conversationId } = await keeper.startRequest(token, model, requestOpts);
+  const { requestId, conversationId } = await keeper.startRequest(token, responseModel, requestOpts);
 
   const metadataExtractor = new MetadataExtractor();
   const lastUser = findLastUserMessage(inputMessages);
@@ -270,7 +272,7 @@ export async function POST(req: NextRequest) {
   }
 
   await keeper.appendMessages(conversationId, inputMessages);
-  const turnId = await keeper.startTurn(requestId, conversationId, token, model);
+  const turnId = await keeper.startTurn(requestId, conversationId, token, responseModel);
 
   const graph = buildGraph({
     recordKeeper: keeper,
@@ -278,7 +280,9 @@ export async function POST(req: NextRequest) {
     conversationId,
     requestId,
     token,
-    model
+    model: responseModel,
+    responseModel,
+    intentModel
   }) as unknown as AgentGraph;
 
   const encoder = new TextEncoder();
@@ -301,7 +305,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ messages: allMessages });
     } catch (err) {
       if (isRateLimit(err)) {
-        await keeper.recordRateLimit(token, model);
+        await keeper.recordRateLimit(token, responseModel);
       }
       await keeper.endTurn(turnId, {
         status: "error",
@@ -320,7 +324,7 @@ export async function POST(req: NextRequest) {
     iterator = graph.stream({ messages: inputMessages }, { streamMode: "messages" as const });
   } catch (err) {
     if (isRateLimit(err)) {
-      await keeper.recordRateLimit(token, model);
+      await keeper.recordRateLimit(token, responseModel);
     }
     const { status, reason, errorType } = describeError(err);
     await keeper.endTurn(turnId, {
@@ -399,7 +403,7 @@ export async function POST(req: NextRequest) {
         controller.close();
       } catch (err) {
         if (isRateLimit(err)) {
-          await keeper.recordRateLimit(token, model);
+          await keeper.recordRateLimit(token, responseModel);
         }
         await keeper.endTurn(turnId, {
           status: "error",
