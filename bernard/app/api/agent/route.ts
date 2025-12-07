@@ -2,9 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { buildGraph, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
-import { SystemMessage } from "@langchain/core/messages";
 import { ConversationSummaryService } from "@/lib/conversationSummary";
-import { MetadataExtractor, type MetadataMap } from "@/lib/metadata";
 import { getRedis } from "@/lib/redis";
 import { RecordKeeper } from "@/lib/recordKeeper";
 import { TokenStore } from "@/lib/tokenStore";
@@ -100,16 +98,6 @@ function contentFromMessages(messages: BaseMessage[]): string | null {
 function contentFromMessage(message: BaseMessage | null): string | null {
   if (!message) return null;
   return contentFromMessages([message]);
-}
-
-function findLastUserMessage(messages: BaseMessage[]): BaseMessage | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (!message) continue;
-    const candidate = message as { _getType?: () => string };
-    if (candidate._getType?.() === "human") return message;
-  }
-  return null;
 }
 
 function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage | null {
@@ -250,36 +238,6 @@ export async function POST(req: NextRequest) {
   if (body.clientMeta) requestOpts.clientMeta = body.clientMeta;
   if (body.conversationId) requestOpts.conversationId = body.conversationId;
   const { requestId, conversationId } = await keeper.startRequest(token, responseModel, requestOpts);
-
-  const metadataExtractor = new MetadataExtractor();
-  const lastUser = findLastUserMessage(inputMessages);
-  let metadata: MetadataMap | null = null;
-  try {
-    const extraction = await metadataExtractor.extract({
-      text: contentFromMessage(lastUser) ?? "",
-      now: new Date(),
-      currentLocation: body.place ?? null
-    });
-    metadata = extraction.metadata;
-  } catch (err) {
-    console.warn("Metadata extraction failed:", err);
-  }
-
-  if (metadata) {
-    if (lastUser) {
-      const existing = (lastUser as { response_metadata?: Record<string, unknown> }).response_metadata ?? {};
-      (lastUser as { response_metadata?: Record<string, unknown> }).response_metadata = {
-        ...existing,
-        metadata
-      };
-    }
-    inputMessages.push(
-      new SystemMessage({
-        name: "metadata_context",
-        content: `Extracted metadata for context: ${JSON.stringify(metadata)}`
-      })
-    );
-  }
 
   await keeper.appendMessages(conversationId, inputMessages);
   const turnId = await keeper.startTurn(requestId, conversationId, token, responseModel);
