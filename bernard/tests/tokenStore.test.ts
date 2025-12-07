@@ -72,7 +72,8 @@ test(
 
       const first = await store.validate(created.token);
       assert.ok(first?.lastUsedAt);
-      const firstUsed = first?.lastUsedAt!;
+      const firstUsed = first?.lastUsedAt;
+      assert.ok(firstUsed);
       assert.equal(first?.createdAt, created.createdAt);
 
       await sleep(10);
@@ -80,11 +81,13 @@ test(
       const second = await store.validate(created.token);
       assert.ok(second?.lastUsedAt);
       assert.equal(second?.createdAt, created.createdAt);
-      assert.notEqual(second?.lastUsedAt, firstUsed);
-      assert.ok(new Date(second!.lastUsedAt!).getTime() > new Date(firstUsed).getTime());
+      const secondUsed = second?.lastUsedAt;
+      assert.ok(secondUsed);
+      assert.notEqual(secondUsed, firstUsed);
+      assert.ok(new Date(secondUsed).getTime() > new Date(firstUsed).getTime());
 
       const fetched = await store.get(created.id);
-      assert.equal(fetched?.lastUsedAt, second?.lastUsedAt);
+      assert.equal(fetched?.lastUsedAt, secondUsed);
     })
 );
 

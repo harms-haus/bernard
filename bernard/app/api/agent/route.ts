@@ -101,13 +101,19 @@ function extractChunkText(chunk: unknown): string {
   }
   if (typeof chunk === "object") {
     const obj = chunk as Record<string, unknown>;
-    if (typeof obj["content"] === "string") return obj["content"] as string;
+    const content = obj["content"];
+    if (typeof content === "string") return content;
     const kwargs = obj["kwargs"] as Record<string, unknown> | undefined;
-    if (kwargs && typeof kwargs["content"] === "string") return kwargs["content"] as string;
+    if (kwargs) {
+      const kwContent = kwargs["content"];
+      if (typeof kwContent === "string") return kwContent;
+    }
     const data = obj["data"] as Record<string, unknown> | undefined;
     if (data) {
-      if (typeof data["content"] === "string") return data["content"] as string;
-      if (typeof data["text"] === "string") return data["text"] as string;
+      const dataContent = data["content"];
+      if (typeof dataContent === "string") return dataContent;
+      const dataText = data["text"];
+      if (typeof dataText === "string") return dataText;
     }
   }
   return "";
@@ -257,7 +263,7 @@ export async function POST(req: NextRequest) {
 
   let iterator: AsyncIterable<GraphStreamChunk>;
   try {
-    iterator = await graph.stream({ messages: inputMessages }, { streamMode: "messages" as const });
+    iterator = graph.stream({ messages: inputMessages }, { streamMode: "messages" as const });
   } catch (err) {
     if (isRateLimit(err)) {
       await keeper.recordRateLimit(token, model);
@@ -289,7 +295,7 @@ export async function POST(req: NextRequest) {
       try {
         for await (const chunk of iterator) {
           if (process.env["DEBUG_STREAM"] === "1") {
-            console.info("agent stream chunk", JSON.stringify(chunk));
+            console.warn("agent stream chunk", JSON.stringify(chunk));
           }
           const maybeMessages =
             extractMessagesFromChunk(chunk) ?? findMessages((chunk as { data?: unknown }).data);

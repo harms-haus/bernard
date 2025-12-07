@@ -32,6 +32,54 @@ export type AgentContext = {
 };
 /* c8 ignore end */
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+type ToolFunctionArgs = { arguments?: unknown };
+type ToolCallArgs = { args?: unknown; function?: ToolFunctionArgs };
+type ToolRunOpts = { toolCall?: ToolCallArgs };
+
+function extractRawToolInput(input: unknown, runOpts?: unknown): unknown {
+  const candidates: unknown[] = [];
+
+  if (isRecord(input)) {
+    const argsCandidate = (input as ToolCallArgs).args;
+    if (argsCandidate !== undefined) candidates.push(argsCandidate);
+
+    const inputCandidate = (input as { input?: unknown }).input;
+    if (inputCandidate !== undefined) candidates.push(inputCandidate);
+
+    const fnCandidate = (input as { function?: ToolFunctionArgs }).function;
+    if (isRecord(fnCandidate) && fnCandidate.arguments !== undefined) {
+      candidates.push(fnCandidate.arguments);
+    }
+  }
+
+  if (isRecord(runOpts)) {
+    const toolCallCandidate = (runOpts as ToolRunOpts).toolCall;
+    if (isRecord(toolCallCandidate)) {
+      if (toolCallCandidate.args !== undefined) candidates.push(toolCallCandidate.args);
+      const fnCandidate = toolCallCandidate.function;
+      if (isRecord(fnCandidate) && fnCandidate.arguments !== undefined) {
+        candidates.push(fnCandidate.arguments);
+      }
+    }
+  }
+
+  const found = candidates.find((candidate) => candidate !== undefined);
+  return found !== undefined ? found : input;
+}
+
+function parseToolInput(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function classifyError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   if (/rate limit/i.test(message) || /429/.test(message)) return "rate_limit";
@@ -73,27 +121,12 @@ function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = base
   const tools = toolsList;
   return tools.map((t) =>
     toolFactory(
-      async (input, runOpts) => {
+      async (input: unknown, runOpts?: ToolRunOpts) => {
         const start = Date.now();
         try {
-            const rawInput =
-              (input as any)?.args ??
-              (input as any)?.input ??
-              (input as any)?.function?.arguments ??
-              (runOpts as any)?.toolCall?.args ??
-              (runOpts as any)?.toolCall?.function?.arguments ??
-              input;
-            const parsedInput =
-              typeof rawInput === "string"
-                ? (() => {
-                    try {
-                      return JSON.parse(rawInput);
-                    } catch {
-                      return rawInput;
-                    }
-                  })()
-                : rawInput;
-            const res = await t.invoke(parsedInput, runOpts);
+          const rawInput = extractRawToolInput(input, runOpts);
+          const parsedInput = parseToolInput(rawInput);
+          const res = await t.invoke(parsedInput, runOpts);
           await ctx.recordKeeper.recordToolResult(ctx.turnId, t.name, { ok: true, latencyMs: Date.now() - start });
           return res;
         } catch (err) {
@@ -108,8 +141,8 @@ function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = base
       ({
         name: t.name,
         description: t.description,
-        ...(t.schema ? { schema: t.schema as any } : {})
-      } as any)
+        ...(t.schema ? { schema: t.schema } : {})
+      } satisfies Parameters<typeof toolFactory>[1])
     )
   );
 }
@@ -118,7 +151,11 @@ function callModel(ctx: AgentContext, model: ChatOpenAI, tools: ReturnType<typeo
   const bound = model.bindTools(tools);
   return async (state: { messages: BaseMessage[] }) => {
     const start = Date.now();
-    const result = await bound.invoke(state.messages);
+    const rawResult: unknown = await bound.invoke(state.messages);
+    if (!rawResult || typeof rawResult !== "object") {
+      throw new Error("Model returned invalid result");
+    }
+    const result = rawResult as BaseMessage;
     const latency = Date.now() - start;
     const usage = extractTokenUsage(result);
 
@@ -171,10 +208,11 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const onUpdateHook = deps.onUpdate;
 
   const runTools = async (messages: BaseMessage[]): Promise<BaseMessage[]> => {
-    const result = await toolNode.invoke({ messages });
-    if (Array.isArray(result)) return result;
+    const result: unknown = await toolNode.invoke({ messages });
+    if (Array.isArray(result)) return result as BaseMessage[];
     if (result && typeof result === "object" && "messages" in result) {
-      return (result as { messages?: BaseMessage[] }).messages ?? [];
+      const messagesResult = (result as { messages?: unknown }).messages;
+      return Array.isArray(messagesResult) ? (messagesResult as BaseMessage[]) : [];
     }
     return [];
   };
@@ -221,7 +259,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const messages = await execute(input.messages ?? []);
       return { messages };
     },
-    async stream(input: { messages: BaseMessage[] }) {
+    stream(input: { messages: BaseMessage[] }) {
       return streamMessages(input.messages ?? []);
     }
   };
@@ -235,11 +273,21 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
         return new SystemMessage({ content });
       case "user":
         return new HumanMessage({ content });
-      case "assistant":
+      case "assistant": {
+        const toolCalls =
+          msg.tool_calls?.map((call) => ({
+            id: call.id,
+            type: "tool_call",
+            function: {
+              name: call.function.name,
+              arguments: call.function.arguments
+            }
+          })) ?? [];
         return new AIMessage({
           content,
-          tool_calls: msg.tool_calls as AIMessage["tool_calls"]
-        } as any);
+          tool_calls: toolCalls.length ? (toolCalls as AIMessage["tool_calls"]) : undefined
+        });
+      }
       case "tool":
         return new ToolMessage({
           tool_call_id: msg.tool_call_id ?? msg.name ?? "unknown_tool_call",

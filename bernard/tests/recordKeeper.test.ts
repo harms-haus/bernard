@@ -408,7 +408,7 @@ void test("countConversations tallies open and closed", async () => {
   const redis = new FakeRedis();
   const keeper = new RecordKeeper(redis as unknown as Redis);
   const first = await keeper.startRequest("tok-count", "model-count");
-  const second = await keeper.startRequest("tok-count2", "model-count2");
+  await keeper.startRequest("tok-count2", "model-count2");
   await keeper.closeConversation(first.conversationId, "done");
 
   const counts = await keeper.countConversations();
