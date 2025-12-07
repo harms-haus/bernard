@@ -3,28 +3,31 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
 import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
+import { Router } from '@angular/router';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
-import { Conversation } from '../../data/models';
+import { ConversationListItem } from '../../data/models';
 
 @Component({
   selector: 'app-history',
-  imports: [CommonModule, TableModule, ButtonModule, TagModule, InputTextModule],
+  imports: [CommonModule, TableModule, ButtonModule],
   templateUrl: './history.component.html',
   styleUrl: './history.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class HistoryComponent {
   private readonly api = inject<ApiClient>(API_CLIENT);
+  private readonly router = inject(Router);
 
-  protected readonly conversations = signal<Conversation[]>([]);
+  protected readonly conversations = signal<ConversationListItem[]>([]);
   protected readonly loading = signal<boolean>(true);
   protected readonly error = signal<string | null>(null);
-  protected readonly expandedId = signal<string | null>(null);
-  protected readonly search = signal<string>('');
+  protected readonly stats = signal<{ total: number; active: number; closed: number }>({
+    total: 0,
+    active: 0,
+    closed: 0
+  });
 
   constructor() {
     this.load();
@@ -33,36 +36,41 @@ export class HistoryComponent {
   protected load() {
     this.loading.set(true);
     this.api
-      .listHistory({ search: this.search() })
+      .listHistory({ includeOpen: true, includeClosed: true })
       .pipe(
         takeUntilDestroyed(),
         finalize(() => this.loading.set(false))
       )
       .subscribe({
         next: (value) => {
-          this.conversations.set(value.items);
+          this.conversations.set(value.items ?? []);
+          this.stats.set({
+            total: value.total ?? value.items.length ?? 0,
+            active: value.activeCount ?? 0,
+            closed: value.closedCount ?? 0
+          });
           this.error.set(null);
         },
         error: () => this.error.set('Unable to load history')
       });
   }
 
-  protected onSearch(term: string) {
-    this.search.set(term.trim());
-    this.load();
+  protected open(conversation: ConversationListItem) {
+    void this.router.navigate(['/history', conversation.id]);
   }
 
-  protected toggle(id: string) {
-    this.expandedId.set(this.expandedId() === id ? null : id);
+  protected navigateFromKey(event: Event, conversation: ConversationListItem) {
+    if (!(event instanceof KeyboardEvent)) {
+      return;
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    event.preventDefault();
+    this.open(conversation);
   }
 
-  protected statusSeverity(status: Conversation['status']) {
-    if (status === 'completed') {
-      return 'success';
-    }
-    if (status === 'running') {
-      return 'info';
-    }
-    return 'danger';
+  protected statusLabel(status: ConversationListItem['status']) {
+    return status === 'open' ? 'Active' : 'Closed';
   }
 }

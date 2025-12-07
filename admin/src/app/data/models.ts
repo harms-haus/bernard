@@ -57,38 +57,59 @@ export interface ServiceConfig {
 
 export type UpdateServiceRequest = Partial<Pick<ServiceConfig, 'apiKey' | 'options'>>;
 
-export interface ActivationSummary {
-  id: string;
-  type: 'model' | 'tool';
-  toolName?: string;
-  inputPreview: string;
-  outputPreview: string;
-  createdAt: string;
-  durationMs?: number;
-}
+export type ConversationStatus = 'open' | 'closed';
 
-export interface Conversation {
+export type ConversationListItem = {
   id: string;
-  userLabel: string;
-  createdAt: string;
-  updatedAt: string;
-  tokenId?: string;
-  summary: string;
+  status: ConversationStatus;
+  summary?: string;
+  startedAt: string;
+  lastTouchedAt: string;
+  closedAt?: string;
+  lastRequestAt?: string;
   messageCount: number;
   toolCallCount: number;
-  status: 'completed' | 'running' | 'error';
-  activations: ActivationSummary[];
-}
+  requestCount?: number;
+  tags: string[];
+  flags?: { explicit?: boolean; forbidden?: boolean; summaryError?: boolean | string };
+  source: string;
+  tokenNames: string[];
+  tokenIds: string[];
+};
 
-export interface Paginated<T> {
-  items: T[];
-  nextCursor?: string;
-  total?: number;
-}
+export type ConversationDetail = ConversationListItem & {
+  modelSet?: string[];
+  placeTags?: string[];
+  keywords?: string[];
+  closeReason?: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | Record<string, unknown> | Array<Record<string, unknown>>;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{ id: string; name?: string; arguments?: string }>;
+  createdAt: string;
+  tokenDeltas?: { in?: number; out?: number };
+  metadata?: Record<string, unknown>;
+};
 
 export interface HistoryQuery {
-  search?: string;
   limit?: number;
-  cursor?: string;
-  status?: Conversation['status'];
+  includeOpen?: boolean;
+  includeClosed?: boolean;
 }
+
+export type HistoryListResponse = {
+  items: ConversationListItem[];
+  total: number;
+  activeCount: number;
+  closedCount: number;
+};
+
+export type ConversationDetailResponse = {
+  conversation: ConversationDetail;
+  messages: ConversationMessage[];
+};

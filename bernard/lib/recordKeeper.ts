@@ -32,7 +32,20 @@ export type Conversation = {
   placeTags?: string[];
   keywords?: string[];
   closeReason?: string;
+  messageCount?: number;
+  toolCallCount?: number;
+  requestCount?: number;
+  lastRequestAt?: string;
 };
+
+export type ConversationStats = {
+  messageCount: number;
+  toolCallCount: number;
+  requestCount?: number;
+  lastRequestAt?: string;
+};
+
+export type ConversationWithStats = Conversation & ConversationStats;
 
 export type Request = {
   id: string;
@@ -135,6 +148,20 @@ function parseJsonArray(val?: string): string[] | undefined {
   }
 }
 
+function toNumber(value?: string): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function countToolCallsInMessages(messages: MessageRecord[]): number {
+  return messages.reduce((total, message) => {
+    const fromToolRole = message.role === "tool" ? 1 : 0;
+    const fromToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
+    return total + fromToolRole + fromToolCalls;
+  }, 0);
+}
+
 type MessageWithDetails = BaseMessage & {
   content?: unknown;
   tool_call_id?: string;
@@ -204,10 +231,16 @@ export class RecordKeeper {
         lastTouchedAt: nowISO,
         modelSet: JSON.stringify([model]),
         tokenSet: JSON.stringify([token]),
-        placeTags: opts.place ? JSON.stringify([opts.place]) : ""
+        placeTags: opts.place ? JSON.stringify([opts.place]) : "",
+        messageCount: 0,
+        toolCallCount: 0,
+        requestCount: 1,
+        lastRequestAt: nowISO
       });
     } else {
-      multi.hset(convKey, { lastTouchedAt: nowISO });
+      multi
+        .hset(convKey, { lastTouchedAt: nowISO, lastRequestAt: nowISO })
+        .hincrby(convKey, "requestCount", 1);
     }
 
     multi
@@ -301,6 +334,9 @@ export class RecordKeeper {
     if (!messages.length) return;
     const serialized = messages.map((msg) => this.serializeMessage(msg));
     const listKey = this.key(`conv:${conversationId}:msgs`);
+    const convKey = this.key(`conv:${conversationId}`);
+    const messageIncrement = serialized.length;
+    const toolCallIncrement = countToolCallsInMessages(serialized);
     const now = Date.now();
     const nowISO = nowIso();
     const multi = this.redis.multi();
@@ -308,7 +344,9 @@ export class RecordKeeper {
       multi.rpush(listKey, JSON.stringify(item));
     });
     multi
-      .hset(this.key(`conv:${conversationId}`), { lastTouchedAt: nowISO })
+      .hincrby(convKey, "messageCount", messageIncrement)
+      .hincrby(convKey, "toolCallCount", toolCallIncrement)
+      .hset(convKey, { lastTouchedAt: nowISO })
       .zadd(this.key("convs:active"), now, conversationId);
     await multi.exec();
   }
@@ -586,6 +624,25 @@ export class RecordKeeper {
     if (placeTags) conversation.placeTags = placeTags;
     if (keywords) conversation.keywords = keywords;
     if (closeReason) conversation.closeReason = closeReason;
+    if (data["messageCount"]) {
+      const parsed = toNumber(data["messageCount"]);
+      if (typeof parsed === "number") {
+        conversation.messageCount = parsed;
+      }
+    }
+    if (data["toolCallCount"]) {
+      const parsed = toNumber(data["toolCallCount"]);
+      if (typeof parsed === "number") {
+        conversation.toolCallCount = parsed;
+      }
+    }
+    if (data["requestCount"]) {
+      const parsed = toNumber(data["requestCount"]);
+      if (typeof parsed === "number") {
+        conversation.requestCount = parsed;
+      }
+    }
+    if (data["lastRequestAt"]) conversation.lastRequestAt = data["lastRequestAt"];
 
     return conversation;
   }
@@ -607,6 +664,108 @@ export class RecordKeeper {
         }
       })
       .filter((m): m is MessageRecord => m !== null);
+  }
+
+  async listConversations(opts: { limit?: number; includeOpen?: boolean; includeClosed?: boolean } = {}): Promise<
+    ConversationWithStats[]
+  > {
+    const limit = opts.limit && opts.limit > 0 ? opts.limit : 50;
+    const includeOpen = opts.includeOpen ?? true;
+    const includeClosed = opts.includeClosed ?? true;
+
+    const ids: string[] = [];
+    if (includeOpen) {
+      const openIds = await this.redis.zrevrange(this.key("convs:active"), 0, Math.max(limit - 1, 0));
+      ids.push(...openIds);
+    }
+
+    if (includeClosed && ids.length < limit) {
+      const remaining = limit - ids.length;
+      const closedIds = await this.redis.zrevrange(this.key("convs:closed"), 0, Math.max(remaining - 1, 0));
+      ids.push(...closedIds);
+    }
+
+    const uniqueIds = Array.from(new Set(ids));
+    const conversations: ConversationWithStats[] = [];
+    for (const id of uniqueIds) {
+      const conversation = await this.getConversation(id);
+      if (!conversation) {
+        // Clean up stale references so counts stay accurate.
+        await this.redis
+          .multi()
+          .zrem(this.key("convs:active"), id)
+          .zrem(this.key("convs:closed"), id)
+          .exec();
+        continue;
+      }
+      const withStats = await this.conversationWithStats(conversation);
+      conversations.push(withStats);
+    }
+
+    return conversations;
+  }
+
+  async getConversationWithMessages(
+    conversationId: string,
+    messageLimit?: number
+  ): Promise<{ conversation: ConversationWithStats; messages: MessageRecord[] } | null> {
+    const conversation = await this.getConversation(conversationId);
+    if (!conversation) return null;
+    const [messages, withStats] = await Promise.all([
+      this.getMessages(conversationId, messageLimit),
+      this.conversationWithStats(conversation)
+    ]);
+    return { conversation: withStats, messages };
+  }
+
+  async countConversations(): Promise<{ active: number; closed: number; total: number }> {
+    const [active, closed] = await Promise.all([
+      this.redis.zcard(this.key("convs:active")),
+      this.redis.zcard(this.key("convs:closed"))
+    ]);
+    return { active, closed, total: active + closed };
+  }
+
+  private async conversationWithStats(conversation: Conversation): Promise<ConversationWithStats> {
+    const [messageCount, toolCallCount, requestCount, lastRequestAt] = await Promise.all([
+      typeof conversation.messageCount === "number" ? conversation.messageCount : this.getMessageCount(conversation.id),
+      typeof conversation.toolCallCount === "number" ? conversation.toolCallCount : this.countToolCalls(conversation.id),
+      typeof conversation.requestCount === "number"
+        ? conversation.requestCount
+        : this.redis.zcard(this.key(`conv:${conversation.id}:requests`)),
+      conversation.lastRequestAt ?? this.getLastRequestAt(conversation.id)
+    ]);
+
+    return {
+      ...conversation,
+      messageCount,
+      toolCallCount,
+      ...(requestCount ? { requestCount } : {}),
+      ...(lastRequestAt ? { lastRequestAt } : {})
+    };
+  }
+
+  private async getMessageCount(conversationId: string): Promise<number> {
+    const listKey = this.key(`conv:${conversationId}:msgs`);
+    const count = await this.redis.llen(listKey);
+    return count;
+  }
+
+  private async getLastRequestAt(conversationId: string): Promise<string | undefined> {
+    const requestKey = this.key(`conv:${conversationId}:requests`);
+    const latest = await this.redis.zrevrange(requestKey, 0, 0, "WITHSCORES");
+    if (latest.length === 2) {
+      const score = Number(latest[1]);
+      if (Number.isFinite(score)) {
+        return new Date(score).toISOString();
+      }
+    }
+    return undefined;
+  }
+
+  private async countToolCalls(conversationId: string): Promise<number> {
+    const messages = await this.getMessages(conversationId);
+    return countToolCallsInMessages(messages);
   }
 
   private async findActiveConversationForToken(token: string, now: number): Promise<string | null> {

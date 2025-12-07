@@ -104,6 +104,24 @@ export class TokenStore {
     return token;
   }
 
+  async resolve(token: string): Promise<TokenInfo | null> {
+    const id = await this.redis.get(this.tokenKey(token));
+    if (!id) return null;
+    const data = await this.redis.hgetall(this.idKey(id));
+    if (!data || !data["id"] || data["status"] === "disabled") return null;
+    const name = data["name"];
+    const createdAt = data["createdAt"];
+    if (!name || !createdAt) return null;
+    const info: TokenInfo = {
+      id,
+      name,
+      status: (data["status"] as TokenStatus) ?? "active",
+      createdAt
+    };
+    if (data["lastUsedAt"]) info.lastUsedAt = data["lastUsedAt"];
+    return info;
+  }
+
   async update(id: string, updates: { name?: string; status?: TokenStatus }): Promise<TokenInfo | null> {
     const current = await this.redis.hgetall(this.idKey(id));
     if (!current || !current["id"]) return null;

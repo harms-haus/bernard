@@ -1,0 +1,125 @@
+<section class="conversation">
+  <div class="topbar">
+    <button pButton type="button" icon="pi pi-arrow-left" label="Back to history" (click)="back()" [text]="true"></button>
+    <div class="title">
+      <p class="eyebrow">Conversation</p>
+      <h1>{{ conversation()?.source || 'Conversation' }}</h1>
+      <p class="muted id">ID: {{ conversation()?.id }}</p>
+    </div>
+    <div class="status">
+      <div class="status-row">
+        <span class="status-light" [class.active]="isActive()"></span>
+        <p-tag [value]="isActive() ? 'Active' : 'Closed'" [severity]="isActive() ? 'success' : 'secondary'"></p-tag>
+      </div>
+      <p class="muted small">
+        Last request:
+        {{
+          (conversation()?.lastRequestAt || conversation()?.lastTouchedAt || conversation()?.startedAt) | date: 'short'
+        }}
+      </p>
+    </div>
+  </div>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <div class="messages" [class.loading]="loading()">
+    @if (loading()) {
+      <div class="skeleton" aria-hidden="true"></div>
+      <div class="skeleton" aria-hidden="true"></div>
+    } @else {
+      @if (!messages().length) {
+        <p class="muted">No messages yet.</p>
+      } @else {
+        @for (message of messages(); track message.id) {
+          <article
+            class="message"
+            [class.user]="message.role === 'user'"
+            [class.assistant]="message.role === 'assistant'"
+            [class.system]="message.role === 'system'"
+            [class.tool]="message.role === 'tool'"
+          >
+            <div class="message-header">
+              <span class="badge">{{ messageRole(message) }}</span>
+              <span class="muted">{{ message.createdAt | date: 'short' }}</span>
+              @if (message.tool_calls?.length) {
+                <span class="muted">Tool calls: {{ message.tool_calls?.length ?? 0 }}</span>
+              }
+            </div>
+            <pre class="content">{{ renderContent(message) }}</pre>
+          </article>
+        }
+      }
+    }
+  </div>
+
+  <div class="metadata">
+    <div class="panel">
+      <h3>Summary</h3>
+      <p>{{ conversation()?.summary || 'No summary yet.' }}</p>
+    </div>
+
+    <div class="panel grid">
+      <div>
+        <h4>Tags</h4>
+        @if (!conversation()?.tags?.length) {
+          <p class="muted">None</p>
+        } @else {
+          <div class="tag-list">
+            @for (tag of conversation()?.tags ?? []; track tag) {
+              <p-tag [value]="tag" severity="info"></p-tag>
+            }
+          </div>
+        }
+      </div>
+
+      <div>
+        <h4>Flags</h4>
+        @if (!conversation()?.flags) {
+          <p class="muted">None</p>
+        } @else {
+          <div class="flag-list">
+            <p-tag [value]="'Explicit'" [severity]="conversation()?.flags?.explicit ? 'danger' : 'success'"></p-tag>
+            <p-tag [value]="'Forbidden'" [severity]="conversation()?.flags?.forbidden ? 'danger' : 'success'"></p-tag>
+            @if (conversation()?.flags?.summaryError) {
+              <p-tag value="Summary error" severity="warning"></p-tag>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-row">
+          <span class="label">Models</span>
+          <span class="value">{{ (conversation()?.modelSet ?? ['n/a']).join(', ') }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Tokens</span>
+          <span class="value">{{ (conversation()?.tokenNames ?? ['Unknown']).join(', ') }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Places</span>
+          <span class="value">{{ (conversation()?.placeTags ?? ['n/a']).join(', ') }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Keywords</span>
+          <span class="value">{{ (conversation()?.keywords ?? ['n/a']).join(', ') }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Started</span>
+          <span class="value">{{ conversation()?.startedAt | date: 'short' }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Last touched</span>
+          <span class="value">{{ conversation()?.lastTouchedAt | date: 'short' }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="label">Close reason</span>
+          <span class="value">{{ conversation()?.closeReason || 'n/a' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+

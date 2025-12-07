@@ -15,6 +15,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/services/services.component').then((m) => m.ServicesComponent)
   },
   {
+    path: 'history/:id',
+    loadComponent: () =>
+      import('./features/history/conversation.component').then((m) => m.ConversationComponent)
+  },
+  {
     path: 'history',
     loadComponent: () => import('./features/history/history.component').then((m) => m.HistoryComponent)
   },

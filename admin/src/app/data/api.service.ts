@@ -4,12 +4,14 @@ import { delay, map, Observable, of } from 'rxjs';
 
 import { environment } from '../config/environment';
 import {
-  ActivationSummary,
   BernardStatus,
-  Conversation,
+  ConversationDetail,
+  ConversationDetailResponse,
+  ConversationListItem,
+  ConversationMessage,
   CreateTokenRequest,
   HistoryQuery,
-  Paginated,
+  HistoryListResponse,
   RecordKeeperStatus,
   ServiceConfig,
   Token,
@@ -28,7 +30,8 @@ import {
  * - DELETE /api/tokens/:id                  -> { removed: boolean }
  * - GET    /api/services                    -> ServiceConfig[]
  * - PUT    /api/services/:id                -> ServiceConfig (UpdateServiceRequest)
- * - GET    /api/history?search&limit&cursor -> Paginated<Conversation>
+ * - GET    /api/admin/history               -> HistoryListResponse
+ * - GET    /api/admin/history/:id           -> ConversationDetailResponse
  */
 export interface ApiClient {
   getStatus(): Observable<BernardStatus>;
@@ -39,7 +42,8 @@ export interface ApiClient {
   deleteToken(id: string): Observable<void>;
   listServices(): Observable<ServiceConfig[]>;
   updateService(id: string, body: UpdateServiceRequest): Observable<ServiceConfig>;
-  listHistory(query?: HistoryQuery): Observable<Paginated<Conversation>>;
+  listHistory(query?: HistoryQuery): Observable<HistoryListResponse>;
+  getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
 }
 
 export const API_CLIENT = new InjectionToken<ApiClient>('API_CLIENT');
@@ -110,14 +114,26 @@ class HttpApiClient implements ApiClient {
   listHistory(query?: HistoryQuery) {
     const params = new HttpParams({
       fromObject: {
-        search: query?.search ?? '',
         limit: query?.limit ? String(query.limit) : '',
-        cursor: query?.cursor ?? '',
-        status: query?.status ?? ''
+        includeOpen: query?.includeOpen === false ? 'false' : 'true',
+        includeClosed: query?.includeClosed === false ? 'false' : 'true'
       }
     });
 
-    return this.http.get<Paginated<Conversation>>(`${this.baseUrl}/history`, {
+    return this.http.get<HistoryListResponse>(`${this.baseUrl}/admin/history`, {
+      ...this.options(),
+      params
+    });
+  }
+
+  getConversation(id: string, messageLimit?: number) {
+    const params = new HttpParams({
+      fromObject: {
+        messageLimit: messageLimit ? String(messageLimit) : ''
+      }
+    });
+
+    return this.http.get<ConversationDetailResponse>(`${this.baseUrl}/admin/history/${id}`, {
       ...this.options(),
       params
     });
@@ -195,61 +211,126 @@ class MockApiClient implements ApiClient {
     }
   ];
 
-  private conversations: Conversation[] = [
+  private readonly conversationIds = {
+    active: this.createId(),
+    closed: this.createId()
+  };
+
+  private conversations: ConversationDetail[] = [
     {
-      id: this.createId(),
-      userLabel: 'Kitchen Display',
-      createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      tokenId: this.tokens[0]?.id,
+      id: this.conversationIds.active,
+      status: 'open',
       summary: 'Asked for weather and set a 10 minute timer.',
+      startedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      lastTouchedAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+      lastRequestAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
       messageCount: 6,
       toolCallCount: 2,
-      status: 'completed',
-      activations: [
-        {
-          id: this.createId(),
-          type: 'tool',
-          toolName: 'get_weather',
-          inputPreview: 'Weather in Seattle tomorrow',
-          outputPreview: 'High 68°F, low 54°F, light rain',
-          createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-          durationMs: 1200
-        },
-        {
-          id: this.createId(),
-          type: 'tool',
-          toolName: 'set_timer',
-          inputPreview: '10 minute timer',
-          outputPreview: 'Timer started',
-          createdAt: new Date(Date.now() - 3.8 * 60 * 60 * 1000).toISOString(),
-          durationMs: 300
-        }
-      ]
+      requestCount: 3,
+      tags: ['weather', 'timer'],
+      flags: { explicit: false, forbidden: false },
+      source: 'Home Assistant',
+      tokenNames: [this.tokens[0]?.name ?? 'Home Assistant'],
+      tokenIds: [this.tokens[0]?.id ?? 'tok-1'],
+      modelSet: ['openrouter/claude-3-sonnet'],
+      placeTags: ['kitchen'],
+      keywords: ['weather', 'timer']
     },
     {
-      id: this.createId(),
-      userLabel: 'Mobile',
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-      tokenId: this.tokens[1]?.id,
+      id: this.conversationIds.closed,
+      status: 'closed',
       summary: 'Looked up local coffee shops and asked for a summary.',
+      startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      lastTouchedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+      closedAt: new Date(Date.now() - 88 * 60 * 1000).toISOString(),
+      lastRequestAt: new Date(Date.now() - 88 * 60 * 1000).toISOString(),
       messageCount: 5,
       toolCallCount: 1,
-      status: 'completed',
-      activations: [
-        {
-          id: this.createId(),
-          type: 'tool',
-          toolName: 'web_search',
-          inputPreview: 'best coffee near capitol hill',
-          outputPreview: 'Found 3 options with hours and ratings',
-          createdAt: new Date(Date.now() - 100 * 60 * 1000).toISOString(),
-          durationMs: 2400
-        }
-      ]
+      requestCount: 2,
+      tags: ['search'],
+      flags: { explicit: false, forbidden: false },
+      source: 'Mobile Client',
+      tokenNames: [this.tokens[1]?.name ?? 'Mobile Client'],
+      tokenIds: [this.tokens[1]?.id ?? 'tok-2'],
+      modelSet: ['gpt-4o-mini'],
+      placeTags: ['seattle'],
+      keywords: ['coffee'],
+      closeReason: 'completed'
     }
   ];
+
+  private messages: Record<string, ConversationMessage[]> = {
+    [this.conversationIds.active]: [
+      {
+        id: this.createId(),
+        role: 'user',
+        content: 'What is the weather in Seattle tomorrow?',
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'assistant',
+        content: 'Let me check the forecast for Seattle tomorrow.',
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000 + 45_000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'tool',
+        content: { name: 'get_weather', args: { location: 'Seattle', date: 'tomorrow' } },
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000 + 60_000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'assistant',
+        content: 'High 68°F, low 54°F with light rain expected.',
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000 + 90_000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'user',
+        content: 'Great, set a 10 minute timer.',
+        createdAt: new Date(Date.now() - 3.8 * 60 * 60 * 1000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'assistant',
+        content: 'Timer started for 10 minutes.',
+        createdAt: new Date(Date.now() - 3.8 * 60 * 60 * 1000 + 45_000).toISOString()
+      }
+    ],
+    [this.conversationIds.closed]: [
+      {
+        id: this.createId(),
+        role: 'user',
+        content: 'Find me coffee shops near Capitol Hill.',
+        createdAt: new Date(Date.now() - 100 * 60 * 1000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'assistant',
+        content: 'Searching for nearby coffee shops with good ratings.',
+        createdAt: new Date(Date.now() - 99 * 60 * 1000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'tool',
+        content: { name: 'web_search', results: 3 },
+        createdAt: new Date(Date.now() - 99 * 60 * 1000 + 45_000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'assistant',
+        content: 'Found three options: Analog Coffee, Victrola, and Espresso Vivace.',
+        createdAt: new Date(Date.now() - 98 * 60 * 1000).toISOString()
+      },
+      {
+        id: this.createId(),
+        role: 'user',
+        content: 'Summarize the hours and location.',
+        createdAt: new Date(Date.now() - 97 * 60 * 1000).toISOString()
+      }
+    ]
+  };
 
   getStatus() {
     return of(this.status).pipe(delay(120));
@@ -325,21 +406,52 @@ class MockApiClient implements ApiClient {
   }
 
   listHistory(query?: HistoryQuery) {
-    const searchTerm = query?.search?.toLowerCase().trim() ?? '';
+    const includeOpen = query?.includeOpen ?? true;
+    const includeClosed = query?.includeClosed ?? true;
     const filtered = this.conversations.filter((conversation) => {
-      const matchesSearch = searchTerm.length
-        ? conversation.summary.toLowerCase().includes(searchTerm) ||
-          conversation.userLabel.toLowerCase().includes(searchTerm)
-        : true;
-      const matchesStatus = query?.status ? conversation.status === query.status : true;
-      return matchesSearch && matchesStatus;
+      if (conversation.status === 'open') return includeOpen;
+      if (conversation.status === 'closed') return includeClosed;
+      return true;
     });
 
-    const limit = query?.limit ?? 10;
+    const limit = query?.limit ?? filtered.length;
     const items = filtered.slice(0, limit);
-    const nextCursor = filtered.length > limit ? filtered[limit]?.id : undefined;
+    const activeCount = this.conversations.filter((c) => c.status === 'open').length;
+    const closedCount = this.conversations.filter((c) => c.status === 'closed').length;
 
-    return of({ items, nextCursor, total: filtered.length }).pipe(delay(140));
+    return of({ items, total: filtered.length, activeCount, closedCount }).pipe(delay(140));
+  }
+
+  getConversation(id: string, messageLimit?: number) {
+    const conversation = this.conversations.find((conv) => conv.id === id);
+    if (!conversation) {
+      return of({
+        conversation: {
+          id,
+          status: 'closed' as const,
+          summary: 'Conversation not found',
+          startedAt: new Date().toISOString(),
+          lastTouchedAt: new Date().toISOString(),
+          messageCount: 0,
+          toolCallCount: 0,
+          tags: [],
+          source: 'unknown',
+          tokenIds: [],
+          tokenNames: [],
+          lastRequestAt: new Date().toISOString()
+        },
+        messages: []
+      }).pipe(delay(80));
+    }
+
+    const messages = this.messages[id] ?? [];
+    const limitedMessages =
+      typeof messageLimit === 'number' && messageLimit > 0 ? messages.slice(-messageLimit) : messages;
+
+    return of({
+      conversation,
+      messages: limitedMessages
+    }).pipe(delay(120));
   }
 
   private createId() {

@@ -2,18 +2,12 @@
   <div class="section-header">
     <div>
       <h1>History</h1>
-      <p class="muted">Inspect conversations and tool activations.</p>
+      <p class="muted">Monitor active and recent conversations.</p>
     </div>
-    <div class="search">
-      <input
-        #searchBox
-        pInputText
-        type="search"
-        placeholder="Search conversations"
-        [value]="search()"
-        (input)="onSearch((searchBox.value || '').toString())"
-      />
-      <button pButton type="button" icon="pi pi-search" (click)="onSearch(searchBox.value)"></button>
+    <div class="actions">
+      <div class="pill success">Active: {{ stats().active }}</div>
+      <div class="pill muted">Total: {{ stats().total }}</div>
+      <button pButton type="button" icon="pi pi-refresh" label="Refresh" (click)="load()" [loading]="loading()"></button>
     </div>
   </div>
 
@@ -21,72 +15,50 @@
     <p class="error">{{ error() }}</p>
   }
 
-  <p-table [value]="conversations()" [loading]="loading()" responsiveLayout="stack">
+  <p-table [value]="conversations()" [loading]="loading()" responsiveLayout="stack" [rowHover]="true">
     <ng-template pTemplate="header">
       <tr>
-        <th></th>
+        <th>Status</th>
         <th>Source</th>
         <th>Summary</th>
-        <th>Status</th>
         <th>Messages</th>
         <th>Tool calls</th>
-        <th>Updated</th>
+        <th>Last request</th>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-convo>
-      <tr>
+      <tr
+        (click)="open(convo)"
+        (keydown.enter)="navigateFromKey($event, convo)"
+        (keydown.space)="navigateFromKey($event, convo)"
+        tabindex="0"
+        [class.active]="convo.status === 'open'"
+      >
         <td>
-          <button
-            pButton
-            type="button"
-            icon="pi pi-chevron-down"
-            (click)="toggle(convo.id)"
-            [text]="true"
-            [class.rotated]="expandedId() === convo.id"
-          ></button>
+          <div class="status-cell">
+            <span class="status-light" [class.active]="convo.status === 'open'"></span>
+            <span class="status-label">{{ statusLabel(convo.status) }}</span>
+          </div>
         </td>
-        <td>{{ convo.userLabel }}</td>
-        <td>{{ convo.summary }}</td>
-        <td><p-tag [value]="convo.status" [severity]="statusSeverity(convo.status)"></p-tag></td>
+        <td>
+          <div class="source">
+            <span class="source-name">{{ convo.source }}</span>
+            @if (convo.tokenNames.length > 1) {
+              <span class="muted">+{{ convo.tokenNames.length - 1 }} more</span>
+            }
+          </div>
+        </td>
+        <td>
+          <div class="summary">{{ convo.summary || 'No summary yet' }}</div>
+        </td>
         <td>{{ convo.messageCount }}</td>
         <td>{{ convo.toolCallCount }}</td>
-        <td>{{ convo.updatedAt | date: 'short' }}</td>
+        <td>{{ (convo.lastRequestAt || convo.lastTouchedAt || convo.startedAt) | date: 'short' }}</td>
       </tr>
-      @if (expandedId() === convo.id) {
-        <tr class="expand-row">
-          <td colspan="7">
-            <div class="activations">
-              <div class="activations-header">
-                <h4>Activations</h4>
-                <span class="muted">{{ convo.activations.length }} entries</span>
-              </div>
-              @if (!convo.activations.length) {
-                <p class="muted">No activations recorded.</p>
-              } @else {
-                @for (act of convo.activations; track act.id) {
-                  <div class="activation">
-                    <div class="row">
-                      <p-tag
-                        [value]="act.type === 'tool' ? act.toolName ?? 'tool' : 'model'"
-                        [severity]="act.type === 'tool' ? 'info' : 'secondary'"
-                      ></p-tag>
-                      <span class="muted">{{ act.createdAt | date: 'short' }}</span>
-                    </div>
-                    <p class="label">Input</p>
-                    <p class="mono">{{ act.inputPreview }}</p>
-                    <p class="label">Output</p>
-                    <p class="mono">{{ act.outputPreview }}</p>
-                  </div>
-                }
-              }
-            </div>
-          </td>
-        </tr>
-      }
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="7">No history yet.</td>
+        <td colspan="6">No history yet.</td>
       </tr>
     </ng-template>
   </p-table>
