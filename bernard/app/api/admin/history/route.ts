@@ -54,7 +54,11 @@ export async function GET(req: NextRequest) {
 
   try {
     await keeper.closeIfIdle();
-    const conversations = await keeper.listConversations({ limit, includeOpen, includeClosed });
+    const conversations = await keeper.listConversations({
+      includeOpen,
+      includeClosed,
+      ...(limit !== undefined ? { limit } : {})
+    });
 
     const tokenCache = new Map<string, { id: string; name: string }>();
 
@@ -82,27 +86,30 @@ export async function GET(req: NextRequest) {
 
       const source = tokenNames[0] ?? "Unknown token";
 
-      items.push({
+      const item: AdminConversation = {
         id: conversation.id,
         status: conversation.status,
-        summary: conversation.summary,
         startedAt: conversation.startedAt,
         lastTouchedAt: conversation.lastTouchedAt,
-        closedAt: conversation.closedAt,
         lastRequestAt: conversation.lastRequestAt ?? conversation.lastTouchedAt,
         messageCount: conversation.messageCount ?? 0,
         toolCallCount: conversation.toolCallCount ?? 0,
-        requestCount: conversation.requestCount,
         tags: conversation.tags ?? [],
-        flags: conversation.flags,
-        modelSet: conversation.modelSet,
-        placeTags: conversation.placeTags,
-        keywords: conversation.keywords,
-        closeReason: conversation.closeReason,
         source,
         tokenNames,
         tokenIds
-      });
+      };
+
+      if (conversation.summary !== undefined) item.summary = conversation.summary;
+      if (conversation.closedAt !== undefined) item.closedAt = conversation.closedAt;
+      if (conversation.flags !== undefined) item.flags = conversation.flags;
+      if (conversation.modelSet !== undefined) item.modelSet = conversation.modelSet;
+      if (conversation.placeTags !== undefined) item.placeTags = conversation.placeTags;
+      if (conversation.keywords !== undefined) item.keywords = conversation.keywords;
+      if (conversation.closeReason !== undefined) item.closeReason = conversation.closeReason;
+      if (conversation.requestCount !== undefined) item.requestCount = conversation.requestCount;
+
+      items.push(item);
     }
 
     const activeCount = items.filter((item) => item.status === "open").length;

@@ -37,11 +37,12 @@ function isAdmin(req: NextRequest) {
   return scheme?.toLowerCase() === "bearer" && token === adminKey;
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAdmin(req)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
 
+  const { id } = await params;
   const { searchParams } = new URL(req.url);
   const messageLimit = searchParams.get("messageLimit");
   const parsedLimit = messageLimit ? Number(messageLimit) : undefined;
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const tokens = new TokenStore(redis);
 
   try {
-    const result = await keeper.getConversationWithMessages(params.id, limit);
+    const result = await keeper.getConversationWithMessages(id, limit);
     if (!result) {
       return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
     }
@@ -74,31 +75,32 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const conversation: AdminConversationDetail = {
       id: result.conversation.id,
       status: result.conversation.status,
-      summary: result.conversation.summary,
       startedAt: result.conversation.startedAt,
       lastTouchedAt: result.conversation.lastTouchedAt,
-      closedAt: result.conversation.closedAt,
       lastRequestAt: result.conversation.lastRequestAt ?? result.conversation.lastTouchedAt,
       messageCount: result.conversation.messageCount ?? result.messages.length,
       toolCallCount: result.conversation.toolCallCount ?? 0,
-      requestCount: result.conversation.requestCount,
       tags: result.conversation.tags ?? [],
-      flags: result.conversation.flags,
-      modelSet: result.conversation.modelSet,
-      placeTags: result.conversation.placeTags,
-      keywords: result.conversation.keywords,
-      closeReason: result.conversation.closeReason,
       source,
       tokenNames,
       tokenIds
     };
+
+    if (result.conversation.summary !== undefined) conversation.summary = result.conversation.summary;
+    if (result.conversation.closedAt !== undefined) conversation.closedAt = result.conversation.closedAt;
+    if (result.conversation.flags !== undefined) conversation.flags = result.conversation.flags;
+    if (result.conversation.modelSet !== undefined) conversation.modelSet = result.conversation.modelSet;
+    if (result.conversation.placeTags !== undefined) conversation.placeTags = result.conversation.placeTags;
+    if (result.conversation.keywords !== undefined) conversation.keywords = result.conversation.keywords;
+    if (result.conversation.closeReason !== undefined) conversation.closeReason = result.conversation.closeReason;
+    if (result.conversation.requestCount !== undefined) conversation.requestCount = result.conversation.requestCount;
 
     return Response.json({
       conversation,
       messages: result.messages
     });
   } catch (err) {
-    console.error(`Failed to load conversation ${params.id}`, err);
+    console.error(`Failed to load conversation ${id}`, err);
     return new Response(JSON.stringify({ error: "Unable to load conversation" }), { status: 500 });
   }
 }

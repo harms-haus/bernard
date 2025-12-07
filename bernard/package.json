@@ -8,8 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "tests": "node --test --loader tsx \"tests/**/*.test.ts\"",
-    "tests:coverage": "node --test --experimental-test-coverage --loader tsx \"tests/**/*.test.ts\""
+    "tests": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "tests:coverage": "node --experimental-test-coverage --import tsx --test \"tests/**/*.test.ts\""
   },
   "keywords": [
     "langgraph",
