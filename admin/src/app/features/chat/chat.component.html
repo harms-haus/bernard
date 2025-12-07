@@ -80,6 +80,7 @@
         autoResize="true"
         placeholder="Ask Bernard to check status, set a timer, or search the web…"
         [formControl]="form.controls.message"
+        (keydown)="handleComposerKeydown($event)"
       ></textarea>
       <button pButton type="submit" label="Send" icon="pi pi-send" [disabled]="!canSend()"></button>
     </div>

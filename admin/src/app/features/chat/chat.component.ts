@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
@@ -39,15 +40,34 @@ export class ChatComponent {
     message: ['', Validators.required]
   });
 
-  protected readonly endpointLabel = computed(() => this.form.controls.endpoint.value);
-  protected readonly canSend = computed(
-    () => !this.sending() && Boolean(this.form.controls.message.value.trim())
-  );
+  private readonly endpointValue = toSignal(this.form.controls.endpoint.valueChanges, {
+    initialValue: this.form.controls.endpoint.value
+  });
+  private readonly messageValue = toSignal(this.form.controls.message.valueChanges, {
+    initialValue: this.form.controls.message.value
+  });
+
+  protected readonly endpointLabel = computed(() => (this.endpointValue() ?? '').trim());
+  protected readonly canSend = computed(() => {
+    const message = (this.messageValue() ?? '').trim();
+    return !this.sending() && Boolean(message);
+  });
 
   protected resetConversation() {
     this.messages.set([]);
     this.conversationId.set(this.createId());
     this.error.set(null);
+  }
+
+  protected handleComposerKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    if (this.canSend()) {
+      void this.send();
+    }
   }
 
   protected async send() {
@@ -131,7 +151,7 @@ export class ChatComponent {
     });
 
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      await this.throwResponseError(response);
     }
     if (!response.body) {
       throw new Error('Missing response body from Bernard');
@@ -174,6 +194,12 @@ export class ChatComponent {
 
     try {
       const chunk = JSON.parse(payload);
+      const errorMessage = this.extractErrorMessage(chunk);
+      if (errorMessage) {
+        this.error.set(errorMessage);
+        this.updateAssistant(assistantId, `Request failed: ${errorMessage}`, false);
+        return;
+      }
       const content = this.extractContent(chunk);
       if (content !== null) {
         this.updateAssistant(assistantId, content, true);
@@ -181,6 +207,44 @@ export class ChatComponent {
     } catch {
       // ignore malformed payloads
     }
+  }
+
+  private async throwResponseError(response: Response): Promise<never> {
+    const statusText = `Request failed with status ${response.status}`;
+    const raw = await response.text();
+
+    try {
+      const parsed = JSON.parse(raw) as { error?: unknown; reason?: unknown; message?: unknown };
+      const reason =
+        typeof parsed.reason === 'string'
+          ? parsed.reason
+          : typeof parsed.error === 'string'
+            ? parsed.error
+            : typeof parsed.message === 'string'
+              ? parsed.message
+              : null;
+
+      throw new Error(reason ?? statusText);
+    } catch {
+      throw new Error(raw || statusText);
+    }
+  }
+
+  private extractErrorMessage(chunk: unknown): string | null {
+    if (!chunk || typeof chunk !== 'object') {
+      return null;
+    }
+
+    const reason = (chunk as { reason?: unknown }).reason;
+    const error = (chunk as { error?: unknown }).error;
+
+    if (typeof reason === 'string') {
+      return reason;
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    return null;
   }
 
   private assistantContent(id: string) {
@@ -191,6 +255,11 @@ export class ChatComponent {
   private extractContent(chunk: unknown): string | null {
     if (!chunk || typeof chunk !== 'object') {
       return null;
+    }
+
+    const topLevel = (chunk as { content?: unknown }).content;
+    if (typeof topLevel === 'string') {
+      return topLevel;
     }
 
     const data = (chunk as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;

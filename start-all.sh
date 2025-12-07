@@ -36,6 +36,7 @@ ensure_redis() {
   echo "Ensuring redis on ${REDIS_HOST}:${REDIS_PORT}..."
   if ping_redis; then
     echo "Redis already running."
+    REDIS_CONTAINER="bernard-redis"
     return
   fi
 
@@ -44,9 +45,24 @@ ensure_redis() {
     exit 1
   fi
 
-  docker rm -f bernard-redis >/dev/null 2>&1 || true
-  REDIS_CONTAINER=$(docker run -d --name bernard-redis -p "${REDIS_PORT}:6379" redis:7)
-  echo "Started redis container: ${REDIS_CONTAINER}"
+  local container_name="bernard-redis"
+  local volume_name="bernard-redis-data"
+
+  if docker ps -a --format '{{.Names}}' | grep -Fxq "${container_name}"; then
+    echo "Starting existing redis container ${container_name}..."
+    docker start "${container_name}" >/dev/null
+  else
+    echo "Creating redis container ${container_name} with volume ${volume_name}..."
+    docker run -d \
+      --name "${container_name}" \
+      -p "${REDIS_PORT}:6379" \
+      -v "${volume_name}:/data" \
+      redis:7 \
+      --save 60 1 --appendonly yes >/dev/null
+  fi
+
+  REDIS_CONTAINER="${container_name}"
+  echo "Redis container ready: ${REDIS_CONTAINER}"
 
   retries=40
   until ping_redis; do

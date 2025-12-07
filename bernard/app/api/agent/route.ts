@@ -32,9 +32,86 @@ type AgentGraph = {
   invoke: (input: { messages: BaseMessage[] }) => Promise<GraphResult>;
   stream: (
     input: { messages: BaseMessage[] },
-    options: { streamMode: "updates" }
+    options: { streamMode: "messages" | "updates" }
   ) => AsyncIterable<GraphStreamChunk>;
 };
+
+function findMessages(value: unknown): BaseMessage[] | null {
+  if (!value || typeof value !== "object") return null;
+
+  if (Array.isArray(value)) {
+    const looksLikeMessages = value.every(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        "content" in (item as Record<string, unknown>)
+    );
+    return looksLikeMessages ? (value as BaseMessage[]) : null;
+  }
+
+  for (const nested of Object.values(value)) {
+    const found = findMessages(nested);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function contentFromChunkPayload(chunk: GraphStreamChunk | Record<string, unknown> | null): string | null {
+  if (!chunk || typeof chunk !== "object") return null;
+  const topLevel = (chunk as { content?: unknown }).content;
+  if (typeof topLevel === "string") return topLevel;
+  const data = (chunk as { data?: { content?: unknown; text?: unknown } }).data;
+  if (data) {
+    if (typeof data.content === "string") return data.content;
+    if (typeof data.text === "string") return data.text;
+  }
+  return null;
+}
+
+function contentFromMessages(messages: BaseMessage[]): string | null {
+  if (!messages.length) return null;
+  const last = messages[messages.length - 1] as { content?: unknown };
+  const content = last?.content;
+
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const joined = content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part && typeof (part as { text?: unknown }).text === "string") {
+          return (part as { text: string }).text;
+        }
+        return "";
+      })
+      .join("");
+    return joined || null;
+  }
+  if (content && typeof content === "object" && "text" in (content as Record<string, unknown>)) {
+    const text = (content as { text?: unknown }).text;
+    return typeof text === "string" ? text : null;
+  }
+  return null;
+}
+
+function extractChunkText(chunk: unknown): string {
+  if (!chunk) return "";
+  if (Array.isArray(chunk)) {
+    return chunk.map((part) => extractChunkText(part)).filter(Boolean).join("");
+  }
+  if (typeof chunk === "object") {
+    const obj = chunk as Record<string, unknown>;
+    if (typeof obj["content"] === "string") return obj["content"] as string;
+    const kwargs = obj["kwargs"] as Record<string, unknown> | undefined;
+    if (kwargs && typeof kwargs["content"] === "string") return kwargs["content"] as string;
+    const data = obj["data"] as Record<string, unknown> | undefined;
+    if (data) {
+      if (typeof data["content"] === "string") return data["content"] as string;
+      if (typeof data["text"] === "string") return data["text"] as string;
+    }
+  }
+  return "";
+}
 
 function extractMessagesFromChunk(chunk: GraphStreamChunk): BaseMessage[] | null {
   const data = chunk.data;
@@ -56,6 +133,29 @@ function bearerToken(req: NextRequest) {
 function isRateLimit(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /429/.test(msg) || /rate limit/i.test(msg);
+}
+
+function isAsyncIterable<T = unknown>(value: unknown): value is AsyncIterable<T> {
+  return Boolean(value) && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function";
+}
+
+function describeError(err: unknown, fallbackStatus = 500) {
+  const statusCandidate = (err as { status?: unknown })?.status;
+  const status = typeof statusCandidate === "number" ? statusCandidate : fallbackStatus;
+
+  const nestedMessage = (err as { error?: { message?: unknown } })?.error?.message;
+  const message =
+    typeof nestedMessage === "string"
+      ? nestedMessage
+      : typeof (err as { message?: unknown })?.message === "string"
+        ? (err as { message: string }).message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+
+  const errorType = err instanceof Error ? err.name : "error";
+
+  return { status, reason: message, errorType };
 }
 
 export async function POST(req: NextRequest) {
@@ -148,30 +248,86 @@ export async function POST(req: NextRequest) {
         latencyMs: Date.now() - requestStart,
         errorType: err instanceof Error ? err.name : "error"
       });
-      return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+      const { status, reason } = describeError(err);
+      return new Response(JSON.stringify({ error: "Agent request failed", reason }), {
+        status
+      });
     }
   }
 
-  const iterator: AsyncIterable<GraphStreamChunk> = graph.stream(
-    { messages: inputMessages },
-    { streamMode: "updates" as const }
-  );
+  let iterator: AsyncIterable<GraphStreamChunk>;
+  try {
+    iterator = await graph.stream({ messages: inputMessages }, { streamMode: "messages" as const });
+  } catch (err) {
+    if (isRateLimit(err)) {
+      await keeper.recordRateLimit(token, model);
+    }
+    const { status, reason, errorType } = describeError(err);
+    await keeper.endTurn(turnId, {
+      status: "error",
+      latencyMs: Date.now() - requestStart,
+      errorType
+    });
+    return new Response(JSON.stringify({ error: "Agent request failed", reason }), { status });
+  }
+  if (!isAsyncIterable(iterator)) {
+    const err = new Error("Agent stream is unavailable");
+    await keeper.endTurn(turnId, {
+      status: "error",
+      latencyMs: Date.now() - requestStart,
+      errorType: err.name
+    });
+    return new Response(JSON.stringify({ error: "Agent request failed", reason: err.message }), {
+      status: 500
+    });
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
       let latestMessages: BaseMessage[] | null = null;
+      let latestContent: string | null = null;
       try {
         for await (const chunk of iterator) {
-          const maybeMessages = extractMessagesFromChunk(chunk);
+          if (process.env["DEBUG_STREAM"] === "1") {
+            console.info("agent stream chunk", JSON.stringify(chunk));
+          }
+          const maybeMessages =
+            extractMessagesFromChunk(chunk) ?? findMessages((chunk as { data?: unknown }).data);
           if (maybeMessages) {
             latestMessages = maybeMessages;
+            const content = contentFromMessages(maybeMessages);
+            if (content !== null) {
+              latestContent = content;
+            }
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+
+          const chunkDelta = extractChunkText(chunk);
+          if (chunkDelta) {
+            latestContent = (latestContent ?? "") + chunkDelta;
+          }
+
+          const chunkContent = contentFromChunkPayload(chunk);
+          if (chunkContent !== null && !chunkDelta) {
+            latestContent = chunkContent;
+          }
+
+          const basePayload =
+            Array.isArray(chunk) || typeof chunk !== "object" || chunk === null
+              ? { chunk }
+              : chunk;
+          const payload =
+            latestContent !== null ? { ...basePayload, content: latestContent } : basePayload;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
         }
 
         if (latestMessages && latestMessages.length > inputMessages.length) {
           const newMessages = latestMessages.slice(inputMessages.length);
           await keeper.appendMessages(conversationId, newMessages);
+        }
+
+        const finalContent = contentFromMessages(latestMessages ?? []) ?? latestContent;
+        if (finalContent) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: finalContent })}\n\n`));
         }
 
         await keeper.completeRequest(requestId, Date.now() - requestStart);
@@ -191,7 +347,10 @@ export async function POST(req: NextRequest) {
           latencyMs: Date.now() - requestStart,
           errorType: err instanceof Error ? err.name : "error"
         });
-        controller.error(err);
+        const { status, reason } = describeError(err);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Agent stream failed", reason, status })}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
       }
     }
   });
