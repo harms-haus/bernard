@@ -110,6 +110,22 @@ function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage | null {
   return null;
 }
 
+function hasSystemMessage(messages: BaseMessage[]): boolean {
+  return messages.some((message) => (message as { _getType?: () => string })._getType?.() === "system");
+}
+
+function newInboundMessages(messages: BaseMessage[]): BaseMessage[] {
+  let lastAssistantIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const type = (messages[i] as { _getType?: () => string })._getType?.();
+    if (type === "ai") {
+      lastAssistantIndex = i;
+      break;
+    }
+  }
+  return messages.slice(lastAssistantIndex + 1);
+}
+
 function extractChunkText(chunk: unknown): string {
   if (!chunk) return "";
   if (Array.isArray(chunk)) {
@@ -256,7 +272,12 @@ export async function POST(req: NextRequest) {
   if (body.conversationId) requestOpts.conversationId = body.conversationId;
   const { requestId, conversationId } = await keeper.startRequest(token, responseModel, requestOpts);
 
-  await keeper.appendMessages(conversationId, inputMessages);
+  const inputHasSystem = hasSystemMessage(inputMessages);
+  const inboundMessages = newInboundMessages(inputMessages);
+  if (inboundMessages.length) {
+    await keeper.appendMessages(conversationId, inboundMessages);
+  }
+  const responseBaseIndex = inputMessages.length + (inputHasSystem ? 0 : 1);
   const turnId = await keeper.startTurn(requestId, conversationId, token, responseModel);
 
   const graph = buildGraph({
@@ -277,7 +298,8 @@ export async function POST(req: NextRequest) {
       const result = await graph.invoke({ messages: inputMessages });
       const allMessages = result.messages ?? inputMessages;
       if (allMessages?.length) {
-        const newMessages = allMessages.slice(inputMessages.length);
+        const baseIndex = Math.min(responseBaseIndex, allMessages.length);
+        const newMessages = allMessages.slice(baseIndex);
         if (newMessages.length) {
           await keeper.appendMessages(conversationId, newMessages);
         }
@@ -405,7 +427,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (latestMessages && latestMessages.length > inputMessages.length) {
-          const newMessages = latestMessages.slice(inputMessages.length);
+          const baseIndex = Math.min(responseBaseIndex, latestMessages.length);
+          const newMessages = latestMessages.slice(baseIndex);
           await keeper.appendMessages(conversationId, newMessages);
         }
 

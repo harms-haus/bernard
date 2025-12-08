@@ -17,13 +17,21 @@ type ToolCall = {
   function: { name: string; arguments: string };
 };
 
+type LegacyFunctionCall = {
+  name: string;
+  arguments: unknown;
+};
+
 export type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: string | Array<{ type: string; text?: string }> | null;
   name?: string;
   tool_call_id?: string;
   tool_calls?: ToolCall[];
+  function_call?: LegacyFunctionCall;
 };
+
+type LangGraphToolCall = NonNullable<AIMessage["tool_calls"]>[number];
 
 export type AgentContext = {
   recordKeeper: RecordKeeper;
@@ -767,17 +775,46 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
       case "user":
         return new HumanMessage({ content });
       case "assistant": {
-        const toolCalls =
-          msg.tool_calls?.map((call) => ({
-            id: call.id,
-            type: "tool_call",
-            function: {
+        const toolCalls: AIMessage["tool_calls"] = [];
+
+        if (Array.isArray(msg.tool_calls)) {
+          for (const call of msg.tool_calls) {
+            const rawArgs = call.function.arguments;
+            const parsedArgs = parseToolInput(rawArgs);
+            const argsObject = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+
+            toolCalls.push({
+              id: call.id,
+              type: "tool_call",
               name: call.function.name,
-              arguments: call.function.arguments
+              args: argsObject as Record<string, unknown>,
+              function: {
+                name: call.function.name,
+                arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
+              }
+            } as LangGraphToolCall);
+          }
+        }
+
+        if (msg.function_call) {
+          const rawArgs = msg.function_call.arguments;
+          const parsedArgs = parseToolInput(rawArgs);
+          const argsObject = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+
+          toolCalls.push({
+            id: msg.function_call.name ?? "function_call",
+            type: "tool_call",
+            name: msg.function_call.name,
+            args: argsObject as Record<string, unknown>,
+            function: {
+              name: msg.function_call.name,
+              arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
             }
-          })) as AIMessage["tool_calls"] | undefined;
+          } as LangGraphToolCall);
+        }
+
         const aiFields: AIMessageFields = { content };
-        if (toolCalls && toolCalls.length) {
+        if (toolCalls.length) {
           (aiFields as { tool_calls?: AIMessage["tool_calls"] }).tool_calls = toolCalls;
         }
         return new AIMessage(aiFields);

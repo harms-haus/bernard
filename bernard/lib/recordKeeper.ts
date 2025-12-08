@@ -190,6 +190,14 @@ function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord
   return "role" in msg && "createdAt" in msg;
 }
 
+function mapMessageRole(type: string | undefined): MessageRecord["role"] {
+  if (type === "ai" || type === "assistant") return "assistant";
+  if (type === "human" || type === "user") return "user";
+  if (type === "system") return "system";
+  if (type === "tool") return "tool";
+  return "user";
+}
+
 export class RecordKeeper {
   private readonly namespace: string;
   private readonly metricsNamespace: string;
@@ -814,7 +822,7 @@ export class RecordKeeper {
     }
 
     const base = msg as MessageWithDetails;
-    const role = base._getType() as MessageRecord["role"];
+    const role = mapMessageRole(base._getType?.());
     const content = normalizeMessageContent(base.content);
     const toolCallId = base.tool_call_id ?? base.name;
     const toolCalls = base.tool_calls;
