@@ -323,12 +323,8 @@ function validateToolCalls(toolCalls: ToolCallRecord[], allowedTools: Set<string
       (call as { input?: unknown }).input;
 
     const parsedArgs = parseToolInput(argsRaw);
-    if (parsedArgs !== undefined && !isRecord(parsedArgs)) {
-      invalid.push({ call, reason: `Tool "${name}" arguments must be an object` });
-      continue;
-    }
-
-    const normalizedArgs = parsedArgs === undefined ? {} : (parsedArgs as Record<string, unknown>);
+    const normalizedArgs =
+      parsedArgs === undefined ? {} : isRecord(parsedArgs) ? parsedArgs : ({ value: parsedArgs } as Record<string, unknown>);
     const normalizedCall: ToolCallRecord = {
       ...call,
       id,
@@ -506,22 +502,12 @@ async function runToolCalls(
       });
     }
 
-    try {
-      const result = await tool.invoke(normalizedArgs);
-      return new ToolMessage({
-        tool_call_id: toolCallId,
-        name,
-        content: typeof result === "string" ? result : safeStringify(result)
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return new ToolMessage({
-        tool_call_id: toolCallId,
-        name,
-        status: "error" as any,
-        content: `Error: ${message}`
-      });
-    }
+    const result = await tool.invoke(normalizedArgs);
+    return new ToolMessage({
+      tool_call_id: toolCallId,
+      name,
+      content: typeof result === "string" ? result : safeStringify(result)
+    });
   });
 
   return Promise.all(executions);
@@ -622,7 +608,7 @@ function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = base
       ({
         name: t.name,
         description: t.description,
-        ...(t.schema ? { schema: t.schema } : {})
+        ...(t.schema ? { schema: t.schema } : { schema: z.any().default({}) })
       } satisfies Parameters<typeof toolFactory>[1])
     )
   );
@@ -1030,6 +1016,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       toolAvailabilityMessage
     );
     let responded = false;
+    let sawToolExecution = false;
     let forcedReason: string | null = null;
     let lastToolCallsSignature: string | null = null;
     let identicalToolCallStreak = 0;
@@ -1077,6 +1064,11 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       }
 
       if (wantsRespond || runnableCalls.length === 0 || forcedReason) {
+        if (!forcedReason && !wantsRespond && runnableCalls.length === 0 && sawToolExecution) {
+          await ctx.recordKeeper.recordToolResult(ctx.turnId, "respond", { ok: true, latencyMs: 0 });
+          responded = true;
+          break;
+        }
         const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
         messages = [...messages, responseMessage];
         await onUpdate(messages);
@@ -1085,6 +1077,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       }
 
       const toolMessages = await runToolCalls(runnableCalls, toolMap);
+      sawToolExecution = true;
       messages = [...messages, ...toolMessages];
       await onUpdate(messages);
 
