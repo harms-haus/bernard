@@ -70,7 +70,9 @@ export class ConversationComponent {
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
   readonly expandedToolCalls = signal<Set<string>>(new Set());
-  readonly expandedMessages = signal<Set<string>>(new Set());
+  readonly textOnlyMessages = signal<Set<string>>(new Set());
+  readonly contextExpanded = signal<Set<string>>(new Set());
+  readonly resultCollapsed = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -165,6 +167,54 @@ export class ConversationComponent {
 
   isToolCallExpanded(callId: string) {
     return this.expandedToolCalls().has(callId);
+  }
+
+  toggleTextOnly(id: string) {
+    this.textOnlyMessages.update((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  isTextOnly(id: string) {
+    return this.textOnlyMessages().has(id);
+  }
+
+  toggleContextSection(messageId: string) {
+    this.contextExpanded.update((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  }
+
+  isContextExpanded(messageId: string) {
+    return this.contextExpanded().has(messageId);
+  }
+
+  toggleResultSection(messageId: string) {
+    this.resultCollapsed.update((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  }
+
+  isResultCollapsed(messageId: string) {
+    return this.resultCollapsed().has(messageId);
   }
 
   toolCallLabel(call: ToolCall) {
@@ -323,25 +373,6 @@ export class ConversationComponent {
 
   rawTraceEntry(entry: TraceEntry): string {
     return this.safeStringify(entry.raw);
-  }
-
-  toggleMessage(event: Event, id: string) {
-    if (event.target instanceof HTMLElement && event.target.closest('button, a')) {
-      return;
-    }
-    this.expandedMessages.update((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
-  isMessageExpanded(id: string) {
-    return this.expandedMessages().has(id);
   }
 
   private renderValue(content: unknown): string {

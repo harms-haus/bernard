@@ -712,7 +712,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       model: responseModelName,
       apiKey,
       configuration: { baseURL },
-      temperature: 0.2
+      temperature: 0.5
     });
 
   const { ready: verifiedTools, unavailable: unavailableTools } = evaluateToolAvailability(
