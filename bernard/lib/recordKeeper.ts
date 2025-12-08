@@ -245,11 +245,14 @@ function contentToText(content: unknown): string {
     return safeStringify(content);
   }
   if (content === null || content === undefined) return "";
-  return String(content);
+  return safeStringify(content);
 }
 
 function toToolCallEntry(raw: unknown): ToolCallEntry {
-  if (!raw || typeof raw !== "object") return { name: String(raw ?? "") };
+  if (!raw || typeof raw !== "object") {
+    const name = typeof raw === "string" ? raw : safeStringify(raw ?? "");
+    return { name };
+  }
   const tool = raw as ToolCallEntry;
   const normalized: ToolCallEntry = {};
   if (tool.id) normalized.id = tool.id;

@@ -20,7 +20,7 @@ const makeNextRequest = (url: string, body: unknown, headers: Record<string, str
 };
 
 test("models list only exposes bernard-v1", async () => {
-  const res = await listModels();
+  const res = listModels();
   const json = await res.json();
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(json.data));
@@ -29,13 +29,13 @@ test("models list only exposes bernard-v1", async () => {
 });
 
 test("models/:id returns 404 for unknown", async () => {
-  const res = await getModel(new Request("http://localhost/api/v1/models/other"), { params: { id: "other" } });
+  const res = getModel(new Request("http://localhost/api/v1/models/other"), { params: { id: "other" } });
   assert.equal(res.status, 404);
 });
 
 test("embeddings and moderations return 501", async () => {
-  const emb = await embeddingsPost();
-  const mod = await moderationsPost();
+  const emb = embeddingsPost();
+  const mod = moderationsPost();
   assert.equal(emb.status, 501);
   assert.equal(mod.status, 501);
 });

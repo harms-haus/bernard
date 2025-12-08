@@ -27,7 +27,7 @@ function resolveSearchConfig(): SearchConfigResult {
   try {
     const parsedUrl = new URL(rawUrl);
     return { ok: true, apiKey, apiUrl: parsedUrl.toString() };
-  } catch (_err) {
+  } catch {
     return { ok: false, reason: "Invalid SEARCH_API_URL (must be an absolute URL)." };
   }
 }

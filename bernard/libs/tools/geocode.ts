@@ -41,6 +41,10 @@ type NominatimPlace = {
   address?: Address;
 };
 
+function isNominatimPlace(value: unknown): value is NominatimPlace {
+  return typeof value === "object" && value !== null;
+}
+
 function normalizeLabel(place: NominatimPlace): string {
   const address = place.address;
   const locality = address?.city ?? address?.town ?? address?.village ?? address?.hamlet;
@@ -92,8 +96,8 @@ const geocodeToolImpl = tool(
       return `Geocoding failed: ${res.status} ${res.statusText} ${body}`;
     }
 
-    const data = (await safeJson(res)) as NominatimPlace[] | unknown;
-    const places = Array.isArray(data) ? data : [];
+    const data = await safeJson(res);
+    const places = Array.isArray(data) ? data.filter(isNominatimPlace) : [];
     if (!places.length) return "No locations found.";
 
     const summary = places

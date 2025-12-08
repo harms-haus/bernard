@@ -10,7 +10,6 @@ import {
   findLastAssistantMessage,
   isBernardModel,
   mapCompletionPrompt,
-  safeStringify,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
 import { buildGraph } from "@/lib/agent";

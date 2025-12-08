@@ -371,7 +371,6 @@ export async function POST(req: NextRequest) {
       let latestMessages: BaseMessage[] | null = null;
       let latestContent: string | null = null;
       let streamedContent = "";
-      let started = false;
       try {
         // Emit initial assistant role delta for OpenAI-compatible streams
         controller.enqueue(
@@ -383,7 +382,6 @@ export async function POST(req: NextRequest) {
             )}\n\n`
           )
         );
-        started = true;
 
         for await (const chunk of iterator) {
           if (process.env["DEBUG_STREAM"] === "1") {

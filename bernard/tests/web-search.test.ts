@@ -118,7 +118,13 @@ void test(
 
     const firstCall = calls[0];
     assert.ok(firstCall);
-    const calledUrl = new URL(String(firstCall.input));
+    const rawInput = firstCall.input;
+    const calledUrl =
+      typeof rawInput === "string"
+        ? new URL(rawInput)
+        : rawInput instanceof URL
+          ? rawInput
+          : new URL((rawInput as Request).url);
     assert.equal(calledUrl.searchParams.get("q"), "hello world");
     assert.equal(calledUrl.searchParams.get("count"), "2");
 

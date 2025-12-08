@@ -695,10 +695,8 @@ test("intent and response prompts stay separated", async () => {
 
   class FakeIntentModel {
     bindTools() {
-      let call = 0;
       return {
         async invoke(messages: any[]) {
-          call += 1;
           const systems = messages
             .filter((m: any) => m._getType?.() === "system")
             .map((m: any) => m.content)

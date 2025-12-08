@@ -18,6 +18,7 @@ import {
 } from "@/app/api/v1/_lib/openai";
 import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
+import type { OpenAIMessage } from "@/lib/agent";
 import { ChatOpenAI } from "@langchain/openai";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "@/lib/models";
 
@@ -25,7 +26,7 @@ export const runtime = "nodejs";
 
 type ChatCompletionBody = {
   model?: string;
-  messages: Array<Record<string, unknown>>;
+  messages: OpenAIMessage[];
   stream?: boolean;
   stream_options?: { include_usage?: boolean };
   temperature?: number;
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
 
   let inputMessages: BaseMessage[];
   try {
-    inputMessages = mapChatMessages(body.messages as any);
+    inputMessages = mapChatMessages(body.messages);
   } catch (err) {
     return new NextResponse(
       JSON.stringify({ error: "Invalid messages", reason: err instanceof Error ? err.message : String(err) }),
@@ -201,7 +202,6 @@ export async function POST(req: NextRequest) {
       let latestMessages: BaseMessage[] | null = null;
       let streamedContent = "";
       let usageChunk: Record<string, unknown> | null = null;
-      let sentInitialRole = false;
 
       const sendChunk = (payload: Record<string, unknown>) => {
         controller.enqueue(
@@ -225,7 +225,6 @@ export async function POST(req: NextRequest) {
 
       // initial assistant role
       sendDelta({ role: "assistant" });
-      sentInitialRole = true;
 
       try {
         for await (const chunk of iterator) {

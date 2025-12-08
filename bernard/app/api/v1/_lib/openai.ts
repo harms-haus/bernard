@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { ConversationSummaryService } from "@/lib/conversationSummary";
 import { RecordKeeper } from "@/lib/recordKeeper";
@@ -6,7 +6,7 @@ import { TokenStore } from "@/lib/tokenStore";
 import { getRedis } from "@/lib/redis";
 import { getPrimaryModel } from "@/lib/models";
 import type { BaseMessage } from "@langchain/core/messages";
-import { AIMessage, SystemMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
 
 export const BERNARD_MODEL_ID = "bernard-v1";
@@ -202,7 +202,7 @@ export function summarizeToolOutputs(messages: BaseMessage[]) {
     .filter((m) => (m as { _getType?: () => string })._getType?.() === "tool")
     .map((m) => {
       const id = (m as { tool_call_id?: string }).tool_call_id ?? "tool_call";
-      const content = contentFromMessage(m as BaseMessage) ?? "";
+      const content = contentFromMessage(m) ?? "";
       return { id, content };
     });
 }

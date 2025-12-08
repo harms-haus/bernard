@@ -55,7 +55,13 @@ void test("get_weather_current returns a formatted snapshot", { timeout: TEST_TI
 
   const firstCall = calls[0];
   assert.ok(firstCall);
-  const url = new URL(String(firstCall.input));
+  const rawInput = firstCall.input;
+  const url =
+    typeof rawInput === "string"
+      ? new URL(rawInput)
+      : rawInput instanceof URL
+        ? rawInput
+        : new URL((rawInput as Request).url);
   assert.equal(url.searchParams.get("temperature_unit"), "fahrenheit");
   assert.match(output, /Current @ 2024-04-01T12:00/);
   assert.match(output, /Temp 68.0°F/);
