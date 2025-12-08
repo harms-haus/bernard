@@ -31,10 +31,10 @@
 
 .source-name {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color, #e2e8f0);
 }
 
 .summary {
-  color: #1f2937;
+  color: var(--text-secondary, #cbd5e1);
   max-width: 520px;
 }

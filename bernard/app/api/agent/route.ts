@@ -370,6 +370,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       let latestMessages: BaseMessage[] | null = null;
       let latestContent: string | null = null;
+      let streamedContent = "";
       let started = false;
       try {
         // Emit initial assistant role delta for OpenAI-compatible streams
@@ -399,7 +400,8 @@ export async function POST(req: NextRequest) {
 
           const chunkDelta = extractChunkText(chunk);
           if (chunkDelta) {
-            latestContent = (latestContent ?? "") + chunkDelta;
+            streamedContent += chunkDelta;
+            latestContent = streamedContent;
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify(
@@ -413,16 +415,25 @@ export async function POST(req: NextRequest) {
 
           const chunkContent = contentFromChunkPayload(chunk);
           if (chunkContent !== null && !chunkDelta) {
-            latestContent = chunkContent;
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify(
-                  chunkEnvelope({
-                    choices: [{ index: 0, delta: { content: chunkContent }, finish_reason: null }]
-                  })
-                )}\n\n`
-              )
-            );
+            const incremental =
+              chunkContent.startsWith(streamedContent) && chunkContent.length >= streamedContent.length
+                ? chunkContent.slice(streamedContent.length)
+                : chunkContent;
+            if (incremental) {
+              streamedContent += incremental;
+              latestContent = chunkContent;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify(
+                    chunkEnvelope({
+                      choices: [{ index: 0, delta: { content: incremental }, finish_reason: null }]
+                    })
+                  )}\n\n`
+                )
+              );
+            } else {
+              latestContent = chunkContent;
+            }
           }
         }
 
@@ -434,6 +445,10 @@ export async function POST(req: NextRequest) {
 
         const finalAssistant = latestMessages ? findLastAssistantMessage(latestMessages) : null;
         const finalContent = latestContent ?? contentFromMessage(finalAssistant) ?? "";
+        const remainingFinal =
+          finalContent && finalContent.startsWith(streamedContent) && finalContent.length >= streamedContent.length
+            ? finalContent.slice(streamedContent.length)
+            : finalContent;
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify(
@@ -441,7 +456,7 @@ export async function POST(req: NextRequest) {
                 choices: [
                   {
                     index: 0,
-                    delta: finalContent ? { content: finalContent } : {},
+                    delta: remainingFinal ? { content: remainingFinal } : {},
                     finish_reason: "stop"
                   }
                 ]

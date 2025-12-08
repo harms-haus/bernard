@@ -10,6 +10,8 @@ import { finalize, interval, Subscription } from 'rxjs';
 import { API_CLIENT, ApiClient } from '../../data/api.service';
 import { ConversationDetail, ConversationMessage } from '../../data/models';
 
+type ToolCall = NonNullable<ConversationMessage['tool_calls']>[number];
+
 @Component({
   selector: 'app-conversation',
   imports: [CommonModule, ButtonModule, TagModule, MessageModule],
@@ -27,6 +29,7 @@ export class ConversationComponent {
   readonly error = signal<string | null>(null);
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
+  readonly expandedToolCalls = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
 
@@ -57,6 +60,62 @@ export class ConversationComponent {
     } catch {
       return String(content);
     }
+  }
+
+  toolCallArguments(call: ToolCall): { text: string; parsed: boolean } {
+    const args = call.arguments;
+    if (!args) return { text: '(no arguments)', parsed: true };
+    if (typeof args === 'string') {
+      try {
+        return { text: JSON.stringify(JSON.parse(args), null, 2), parsed: true };
+      } catch {
+        return { text: args, parsed: false };
+      }
+    }
+    if (typeof args === 'object') {
+      try {
+        return { text: JSON.stringify(args, null, 2), parsed: true };
+      } catch {
+        return { text: String(args), parsed: false };
+      }
+    }
+    return { text: String(args), parsed: false };
+  }
+
+  inlineToolCallArguments(call: ToolCall): string {
+    const { text } = this.toolCallArguments(call);
+    if (!text) return '';
+    const firstLine = text.split('\n')[0] ?? '';
+    return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+  }
+
+  toolCallRaw(call: ToolCall): string {
+    if (typeof call.arguments === 'string') return call.arguments;
+    try {
+      return JSON.stringify(call, null, 2);
+    } catch {
+      return String(call.arguments ?? call);
+    }
+  }
+
+  toggleToolCall(callId: string) {
+    this.expandedToolCalls.update((current) => {
+      const next = new Set(current);
+      if (next.has(callId)) {
+        next.delete(callId);
+      } else {
+        next.add(callId);
+      }
+      return next;
+    });
+  }
+
+  isToolCallExpanded(callId: string) {
+    return this.expandedToolCalls().has(callId);
+  }
+
+  toolCallLabel(call: ToolCall) {
+    return call.name || 'Tool call';
   }
 
   messageLabel(message: ConversationMessage) {

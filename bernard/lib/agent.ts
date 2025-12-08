@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
 import { z } from "zod";
+import { parseToolCall } from "@langchain/core/output_parsers/openai_tools";
 
 import { tools as baseTools } from "@/libs/tools";
 import type { RecordKeeper } from "@/lib/recordKeeper";
@@ -51,6 +52,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const VALID_ROLES = new Set<OpenAIMessage["role"]>(["system", "user", "assistant", "tool"]);
 const DEBUG_UPSTREAM = process.env["DEBUG_UPSTREAM"] === "1";
+const TOOL_FORMAT_INSTRUCTIONS =
+  "When you call tools, respond only with a tool_calls array using OpenAI's function-calling shape: " +
+  '[{"id":"unique_id","type":"function","function":{"name":"tool_name","arguments":<valid JSON object>}}]. ' +
+  "Arguments must be valid JSON (no trailing text). Do not include natural-language text alongside tool_calls.";
 
 function containsChatMLMarkers(value: unknown): boolean {
   if (typeof value === "string") return value.includes("<|") || value.includes("|>");
@@ -86,6 +91,9 @@ function extractRawToolInput(input: unknown, runOpts?: unknown): unknown {
     const inputCandidate = (input as { input?: unknown }).input;
     if (inputCandidate !== undefined) candidates.push(inputCandidate);
 
+    const argumentsCandidate = (input as { arguments?: unknown }).arguments;
+    if (argumentsCandidate !== undefined) candidates.push(argumentsCandidate);
+
     const fnCandidate = (input as { function?: ToolFunctionArgs }).function;
     if (isRecord(fnCandidate) && fnCandidate.arguments !== undefined) {
       candidates.push(fnCandidate.arguments);
@@ -96,6 +104,8 @@ function extractRawToolInput(input: unknown, runOpts?: unknown): unknown {
     const toolCallCandidate = (runOpts as ToolRunOpts).toolCall;
     if (isRecord(toolCallCandidate)) {
       if (toolCallCandidate.args !== undefined) candidates.push(toolCallCandidate.args);
+      const argumentsCandidate = (toolCallCandidate as { arguments?: unknown }).arguments;
+      if (argumentsCandidate !== undefined) candidates.push(argumentsCandidate);
       const fnCandidate = toolCallCandidate.function;
       if (isRecord(fnCandidate) && fnCandidate.arguments !== undefined) {
         candidates.push(fnCandidate.arguments);
@@ -129,16 +139,81 @@ type ToolCallMessage = { tool_calls?: unknown[]; additional_kwargs?: { tool_call
 
 function normalizeToolCalls(toolCalls: unknown[]): ToolCallRecord[] {
   return toolCalls.map((call) => {
-    if (call && typeof call === "object") {
-      const record = call as ToolCallRecord;
-      const fnName = record.function?.name;
-      if (fnName && !record.name) {
-        record.name = fnName;
-      }
-      return record;
+    if (!call || typeof call !== "object") {
+      return { name: String(call) } as ToolCallRecord;
     }
-    return { name: String(call) } as ToolCallRecord;
+
+    const record = call as ToolCallRecord;
+    const fnName = record.function?.name;
+    if (fnName && !record.name) {
+      record.name = fnName;
+    }
+
+    const rawArgs =
+      (record as { arguments?: unknown }).arguments ??
+      (record as { args?: unknown }).args ??
+      (record as { input?: unknown }).input ??
+      record.function?.arguments;
+
+    const parsedArgs = parseToolInput(rawArgs);
+    const normalizedArgs =
+      parsedArgs === undefined
+        ? {}
+        : isRecord(parsedArgs)
+          ? parsedArgs
+          : { value: parsedArgs };
+
+    record["args"] = normalizedArgs;
+
+    if (!isRecord(record.function)) {
+      record.function = {};
+    }
+    if (record.function && record.function.arguments === undefined) {
+      record.function.arguments = typeof rawArgs === "string" ? rawArgs : safeStringify(normalizedArgs);
+    }
+
+    return record;
   });
+}
+
+async function parseToolCallsWithParser(message: BaseMessage): Promise<ToolCallRecord[]> {
+  const rawCalls = extractToolCallsFromMessage(message as ToolCallMessage);
+  if (!rawCalls.length) return [];
+
+  const parsed: ToolCallRecord[] = [];
+  for (const call of rawCalls) {
+    try {
+      const clone = JSON.parse(JSON.stringify(call));
+      const parsedCall = parseToolCall(clone as Record<string, unknown>, { returnId: true, partial: false });
+      if (parsedCall) {
+        const argsRaw = parsedCall.args;
+        const argsParsed = parseToolInput(argsRaw);
+        const args = argsParsed === undefined ? {} : isRecord(argsParsed) ? argsParsed : { value: argsParsed };
+        const name = (parsedCall as { name?: string }).name ?? (parsedCall as { type?: string }).type ?? "tool";
+        parsed.push({
+          id: (parsedCall as { id?: string }).id ?? name,
+          type: "tool_call",
+          name,
+          args,
+          function: {
+            name,
+            arguments: typeof argsRaw === "string" ? argsRaw : safeStringify(args)
+          }
+        } as unknown as ToolCallRecord);
+        continue;
+      }
+    } catch (err) {
+      if (DEBUG_UPSTREAM) {
+        console.error("tool parse failed", err instanceof Error ? err.message : String(err), safeStringify(call));
+      }
+    }
+
+    // Fallback to normalized call with args defaulted.
+    const normalized = normalizeToolCalls([call])[0];
+    if (normalized) parsed.push(normalized);
+  }
+
+  return parsed;
 }
 
 function hasToolCall(messages: BaseMessage[]): boolean {
@@ -186,6 +261,17 @@ function ensureSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
   return [new SystemMessage({ content: bernardSystemPrompt }), ...messages];
 }
 
+function ensureToolFormatInstructions(messages: BaseMessage[]): BaseMessage[] {
+  const hasToolFormat = messages.some(
+    (message) =>
+      (message as { _getType?: () => string })._getType?.() === "system" &&
+      typeof (message as { content?: unknown }).content === "string" &&
+      (message as { content?: string }).content === TOOL_FORMAT_INSTRUCTIONS
+  );
+  if (hasToolFormat) return messages;
+  return [...messages, new SystemMessage({ content: TOOL_FORMAT_INSTRUCTIONS })];
+}
+
 type InstrumentedTool = {
   name: string;
   description: string;
@@ -218,7 +304,8 @@ function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = base
         try {
           const rawInput = extractRawToolInput(input, runOpts);
           const parsedInput = parseToolInput(rawInput);
-          const res = await t.invoke(parsedInput, runOpts);
+          const normalizedInput = parsedInput === undefined ? {} : parsedInput;
+          const res = await t.invoke(normalizedInput, runOpts);
           await ctx.recordKeeper.recordToolResult(ctx.turnId, t.name, { ok: true, latencyMs: Date.now() - start });
           return res;
         } catch (err) {
@@ -255,6 +342,11 @@ function callIntentModel(
     const result = rawResult as BaseMessage;
     const latency = Date.now() - start;
     const usage = extractTokenUsage(result);
+
+    const parsedToolCalls = await parseToolCallsWithParser(result);
+    if (parsedToolCalls.length) {
+      (result as { tool_calls?: unknown[] }).tool_calls = parsedToolCalls;
+    }
 
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
     const tokensOut = usage.completion_tokens ?? usage.output_tokens;
@@ -324,7 +416,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     description:
       "Use this when you are ready to stop gathering data and deliver the final answer to the user. " +
       "Do not request additional tools after calling this.",
-    schema: z.object({})
+    schema: z.object({}).default({})
   }) as ReturnType<typeof instrumentTools>[number];
   const intentTools = [...instrumentedTools, respondTool];
 
@@ -513,7 +605,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     initialMessages: BaseMessage[],
     onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
   ): Promise<BaseMessage[]> => {
-    let messages = ensureSystemPrompt(initialMessages);
+  let messages = ensureToolFormatInstructions(ensureSystemPrompt(initialMessages));
     let responded = false;
     let forcedReason: string | null = null;
     let lastToolCallsSignature: string | null = null;
@@ -582,7 +674,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   /* c8 ignore start */
   async function* streamMessages(initialMessages: BaseMessage[]) {
-    let messages = ensureSystemPrompt(initialMessages);
+  let messages = ensureToolFormatInstructions(ensureSystemPrompt(initialMessages));
     let responded = false;
     let lastIntentChunk: unknown;
     let forcedReason: string | null = null;
@@ -610,7 +702,6 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       }
 
       let aggregated: AIMessageChunk | null = null;
-      let latestToolCalls: ToolCallRecord[] | undefined;
       let latestToolCallChunks: unknown[] | undefined;
       try {
         for await (const chunk of stream) {
@@ -618,27 +709,37 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
           if (DEBUG_UPSTREAM) {
             console.warn("intent upstream chunk", safeStringify(chunk));
           }
-          const chunkToolCalls =
-            (chunk as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } }).tool_calls ??
-            (chunk as { additional_kwargs?: { tool_calls?: unknown[] } }).additional_kwargs?.tool_calls;
           const chunkToolCallChunks =
             (chunk as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
             (chunk as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
 
-          if (Array.isArray(chunkToolCalls) && chunkToolCalls.length) latestToolCalls = normalizeToolCalls(chunkToolCalls);
           if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) latestToolCallChunks = chunkToolCallChunks;
 
           aggregated = aggregated ? aggregated.concat(chunk) : chunk;
-          if (aggregated && latestToolCalls) {
-            (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
+          const aggregatedToolCalls = extractToolCallsFromMessage(aggregated as ToolCallMessage);
+          if (aggregated && aggregatedToolCalls.length) {
+            (aggregated as { tool_calls?: unknown[] }).tool_calls = aggregatedToolCalls;
           }
           if (aggregated && latestToolCallChunks) {
             (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
           }
           const currentMessages = [...messages, aggregated];
           if (onUpdateHook) await onUpdateHook(currentMessages);
-          const isResponding = latestToolCalls?.some(isRespondToolCall);
-          if (!isResponding) {
+
+          const respondInChunks =
+            latestToolCallChunks?.some((call) => {
+              const name = (call as { name?: string; function?: { name?: string } }).function?.name ?? (call as { name?: string }).name;
+              return name === "respond";
+            }) ?? false;
+
+          const hasToolSignals =
+            hasToolCall([aggregated as unknown as BaseMessage]) ||
+            aggregatedToolCalls.length > 0 ||
+            (latestToolCallChunks?.length ?? 0) > 0;
+          const hasRespondSignal = respondInChunks || aggregatedToolCalls.some(isRespondToolCall);
+          const shouldStreamIntentUpdate = hasToolSignals && !hasRespondSignal;
+
+          if (shouldStreamIntentUpdate) {
             yield { messages: currentMessages };
           }
         }
@@ -657,11 +758,14 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         throw new Error("Model returned no chunks");
       }
 
-      if (latestToolCalls) {
-        (aggregated as { tool_calls?: unknown[] }).tool_calls = latestToolCalls;
-      }
       if (latestToolCallChunks) {
         (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
+      }
+      const parsedToolCalls = await parseToolCallsWithParser(aggregated as unknown as BaseMessage);
+      const toolCalls =
+        parsedToolCalls.length > 0 ? parsedToolCalls : extractToolCallsFromMessage(aggregated as ToolCallMessage);
+      if (toolCalls.length) {
+        (aggregated as { tool_calls?: unknown[] }).tool_calls = toolCalls;
       }
 
       const usage = extractTokenUsage(aggregated);
@@ -675,7 +779,6 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       });
 
       messages = [...messages, aggregated];
-      const toolCalls = latestToolCalls ?? [];
       const wantsRespond = toolCalls.some(isRespondToolCall);
 
       const toolCallsSignature = canonicalToolCalls(toolCalls);

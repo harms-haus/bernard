@@ -264,6 +264,51 @@ test("stream yields intermediate states through tool loop", async () => {
   assert.ok(toolInvocations.length >= 1);
 });
 
+test("stream suppresses intent-only content until response", async () => {
+  const keeper = noopRecordKeeper();
+
+  const FakeChatOpenAI = class {
+    bindTools() {
+      return {
+        async stream() {
+          async function* gen() {
+            yield new AIMessageChunk({ content: "intent-only" } as any);
+          }
+          return gen();
+        }
+      };
+    }
+
+    async stream() {
+      async function* responseGen() {
+        yield new AIMessageChunk({ content: "final-response" } as any);
+      }
+      return responseGen();
+    }
+  };
+
+  const { buildGraph } = await import("../lib/agent?streaming");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-intent-only",
+      conversationId: "conv-intent-only",
+      requestId: "req-intent-only",
+      token: "tok",
+      model: "model-intent-only"
+    },
+    { tools: [], ChatOpenAI: FakeChatOpenAI as any }
+  );
+
+  const contents: string[] = [];
+  for await (const chunk of await graph.stream({ messages: [new HumanMessage("hello")] })) {
+    const text = (chunk.messages?.at(-1)?.content as string) ?? "";
+    if (text) contents.push(text);
+  }
+
+  assert.deepEqual(contents, ["final-response"]);
+});
+
 test("respond tool ends the loop and skips regular tools", async () => {
   const toolInvocations: unknown[] = [];
   const keeper = noopRecordKeeper();

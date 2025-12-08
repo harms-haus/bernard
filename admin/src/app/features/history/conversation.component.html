@@ -46,7 +46,48 @@
                 <span class="muted">Tool calls: {{ message.tool_calls?.length ?? 0 }}</span>
               }
             </div>
-            <pre class="content">{{ renderContent(message) }}</pre>
+            <div class="message-body">
+              @if (message.tool_calls?.length) {
+                <div class="tool-call-list" aria-label="Tool calls">
+                  @for (call of message.tool_calls; let i = $index; track call.id || i) {
+                    @let callKey = call.id || (message.id + '-call-' + i);
+                    <div class="tool-call">
+                      <button
+                        type="button"
+                        class="tool-call-toggle"
+                        (click)="toggleToolCall(callKey)"
+                        [attr.aria-expanded]="isToolCallExpanded(callKey)"
+                        [attr.aria-controls]="callKey + '-details'"
+                      >
+                        <div class="tool-call-header">
+                          <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
+                          <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
+                          <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
+                            {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
+                          </span>
+                        </div>
+                      </button>
+                      @if (isToolCallExpanded(callKey)) {
+                        <div class="tool-call-body" [id]="callKey + '-details'">
+                          @if (toolCallArguments(call); as argBlock) {
+                            @if (argBlock.text) {
+                              <pre class="content tool-call-args">{{ argBlock.text }}</pre>
+                            }
+                            @if (!argBlock.parsed || !argBlock.text) {
+                              <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
+                            }
+                          }
+                          <div class="tool-call-id muted small">ID: {{ callKey }}</div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              @if (renderContent(message); as rendered) {
+                <pre class="content">{{ rendered }}</pre>
+              }
+            </div>
           </article>
         }
       }
