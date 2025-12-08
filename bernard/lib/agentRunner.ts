@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
 import { bernardSystemPrompt, intentSystemPrompt } from "./systemPrompt";
 import { extractTokenUsage, parseToolInput, safeStringify, type TokenUsage } from "./messages";
+import type { MessageRecord, OpenRouterResult, ToolResult } from "./recordKeeper";
 import {
   buildToolAvailabilityMessage,
   buildToolValidationMessage,
@@ -39,17 +40,17 @@ export const TOOL_FORMAT_INSTRUCTIONS =
 
 export type AgentContext = {
   recordKeeper: {
-    recordToolResult: (turnId: string, toolName: string, result: Record<string, unknown>) => Promise<void>;
-    recordOpenRouterResult: (turnId: string, modelName: string, result: Record<string, unknown>) => Promise<void>;
+    recordToolResult: (turnId: string, toolName: string, result: ToolResult) => Promise<void>;
+    recordOpenRouterResult: (turnId: string, modelName: string, result: OpenRouterResult) => Promise<void>;
     recordLLMCall: (
       conversationId: string,
       payload: {
         model: string;
-        startedAt: string;
-        latencyMs: number;
-        tokens: Record<string, unknown>;
-        context: BaseMessage[];
-        result?: BaseMessage[];
+        startedAt?: string;
+        latencyMs?: number;
+        tokens?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
+        context: Array<BaseMessage | MessageRecord>;
+        result?: Array<BaseMessage | MessageRecord>;
       }
     ) => Promise<void>;
   };

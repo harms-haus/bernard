@@ -5,7 +5,7 @@ import {
   getWeatherCurrentTool,
   getWeatherForecastTool,
   getWeatherHistoricalTool
-} from "./weather";
+} from "@/libs/weather";
 
 export const tools = [
   webSearchTool,

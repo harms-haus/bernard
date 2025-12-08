@@ -31,10 +31,7 @@ type GraphStreamChunk = {
 
 type AgentGraph = {
   invoke: (input: { messages: BaseMessage[] }) => Promise<GraphResult>;
-  stream: (
-    input: { messages: BaseMessage[] },
-    options: { streamMode: "messages" | "updates" }
-  ) => AsyncIterable<GraphStreamChunk>;
+  stream: (input: { messages: BaseMessage[] }) => AsyncIterable<GraphStreamChunk>;
 };
 
 function findMessages(value: unknown): BaseMessage[] | null {
@@ -332,7 +329,7 @@ export async function POST(req: NextRequest) {
 
   let iterator: AsyncIterable<GraphStreamChunk>;
   try {
-    iterator = graph.stream({ messages: inputMessages }, { streamMode: "updates" as const });
+    iterator = graph.stream({ messages: inputMessages });
   } catch (err) {
     if (isRateLimit(err)) {
       await keeper.recordRateLimit(token, responseModel);

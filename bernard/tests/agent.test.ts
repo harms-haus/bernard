@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { AIMessage, HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { buildGraph } from "../lib/agent";
-import { getWeatherCurrentTool } from "../libs/tools/weather";
+import { getWeatherCurrentTool } from "../libs/weather";
 
 type FakeToolCall = { id: string; name: string; args: unknown };
 type FakeUsage = { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };

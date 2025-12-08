@@ -33,8 +33,8 @@ export class UserStore {
     const id = record["id"];
     const displayName = record["displayName"];
     const createdAt = record["createdAt"];
-    const updatedAt = record["updatedAt"] ?? createdAt;
     if (!id || !displayName || !createdAt) return null;
+    const updatedAt = record["updatedAt"] ?? createdAt;
     const status = (record["status"] as UserStatus) ?? "active";
     const isAdmin = record["isAdmin"] === "true";
     const user: UserRecord = {

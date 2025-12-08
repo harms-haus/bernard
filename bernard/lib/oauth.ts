@@ -58,7 +58,15 @@ export const getProviderConfig = (provider: OAuthProvider): ProviderConfig => {
     throw new Error(`OAuth is not configured for ${provider}: missing ${missing.join(", ")}`);
   }
 
-  return config satisfies ProviderConfig;
+  return {
+    authUrl: config.authUrl!,
+    tokenUrl: config.tokenUrl!,
+    userInfoUrl: config.userInfoUrl!,
+    redirectUri: config.redirectUri!,
+    scope: config.scope!,
+    clientId: config.clientId!,
+    ...(config.clientSecret ? { clientSecret: config.clientSecret } : {})
+  };
 };
 
 const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}:${provider}:${state}`;

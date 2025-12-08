@@ -64,7 +64,7 @@ export function getPrimaryModel(
   opts: { fallback?: string[]; override?: string | string[] } = {}
 ): string {
   const models = getModelList(category, opts);
-  return models[0];
+  return models[0] ?? DEFAULT_MODEL;
 }
 
 export function resolveBaseUrl(baseURL?: string): string {

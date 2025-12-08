@@ -5,7 +5,8 @@ import {
   getWeatherCurrentTool,
   getWeatherForecastTool,
   getWeatherHistoricalTool
-} from "../libs/tools/weather";
+} from "../libs/weather";
+import { chooseUnits, parseTarget } from "../libs/weather/common";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;
@@ -34,7 +35,25 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
   });
 }
 
-void test("get_weather_current returns a formatted snapshot", { timeout: TEST_TIMEOUT }, async () => {
+test("chooseUnits infers units from country and coordinates", () => {
+  const usUnits = chooseUnits(undefined, "US");
+  assert.equal(usUnits.temperatureUnit, "fahrenheit");
+  const forcedMetric = chooseUnits("metric", "US");
+  assert.equal(forcedMetric.temperatureUnit, "celsius");
+  const coordUnits = chooseUnits(undefined, undefined, 37, -122);
+  assert.equal(coordUnits.windSpeedUnit, "mph");
+  const frUnits = chooseUnits(undefined, "FR", 48.8566, 2.3522);
+  assert.equal(frUnits.windSpeedUnit, "kmh");
+});
+
+test("parseTarget handles relative words and ISO dates", () => {
+  const anchor = "2025-02-01";
+  assert.deepEqual(parseTarget("tomorrow", anchor), { date: "2025-02-02" });
+  assert.deepEqual(parseTarget("2025-03-05", anchor), { date: "2025-03-05" });
+  assert.deepEqual(parseTarget("2025-03-05T15:00Z", anchor), { date: "2025-03-05", time: "15:00z" });
+});
+
+test("get_weather_current returns a formatted snapshot", { timeout: TEST_TIMEOUT }, async () => {
   const calls = mockFetchSequence([
     jsonResponse({
       current: {
@@ -68,7 +87,7 @@ void test("get_weather_current returns a formatted snapshot", { timeout: TEST_TI
   assert.match(output, /Conditions: clear/);
 });
 
-void test("get_weather_forecast returns today/tomorrow summaries when target is missing", { timeout: TEST_TIMEOUT }, async () => {
+test("get_weather_forecast returns today/tomorrow summaries when target is missing", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
     jsonResponse({
       daily: {
@@ -93,7 +112,7 @@ void test("get_weather_forecast returns today/tomorrow summaries when target is 
   assert.match(output, /Tomorrow \(2025-02-02\):/);
 });
 
-void test("get_weather_historical supports targeted datetime lookups", { timeout: TEST_TIMEOUT }, async () => {
+test("get_weather_historical supports targeted datetime lookups", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
     jsonResponse({
       daily: {

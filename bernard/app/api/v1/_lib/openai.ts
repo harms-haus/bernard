@@ -167,6 +167,7 @@ export function contentFromMessage(message: BaseMessage | null): string | null {
 export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
+    if (!message) continue;
     const candidate = message as { _getType?: () => string };
     if (candidate._getType?.() === "ai") return message;
   }
@@ -181,7 +182,8 @@ export function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
 
   const data = (chunk as { data?: Record<string, unknown> }).data;
   if (!data || typeof data !== "object") return null;
-  if (Array.isArray((data as { messages?: unknown }).messages)) return (data as { messages?: BaseMessage[] }).messages;
+  const rootMessages = (data as { messages?: BaseMessage[] }).messages;
+  if (Array.isArray(rootMessages)) return rootMessages;
   const agent = (data as { agent?: { messages?: BaseMessage[] } }).agent;
   if (agent && Array.isArray(agent.messages)) return agent.messages;
   const tools = (data as { tools?: { messages?: BaseMessage[] } }).tools;

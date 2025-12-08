@@ -114,18 +114,21 @@ export async function POST(req: NextRequest) {
     temperature: 0
   });
 
-  const responseLLM = new ChatOpenAI({
+  const stop = Array.isArray(body.stop) ? body.stop : typeof body.stop === "string" ? [body.stop] : undefined;
+  const responseOptions: ConstructorParameters<typeof ChatOpenAI>[0] = {
     model: responseModelName,
     apiKey,
-    configuration: { baseURL },
-    temperature: body.temperature,
-    topP: body.top_p,
-    frequencyPenalty: body.frequency_penalty,
-    presencePenalty: body.presence_penalty,
-    maxTokens: body.max_tokens,
-    stop: body.stop ?? undefined,
-    logitBias: body.logit_bias
-  });
+    configuration: { baseURL }
+  };
+  if (typeof body.temperature === "number") responseOptions.temperature = body.temperature;
+  if (typeof body.top_p === "number") responseOptions.topP = body.top_p;
+  if (typeof body.frequency_penalty === "number") responseOptions.frequencyPenalty = body.frequency_penalty;
+  if (typeof body.presence_penalty === "number") responseOptions.presencePenalty = body.presence_penalty;
+  if (typeof body.max_tokens === "number") responseOptions.maxTokens = body.max_tokens;
+  if (stop) responseOptions.stop = stop;
+  if (body.logit_bias) responseOptions.logitBias = body.logit_bias;
+
+  const responseLLM = new ChatOpenAI(responseOptions);
 
   const graph = buildGraph(
     {
@@ -135,10 +138,10 @@ export async function POST(req: NextRequest) {
       requestId,
       token: auth.token,
       model: responseModelName,
-      responseModel: responseLLM,
-      intentModel: intentLLM
+      responseModel: responseModelName,
+      intentModel: intentModelName
     },
-    {}
+    { responseModel: responseLLM, intentModel: intentLLM }
   );
 
   if (!shouldStream) {
@@ -185,7 +188,9 @@ export async function POST(req: NextRequest) {
         ...(usage ? { usage } : {})
       });
     } catch (err) {
-      await keeper.endTurn(turnId, { status: "error", errorType: err instanceof Error ? err.name : "error" });
+      const latencyMs = Date.now() - start;
+      await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+      await keeper.completeRequest(requestId, latencyMs);
       return new NextResponse(
         JSON.stringify({ error: "Chat completion failed", reason: err instanceof Error ? err.message : String(err) }),
         { status: 500 }
@@ -194,7 +199,7 @@ export async function POST(req: NextRequest) {
   }
 
   const encoder = new TextEncoder();
-  const iterator = graph.stream({ messages: inputMessages }, { streamMode: "updates" as const });
+  const iterator = graph.stream({ messages: inputMessages });
   const stream = new ReadableStream({
     async start(controller) {
       const sentToolCalls = new Set<string>();
@@ -318,7 +323,9 @@ export async function POST(req: NextRequest) {
         await keeper.endTurn(turnId, { status: "ok", latencyMs });
         await keeper.completeRequest(requestId, latencyMs);
       } catch (err) {
-        await keeper.endTurn(turnId, { status: "error", errorType: err instanceof Error ? err.name : "error" });
+        const latencyMs = Date.now() - start;
+        await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+        await keeper.completeRequest(requestId, latencyMs);
         sendChunk({
           error: "Chat completion stream failed",
           reason: err instanceof Error ? err.message : String(err)

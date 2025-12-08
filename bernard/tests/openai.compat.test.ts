@@ -13,7 +13,7 @@ import { POST as completionsPost } from "../app/api/v1/completions/route";
 const makeNextRequest = (url: string, body: unknown, headers: Record<string, string> = {}, method = "POST") => {
   const req = new Request(url, {
     method,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? JSON.stringify(body) : null,
     headers: { "content-type": "application/json", ...headers }
   });
   return new NextRequest(req);
@@ -29,7 +29,9 @@ test("models list only exposes bernard-v1", async () => {
 });
 
 test("models/:id returns 404 for unknown", async () => {
-  const res = getModel(new Request("http://localhost/api/v1/models/other"), { params: { id: "other" } });
+  const res = await getModel(new NextRequest(new Request("http://localhost/api/v1/models/other")), {
+    params: Promise.resolve({ id: "other" })
+  });
   assert.equal(res.status, 404);
 });
 

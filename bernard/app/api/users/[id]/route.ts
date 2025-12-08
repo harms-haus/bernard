@@ -42,7 +42,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       await ensureNotLastAdmin(store, id, false);
     }
 
-    let updated = await store.update(id, { displayName: body.displayName, isAdmin: body.isAdmin });
+    const updates: { displayName?: string; isAdmin?: boolean } = {};
+    if (body.displayName !== undefined) updates.displayName = body.displayName;
+    if (body.isAdmin !== undefined) updates.isAdmin = body.isAdmin;
+
+    let updated = await store.update(id, updates);
     if (body.status === "active" || body.status === "disabled") {
       updated = await store.setStatus(id, body.status);
       if (body.status === "disabled") {
