@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { AIMessage, AIMessageChunk, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import { bernardSystemPrompt, intentSystemPrompt } from "../lib/systemPrompt";
 
 const noopRecordKeeper = () => {
   const toolResults: unknown[] = [];
@@ -526,6 +527,224 @@ test("respond tool ends the loop and skips regular tools", async () => {
   assert.equal(toolInvocations.length, 0);
   const final = result.messages?.at(-1) as AIMessage;
   assert.equal(final.content, "final-response");
+});
+
+test("invalid tool calls are retried with error context", async () => {
+  const toolInvocations: string[] = [];
+  const keeper = noopRecordKeeper();
+
+  const defaultTool = {
+    name: "default_tool",
+    description: "stub",
+    async invoke() {
+      toolInvocations.push("called");
+      return "ok";
+    }
+  };
+
+  class FakeIntentModel {
+    bindTools() {
+      let call = 0;
+      return {
+        async invoke() {
+          call += 1;
+          if (call === 1) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [
+                { id: "bad", type: "tool_call", function: { name: "unknown_tool", arguments: "{}" } } as any
+              ]
+            } as any);
+          }
+          if (call === 2) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [
+                { id: "good", type: "tool_call", function: { name: "default_tool", arguments: "{}" } } as any
+              ]
+            } as any);
+          }
+          return new AIMessage({
+            content: "",
+            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
+          } as any);
+        }
+      };
+    }
+  }
+
+  const responseInvocations: any[] = [];
+  class FakeResponseModel {
+    async invoke(messages: any[]) {
+      responseInvocations.push(messages);
+      return new AIMessage("final-response" as any);
+    }
+  }
+
+  const { buildGraph } = await import("../lib/agent?invalid-tool-retry");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-invalid",
+      conversationId: "conv-invalid",
+      requestId: "req-invalid",
+      token: "tok",
+      model: "model-invalid"
+    },
+    { intentModel: new FakeIntentModel() as any, responseModel: new FakeResponseModel() as any, tools: [defaultTool as any] }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("hi")] });
+  const errorMessage = result.messages?.find(
+    (m: any) =>
+      (m as any)._getType?.() === "system" && String((m as any).content ?? "").includes("Your last attempt to call a tool failed")
+  );
+
+  assert.ok(errorMessage, "expected validation error message");
+  assert.equal(toolInvocations.length, 1);
+  assert.ok(responseInvocations.length >= 1, "response model should have been called");
+});
+
+test("multi-round tools feed the response context", async () => {
+  const toolOutputs: string[] = [];
+  const keeper = noopRecordKeeper();
+
+  const firstTool = {
+    name: "first_tool",
+    description: "first",
+    async invoke() {
+      toolOutputs.push("first");
+      return "first-result";
+    }
+  };
+
+  const secondTool = {
+    name: "second_tool",
+    description: "second",
+    async invoke() {
+      toolOutputs.push("second");
+      return "second-result";
+    }
+  };
+
+  class FakeIntentModel {
+    bindTools() {
+      let call = 0;
+      return {
+        async invoke() {
+          call += 1;
+          if (call === 1) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [{ id: "t1", type: "tool_call", function: { name: "first_tool", arguments: "{}" } } as any]
+            } as any);
+          }
+          if (call === 2) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [{ id: "t2", type: "tool_call", function: { name: "second_tool", arguments: "{}" } } as any]
+            } as any);
+          }
+          return new AIMessage({
+            content: "",
+            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
+          } as any);
+        }
+      };
+    }
+  }
+
+  const responseContexts: any[] = [];
+  class FakeResponseModel {
+    async invoke(messages: any[]) {
+      responseContexts.push(messages);
+      return new AIMessage("final-response" as any);
+    }
+  }
+
+  const { buildGraph } = await import("../lib/agent?multi-round");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-multi",
+      conversationId: "conv-multi",
+      requestId: "req-multi",
+      token: "tok",
+      model: "model-multi"
+    },
+    {
+      intentModel: new FakeIntentModel() as any,
+      responseModel: new FakeResponseModel() as any,
+      tools: [firstTool as any, secondTool as any]
+    }
+  );
+
+  await graph.invoke({ messages: [new HumanMessage("hi")] });
+
+  assert.deepEqual(toolOutputs, ["first", "second"]);
+  const captured = responseContexts.at(0) as Array<{ _getType?: () => string; content?: unknown }>;
+  const toolMessages = (captured ?? []).filter((m) => m._getType?.() === "tool").map((m: any) => String(m.content ?? ""));
+  assert.ok(toolMessages.some((c) => c.includes("first-result")), "missing first tool output");
+  assert.ok(toolMessages.some((c) => c.includes("second-result")), "missing second tool output");
+});
+
+test("intent and response prompts stay separated", async () => {
+  const keeper = noopRecordKeeper();
+  const seenIntentSystems: string[][] = [];
+  const seenResponseSystems: string[][] = [];
+
+  class FakeIntentModel {
+    bindTools() {
+      let call = 0;
+      return {
+        async invoke(messages: any[]) {
+          call += 1;
+          const systems = messages
+            .filter((m: any) => m._getType?.() === "system")
+            .map((m: any) => m.content)
+            .filter(Boolean);
+          seenIntentSystems.push(systems);
+          return new AIMessage({
+            content: "",
+            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
+          } as any);
+        }
+      };
+    }
+  }
+
+  class FakeResponseModel {
+    async invoke(messages: any[]) {
+      const systems = messages
+        .filter((m: any) => m._getType?.() === "system")
+        .map((m: any) => m.content)
+        .filter(Boolean);
+      seenResponseSystems.push(systems);
+      return new AIMessage("final-response" as any);
+    }
+  }
+
+  const { buildGraph } = await import("../lib/agent?prompt-separation");
+  await buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-prompts",
+      conversationId: "conv-prompts",
+      requestId: "req-prompts",
+      token: "tok",
+      model: "model-prompts"
+    },
+    { intentModel: new FakeIntentModel() as any, responseModel: new FakeResponseModel() as any, tools: [] }
+  ).invoke({ messages: [new HumanMessage("hi")] });
+
+  assert.ok(
+    seenIntentSystems.some((systems) => systems.includes(intentSystemPrompt)),
+    "intent prompt not present"
+  );
+  assert.ok(
+    seenResponseSystems.some((systems) => systems.includes(bernardSystemPrompt)),
+    "response prompt not present"
+  );
 });
 
 test("falls back to env defaults when ctx model is missing", async () => {

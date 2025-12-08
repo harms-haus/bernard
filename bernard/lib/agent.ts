@@ -1,7 +1,6 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { AIMessageChunk, AIMessageFields, BaseMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool as toolFactory } from "@langchain/core/tools";
 import { z } from "zod";
 import { parseToolCall } from "@langchain/core/output_parsers/openai_tools";
@@ -9,7 +8,7 @@ import { parseToolCall } from "@langchain/core/output_parsers/openai_tools";
 import { tools as baseTools } from "@/libs/tools";
 import type { RecordKeeper } from "@/lib/recordKeeper";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
-import { bernardSystemPrompt } from "./systemPrompt";
+import { bernardSystemPrompt, intentSystemPrompt } from "./systemPrompt";
 
 /* c8 ignore start */
 type ToolCall = {
@@ -138,16 +137,33 @@ type ToolCallRecord = { name?: string; function?: { name?: string; arguments?: u
 type ToolCallMessage = { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } };
 
 function normalizeToolCalls(toolCalls: unknown[]): ToolCallRecord[] {
-  return toolCalls.map((call) => {
+  return toolCalls.map((call, index) => {
     if (!call || typeof call !== "object") {
-      return { name: String(call) } as ToolCallRecord;
+      const fallbackName = String(call ?? "") || "tool_call";
+      const fallbackId = `${fallbackName}_${index}`;
+      return {
+        id: fallbackId,
+        name: fallbackName,
+        type: "tool_call",
+        args: {},
+        function: { name: fallbackName, arguments: "{}" }
+      } as ToolCallRecord;
     }
 
-    const record = call as ToolCallRecord;
+    const record = { ...(call as ToolCallRecord) };
+    const rawName = (record as { name?: unknown }).name;
     const fnName = record.function?.name;
-    if (fnName && !record.name) {
-      record.name = fnName;
-    }
+    const name =
+      typeof rawName === "string" && rawName.trim()
+        ? rawName.trim()
+        : typeof fnName === "string" && fnName.trim()
+          ? fnName.trim()
+          : "tool_call";
+    const rawId = (record as { id?: unknown }).id;
+    const id =
+      typeof rawId === "string" && rawId.trim()
+        ? rawId
+        : `${name}_${index}`;
 
     const rawArgs =
       (record as { arguments?: unknown }).arguments ??
@@ -163,16 +179,33 @@ function normalizeToolCalls(toolCalls: unknown[]): ToolCallRecord[] {
           ? parsedArgs
           : { value: parsedArgs };
 
-    record["args"] = normalizedArgs;
+    const functionArguments =
+      isRecord(record.function) && record.function.arguments !== undefined
+        ? record.function.arguments
+        : typeof rawArgs === "string"
+          ? rawArgs
+          : safeStringify(normalizedArgs);
 
-    if (!isRecord(record.function)) {
-      record.function = {};
-    }
-    if (record.function && record.function.arguments === undefined) {
-      record.function.arguments = typeof rawArgs === "string" ? rawArgs : safeStringify(normalizedArgs);
-    }
+    const functionName =
+      isRecord(record.function) && typeof record.function.name === "string" && record.function.name.trim()
+        ? record.function.name.trim()
+        : name;
 
-    return record;
+    const typeCandidate = (record as { type?: unknown }).type;
+    const type = typeof typeCandidate === "string" && typeCandidate.trim() ? typeCandidate : "tool_call";
+
+    return {
+      ...record,
+      id,
+      name,
+      type,
+      args: normalizedArgs,
+      function: {
+        ...(isRecord(record.function) ? record.function : {}),
+        name: functionName,
+        arguments: functionArguments
+      }
+    };
   });
 }
 
@@ -255,9 +288,94 @@ function dropRespondToolCalls(messages: BaseMessage[]): BaseMessage[] {
   return messages.filter((message) => !extractToolCallsFromMessage(message as ToolCallMessage).some(isRespondToolCall));
 }
 
-function ensureSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
-  const hasSystem = messages.some((message) => (message as { _getType?: () => string })._getType?.() === "system");
-  if (hasSystem) return messages;
+type ToolValidationError = { call: ToolCallRecord; reason: string };
+
+function validateToolCalls(toolCalls: ToolCallRecord[], allowedTools: Set<string>): {
+  valid: ToolCallRecord[];
+  invalid: ToolValidationError[];
+} {
+  const valid: ToolCallRecord[] = [];
+  const invalid: ToolValidationError[] = [];
+
+  for (const call of toolCalls) {
+    const name = (call?.name ?? call.function?.name) as unknown;
+    const id = (call as { id?: unknown }).id ?? (call as { function?: { name?: unknown } }).function?.name ?? name;
+
+    if (typeof name !== "string" || !name.trim()) {
+      invalid.push({ call, reason: "Tool call is missing a valid name" });
+      continue;
+    }
+
+    if (!allowedTools.has(name)) {
+      invalid.push({ call, reason: `Tool "${name}" is not available` });
+      continue;
+    }
+
+    if (typeof id !== "string" || !id.trim()) {
+      invalid.push({ call, reason: `Tool "${name}" is missing a valid id` });
+      continue;
+    }
+
+    const argsRaw =
+      (call as { arguments?: unknown }).arguments ??
+      call.function?.arguments ??
+      (call as { args?: unknown }).args ??
+      (call as { input?: unknown }).input;
+
+    const parsedArgs = parseToolInput(argsRaw);
+    if (parsedArgs !== undefined && !isRecord(parsedArgs)) {
+      invalid.push({ call, reason: `Tool "${name}" arguments must be an object` });
+      continue;
+    }
+
+    const normalizedArgs = parsedArgs === undefined ? {} : (parsedArgs as Record<string, unknown>);
+    const normalizedCall: ToolCallRecord = {
+      ...call,
+      id,
+      name,
+      args: normalizedArgs,
+      function: {
+        ...(call.function ?? {}),
+        name,
+        arguments: typeof argsRaw === "string" ? argsRaw : safeStringify(normalizedArgs)
+      }
+    };
+
+    valid.push(normalizedCall);
+  }
+
+  return { valid, invalid };
+}
+
+function buildToolValidationMessage(invalid: ToolValidationError[]): string {
+  const details = invalid.map(({ call, reason }) => {
+    const name = call?.name ?? call.function?.name ?? "unknown_tool";
+    const id = (call as { id?: unknown }).id ?? "missing_id";
+    return `${reason} (tool="${name}", id="${String(id)}")`;
+  });
+  return (
+    `${details.join("; ")}. ` +
+    "Your last attempt to call a tool failed, try again with the correct format, tools, and arguments."
+  );
+}
+
+function ensureIntentSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
+  const hasIntentPrompt = messages.some(
+    (message) =>
+      (message as { _getType?: () => string })._getType?.() === "system" &&
+      (message as { content?: unknown }).content === intentSystemPrompt
+  );
+  if (hasIntentPrompt) return messages;
+  return [new SystemMessage({ content: intentSystemPrompt }), ...messages];
+}
+
+function ensureResponseSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
+  const hasResponsePrompt = messages.some(
+    (message) =>
+      (message as { _getType?: () => string })._getType?.() === "system" &&
+      (message as { content?: unknown }).content === bernardSystemPrompt
+  );
+  if (hasResponsePrompt) return messages;
   return [new SystemMessage({ content: bernardSystemPrompt }), ...messages];
 }
 
@@ -348,6 +466,65 @@ function ensureToolAvailabilityContext(messages: BaseMessage[], availabilityMess
   );
   if (hasAvailabilityContext) return messages;
   return [...messages, new SystemMessage({ content: availabilityMessage })];
+}
+
+function stripIntentOnlySystemMessages(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((message) => {
+    const isSystem = (message as { _getType?: () => string })._getType?.() === "system";
+    if (!isSystem) return true;
+    const content = (message as { content?: unknown }).content;
+    if (typeof content !== "string") return true;
+    if (content === TOOL_FORMAT_INSTRUCTIONS) return false;
+    if (content === intentSystemPrompt) return false;
+    return true;
+  });
+}
+
+async function runToolCalls(
+  toolCalls: ToolCallRecord[],
+  toolMap: Map<string, ReturnType<typeof instrumentTools>[number]>
+): Promise<BaseMessage[]> {
+  const executions = toolCalls.map(async (call) => {
+    const name = (call?.name ?? call.function?.name ?? "unknown_tool") as string;
+    const toolCallId = ((call as { id?: unknown }).id ?? name) as string;
+    const tool = toolMap.get(name);
+    const rawArgs =
+      (call as { arguments?: unknown }).arguments ??
+      call.function?.arguments ??
+      (call as { args?: unknown }).args ??
+      (call as { input?: unknown }).input;
+    const parsedArgs = parseToolInput(rawArgs);
+    const normalizedArgs =
+      parsedArgs === undefined ? {} : isRecord(parsedArgs) ? parsedArgs : ({ value: parsedArgs } as Record<string, unknown>);
+
+    if (!tool) {
+      return new ToolMessage({
+        tool_call_id: toolCallId,
+        name,
+        status: "error" as any,
+        content: `Error: tool "${name}" is not available`
+      });
+    }
+
+    try {
+      const result = await tool.invoke(normalizedArgs);
+      return new ToolMessage({
+        tool_call_id: toolCallId,
+        name,
+        content: typeof result === "string" ? result : safeStringify(result)
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new ToolMessage({
+        tool_call_id: toolCallId,
+        name,
+        status: "error" as any,
+        content: `Error: ${message}`
+      });
+    }
+  });
+
+  return Promise.all(executions);
 }
 
 type TokenUsage = {
@@ -469,8 +646,11 @@ function callIntentModel(
     const usage = extractTokenUsage(result);
 
     const parsedToolCalls = await parseToolCallsWithParser(result);
-    if (parsedToolCalls.length) {
-      (result as { tool_calls?: unknown[] }).tool_calls = parsedToolCalls;
+    const normalizedToolCalls = normalizeToolCalls(
+      parsedToolCalls.length ? parsedToolCalls : extractToolCallsFromMessage(result as ToolCallMessage)
+    );
+    if (normalizedToolCalls.length) {
+      (result as { tool_calls?: unknown[] }).tool_calls = normalizedToolCalls;
     }
 
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
@@ -501,7 +681,6 @@ type GraphDeps = {
   responseModel?: ChatOpenAI;
   tools?: ConfiguredTool[];
   ChatOpenAI?: typeof ChatOpenAI;
-  toolNode?: ToolNode;
   onUpdate?: (messages: BaseMessage[]) => void | Promise<void>;
 };
 
@@ -549,10 +728,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     schema: z.object({}).default({})
   }) as ReturnType<typeof instrumentTools>[number];
   const intentTools = [...instrumentedTools, respondTool];
-
-  // Surface tool errors to the caller instead of swallowing them as messages so the
-  // pipeline can fail fast and propagate meaningful failure reasons.
-  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
+  const intentToolNames = new Set(intentTools.map((tool) => tool.name));
+  const toolMap = new Map<string, ReturnType<typeof instrumentTools>[number]>(
+    instrumentedTools.map((tool) => [tool.name, tool])
+  );
   const intentStep = callIntentModel(ctx, intentModelName, intentLLM, intentTools);
   const streamingIntentModel = intentLLM.bindTools(intentTools);
   const maxIterations = 20;
@@ -562,16 +741,19 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   const canonicalToolCalls = (toolCalls: ToolCallRecord[]): string | null => {
     if (!toolCalls.length) return null;
-    const normalized = toolCalls.map((call) => {
-      const name = call.name ?? call.function?.name ?? "unknown_tool";
-      const args = normalizeArgs(
-        (call as { arguments?: unknown }).arguments ??
-          call.function?.arguments ??
-          (call as { args?: unknown }).args ??
-          (call as { input?: unknown }).input
-      );
-      return { name, args };
-    });
+    const normalized = toolCalls
+      .filter((call) => !isRespondToolCall(call))
+      .map((call) => {
+        const name = call.name ?? call.function?.name ?? "unknown_tool";
+        const args = isRecord((call as { args?: unknown }).args)
+          ? (call as { args?: Record<string, unknown> }).args
+          : normalizeArgs(
+              (call as { arguments?: unknown }).arguments ??
+                call.function?.arguments ??
+                (call as { input?: unknown }).input
+            );
+        return { name, args };
+      });
     normalized.sort((a, b) => {
       if (a.name === b.name) return safeStringify(a.args).localeCompare(safeStringify(b.args));
       return a.name.localeCompare(b.name);
@@ -640,17 +822,8 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     return [...messages, new SystemMessage({ content: context })];
   };
 
-  const runTools = async (messages: BaseMessage[]): Promise<BaseMessage[]> => {
-    const result: unknown = await toolNode.invoke({ messages });
-    if (Array.isArray(result)) return result as BaseMessage[];
-    if (result && typeof result === "object" && "messages" in result) {
-      const messagesResult = (result as { messages?: unknown }).messages;
-      return Array.isArray(messagesResult) ? (messagesResult as BaseMessage[]) : [];
-    }
-    return [];
-  };
-
-  const responseContext = (messages: BaseMessage[]) => dropRespondToolCalls(messages);
+  const responseContext = (messages: BaseMessage[]) =>
+    ensureResponseSystemPrompt(stripIntentOnlySystemMessages(dropRespondToolCalls(messages)));
 
   const recordRespondMetrics = async (usage: TokenUsage, latencyMs: number, ok: boolean, errorType?: string) => {
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
@@ -717,7 +890,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const usage = extractTokenUsage(responseAggregated);
       const responseMessage = new AIMessage({
         content: responseAggregated.content,
-        additional_kwargs: (responseAggregated as { additional_kwargs?: unknown }).additional_kwargs,
+        additional_kwargs: (responseAggregated as { additional_kwargs?: Record<string, unknown> }).additional_kwargs,
         response_metadata: (responseAggregated as { response_metadata?: unknown }).response_metadata,
         usage_metadata: (responseAggregated as { usage_metadata?: unknown }).usage_metadata,
         ...(responseAggregated as { tool_calls?: AIMessage["tool_calls"] }).tool_calls
@@ -725,7 +898,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
               tool_calls: (responseAggregated as { tool_calls?: AIMessage["tool_calls"] }).tool_calls
             } as { tool_calls: AIMessage["tool_calls"] })
           : {}
-      });
+      } as AIMessageFields);
       const latencyMs = Date.now() - start;
       await recordRespondMetrics(usage, latencyMs, true);
       await recordLLMTrace(ctx, responseModelName, start, latencyMs, usage, filtered, responseMessage);
@@ -746,97 +919,11 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     }
   }
 
-  const execute = async (
-    initialMessages: BaseMessage[],
-    onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
-  ): Promise<BaseMessage[]> => {
-    let messages = ensureToolAvailabilityContext(
-      ensureToolFormatInstructions(ensureSystemPrompt(initialMessages)),
-      toolAvailabilityMessage
-    );
-    let responded = false;
-    let forcedReason: string | null = null;
-    let lastToolCallsSignature: string | null = null;
-    let identicalToolCallStreak = 0;
-
-    const setForcedReason = (reason: string) => {
-      if (!forcedReason) forcedReason = reason;
-    };
-
-    for (let i = 0; i < maxIterations; i++) {
-      const modelResult = await intentStep({ messages });
-      const nextMessages = modelResult.messages ?? [];
-      messages = [...messages, ...nextMessages];
-      await onUpdate(messages);
-      const toolCalls = latestToolCalls(messages);
-      const wantsRespond = toolCalls.some(isRespondToolCall);
-
-      const toolCallsSignature = canonicalToolCalls(toolCalls);
-      if (toolCallsSignature) {
-        if (toolCallsSignature === lastToolCallsSignature) {
-          identicalToolCallStreak += 1;
-        } else {
-          identicalToolCallStreak = 1;
-          lastToolCallsSignature = toolCallsSignature;
-        }
-      } else {
-        identicalToolCallStreak = 0;
-        lastToolCallsSignature = null;
-      }
-
-      if (toolCallsSignature && identicalToolCallStreak >= 3) {
-        const firstCall = toolCalls[0];
-        const name = firstCall?.name ?? firstCall?.function?.name ?? "unknown_tool";
-        setForcedReason(`Tool "${name}" was requested with identical parameters ${identicalToolCallStreak} times`);
-      }
-
-      if (!toolCalls.length || wantsRespond || forcedReason) {
-        const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
-        messages = [...messages, responseMessage];
-        await onUpdate(messages);
-        responded = true;
-        break;
-      }
-
-      const toolMessages = await runTools(messages);
-      messages = [...messages, ...toolMessages];
-      await onUpdate(messages);
-
-      updateFailureTracking(toolMessages, setForcedReason);
-
-      const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
-      messages = [...messages, responseMessage];
-      await onUpdate(messages);
-      responded = true;
-      break;
-    }
-
-    if (!responded) {
-      const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
-      messages = [...messages, responseMessage];
-      await onUpdate(messages);
-    }
-    return messages;
-  };
-
-  /* c8 ignore start */
-  async function* streamMessages(initialMessages: BaseMessage[]) {
-    let messages = ensureToolAvailabilityContext(
-      ensureToolFormatInstructions(ensureSystemPrompt(initialMessages)),
-      toolAvailabilityMessage
-    );
-    let responded = false;
-    let lastIntentChunk: unknown;
-    let forcedReason: string | null = null;
-    let lastToolCallsSignature: string | null = null;
-    let identicalToolCallStreak = 0;
-
-    const setForcedReason = (reason: string) => {
-      if (!forcedReason) forcedReason = reason;
-    };
-
-    for (let i = 0; i < maxIterations; i++) {
+  const invokeIntent = async (messages: BaseMessage[], mode: "invoke" | "stream" = "invoke") => {
+    if (mode === "stream" && typeof streamingIntentModel.stream === "function") {
       const start = Date.now();
+      let aggregated: AIMessageChunk | null = null;
+      let latestToolCallChunks: unknown[] | undefined;
       let stream: AsyncIterable<AIMessageChunk>;
       try {
         stream = await streamingIntentModel.stream(messages);
@@ -851,46 +938,17 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         throw err;
       }
 
-      let aggregated: AIMessageChunk | null = null;
-      let latestToolCallChunks: unknown[] | undefined;
       try {
         for await (const chunk of stream) {
-          lastIntentChunk = chunk;
           if (DEBUG_UPSTREAM) {
             console.warn("intent upstream chunk", safeStringify(chunk));
           }
+          aggregated = aggregated ? aggregated.concat(chunk) : chunk;
           const chunkToolCallChunks =
             (chunk as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
             (chunk as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
-
-          if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) latestToolCallChunks = chunkToolCallChunks;
-
-          aggregated = aggregated ? aggregated.concat(chunk) : chunk;
-          const aggregatedToolCalls = extractToolCallsFromMessage(aggregated as ToolCallMessage);
-          if (aggregated && aggregatedToolCalls.length) {
-            (aggregated as { tool_calls?: unknown[] }).tool_calls = aggregatedToolCalls;
-          }
-          if (aggregated && latestToolCallChunks) {
-            (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
-          }
-          const currentMessages = [...messages, aggregated];
-          if (onUpdateHook) await onUpdateHook(currentMessages);
-
-          const respondInChunks =
-            latestToolCallChunks?.some((call) => {
-              const name = (call as { name?: string; function?: { name?: string } }).function?.name ?? (call as { name?: string }).name;
-              return name === "respond";
-            }) ?? false;
-
-          const hasToolSignals =
-            hasToolCall([aggregated as unknown as BaseMessage]) ||
-            aggregatedToolCalls.length > 0 ||
-            (latestToolCallChunks?.length ?? 0) > 0;
-          const hasRespondSignal = respondInChunks || aggregatedToolCalls.some(isRespondToolCall);
-          const shouldStreamIntentUpdate = hasToolSignals && !hasRespondSignal;
-
-          if (shouldStreamIntentUpdate) {
-            yield { messages: currentMessages };
+          if (Array.isArray(chunkToolCallChunks) && chunkToolCallChunks.length) {
+            latestToolCallChunks = chunkToolCallChunks;
           }
         }
       } catch (err) {
@@ -898,7 +956,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
           console.error(
             "intent upstream error (during stream)",
             err instanceof Error ? err.message : String(err),
-            safeStringify(lastIntentChunk)
+            safeStringify(messages)
           );
         }
         throw err;
@@ -911,32 +969,27 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       if (latestToolCallChunks) {
         (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
       }
-      const parsedToolCalls = await parseToolCallsWithParser(aggregated as unknown as BaseMessage);
 
+      const parsedToolCalls = await parseToolCallsWithParser(aggregated as unknown as BaseMessage);
       const aggregatedToolCallChunks =
         (aggregated as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
         (aggregated as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
-
       const chunkCalls =
         aggregatedToolCallChunks ??
         (Array.isArray(latestToolCallChunks) && latestToolCallChunks.length ? latestToolCallChunks : null);
-
       const normalizedChunkCalls =
         chunkCalls && Array.isArray(chunkCalls) && chunkCalls.length ? normalizeToolCalls(chunkCalls) : [];
-
       let toolCalls =
         parsedToolCalls.length > 0 ? parsedToolCalls : extractToolCallsFromMessage(aggregated as ToolCallMessage);
-
-      const isValidToolName = (name?: unknown) =>
-        typeof name === "string" && name.trim().length > 0 && name.trim() !== "tool_call";
-
-      const hasNamedToolCalls = toolCalls.some((call) => isValidToolName(call?.name ?? call.function?.name));
-
+      const hasNamedToolCalls = toolCalls.some((call) => {
+        const name = call?.name ?? call.function?.name;
+        return typeof name === "string" && name.trim().length > 0 && name.trim() !== "tool_call";
+      });
       if ((!toolCalls.length || !hasNamedToolCalls) && normalizedChunkCalls.length) {
         toolCalls = normalizedChunkCalls;
       }
-
       if (toolCalls.length) {
+        toolCalls = normalizeToolCalls(toolCalls);
         (aggregated as { tool_calls?: unknown[] }).tool_calls = toolCalls;
       }
 
@@ -953,17 +1006,58 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
       const aggregatedMessage = new AIMessage({
         content: aggregated.content,
-        additional_kwargs: (aggregated as { additional_kwargs?: unknown }).additional_kwargs,
+        additional_kwargs: (aggregated as { additional_kwargs?: Record<string, unknown> }).additional_kwargs,
         response_metadata: (aggregated as { response_metadata?: unknown }).response_metadata,
         usage_metadata: (aggregated as { usage_metadata?: unknown }).usage_metadata,
-        ...(toolCalls.length ? ({ tool_calls: toolCalls } as { tool_calls: AIMessage["tool_calls"] }) : {})
-      });
+        ...(toolCalls.length
+          ? ({ tool_calls: toolCalls as unknown as AIMessage["tool_calls"] } as { tool_calls: AIMessage["tool_calls"] })
+          : {})
+      } as AIMessageFields);
       await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, aggregatedMessage);
+      return [aggregatedMessage];
+    }
 
-      messages = [...messages, aggregatedMessage];
-      const wantsRespond = toolCalls.some(isRespondToolCall);
+    const result = await intentStep({ messages });
+    return result.messages ?? [];
+  };
 
-      const toolCallsSignature = canonicalToolCalls(toolCalls);
+  const execute = async (
+    initialMessages: BaseMessage[],
+    onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
+  ): Promise<BaseMessage[]> => {
+    let messages = ensureToolAvailabilityContext(
+      ensureToolFormatInstructions(ensureIntentSystemPrompt(initialMessages)),
+      toolAvailabilityMessage
+    );
+    let responded = false;
+    let forcedReason: string | null = null;
+    let lastToolCallsSignature: string | null = null;
+    let identicalToolCallStreak = 0;
+
+    const setForcedReason = (reason: string) => {
+      if (!forcedReason) forcedReason = reason;
+    };
+
+    for (let i = 0; i < maxIterations; i++) {
+      const intentMessages = await invokeIntent(messages, "invoke");
+      messages = [...messages, ...intentMessages];
+      await onUpdate(messages);
+
+      const toolCalls = latestToolCalls(messages);
+      const validation = validateToolCalls(toolCalls, intentToolNames);
+
+      if (validation.invalid.length) {
+        messages = [...messages, new SystemMessage({ content: buildToolValidationMessage(validation.invalid) })];
+        await onUpdate(messages);
+        lastToolCallsSignature = null;
+        identicalToolCallStreak = 0;
+        continue;
+      }
+
+      const runnableCalls = validation.valid.filter((call) => !isRespondToolCall(call));
+      const wantsRespond = validation.valid.some(isRespondToolCall);
+
+      const toolCallsSignature = canonicalToolCalls(runnableCalls);
       if (toolCallsSignature) {
         if (toolCallsSignature === lastToolCallsSignature) {
           identicalToolCallStreak += 1;
@@ -977,12 +1071,89 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       }
 
       if (toolCallsSignature && identicalToolCallStreak >= 3) {
-        const firstCall = toolCalls[0];
+        const firstCall = runnableCalls[0] ?? validation.valid[0];
         const name = firstCall?.name ?? firstCall?.function?.name ?? "unknown_tool";
         setForcedReason(`Tool "${name}" was requested with identical parameters ${identicalToolCallStreak} times`);
       }
 
-      if (!toolCalls.length || wantsRespond || forcedReason) {
+      if (wantsRespond || runnableCalls.length === 0 || forcedReason) {
+        const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
+        messages = [...messages, responseMessage];
+        await onUpdate(messages);
+        responded = true;
+        break;
+      }
+
+      const toolMessages = await runToolCalls(runnableCalls, toolMap);
+      messages = [...messages, ...toolMessages];
+      await onUpdate(messages);
+
+      updateFailureTracking(toolMessages, setForcedReason);
+    }
+
+    if (!responded) {
+      const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
+      messages = [...messages, responseMessage];
+      await onUpdate(messages);
+    }
+    return messages;
+  };
+
+  /* c8 ignore start */
+  async function* streamMessages(initialMessages: BaseMessage[]) {
+    let messages = ensureToolAvailabilityContext(
+      ensureToolFormatInstructions(ensureIntentSystemPrompt(initialMessages)),
+      toolAvailabilityMessage
+    );
+    let responded = false;
+    let forcedReason: string | null = null;
+    let lastToolCallsSignature: string | null = null;
+    let identicalToolCallStreak = 0;
+
+    const setForcedReason = (reason: string) => {
+      if (!forcedReason) forcedReason = reason;
+    };
+
+    for (let i = 0; i < maxIterations; i++) {
+      const intentMessages = await invokeIntent(messages, "stream");
+      messages = [...messages, ...intentMessages];
+      if (onUpdateHook) await onUpdateHook(messages);
+
+      const toolCalls = latestToolCalls(messages);
+      const validation = validateToolCalls(toolCalls, intentToolNames);
+
+      if (validation.invalid.length) {
+        messages = [...messages, new SystemMessage({ content: buildToolValidationMessage(validation.invalid) })];
+        if (onUpdateHook) await onUpdateHook(messages);
+        yield { messages };
+        lastToolCallsSignature = null;
+        identicalToolCallStreak = 0;
+        continue;
+      }
+
+      const runnableCalls = validation.valid.filter((call) => !isRespondToolCall(call));
+      const wantsRespond = validation.valid.some(isRespondToolCall);
+
+      const toolCallsSignature = canonicalToolCalls(runnableCalls);
+      if (toolCallsSignature) {
+        if (toolCallsSignature === lastToolCallsSignature) {
+          identicalToolCallStreak += 1;
+        } else {
+          identicalToolCallStreak = 1;
+          lastToolCallsSignature = toolCallsSignature;
+        }
+      } else {
+        identicalToolCallStreak = 0;
+        lastToolCallsSignature = null;
+      }
+
+      if (toolCallsSignature && identicalToolCallStreak >= 3) {
+        const firstCall = runnableCalls[0] ?? validation.valid[0];
+        const name = firstCall?.name ?? firstCall?.function?.name ?? "unknown_tool";
+        setForcedReason(`Tool "${name}" was requested with identical parameters ${identicalToolCallStreak} times`);
+      }
+
+      if (wantsRespond || runnableCalls.length === 0 || forcedReason) {
         const contextualized = addFailureContext(messages, forcedReason);
         if (onUpdateHook) await onUpdateHook(contextualized);
         for await (const responseChunk of streamRespond(contextualized)) {
@@ -993,21 +1164,12 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         break;
       }
 
-      const toolMessages = await runTools(messages);
+      const toolMessages = await runToolCalls(runnableCalls, toolMap);
       messages = [...messages, ...toolMessages];
       if (onUpdateHook) await onUpdateHook(messages);
       yield { messages };
 
       updateFailureTracking(toolMessages, setForcedReason);
-
-      const contextualized = addFailureContext(messages, forcedReason);
-      if (onUpdateHook) await onUpdateHook(contextualized);
-      for await (const responseChunk of streamRespond(contextualized)) {
-        messages = responseChunk.messages ?? messages;
-        yield responseChunk;
-      }
-      responded = true;
-      break;
     }
 
     if (!responded) {
@@ -1020,11 +1182,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         }
       } catch (err) {
         if (DEBUG_UPSTREAM) {
-          console.error(
-            "intent -> response error",
-            err instanceof Error ? err.message : String(err),
-            safeStringify(lastIntentChunk)
-          );
+          console.error("intent -> response error", err instanceof Error ? err.message : String(err));
         }
         throw err;
       }
@@ -1062,17 +1220,20 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
 
         if (Array.isArray(msg.tool_calls)) {
           for (const call of msg.tool_calls) {
+            const name = call.function.name ?? "tool_call";
+            const fallbackId = `${name}_${toolCalls.length}`;
+            const id = typeof call.id === "string" && call.id.trim() ? call.id : fallbackId;
             const rawArgs = call.function.arguments;
             const parsedArgs = parseToolInput(rawArgs);
             const argsObject = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
 
             toolCalls.push({
-              id: call.id,
+              id,
               type: "tool_call",
-              name: call.function.name,
+              name,
               args: argsObject as Record<string, unknown>,
               function: {
-                name: call.function.name,
+                name,
                 arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
               }
             } as LangGraphToolCall);

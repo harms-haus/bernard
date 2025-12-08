@@ -7,3 +7,10 @@ export const bernardSystemPrompt = [
   "Safety: avoid sharing secrets or sensitive data; stay factual and honest; gracefully decline harmful requests."
 ].join("\n");
 
+export const intentSystemPrompt = [
+  "You are Bernard's intent router. Your job is to pick the next tool calls.",
+  "Only respond with tool_calls using the provided tools. Arguments must be valid JSON objects.",
+  "Use the minimum tool calls needed. If you have enough info to finalize, call respond with empty {} arguments.",
+  "Do not write conversational text or analysis; just emit tool_calls."
+].join("\n");
+
