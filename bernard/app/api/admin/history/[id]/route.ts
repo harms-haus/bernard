@@ -7,6 +7,8 @@ import { TokenStore } from "@/lib/tokenStore";
 
 export const runtime = "nodejs";
 
+type RouteParams = { params: Promise<{ id: string }> };
+
 type AdminConversationDetail = {
   id: string;
   status: "open" | "closed";
@@ -29,7 +31,7 @@ type AdminConversationDetail = {
   tokenIds: string[];
 };
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: RouteParams) {
   if (!(await requireAdmin(req))) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
@@ -94,6 +96,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (err) {
     console.error(`Failed to load conversation ${id}`, err);
     return new Response(JSON.stringify({ error: "Unable to load conversation" }), { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  if (!(await requireAdmin(req))) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  }
+
+  const { id } = await params;
+  const redis = getRedis();
+  const keeper = new RecordKeeper(redis);
+
+  try {
+    const removed = await keeper.deleteConversation(id);
+    if (!removed) {
+      return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
+    }
+    return Response.json({ removed: true });
+  } catch (err) {
+    console.error(`Failed to delete conversation ${id}`, err);
+    return new Response(JSON.stringify({ error: "Unable to delete conversation" }), { status: 500 });
   }
 }
 

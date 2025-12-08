@@ -13,6 +13,45 @@ import { ConversationDetail, ConversationMessage } from '../../data/models';
 
 type ToolCall = NonNullable<ConversationMessage['tool_calls']>[number];
 
+type TraceEntry = {
+  id: string;
+  role: ConversationMessage['role'];
+  name?: string;
+  content: unknown;
+  tool_call_id?: string;
+  tool_calls?: ToolCall[];
+  raw: unknown;
+};
+
+type LlmTrace = {
+  type: 'llm_call';
+  model?: string;
+  at?: string;
+  latencyMs?: number;
+  tokens?: Record<string, unknown>;
+  context: TraceEntry[];
+  result: TraceEntry[];
+  raw: unknown;
+};
+
+type TraceEntryInput = {
+  role?: unknown;
+  name?: unknown;
+  tool_call_id?: unknown;
+  tool_calls?: unknown;
+  content?: unknown;
+};
+
+type LlmCallContent = {
+  type?: unknown;
+  model?: unknown;
+  at?: unknown;
+  latencyMs?: unknown;
+  tokens?: unknown;
+  context?: unknown;
+  result?: unknown;
+};
+
 @Component({
   selector: 'app-conversation',
   imports: [CommonModule, ButtonModule, TagModule, MessageModule, TooltipModule],
@@ -31,6 +70,7 @@ export class ConversationComponent {
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
   readonly expandedToolCalls = signal<Set<string>>(new Set());
+  readonly expandedMessages = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -60,15 +100,7 @@ export class ConversationComponent {
   }
 
   renderContent(message: ConversationMessage): string {
-    const content = message.content;
-    if (typeof content === 'string') {
-      return content;
-    }
-    try {
-      return JSON.stringify(content, null, 2);
-    } catch {
-      return String(content);
-    }
+    return this.renderValue(message.content);
   }
 
   private argumentValue(call: ToolCall): unknown {
@@ -150,7 +182,7 @@ export class ConversationComponent {
     }
   }
 
-  messageLabel(message: ConversationMessage) {
+  messageLabel(message: { role: ConversationMessage['role'] }) {
     if (message.role === 'assistant') {
       return 'Assistant';
     }
@@ -163,7 +195,7 @@ export class ConversationComponent {
     return 'User';
   }
 
-  messageSeverity(message: ConversationMessage) {
+  messageSeverity(message: { role: ConversationMessage['role'] }) {
     if (message.role === 'assistant') {
       return 'success';
     }
@@ -224,6 +256,128 @@ export class ConversationComponent {
       this.pollSub.unsubscribe();
       this.pollSub = null;
     }
+  }
+
+  traceFor(message: ConversationMessage): LlmTrace | null {
+    const content = message.content;
+    if (!this.isLlmCallContent(content)) return null;
+    if (content.type !== 'llm_call') return null;
+
+    const toEntry = (entry: unknown, index: number, kind: 'context' | 'result'): TraceEntry | null => {
+      if (!this.isTraceEntryInput(entry)) return null;
+      const role = this.parseRole(entry.role);
+      const name = typeof entry.name === 'string' ? entry.name : undefined;
+      const tool_call_id = typeof entry.tool_call_id === 'string' ? entry.tool_call_id : undefined;
+      const tool_calls = Array.isArray(entry.tool_calls) ? (entry.tool_calls as ToolCall[]) : undefined;
+      const id = `${message.id}:${kind}:${index}`;
+      return {
+        id,
+        role,
+        name,
+        tool_call_id,
+        tool_calls,
+        content: entry.content ?? '',
+        raw: entry
+      };
+    };
+
+    const model = typeof content.model === 'string' ? content.model : undefined;
+    const at = typeof content.at === 'string' ? content.at : undefined;
+    const latencyMs = typeof content.latencyMs === 'number' ? content.latencyMs : undefined;
+    const tokens = this.isRecord(content.tokens) ? (content.tokens as Record<string, unknown>) : undefined;
+
+    const contextEntries = Array.isArray(content.context)
+      ? content.context.map((entry, index) => toEntry(entry, index, 'context')).filter(Boolean)
+      : [];
+    const resultEntries = Array.isArray(content.result)
+      ? content.result.map((entry, index) => toEntry(entry, index, 'result')).filter(Boolean)
+      : [];
+
+    return {
+      type: 'llm_call',
+      model,
+      at,
+      latencyMs,
+      tokens,
+      context: contextEntries as TraceEntry[],
+      result: resultEntries as TraceEntry[],
+      raw: content
+    };
+  }
+
+  traceEntryContent(entry: TraceEntry): string {
+    return this.renderValue(entry.content);
+  }
+
+  messagePreview(message: ConversationMessage): string {
+    return this.renderContent(message);
+  }
+
+  rawMessage(message: ConversationMessage): string {
+    return this.safeStringify(message);
+  }
+
+  rawTrace(trace: LlmTrace): string {
+    return this.safeStringify(trace.raw);
+  }
+
+  rawTraceEntry(entry: TraceEntry): string {
+    return this.safeStringify(entry.raw);
+  }
+
+  toggleMessage(event: Event, id: string) {
+    if (event.target instanceof HTMLElement && event.target.closest('button, a')) {
+      return;
+    }
+    this.expandedMessages.update((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  isMessageExpanded(id: string) {
+    return this.expandedMessages().has(id);
+  }
+
+  private renderValue(content: unknown): string {
+    if (typeof content === 'string') return content;
+    try {
+      return JSON.stringify(content, null, 2);
+    } catch {
+      return String(content ?? '');
+    }
+  }
+
+  private safeStringify(value: unknown): string {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value ?? '');
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private isTraceEntryInput(value: unknown): value is TraceEntryInput {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private isLlmCallContent(value: unknown): value is LlmCallContent {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private parseRole(raw: unknown): ConversationMessage['role'] {
+    if (raw === 'user' || raw === 'assistant' || raw === 'system' || raw === 'tool') {
+      return raw;
+    }
+    return 'system';
   }
 }
 

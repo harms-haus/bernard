@@ -91,14 +91,19 @@ class FakeChatOpenAI {
 function makeKeeper() {
   const toolResults: unknown[] = [];
   const modelResults: unknown[] = [];
+  const llmCalls: unknown[] = [];
   return {
     toolResults,
     modelResults,
+    llmCalls,
     async recordToolResult(...args: unknown[]) {
       toolResults.push(args);
     },
     async recordOpenRouterResult(...args: unknown[]) {
       modelResults.push(args);
+    },
+    async recordLLMCall(...args: unknown[]) {
+      llmCalls.push(args);
     }
   };
 }
@@ -129,11 +134,6 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
       toolCalls: [{ id: "call-1", name: "stub_tool", args: { value: "hi" } }],
       usage: { prompt_tokens: 5, completion_tokens: 2 },
       usagePath: "response_metadata"
-    },
-    {
-      content: "Tools complete",
-      usage: { input_tokens: 11, output_tokens: 6 },
-      usagePath: "usage_metadata"
     },
     {
       content: "done",
@@ -167,16 +167,13 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
   const respondEntry = keeper.toolResults.find(([, name]) => name === "respond");
   assert.ok(respondEntry);
 
-  assert.equal(keeper.modelResults.length, 3);
+  assert.equal(keeper.modelResults.length, 2);
   const [, , firstModelMetrics] = keeper.modelResults[0] as [string, string, Record<string, number>];
   const [, , secondModelMetrics] = keeper.modelResults[1] as [string, string, Record<string, number>];
-  const [, , thirdModelMetrics] = keeper.modelResults[2] as [string, string, Record<string, number>];
   assert.equal(firstModelMetrics.tokensIn, 5);
   assert.equal(firstModelMetrics.tokensOut, 2);
-  assert.equal(secondModelMetrics.tokensIn, 11);
-  assert.equal(secondModelMetrics.tokensOut, 6);
-  assert.equal(thirdModelMetrics.tokensIn, 4);
-  assert.equal(thirdModelMetrics.tokensOut, 2);
+  assert.equal(secondModelMetrics.tokensIn, 4);
+  assert.equal(secondModelMetrics.tokensOut, 2);
 });
 
 test("short-circuits when no tool calls are requested", { timeout: 2000 }, async () => {
@@ -277,11 +274,6 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
       toolCalls: [{ id: "w1", name: "get_weather_current", args: { lat: 48.8566, lon: 2.3522, units: "metric" } }],
       usage: { prompt_tokens: 5, completion_tokens: 2 },
       usagePath: "response_metadata"
-    },
-    {
-      content: "Tool complete",
-      usage: { input_tokens: 6, output_tokens: 3 },
-      usagePath: "usage_metadata"
     },
     {
       content: "done",

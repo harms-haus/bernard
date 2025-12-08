@@ -355,6 +355,18 @@ type TokenUsage = {
   completion_tokens?: number;
   input_tokens?: number;
   output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_write_input_tokens?: number;
+  cached?: boolean;
+};
+
+type TokenAccounting = {
+  in?: number;
+  out?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  cached?: boolean;
 };
 
 function extractTokenUsage(result: unknown): TokenUsage {
@@ -364,6 +376,48 @@ function extractTokenUsage(result: unknown): TokenUsage {
     usage_metadata?: TokenUsage;
   };
   return withUsage.response_metadata?.token_usage ?? withUsage.usage_metadata ?? {};
+}
+
+function normalizeTokenAccounting(usage: TokenUsage): TokenAccounting {
+  const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
+  const tokensOut = usage.completion_tokens ?? usage.output_tokens;
+  const cacheRead = usage.cache_read_input_tokens;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_input_tokens;
+  const cachedFlag = usage.cached === true || (typeof cacheRead === "number" && cacheRead > 0);
+
+  return {
+    ...(typeof tokensIn === "number" ? { in: tokensIn } : {}),
+    ...(typeof tokensOut === "number" ? { out: tokensOut } : {}),
+    ...(typeof cacheRead === "number" ? { cacheRead } : {}),
+    ...(typeof cacheWrite === "number" ? { cacheWrite } : {}),
+    ...(cachedFlag ? { cached: true } : {})
+  };
+}
+
+async function recordLLMTrace(
+  ctx: AgentContext,
+  modelName: string,
+  startedAt: number,
+  latencyMs: number,
+  usage: TokenUsage,
+  contextMessages: BaseMessage[],
+  resultMessages?: BaseMessage | BaseMessage[]
+) {
+  const contextSnapshot = contextMessages.slice();
+  const resultSnapshot = resultMessages
+    ? Array.isArray(resultMessages)
+      ? resultMessages
+      : [resultMessages]
+    : undefined;
+
+  await ctx.recordKeeper.recordLLMCall(ctx.conversationId, {
+    model: modelName,
+    startedAt: new Date(startedAt).toISOString(),
+    latencyMs,
+    tokens: normalizeTokenAccounting(usage),
+    context: contextSnapshot,
+    ...(resultSnapshot ? { result: resultSnapshot } : {})
+  });
 }
 
 function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[] = baseTools as InstrumentedTool[]) {
@@ -435,6 +489,7 @@ function callIntentModel(
     if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
 
     await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
+    await recordLLMTrace(ctx, modelName, start, latency, usage, state.messages, result);
 
     return { messages: [result] };
   };
@@ -617,15 +672,17 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   const invokeRespond = async (messages: BaseMessage[]) => {
     const start = Date.now();
+    const filtered = responseContext(messages);
     try {
-      const filtered = responseContext(messages);
       const rawResult: unknown = await responseLLM.invoke(filtered);
       if (!rawResult || typeof rawResult !== "object") {
         throw new Error("Response model returned invalid result");
       }
       const result = rawResult as BaseMessage;
       const usage = extractTokenUsage(result);
-      await recordRespondMetrics(usage, Date.now() - start, true);
+      const latencyMs = Date.now() - start;
+      await recordRespondMetrics(usage, latencyMs, true);
+      await recordLLMTrace(ctx, responseModelName, start, latencyMs, usage, filtered, result);
       return result;
     } catch (err) {
       await recordRespondMetrics({}, Date.now() - start, false, classifyError(err));
@@ -658,8 +715,21 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       }
 
       const usage = extractTokenUsage(responseAggregated);
-      await recordRespondMetrics(usage, Date.now() - start, true);
-      const finalMessages = [...messages, responseAggregated];
+      const responseMessage = new AIMessage({
+        content: responseAggregated.content,
+        additional_kwargs: (responseAggregated as { additional_kwargs?: unknown }).additional_kwargs,
+        response_metadata: (responseAggregated as { response_metadata?: unknown }).response_metadata,
+        usage_metadata: (responseAggregated as { usage_metadata?: unknown }).usage_metadata,
+        ...(responseAggregated as { tool_calls?: AIMessage["tool_calls"] }).tool_calls
+          ? ({
+              tool_calls: (responseAggregated as { tool_calls?: AIMessage["tool_calls"] }).tool_calls
+            } as { tool_calls: AIMessage["tool_calls"] })
+          : {}
+      });
+      const latencyMs = Date.now() - start;
+      await recordRespondMetrics(usage, latencyMs, true);
+      await recordLLMTrace(ctx, responseModelName, start, latencyMs, usage, filtered, responseMessage);
+      const finalMessages = [...messages, responseMessage];
       if (onUpdateHook) await onUpdateHook(finalMessages);
       yield { messages: finalMessages };
       return finalMessages;
@@ -727,19 +797,18 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         responded = true;
         break;
       }
+
       const toolMessages = await runTools(messages);
       messages = [...messages, ...toolMessages];
       await onUpdate(messages);
 
       updateFailureTracking(toolMessages, setForcedReason);
 
-      if (forcedReason) {
-        const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
-        messages = [...messages, responseMessage];
-        await onUpdate(messages);
-        responded = true;
-        break;
-      }
+      const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
+      messages = [...messages, responseMessage];
+      await onUpdate(messages);
+      responded = true;
+      break;
     }
 
     if (!responded) {
@@ -874,9 +943,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const usage = extractTokenUsage(aggregated);
       const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
       const tokensOut = usage.completion_tokens ?? usage.output_tokens;
+      const latencyMs = Date.now() - start;
       await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, intentModelName, {
         ok: true,
-        latencyMs: Date.now() - start,
+        latencyMs,
         ...(typeof tokensIn === "number" ? { tokensIn } : {}),
         ...(typeof tokensOut === "number" ? { tokensOut } : {})
       });
@@ -888,6 +958,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         usage_metadata: (aggregated as { usage_metadata?: unknown }).usage_metadata,
         ...(toolCalls.length ? ({ tool_calls: toolCalls } as { tool_calls: AIMessage["tool_calls"] }) : {})
       });
+      await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, aggregatedMessage);
 
       messages = [...messages, aggregatedMessage];
       const wantsRespond = toolCalls.some(isRespondToolCall);
@@ -929,16 +1000,14 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
       updateFailureTracking(toolMessages, setForcedReason);
 
-      if (forcedReason) {
-        const contextualized = addFailureContext(messages, forcedReason);
-        if (onUpdateHook) await onUpdateHook(contextualized);
-        for await (const responseChunk of streamRespond(contextualized)) {
-          messages = responseChunk.messages ?? messages;
-          yield responseChunk;
-        }
-        responded = true;
-        break;
+      const contextualized = addFailureContext(messages, forcedReason);
+      if (onUpdateHook) await onUpdateHook(contextualized);
+      for await (const responseChunk of streamRespond(contextualized)) {
+        messages = responseChunk.messages ?? messages;
+        yield responseChunk;
       }
+      responded = true;
+      break;
     }
 
     if (!responded) {

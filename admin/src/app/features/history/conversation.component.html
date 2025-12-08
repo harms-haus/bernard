@@ -42,66 +42,222 @@
         <p class="muted">No messages yet.</p>
       } @else {
         @for (message of messages(); track message.id) {
-          <article
-            class="message"
-            [class.user]="message.role === 'user'"
-            [class.assistant]="message.role === 'assistant' && !message.tool_calls?.length"
-            [class.system]="message.role === 'system'"
-            [class.tool]="message.role === 'tool'"
-            [class.tool-call-article]="message.tool_calls?.length"
-          >
-            @if (!message.tool_calls?.length) {
+          @if (traceFor(message); as trace) {
+            <article
+              class="message trace"
+              (click)="toggleMessage($event, message.id)"
+              [attr.aria-expanded]="isMessageExpanded(message.id)"
+            >
               <div class="message-header">
-                <p-tag [value]="messageLabel(message)" [severity]="messageSeverity(message)"></p-tag>
-                <span class="muted">{{ message.createdAt | date: 'short' }}</span>
+                <div class="trace-heading">
+                  <p-tag value="LLM call" severity="secondary"></p-tag>
+                  <span class="muted small">{{ trace.model || 'Unknown model' }}</span>
+                </div>
+                <span class="muted">{{ (trace.at || message.createdAt) | date: 'short' }}</span>
               </div>
-            }
-            <div class="message-body">
-              @if (message.tool_calls?.length) {
-                <div class="tool-call-list" aria-label="Tool calls">
-                  @for (call of message.tool_calls; let i = $index; track call.id || i) {
-                    @let callKey = call.id || (message.id + '-call-' + i);
-                    <div class="tool-call">
-                      <button
-                        type="button"
-                        class="tool-call-toggle"
-                        (click)="toggleToolCall(callKey)"
-                        [attr.aria-expanded]="isToolCallExpanded(callKey)"
-                        [attr.aria-controls]="callKey + '-details'"
-                      >
-                        <div class="tool-call-header">
-                          <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
-                          <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
-                          <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
-                            {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
-                          </span>
-                        </div>
-                      </button>
-                      @if (isToolCallExpanded(callKey)) {
-                        <div class="tool-call-body" [id]="callKey + '-details'">
-                          @if (toolCallArguments(call); as argBlock) {
-                            @if (argBlock.text) {
-                              <pre class="content tool-call-args">{{ argBlock.text }}</pre>
-                            }
-                            @if (!argBlock.parsed || !argBlock.text) {
-                              <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
-                            }
-                          }
-                          <div class="tool-call-id muted small">ID: {{ callKey }}</div>
-                        </div>
-                      }
-                    </div>
+              <div class="message-body trace-body">
+                <div class="trace-meta muted small">
+                  @if (trace.latencyMs !== undefined) {
+                    <span>{{ trace.latencyMs }} ms</span>
                   }
-                  <div class="tool-call-time muted small">
-                    {{ message.createdAt | date: 'short' }}
-                  </div>
+                  @if (trace.tokens) {
+                    <span>tokens: {{ trace.tokens | json }}</span>
+                  }
+                </div>
+
+                <div class="trace-section">
+                  <h4>Context</h4>
+                  @if (!trace.context.length) {
+                    <p class="muted small">None</p>
+                  } @else {
+                    @for (entry of trace.context; track entry.id) {
+                      <div
+                        class="message trace-entry"
+                        [class.user]="entry.role === 'user'"
+                        [class.assistant]="entry.role === 'assistant' && !entry.tool_calls?.length"
+                        [class.system]="entry.role === 'system'"
+                        [class.tool]="entry.role === 'tool'"
+                        (click)="toggleMessage($event, entry.id)"
+                        [attr.aria-expanded]="isMessageExpanded(entry.id)"
+                      >
+                        <div class="message-header">
+                          <p-tag [value]="messageLabel(entry)" [severity]="messageSeverity(entry)"></p-tag>
+                        </div>
+                        <div class="message-body">
+                          @if (entry.tool_calls?.length) {
+                            <div class="tool-call-list" aria-label="Tool calls">
+                              @for (call of entry.tool_calls; let i = $index; track call.id || i) {
+                                @let callKey = call.id || (entry.id + '-call-' + i);
+                                <div class="tool-call">
+                                  <button
+                                    type="button"
+                                    class="tool-call-toggle"
+                                    (click)="toggleToolCall(callKey); $event.stopPropagation()"
+                                    [attr.aria-expanded]="isToolCallExpanded(callKey)"
+                                    [attr.aria-controls]="callKey + '-details'"
+                                  >
+                                    <div class="tool-call-header">
+                                      <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
+                                      <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
+                                      <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
+                                        {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  @if (isToolCallExpanded(callKey)) {
+                                    <div class="tool-call-body" [id]="callKey + '-details'">
+                                      @if (toolCallArguments(call); as argBlock) {
+                                        @if (argBlock.text) {
+                                          <pre class="content tool-call-args">{{ argBlock.text }}</pre>
+                                        }
+                                        @if (!argBlock.parsed || !argBlock.text) {
+                                          <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
+                                        }
+                                      }
+                                      <div class="tool-call-id muted small">ID: {{ callKey }}</div>
+                                    </div>
+                                  }
+                                </div>
+                              }
+                            </div>
+                          }
+                          <pre class="content">{{ isMessageExpanded(entry.id) ? rawTraceEntry(entry) : traceEntryContent(entry) }}</pre>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+
+                <div class="trace-section">
+                  <h4>Result</h4>
+                  @if (!trace.result.length) {
+                    <p class="muted small">None</p>
+                  } @else {
+                    @for (entry of trace.result; track entry.id) {
+                      <div
+                        class="message trace-entry"
+                        [class.user]="entry.role === 'user'"
+                        [class.assistant]="entry.role === 'assistant' && !entry.tool_calls?.length"
+                        [class.system]="entry.role === 'system'"
+                        [class.tool]="entry.role === 'tool'"
+                        (click)="toggleMessage($event, entry.id)"
+                        [attr.aria-expanded]="isMessageExpanded(entry.id)"
+                      >
+                        <div class="message-header">
+                          <p-tag [value]="messageLabel(entry)" [severity]="messageSeverity(entry)"></p-tag>
+                        </div>
+                        <div class="message-body">
+                          @if (entry.tool_calls?.length) {
+                            <div class="tool-call-list" aria-label="Tool calls">
+                              @for (call of entry.tool_calls; let i = $index; track call.id || i) {
+                                @let callKey = call.id || (entry.id + '-call-' + i);
+                                <div class="tool-call">
+                                  <button
+                                    type="button"
+                                    class="tool-call-toggle"
+                                    (click)="toggleToolCall(callKey); $event.stopPropagation()"
+                                    [attr.aria-expanded]="isToolCallExpanded(callKey)"
+                                    [attr.aria-controls]="callKey + '-details'"
+                                  >
+                                    <div class="tool-call-header">
+                                      <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
+                                      <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
+                                      <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
+                                        {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  @if (isToolCallExpanded(callKey)) {
+                                    <div class="tool-call-body" [id]="callKey + '-details'">
+                                      @if (toolCallArguments(call); as argBlock) {
+                                        @if (argBlock.text) {
+                                          <pre class="content tool-call-args">{{ argBlock.text }}</pre>
+                                        }
+                                        @if (!argBlock.parsed || !argBlock.text) {
+                                          <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
+                                        }
+                                      }
+                                      <div class="tool-call-id muted small">ID: {{ callKey }}</div>
+                                    </div>
+                                  }
+                                </div>
+                              }
+                            </div>
+                          }
+                          <pre class="content">{{ isMessageExpanded(entry.id) ? rawTraceEntry(entry) : traceEntryContent(entry) }}</pre>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+
+                @if (isMessageExpanded(message.id)) {
+                  <pre class="content raw-json">{{ rawTrace(trace) }}</pre>
+                }
+              </div>
+            </article>
+          } @else {
+            <article
+              class="message"
+              [class.user]="message.role === 'user'"
+              [class.assistant]="message.role === 'assistant' && !message.tool_calls?.length"
+              [class.system]="message.role === 'system'"
+              [class.tool]="message.role === 'tool'"
+              [class.tool-call-article]="message.tool_calls?.length"
+              (click)="toggleMessage($event, message.id)"
+              [attr.aria-expanded]="isMessageExpanded(message.id)"
+            >
+              @if (!message.tool_calls?.length) {
+                <div class="message-header">
+                  <p-tag [value]="messageLabel(message)" [severity]="messageSeverity(message)"></p-tag>
+                  <span class="muted">{{ message.createdAt | date: 'short' }}</span>
                 </div>
               }
-              @if (renderContent(message); as rendered) {
-                <pre class="content">{{ rendered }}</pre>
-              }
-            </div>
-          </article>
+              <div class="message-body">
+                @if (message.tool_calls?.length) {
+                  <div class="tool-call-list" aria-label="Tool calls">
+                    @for (call of message.tool_calls; let i = $index; track call.id || i) {
+                      @let callKey = call.id || (message.id + '-call-' + i);
+                      <div class="tool-call">
+                        <button
+                          type="button"
+                          class="tool-call-toggle"
+                          (click)="toggleToolCall(callKey); $event.stopPropagation()"
+                          [attr.aria-expanded]="isToolCallExpanded(callKey)"
+                          [attr.aria-controls]="callKey + '-details'"
+                        >
+                          <div class="tool-call-header">
+                            <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
+                            <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
+                            <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
+                              {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
+                            </span>
+                          </div>
+                        </button>
+                        @if (isToolCallExpanded(callKey)) {
+                          <div class="tool-call-body" [id]="callKey + '-details'">
+                            @if (toolCallArguments(call); as argBlock) {
+                              @if (argBlock.text) {
+                                <pre class="content tool-call-args">{{ argBlock.text }}</pre>
+                              }
+                              @if (!argBlock.parsed || !argBlock.text) {
+                                <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
+                              }
+                            }
+                            <div class="tool-call-id muted small">ID: {{ callKey }}</div>
+                          </div>
+                        }
+                      </div>
+                    }
+                    <div class="tool-call-time muted small">
+                      {{ message.createdAt | date: 'short' }}
+                    </div>
+                  </div>
+                }
+                <pre class="content">{{ isMessageExpanded(message.id) ? rawMessage(message) : messagePreview(message) }}</pre>
+              </div>
+            </article>
+          }
         }
       }
     }

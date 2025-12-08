@@ -268,6 +268,44 @@ void test("recordRateLimit tracks token and model failures", async () => {
   assert.equal(modelMetrics["error:quota"], "1");
 });
 
+void test("recordLLMCall stores context and output snapshots", async () => {
+  const redis = new FakeRedis();
+  const keeper = new RecordKeeper(redis as unknown as Redis);
+  const { conversationId } = await keeper.startRequest("tok-llm", "model-llm");
+
+  const contextMessages = [
+    makeMessage("system", "sys"),
+    makeMessage("user", "hello"),
+    makeMessage("assistant", "calling tool", {
+      tool_calls: [{ id: "tool-1", function: { name: "search", arguments: '{"query":"q"}' } }]
+    })
+  ];
+  const resultMessage = makeMessage("assistant", "done", { usage_metadata: { input_tokens: 4, output_tokens: 2 } });
+
+  await keeper.recordLLMCall(conversationId, {
+    model: "model-llm",
+    context: contextMessages as any,
+    result: resultMessage as any,
+    startedAt: "2024-01-01T00:00:00.000Z",
+    latencyMs: 12,
+    tokens: { in: 4, out: 2 }
+  });
+
+  const messages = await keeper.getMessages(conversationId);
+  const log = messages[messages.length - 1];
+  assert.equal(log.name, "llm_call");
+  const content = log.content as {
+    model?: string;
+    context?: Array<{ role?: string; content?: string; tool_calls?: Array<{ function?: { arguments?: string } }> }>;
+    result?: unknown[];
+  };
+  assert.equal(content.model, "model-llm");
+  assert.ok(Array.isArray(content.context));
+  const toolCallContext = content.context?.find((entry) => entry.tool_calls?.length);
+  assert.ok(toolCallContext?.tool_calls?.[0]?.function?.arguments);
+  assert.ok(Array.isArray(content.result));
+});
+
 void test("appendMessages normalizes content and counts tool calls", async () => {
   const redis = new FakeRedis();
   const keeper = new RecordKeeper(redis as unknown as Redis);
@@ -433,5 +471,35 @@ void test("countConversations tallies open and closed", async () => {
 
   const counts = await keeper.countConversations();
   assert.deepEqual(counts, { active: 1, closed: 1, total: 2 });
+});
+
+void test("deleteConversation removes conversation, indexes, and traces", async () => {
+  const redis = new FakeRedis();
+  const redisClient = redis as unknown as Redis;
+  const keeper = new RecordKeeper(redisClient);
+  const { conversationId, requestId } = await keeper.startRequest("tok-delete", "model-delete");
+  await keeper.appendMessages(conversationId, [makeMessage("user", "hello")]);
+  const turnId = await keeper.startTurn(requestId, conversationId, "tok-delete", "model-delete");
+  await keeper.endTurn(turnId, { status: "ok", latencyMs: 5 });
+
+  const removed = await keeper.deleteConversation(conversationId);
+  assert.equal(removed, true);
+
+  const convExists = await redis.exists(`bernard:rk:conv:${conversationId}`);
+  const msgExists = await redis.exists(`bernard:rk:conv:${conversationId}:msgs`);
+  const reqExists = await redis.exists(`bernard:rk:req:${requestId}`);
+  const turnExists = await redis.exists(`bernard:rk:turn:${turnId}`);
+  assert.equal(convExists, 0);
+  assert.equal(msgExists, 0);
+  assert.equal(reqExists, 0);
+  assert.equal(turnExists, 0);
+
+  const active = await redis.zrevrange("bernard:rk:convs:active", 0, -1);
+  const tokenIndex = await redis.zrevrange("bernard:rk:token:tok-delete:convs", 0, -1);
+  assert.ok(!active.includes(conversationId));
+  assert.ok(!tokenIndex.includes(conversationId));
+
+  const removedAgain = await keeper.deleteConversation(conversationId);
+  assert.equal(removedAgain, false);
 });
 

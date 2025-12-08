@@ -35,6 +35,7 @@ import {
  * - PUT    /api/services/:id                -> ServiceConfig (UpdateServiceRequest)
  * - GET    /api/admin/history               -> HistoryListResponse
  * - GET    /api/admin/history/:id           -> ConversationDetailResponse
+ * - DELETE /api/admin/history/:id           -> { removed: boolean }
  * - GET    /api/auth/me                     -> { user: User | null }
  * - POST   /api/auth/logout                 -> 204
  * - GET    /api/users                       -> { users: User[] }
@@ -54,6 +55,7 @@ export interface ApiClient {
   updateService(id: string, body: UpdateServiceRequest): Observable<ServiceConfig>;
   listHistory(query?: HistoryQuery): Observable<HistoryListResponse>;
   getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
+  deleteConversation(id: string): Observable<void>;
   getMe(): Observable<User | null>;
   listUsers(): Observable<User[]>;
   createUser(body: CreateUserRequest): Observable<User>;
@@ -150,6 +152,12 @@ class HttpApiClient implements ApiClient {
       ...this.options(),
       params
     });
+  }
+
+  deleteConversation(id: string) {
+    return this.http
+      .delete<{ removed: boolean }>(`${this.baseUrl}/admin/history/${id}`, this.options())
+      .pipe(map(() => void 0));
   }
 
   getMe() {
@@ -513,6 +521,12 @@ class MockApiClient implements ApiClient {
       conversation,
       messages: limitedMessages
     }).pipe(delay(120));
+  }
+
+  deleteConversation(id: string) {
+    this.conversations = this.conversations.filter((conv) => conv.id !== id);
+    delete this.messages[id];
+    return of(void 0).pipe(delay(80));
   }
 
   getMe() {

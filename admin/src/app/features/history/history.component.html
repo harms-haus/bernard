@@ -24,11 +24,11 @@
         <th>Messages</th>
         <th>Tool calls</th>
         <th>Last request</th>
+        <th></th>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-convo>
       <tr
-        (click)="open(convo)"
         (keydown.enter)="navigateFromKey($event, convo)"
         (keydown.space)="navigateFromKey($event, convo)"
         tabindex="0"
@@ -39,7 +39,7 @@
         </td>
         <td>
           <div class="source">
-            <span class="source-name">{{ convo.source }}</span>
+            <span class="source-name"><a (click)="open(convo)">{{ convo.source }}</a></span>
             @if (convo.tokenNames.length > 1) {
               <span class="muted">+{{ convo.tokenNames.length - 1 }} more</span>
             }
@@ -51,12 +51,49 @@
         <td>{{ convo.messageCount }}</td>
         <td>{{ convo.toolCallCount }}</td>
         <td>{{ (convo.lastRequestAt || convo.lastTouchedAt || convo.startedAt) | date: 'short' }}</td>
+        <td class="actions">
+          <p-menu #menu [model]="menuItems(convo)" [popup]="true" appendTo="body"></p-menu>
+          <button
+            pButton
+            type="button"
+            icon="pi pi-ellipsis-v"
+            aria-label="Conversation actions"
+            (click)="menu.toggle($event)"
+            [disabled]="deletingId() === convo.id"
+            text
+          ></button>
+        </td>
       </tr>
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="6">No history yet.</td>
+        <td colspan="7">No history yet.</td>
       </tr>
     </ng-template>
   </p-table>
+
+  <p-dialog
+    header="Delete conversation"
+    [visible]="confirmVisible()"
+    [modal]="true"
+    [closable]="false"
+    [dismissableMask]="true"
+    [style]="{ width: '420px' }"
+    (onHide)="cancelDelete()"
+  >
+    <p>
+      Delete conversation from "{{ pendingConversation()?.source || 'unknown' }}"? This cannot be undone.
+    </p>
+    <div class="dialog-actions">
+      <button pButton type="button" label="Cancel" severity="secondary" (click)="cancelDelete()" text></button>
+      <button
+        pButton
+        type="button"
+        label="Delete"
+        severity="danger"
+        (click)="confirmDelete()"
+        [loading]="deletingId() === pendingConversation()?.id"
+      ></button>
+    </div>
+  </p-dialog>
 </section>

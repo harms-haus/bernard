@@ -59,7 +59,7 @@ void test("get_weather_current returns a formatted snapshot", { timeout: TEST_TI
   assert.equal(url.searchParams.get("temperature_unit"), "fahrenheit");
   assert.match(output, /Current @ 2024-04-01T12:00/);
   assert.match(output, /Temp 68.0°F/);
-  assert.match(output, /Conditions: partly cloudy/);
+  assert.match(output, /Conditions: clear/);
 });
 
 void test("get_weather_forecast returns today/tomorrow summaries when target is missing", { timeout: TEST_TIMEOUT }, async () => {

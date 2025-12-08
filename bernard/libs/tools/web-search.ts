@@ -1,14 +1,41 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-const SEARCH_API_URL =
-  process.env["SEARCH_API_URL"] ?? "https://api.search.brave.com/res/v1/web/search";
-const SEARCH_API_KEY = process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"];
+const DEFAULT_SEARCH_API_URL = "https://api.search.brave.com/res/v1/web/search";
+const PLACEHOLDER_API_KEYS = new Set(["brave-api-key", "changeme"]);
 
-const verifySearchConfigured = () => ({
-  ok: Boolean(SEARCH_API_KEY),
-  reason: "Missing SEARCH_API_KEY or BRAVE_API_KEY."
-});
+type SearchConfigResult =
+  | { ok: true; apiKey: string; apiUrl: string }
+  | { ok: false; reason: string };
+
+function resolveSearchConfig(): SearchConfigResult {
+  const rawKey = process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"];
+  const apiKey = rawKey?.trim();
+  if (!apiKey) {
+    return { ok: false, reason: "Missing SEARCH_API_KEY or BRAVE_API_KEY." };
+  }
+  if (PLACEHOLDER_API_KEYS.has(apiKey.toLowerCase())) {
+    return { ok: false, reason: "Replace SEARCH_API_KEY/BRAVE_API_KEY with a real token." };
+  }
+
+  const rawUrlEnv = process.env["SEARCH_API_URL"];
+  const rawUrl = (rawUrlEnv ?? DEFAULT_SEARCH_API_URL).trim();
+  if (!rawUrl) {
+    return { ok: false, reason: "SEARCH_API_URL is empty or missing." };
+  }
+
+  try {
+    const parsedUrl = new URL(rawUrl);
+    return { ok: true, apiKey, apiUrl: parsedUrl.toString() };
+  } catch (_err) {
+    return { ok: false, reason: "Invalid SEARCH_API_URL (must be an absolute URL)." };
+  }
+}
+
+const verifySearchConfigured = () => {
+  const config = resolveSearchConfig();
+  return config.ok ? { ok: true } : { ok: false, reason: config.reason };
+};
 
 async function safeJson(res: Response): Promise<unknown> {
   try {
@@ -20,16 +47,17 @@ async function safeJson(res: Response): Promise<unknown> {
 
 const webSearchToolImpl = tool(
   async ({ query, count }) => {
-    if (!SEARCH_API_KEY) {
-      return "Search tool is not configured (missing SEARCH_API_KEY).";
+    const config = resolveSearchConfig();
+    if (!config.ok) {
+      return `Search tool is not configured (${config.reason})`;
     }
-    const url = new URL(SEARCH_API_URL);
+    const url = new URL(config.apiUrl);
     url.searchParams.set("q", query);
     url.searchParams.set("count", String(count ?? 3));
 
     const res = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${SEARCH_API_KEY}`
+        Authorization: `Bearer ${config.apiKey}`
       }
     });
 

@@ -6,13 +6,26 @@ import type { ConversationSummaryService, SummaryResult } from "./conversationSu
 
 export type ConversationStatus = "open" | "closed";
 
+export type ToolCallEntry = {
+  id?: string;
+  type?: string;
+  name?: string;
+  arguments?: unknown;
+  args?: unknown;
+  input?: unknown;
+  function?: { name?: string; arguments?: unknown; args?: unknown };
+  raw?: unknown;
+  raw_arguments?: unknown;
+  [key: string]: unknown;
+};
+
 export type MessageRecord = {
   id: string;
   role: "system" | "user" | "assistant" | "tool";
   content: string | Record<string, unknown> | Array<Record<string, unknown>>;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: Array<{ id: string; name?: string; arguments?: string }>;
+  tool_calls?: ToolCallEntry[];
   createdAt: string;
   tokenDeltas?: { in?: number; out?: number };
   metadata?: Record<string, unknown>;
@@ -196,6 +209,92 @@ function mapMessageRole(type: string | undefined): MessageRecord["role"] {
   if (type === "system") return "system";
   if (type === "tool") return "tool";
   return "user";
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const flattened = content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object") {
+          const maybeText = (part as { text?: unknown }).text;
+          if (typeof maybeText === "string") return maybeText;
+          const maybeContent = (part as { content?: unknown }).content;
+          if (typeof maybeContent === "string") return maybeContent;
+        }
+        return safeStringify(part);
+      })
+      .filter(Boolean)
+      .join(" ");
+    return flattened;
+  }
+  if (content && typeof content === "object") {
+    const maybeText = (content as { text?: unknown }).text;
+    if (typeof maybeText === "string") return maybeText;
+    const maybeContent = (content as { content?: unknown }).content;
+    if (typeof maybeContent === "string") return maybeContent;
+    return safeStringify(content);
+  }
+  if (content === null || content === undefined) return "";
+  return String(content);
+}
+
+function toToolCallEntry(raw: unknown): ToolCallEntry {
+  if (!raw || typeof raw !== "object") return { name: String(raw ?? "") };
+  const tool = raw as ToolCallEntry;
+  const normalized: ToolCallEntry = {};
+  if (tool.id) normalized.id = tool.id;
+  if (tool.type) normalized.type = tool.type;
+  if (tool.name) normalized.name = tool.name;
+  if (tool.arguments !== undefined) normalized.arguments = tool.arguments;
+  if (tool.args !== undefined) normalized.args = tool.args;
+  if (tool.input !== undefined) normalized.input = tool.input;
+  if (tool.function && typeof tool.function === "object") {
+    normalized.function = {};
+    if (tool.function.name) normalized.function.name = tool.function.name;
+    if (tool.function.arguments !== undefined) normalized.function.arguments = tool.function.arguments;
+    if (tool.function.args !== undefined) normalized.function.args = tool.function.args;
+  }
+  const rawArgs = (tool as { raw?: unknown }).raw ?? (tool as { raw_arguments?: unknown }).raw_arguments;
+  if (rawArgs !== undefined) normalized.raw = rawArgs;
+  return normalized;
+}
+
+function snapshotMessageForTrace(message: BaseMessage | MessageRecord) {
+  const isRecord = isMessageRecord(message);
+  const baseType =
+    (message as { _getType?: () => string })._getType?.() ??
+    (message as { getType?: () => string }).getType?.();
+  const role = isRecord ? message.role : mapMessageRole(baseType);
+  const name = (message as { name?: string }).name;
+  const tool_call_id = (message as { tool_call_id?: string }).tool_call_id;
+  const toolCallsRaw =
+    (message as { tool_calls?: ToolCallEntry[] }).tool_calls ??
+    (message as { additional_kwargs?: { tool_calls?: ToolCallEntry[] } }).additional_kwargs?.tool_calls ??
+    [];
+
+  const tool_calls =
+    Array.isArray(toolCallsRaw) && toolCallsRaw.length ? toolCallsRaw.map((call) => toToolCallEntry(call)) : undefined;
+
+  const contentValue = isRecord ? message.content : (message as { content?: unknown }).content;
+  const content = contentToText(contentValue);
+
+  return {
+    role,
+    ...(name ? { name } : {}),
+    ...(tool_call_id ? { tool_call_id } : {}),
+    content,
+    ...(tool_calls ? { tool_calls } : {})
+  };
 }
 
 export class RecordKeeper {
@@ -430,6 +529,52 @@ export class RecordKeeper {
     await multi.exec();
   }
 
+  async recordLLMCall(
+    conversationId: string,
+    details: {
+      model: string;
+      context: Array<BaseMessage | MessageRecord>;
+      result?: BaseMessage | MessageRecord | Array<BaseMessage | MessageRecord>;
+      startedAt?: string;
+      latencyMs?: number;
+      tokens?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
+    }
+  ) {
+    const contextSnapshots = details.context.map((msg) => snapshotMessageForTrace(msg));
+    const resultMessages = Array.isArray(details.result)
+      ? details.result
+      : details.result
+        ? [details.result]
+        : [];
+    const resultSnapshots = resultMessages.map((msg) => snapshotMessageForTrace(msg));
+
+    const traceContent: Record<string, unknown> = {
+      type: "llm_call",
+      model: details.model,
+      at: details.startedAt ?? nowIso(),
+      context: contextSnapshots
+    };
+    if (resultSnapshots.length) traceContent["result"] = resultSnapshots;
+    if (typeof details.latencyMs === "number") traceContent["latencyMs"] = details.latencyMs;
+    if (details.tokens) traceContent["tokens"] = details.tokens;
+
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: "llm_call",
+      content: traceContent,
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "llm_call",
+        model: details.model,
+        ...(details.tokens ? { tokens: details.tokens } : {}),
+        ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {})
+      }
+    };
+
+    await this.appendMessages(conversationId, [message]);
+  }
+
   async recordRateLimit(token: string, model: string, reason?: string) {
     const multi = this.redis.multi();
     multi.hincrby(this.metricsKey(`token:${token}:ratelimit`), "denied", 1);
@@ -493,6 +638,38 @@ export class RecordKeeper {
     for (const id of idleIds) {
       await this.closeConversation(id, "idle");
     }
+  }
+
+  async deleteConversation(conversationId: string): Promise<boolean> {
+    const convKey = this.key(`conv:${conversationId}`);
+    const exists = await this.redis.exists(convKey);
+    if (!exists) return false;
+
+    const rawTokenSet = await this.redis.hget(convKey, "tokenSet");
+    const tokenSet = parseJsonArray(rawTokenSet ?? undefined) ?? [];
+    const [requestIds, turnIds] = await Promise.all([
+      this.redis.zrevrange(this.key(`conv:${conversationId}:requests`), 0, -1),
+      this.redis.zrevrange(this.key(`conv:${conversationId}:turns`), 0, -1)
+    ]);
+
+    const multi = this.redis
+      .multi()
+      .del(convKey)
+      .del(this.key(`conv:${conversationId}:msgs`))
+      .del(this.key(`conv:${conversationId}:requests`))
+      .del(this.key(`conv:${conversationId}:turns`))
+      .zrem(this.key("convs:active"), conversationId)
+      .zrem(this.key("convs:closed"), conversationId);
+
+    tokenSet.forEach((token) => {
+      multi.zrem(this.key(`token:${token}:convs`), conversationId);
+    });
+
+    requestIds.forEach((reqId) => multi.del(this.key(`req:${reqId}`)));
+    turnIds.forEach((turnId) => multi.del(this.key(`turn:${turnId}`)));
+
+    await multi.exec();
+    return true;
   }
 
   async getStatus(): Promise<RecordKeeperStatus> {

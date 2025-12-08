@@ -32,7 +32,10 @@ export class ConversationSummaryService {
   }
 
   async summarize(conversationId: string, messages: MessageRecord[]): Promise<SummaryResult> {
-    const trimmed = this.trimMessages(messages, 80);
+    const filtered = messages.filter(
+      (message) => (message.metadata as { traceType?: string } | undefined)?.traceType !== "llm_call"
+    );
+    const trimmed = this.trimMessages(filtered, 80);
     const prompt = this.buildPrompt(conversationId, trimmed);
     try {
       const response = await this.model.invoke([
