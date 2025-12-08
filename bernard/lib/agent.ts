@@ -323,8 +323,90 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: true });
   const intentStep = callIntentModel(ctx, intentModelName, intentLLM, intentTools);
   const streamingIntentModel = intentLLM.bindTools(intentTools);
-  const maxIterations = 8;
+  const maxIterations = 20;
   const onUpdateHook = deps.onUpdate;
+
+  const normalizeArgs = (raw: unknown) => parseToolInput(raw);
+
+  const canonicalToolCalls = (toolCalls: ToolCallRecord[]): string | null => {
+    if (!toolCalls.length) return null;
+    const normalized = toolCalls.map((call) => {
+      const name = call.name ?? call.function?.name ?? "unknown_tool";
+      const args = normalizeArgs(
+        (call as { arguments?: unknown }).arguments ??
+          call.function?.arguments ??
+          (call as { args?: unknown }).args ??
+          (call as { input?: unknown }).input
+      );
+      return { name, args };
+    });
+    normalized.sort((a, b) => {
+      if (a.name === b.name) return safeStringify(a.args).localeCompare(safeStringify(b.args));
+      return a.name.localeCompare(b.name);
+    });
+    return safeStringify(normalized);
+  };
+
+  const failureStreakByTool = new Map<string, number>();
+  type ToolFailureInfo = { count: number; lastError?: string };
+  const failureInfoByTool = new Map<string, ToolFailureInfo>();
+
+  const updateFailureTracking = (toolMessages: BaseMessage[], setForcedReason: (reason: string) => void) => {
+    for (const msg of toolMessages) {
+      const type = (msg as { getType?: () => string }).getType?.();
+      if (type !== "tool") continue;
+      const name = (msg as { name?: string }).name ?? "unknown_tool";
+      const status = (msg as { status?: string }).status;
+      const contentVal = (msg as { content?: unknown }).content;
+      const content =
+        typeof contentVal === "string"
+          ? contentVal
+          : Array.isArray(contentVal)
+            ? contentVal.map((part) => (typeof part === "string" ? part : safeStringify(part))).join(" ")
+            : contentVal !== undefined
+              ? safeStringify(contentVal)
+              : "";
+      const isError = status === "error" || content.toLowerCase().startsWith("error");
+
+      if (isError) {
+        const prev = failureStreakByTool.get(name) ?? 0;
+        const next = prev + 1;
+        failureStreakByTool.set(name, next);
+
+        const info = failureInfoByTool.get(name) ?? { count: 0 };
+        info.count += 1;
+        if (content) info.lastError = content;
+        failureInfoByTool.set(name, info);
+
+        if (next >= 5) {
+          setForcedReason(`Tool "${name}" failed ${next} times consecutively`);
+        }
+      } else {
+        failureStreakByTool.set(name, 0);
+      }
+    }
+  };
+
+  const buildFailureContext = (forcedReason: string | null) => {
+    if (!forcedReason && failureInfoByTool.size === 0) return null;
+    const parts: string[] = [];
+    if (forcedReason) parts.push(`Tool loop capped: ${forcedReason}`);
+    if (failureInfoByTool.size) {
+      const summaries = Array.from(failureInfoByTool.entries()).map(([name, info]) => {
+        const details = [`failures=${info.count}`];
+        if (info.lastError) details.push(`last_error=${info.lastError}`);
+        return `${name} (${details.join(", ")})`;
+      });
+      parts.push(`Failed tools: ${summaries.join("; ")}`);
+    }
+    return parts.join(". ");
+  };
+
+  const addFailureContext = (messages: BaseMessage[], forcedReason: string | null) => {
+    const context = buildFailureContext(forcedReason);
+    if (!context) return messages;
+    return [...messages, new SystemMessage({ content: context })];
+  };
 
   const runTools = async (messages: BaseMessage[]): Promise<BaseMessage[]> => {
     const result: unknown = await toolNode.invoke({ messages });
@@ -423,6 +505,14 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   ): Promise<BaseMessage[]> => {
     let messages = ensureSystemPrompt(initialMessages);
     let responded = false;
+    let forcedReason: string | null = null;
+    let lastToolCallsSignature: string | null = null;
+    let identicalToolCallStreak = 0;
+
+    const setForcedReason = (reason: string) => {
+      if (!forcedReason) forcedReason = reason;
+    };
+
     for (let i = 0; i < maxIterations; i++) {
       const modelResult = await intentStep({ messages });
       const nextMessages = modelResult.messages ?? [];
@@ -430,8 +520,28 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       await onUpdate(messages);
       const toolCalls = latestToolCalls(messages);
       const wantsRespond = toolCalls.some(isRespondToolCall);
-      if (!toolCalls.length || wantsRespond) {
-        const responseMessage = await invokeRespond(messages);
+
+      const toolCallsSignature = canonicalToolCalls(toolCalls);
+      if (toolCallsSignature) {
+        if (toolCallsSignature === lastToolCallsSignature) {
+          identicalToolCallStreak += 1;
+        } else {
+          identicalToolCallStreak = 1;
+          lastToolCallsSignature = toolCallsSignature;
+        }
+      } else {
+        identicalToolCallStreak = 0;
+        lastToolCallsSignature = null;
+      }
+
+      if (toolCallsSignature && identicalToolCallStreak >= 3) {
+        const firstCall = toolCalls[0];
+        const name = firstCall?.name ?? firstCall?.function?.name ?? "unknown_tool";
+        setForcedReason(`Tool "${name}" was requested with identical parameters ${identicalToolCallStreak} times`);
+      }
+
+      if (!toolCalls.length || wantsRespond || forcedReason) {
+        const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
         messages = [...messages, responseMessage];
         await onUpdate(messages);
         responded = true;
@@ -440,10 +550,20 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const toolMessages = await runTools(messages);
       messages = [...messages, ...toolMessages];
       await onUpdate(messages);
+
+      updateFailureTracking(toolMessages, setForcedReason);
+
+      if (forcedReason) {
+        const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
+        messages = [...messages, responseMessage];
+        await onUpdate(messages);
+        responded = true;
+        break;
+      }
     }
 
     if (!responded) {
-      const responseMessage = await invokeRespond(messages);
+      const responseMessage = await invokeRespond(addFailureContext(messages, forcedReason));
       messages = [...messages, responseMessage];
       await onUpdate(messages);
     }
@@ -455,6 +575,13 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     let messages = ensureSystemPrompt(initialMessages);
     let responded = false;
     let lastIntentChunk: unknown;
+    let forcedReason: string | null = null;
+    let lastToolCallsSignature: string | null = null;
+    let identicalToolCallStreak = 0;
+
+    const setForcedReason = (reason: string) => {
+      if (!forcedReason) forcedReason = reason;
+    };
 
     for (let i = 0; i < maxIterations; i++) {
       const start = Date.now();
@@ -540,8 +667,30 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       messages = [...messages, aggregated];
       const toolCalls = latestToolCalls ?? [];
       const wantsRespond = toolCalls.some(isRespondToolCall);
-      if (!toolCalls.length || wantsRespond) {
-        for await (const responseChunk of streamRespond(messages)) {
+
+      const toolCallsSignature = canonicalToolCalls(toolCalls);
+      if (toolCallsSignature) {
+        if (toolCallsSignature === lastToolCallsSignature) {
+          identicalToolCallStreak += 1;
+        } else {
+          identicalToolCallStreak = 1;
+          lastToolCallsSignature = toolCallsSignature;
+        }
+      } else {
+        identicalToolCallStreak = 0;
+        lastToolCallsSignature = null;
+      }
+
+      if (toolCallsSignature && identicalToolCallStreak >= 3) {
+        const firstCall = toolCalls[0];
+        const name = firstCall?.name ?? firstCall?.function?.name ?? "unknown_tool";
+        setForcedReason(`Tool "${name}" was requested with identical parameters ${identicalToolCallStreak} times`);
+      }
+
+      if (!toolCalls.length || wantsRespond || forcedReason) {
+        const contextualized = addFailureContext(messages, forcedReason);
+        if (onUpdateHook) await onUpdateHook(contextualized);
+        for await (const responseChunk of streamRespond(contextualized)) {
           messages = responseChunk.messages ?? messages;
           yield responseChunk;
         }
@@ -553,11 +702,26 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       messages = [...messages, ...toolMessages];
       if (onUpdateHook) await onUpdateHook(messages);
       yield { messages };
+
+      updateFailureTracking(toolMessages, setForcedReason);
+
+      if (forcedReason) {
+        const contextualized = addFailureContext(messages, forcedReason);
+        if (onUpdateHook) await onUpdateHook(contextualized);
+        for await (const responseChunk of streamRespond(contextualized)) {
+          messages = responseChunk.messages ?? messages;
+          yield responseChunk;
+        }
+        responded = true;
+        break;
+      }
     }
 
     if (!responded) {
       try {
-        for await (const responseChunk of streamRespond(messages)) {
+        const contextualized = addFailureContext(messages, forcedReason);
+        if (onUpdateHook) await onUpdateHook(contextualized);
+        for await (const responseChunk of streamRespond(contextualized)) {
           messages = responseChunk.messages ?? messages;
           yield responseChunk;
         }
