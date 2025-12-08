@@ -1,6 +1,6 @@
 # bernard agent API (Next.js + LangGraph)
 
-Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web search, timer, weather) and Redis-backed named tokens.
+Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web search, timer, geocoding, weather via lat/lon) and Redis-backed named tokens.
 
 ## Setup
 
@@ -58,7 +58,7 @@ curl -N http://localhost:3000/api/agent \
 
 ## Notes
 
-- Tools: `web_search`, `set_timer`, `get_weather`.
+- Tools: `web_search`, `set_timer`, `geocode_search`, `get_weather_current`, `get_weather_forecast`, `get_weather_historical`.
 - Redis keys are namespaced under `bernard:tokens:*`.
 - The graph is built with LangGraph + ChatOpenAI targeting OpenRouter by default. Update `OPENROUTER_*` envs and the category model lists to point at another endpoint if needed.
 

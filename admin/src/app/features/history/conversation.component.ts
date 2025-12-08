@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
 import { MessageModule } from 'primeng/message';
+import { TooltipModule } from 'primeng/tooltip';
 import { finalize, interval, Subscription } from 'rxjs';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
@@ -14,7 +15,7 @@ type ToolCall = NonNullable<ConversationMessage['tool_calls']>[number];
 
 @Component({
   selector: 'app-conversation',
-  imports: [CommonModule, ButtonModule, TagModule, MessageModule],
+  imports: [CommonModule, ButtonModule, TagModule, MessageModule, TooltipModule],
   templateUrl: './conversation.component.html',
   styleUrl: './conversation.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -32,6 +33,14 @@ export class ConversationComponent {
   readonly expandedToolCalls = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
+  readonly lastRequestAt = computed(() => {
+    const convo = this.conversation();
+    return convo?.lastRequestAt || convo?.lastTouchedAt || convo?.startedAt || null;
+  });
+  readonly idTooltip = computed(() => {
+    const id = this.conversation()?.id;
+    return id ? `ID: ${id}` : 'ID not available';
+  });
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -62,39 +71,51 @@ export class ConversationComponent {
     }
   }
 
+  private argumentValue(call: ToolCall): unknown {
+    const fn = call.function && typeof call.function === 'object' ? call.function : undefined;
+    if (fn?.arguments !== undefined) return fn.arguments;
+    if (call.arguments !== undefined) return call.arguments;
+    if (call.args !== undefined) return call.args;
+    if (fn?.args !== undefined) return fn.args;
+    if ((call as { input?: unknown }).input !== undefined) return (call as { input?: unknown }).input;
+    if ((fn as { input?: unknown })?.input !== undefined) return (fn as { input?: unknown }).input;
+    return undefined;
+  }
+
   toolCallArguments(call: ToolCall): { text: string; parsed: boolean } {
-    const args = call.arguments;
-    if (!args) return { text: '(no arguments)', parsed: true };
-    if (typeof args === 'string') {
+    const raw = this.argumentValue(call);
+    if (raw === undefined || raw === null || raw === '') return { text: '(no arguments)', parsed: true };
+    if (typeof raw === 'string') {
       try {
-        return { text: JSON.stringify(JSON.parse(args), null, 2), parsed: true };
+        return { text: JSON.stringify(JSON.parse(raw), null, 2), parsed: true };
       } catch {
-        return { text: args, parsed: false };
+        return { text: raw, parsed: false };
       }
     }
-    if (typeof args === 'object') {
+    if (typeof raw === 'object') {
       try {
-        return { text: JSON.stringify(args, null, 2), parsed: true };
+        return { text: JSON.stringify(raw, null, 2), parsed: true };
       } catch {
-        return { text: String(args), parsed: false };
+        return { text: String(raw), parsed: false };
       }
     }
-    return { text: String(args), parsed: false };
+    return { text: String(raw), parsed: false };
   }
 
   inlineToolCallArguments(call: ToolCall): string {
+    const raw = this.rawArgumentText(call);
+    if (raw) return raw;
     const { text } = this.toolCallArguments(call);
-    if (!text) return '';
-    const firstLine = text.split('\n')[0] ?? '';
-    return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+    return text;
   }
 
   toolCallRaw(call: ToolCall): string {
-    if (typeof call.arguments === 'string') return call.arguments;
+    const raw = this.rawArgumentText(call);
+    if (raw) return raw;
     try {
       return JSON.stringify(call, null, 2);
     } catch {
-      return String(call.arguments ?? call);
+      return String(this.argumentValue(call) ?? call);
     }
   }
 
@@ -115,7 +136,18 @@ export class ConversationComponent {
   }
 
   toolCallLabel(call: ToolCall) {
-    return call.name || 'Tool call';
+    return call.name || call.function?.name || 'Tool call';
+  }
+
+  private rawArgumentText(call: ToolCall): string | null {
+    const raw = this.argumentValue(call);
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw === 'string') return raw;
+    try {
+      return JSON.stringify(raw, null, 2);
+    } catch {
+      return String(raw);
+    }
   }
 
   messageLabel(message: ConversationMessage) {

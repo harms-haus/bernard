@@ -84,13 +84,24 @@ export type ConversationDetail = ConversationListItem & {
   closeReason?: string;
 };
 
+export type ToolCall = {
+  id?: string;
+  type?: string;
+  name?: string;
+  arguments?: unknown;
+  args?: unknown;
+  input?: unknown;
+  function?: { name?: string; arguments?: unknown; args?: unknown };
+  [key: string]: unknown;
+};
+
 export type ConversationMessage = {
   id: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | Record<string, unknown> | Array<Record<string, unknown>>;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: Array<{ id: string; name?: string; arguments?: string }>;
+  tool_calls?: ToolCall[];
   createdAt: string;
   tokenDeltas?: { in?: number; out?: number };
   metadata?: Record<string, unknown>;

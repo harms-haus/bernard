@@ -5,6 +5,11 @@ const SEARCH_API_URL =
   process.env["SEARCH_API_URL"] ?? "https://api.search.brave.com/res/v1/web/search";
 const SEARCH_API_KEY = process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"];
 
+const verifySearchConfigured = () => ({
+  ok: Boolean(SEARCH_API_KEY),
+  reason: "Missing SEARCH_API_KEY or BRAVE_API_KEY."
+});
+
 async function safeJson(res: Response): Promise<unknown> {
   try {
     return await res.json();
@@ -13,7 +18,7 @@ async function safeJson(res: Response): Promise<unknown> {
   }
 }
 
-export const webSearchTool = tool(
+const webSearchToolImpl = tool(
   async ({ query, count }) => {
     if (!SEARCH_API_KEY) {
       return "Search tool is not configured (missing SEARCH_API_KEY).";
@@ -58,6 +63,10 @@ export const webSearchTool = tool(
     })
   }
 );
+
+export const webSearchTool = Object.assign(webSearchToolImpl, {
+  verifyConfiguration: verifySearchConfigured
+});
 
 
 

@@ -1,12 +1,40 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-const GEOCODING_API_URL =
-  process.env["OPEN_METEO_GEOCODING_URL"] ?? "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_API_URL = process.env["OPEN_METEO_FORECAST_URL"] ?? "https://api.open-meteo.com/v1/forecast";
-const HISTORICAL_API_URL = process.env["OPEN_METEO_HISTORICAL_URL"] ?? "https://archive-api.open-meteo.com/v1/archive";
-const AIR_QUALITY_API_URL =
-  process.env["OPEN_METEO_AIR_QUALITY_URL"] ?? "https://air-quality-api.open-meteo.com/v1/air-quality";
+const HISTORICAL_API_URL =
+  process.env["OPEN_METEO_HISTORICAL_URL"] ?? "https://archive-api.open-meteo.com/v1/archive";
+
+type UnitChoice = {
+  temperatureUnit: "celsius" | "fahrenheit";
+  windSpeedUnit: "kmh" | "mph";
+  precipUnit: "mm" | "inch";
+  tempLabel: "°C" | "°F";
+  windLabel: "km/h" | "mph";
+  precipLabel: "mm" | "in";
+};
+
+const IMPERIAL_COUNTRIES = new Set(["US", "UM", "PR", "VI", "GU", "AS", "MP"]);
+
+type DailyWeather = {
+  time: string[];
+  temperature_2m_max?: Array<number | null>;
+  temperature_2m_min?: Array<number | null>;
+  apparent_temperature_max?: Array<number | null>;
+  apparent_temperature_min?: Array<number | null>;
+  precipitation_sum?: Array<number | null>;
+  precipitation_probability_max?: Array<number | null>;
+  wind_speed_10m_max?: Array<number | null>;
+};
+
+type HourlyWeather = {
+  time: string[];
+  temperature_2m?: Array<number | null>;
+  apparent_temperature?: Array<number | null>;
+  precipitation_probability?: Array<number | null>;
+  wind_speed_10m?: Array<number | null>;
+  precipitation?: Array<number | null>;
+};
 
 async function safeJson(res: Response): Promise<unknown> {
   try {
@@ -16,42 +44,28 @@ async function safeJson(res: Response): Promise<unknown> {
   }
 }
 
-type GeocodeResult = {
-  name: string;
-  latitude: number;
-  longitude: number;
-  country?: string;
-  timezone?: string;
-};
-
-type UnitChoice = {
-  temperatureUnit: "celsius" | "fahrenheit";
-  windSpeedUnit: "kmh" | "mph";
-  tempLabel: "°C" | "°F";
-  windLabel: "km/h" | "mph";
-  precipLabel: "mm" | "in";
-};
-
-type DailySnapshot = {
-  date: string;
-  max: number | null;
-  min: number | null;
-  feelsMax: number | null;
-  feelsMin: number | null;
-  precipitation: number | null;
-  precipitationProbability: number | null;
-  windMax: number | null;
-};
-
-function resolveUnits(units?: "metric" | "imperial"): UnitChoice {
-  const isImperial = units === "imperial";
+function resolveUnits(preference: "metric" | "imperial"): UnitChoice {
+  const isImperial = preference === "imperial";
   return {
     temperatureUnit: isImperial ? "fahrenheit" : "celsius",
     windSpeedUnit: isImperial ? "mph" : "kmh",
+    precipUnit: isImperial ? "inch" : "mm",
     tempLabel: isImperial ? "°F" : "°C",
     windLabel: isImperial ? "mph" : "km/h",
     precipLabel: isImperial ? "in" : "mm"
   };
+}
+
+function likelyImperial(country?: string, lat?: number, lon?: number): boolean {
+  if (country && IMPERIAL_COUNTRIES.has(country.trim().toUpperCase())) return true;
+  if (lat === undefined || lon === undefined) return false;
+  const inUSBox = lat >= 15 && lat <= 72 && lon >= -170 && lon <= -50;
+  return inUSBox;
+}
+
+function chooseUnits(units?: "metric" | "imperial", country?: string, lat?: number, lon?: number): UnitChoice {
+  if (units === "metric" || units === "imperial") return resolveUnits(units);
+  return resolveUnits(likelyImperial(country, lat, lon) ? "imperial" : "metric");
 }
 
 function maybeNumber(value: unknown): number | null {
@@ -64,293 +78,166 @@ function formatNumber(value: number | null, digits = 1): string {
 
 function formatPrecip(value: number | null, units: UnitChoice): string {
   if (value === null) return "?";
-  if (units.precipLabel === "mm") return value.toFixed(1);
-  return (value / 25.4).toFixed(2);
+  if (units.precipUnit === "mm") return value.toFixed(1);
+  return value.toFixed(2);
 }
 
-function percentile(values: number[], p: number): number {
-  if (!values.length) return NaN;
-  const sorted = [...values].sort((a, b) => a - b);
-  const rank = ((p / 100) * (sorted.length - 1)) | 0;
-  const value = sorted[rank];
-  return typeof value === "number" ? value : NaN;
+function formatWeatherCode(code?: number): string | null {
+  if (typeof code !== "number") return null;
+  if (code >= 95) return "thunderstorm";
+  if (code >= 80) return "rain showers";
+  if (code >= 70) return "snow";
+  if (code >= 60) return "rain";
+  if (code >= 50) return "drizzle";
+  if (code >= 45) return "fog";
+  if (code >= 40) return "haze";
+  if (code >= 30) return "overcast";
+  if (code >= 20) return "cloudy";
+  if (code >= 10) return "partly cloudy";
+  return "clear";
 }
 
-function average(values: number[]): number {
-  if (!values.length) return NaN;
-  return values.reduce((sum, v) => sum + v, 0) / values.length;
+function addDays(date: string, days: number): string {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return date;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
-function subtractYears(date: Date, years: number): Date {
-  const copy = new Date(date);
-  copy.setFullYear(copy.getFullYear() - years);
-  return copy;
+function parseTarget(target: string | undefined, anchorDate: string): { date: string; time?: string } | null {
+  if (!target) return null;
+  const normalized = target.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "today" || normalized === "now") return { date: anchorDate };
+  if (normalized === "tomorrow") return { date: addDays(anchorDate, 1) };
+  if (normalized === "day after tomorrow" || normalized === "day-after-tomorrow")
+    return { date: addDays(anchorDate, 2) };
+  if (normalized === "yesterday") return { date: addDays(anchorDate, -1) };
+
+  if (/^\d{4}-\d{2}-\d{2}(t.*)?/.test(normalized)) {
+    const [datePartRaw] = normalized.split(/[t ]/);
+    const datePart = datePartRaw ?? normalized;
+    if (normalized.includes("t") || normalized.includes(" ")) {
+      const timePart = normalized.slice(11);
+      if (timePart) return { date: datePart, time: timePart };
+    }
+    return { date: datePart };
+  }
+
+  const parsed = new Date(target);
+  if (!Number.isNaN(parsed.getTime())) {
+    const iso = parsed.toISOString();
+    return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
+  }
+
+  return null;
 }
 
-function formatDaySummary(label: string, day: DailySnapshot | null, units: UnitChoice): string {
-  if (!day) return `${label}: No forecast available.`;
+function nearestIndex(target: string, times: string[]): number {
+  let bestIdx = -1;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  const targetMs = Date.parse(target);
+  times.forEach((time, idx) => {
+    const ms = Date.parse(time);
+    if (Number.isNaN(ms)) return;
+    const diff = Math.abs(ms - targetMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = idx;
+    }
+  });
+  return bestIdx;
+}
+
+function formatDailySummary(label: string, idx: number, daily: DailyWeather, units: UnitChoice) {
+  const date = daily.time?.[idx];
+  if (!date) return `${label}: No forecast available.`;
+  const max = maybeNumber(daily.temperature_2m_max?.[idx]);
+  const min = maybeNumber(daily.temperature_2m_min?.[idx]);
+  const feelsMax = maybeNumber(daily.apparent_temperature_max?.[idx]);
+  const feelsMin = maybeNumber(daily.apparent_temperature_min?.[idx]);
+  const precip = maybeNumber(daily.precipitation_sum?.[idx]);
+  const precipProb = maybeNumber(daily.precipitation_probability_max?.[idx]);
+  const wind = maybeNumber(daily.wind_speed_10m_max?.[idx]);
+
   const parts: string[] = [];
-  if (day.max !== null || day.min !== null) {
-    parts.push(`high ${formatNumber(day.max)}${units.tempLabel}, low ${formatNumber(day.min)}${units.tempLabel}`);
-  }
-  if (day.feelsMax !== null || day.feelsMin !== null) {
-    parts.push(
-      `feels ${formatNumber(day.feelsMax)}${units.tempLabel}/${formatNumber(day.feelsMin)}${units.tempLabel}`
-    );
-  }
-  if (day.precipitationProbability !== null) {
-    parts.push(`precip chance ${formatNumber(day.precipitationProbability, 0)}%`);
-  }
-  if (day.precipitation !== null) {
-    parts.push(`precip ${formatPrecip(day.precipitation, units)} ${units.precipLabel}`);
-  }
-  if (day.windMax !== null) {
-    parts.push(`wind up to ${formatNumber(day.windMax)} ${units.windLabel}`);
-  }
-  return `${label} (${day.date}): ${parts.join("; ") || "No forecast details available."}`;
+  if (max !== null || min !== null) parts.push(`high ${formatNumber(max)}${units.tempLabel}, low ${formatNumber(min)}${units.tempLabel}`);
+  if (feelsMax !== null || feelsMin !== null)
+    parts.push(`feels ${formatNumber(feelsMax)}${units.tempLabel}/${formatNumber(feelsMin)}${units.tempLabel}`);
+  if (precipProb !== null) parts.push(`precip chance ${formatNumber(precipProb, 0)}%`);
+  if (precip !== null) parts.push(`precip ${formatPrecip(precip, units)} ${units.precipLabel}`);
+  if (wind !== null) parts.push(`wind up to ${formatNumber(wind)} ${units.windLabel}`);
+
+  return `${label} (${date}): ${parts.join("; ") || "No forecast details available."}`;
 }
 
-async function geocodeLocation(location: string): Promise<GeocodeResult> {
-  const url = new URL(GEOCODING_API_URL);
-  url.searchParams.set("name", location);
-  url.searchParams.set("count", "1");
-  url.searchParams.set("language", "en");
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Geocoding failed: ${res.status} ${res.statusText} ${body}`);
-  }
-  const data = (await safeJson(res)) as { results?: Array<GeocodeResult> };
-  const best = data.results?.[0];
-  if (!best) {
-    throw new Error(`Could not find location "${location}". Try a city, state, or coordinates.`);
-  }
-  return best;
+function formatHourlySummary(time: string, idx: number, hourly: HourlyWeather, units: UnitChoice) {
+  const temp = maybeNumber(hourly.temperature_2m?.[idx]);
+  const feels = maybeNumber(hourly.apparent_temperature?.[idx]);
+  const precipProb = maybeNumber(hourly.precipitation_probability?.[idx]);
+  const wind = maybeNumber(hourly.wind_speed_10m?.[idx]);
+  const parts = [
+    `temp ${formatNumber(temp)}${units.tempLabel}`,
+    `feels ${formatNumber(feels)}${units.tempLabel}`,
+    precipProb !== null ? `precip chance ${formatNumber(precipProb, 0)}%` : null,
+    wind !== null ? `wind ${formatNumber(wind)} ${units.windLabel}` : null
+  ].filter(Boolean);
+  return `${time}: ${parts.join("; ")}`;
 }
 
-async function fetchForecast(
-  geo: GeocodeResult,
-  units: UnitChoice
-): Promise<{ timezone: string; today: DailySnapshot | null; dayPlusTwo: DailySnapshot | null; anchorDate: string }> {
-  const url = new URL(FORECAST_API_URL);
-  url.searchParams.set("latitude", String(geo.latitude));
-  url.searchParams.set("longitude", String(geo.longitude));
-  url.searchParams.set(
-    "daily",
-    [
-      "temperature_2m_max",
-      "temperature_2m_min",
-      "apparent_temperature_max",
-      "apparent_temperature_min",
-      "precipitation_sum",
-      "precipitation_probability_max",
-      "wind_speed_10m_max"
-    ].join(",")
-  );
-  url.searchParams.set("current", "temperature_2m,apparent_temperature");
-  url.searchParams.set("forecast_days", "3");
-  url.searchParams.set("timezone", geo.timezone ?? "auto");
+function applyUnitParams(url: URL, units: UnitChoice) {
   if (units.temperatureUnit === "fahrenheit") url.searchParams.set("temperature_unit", "fahrenheit");
   if (units.windSpeedUnit === "mph") url.searchParams.set("wind_speed_unit", "mph");
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Forecast lookup failed: ${res.status} ${res.statusText} ${body}`);
-  }
-
-  const data = (await safeJson(res)) as {
-    daily?: {
-      time?: string[];
-      temperature_2m_max?: Array<number | null>;
-      temperature_2m_min?: Array<number | null>;
-      apparent_temperature_max?: Array<number | null>;
-      apparent_temperature_min?: Array<number | null>;
-      precipitation_sum?: Array<number | null>;
-      precipitation_probability_max?: Array<number | null>;
-      wind_speed_10m_max?: Array<number | null>;
-    };
-    timezone?: string;
-  };
-
-  const daily = data.daily;
-  if (!daily || !daily.time || !daily.time.length) {
-    throw new Error("Forecast data missing or malformed.");
-  }
-
-  const buildDay = (idx: number): DailySnapshot | null => {
-    const date = daily.time?.[idx];
-    if (!date) return null;
-    return {
-      date,
-      max: maybeNumber(daily.temperature_2m_max?.[idx]),
-      min: maybeNumber(daily.temperature_2m_min?.[idx]),
-      feelsMax: maybeNumber(daily.apparent_temperature_max?.[idx]),
-      feelsMin: maybeNumber(daily.apparent_temperature_min?.[idx]),
-      precipitation: maybeNumber(daily.precipitation_sum?.[idx]),
-      precipitationProbability: maybeNumber(daily.precipitation_probability_max?.[idx]),
-      windMax: maybeNumber(daily.wind_speed_10m_max?.[idx])
-    };
-  };
-
-  const anchorDate = daily.time[0];
-  if (!anchorDate) {
-    throw new Error("Forecast data missing anchor date.");
-  }
-
-  return {
-    timezone: data.timezone ?? geo.timezone ?? "auto",
-    today: buildDay(0),
-    dayPlusTwo: buildDay(2),
-    anchorDate
-  };
+  if (units.precipUnit === "inch") url.searchParams.set("precipitation_unit", "inch");
 }
 
-async function analyzeHistoricalIfNotable(
-  geo: GeocodeResult,
-  units: UnitChoice,
-  anchorDate: string,
-  today: DailySnapshot | null
-): Promise<string | null> {
-  if (!today?.max && !today?.min && !today?.precipitation) return null;
-
-  const todayDate = new Date(anchorDate);
-  const start = subtractYears(todayDate, 5);
-  const format = (d: Date) => d.toISOString().slice(0, 10);
-
-  const url = new URL(HISTORICAL_API_URL);
-  url.searchParams.set("latitude", String(geo.latitude));
-  url.searchParams.set("longitude", String(geo.longitude));
-  url.searchParams.set("start_date", format(start));
-  url.searchParams.set("end_date", format(todayDate));
-  url.searchParams.set("timezone", geo.timezone ?? "auto");
-  url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum");
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    return null;
-  }
-  const data = (await safeJson(res)) as {
-    daily?: {
-      time?: string[];
-      temperature_2m_max?: Array<number | null>;
-      temperature_2m_min?: Array<number | null>;
-      precipitation_sum?: Array<number | null>;
-    };
-  };
-  const daily = data.daily;
-  if (!daily?.time?.length) return null;
-
-  const targetMonthDay = anchorDate.slice(5);
-  const highs: number[] = [];
-  const lows: number[] = [];
-  const precips: number[] = [];
-
-  daily.time.forEach((date, idx) => {
-    if (date === anchorDate) return;
-    if (date.slice(5) !== targetMonthDay) return;
-    const high = maybeNumber(daily.temperature_2m_max?.[idx]);
-    const low = maybeNumber(daily.temperature_2m_min?.[idx]);
-    const precip = maybeNumber(daily.precipitation_sum?.[idx]);
-    if (high !== null) highs.push(high);
-    if (low !== null) lows.push(low);
-    if (precip !== null) precips.push(precip);
-  });
-
-  const notes: string[] = [];
-  if (highs.length >= 3 && today.max !== null) {
-    const hotThreshold = percentile(highs, 90);
-    const coldThreshold = percentile(highs, 10);
-    if (today.max >= hotThreshold) {
-      notes.push(
-        `Today's high ${formatNumber(today.max)}${units.tempLabel} is warmer than usual for this date (≈90th percentile ${formatNumber(hotThreshold)}${units.tempLabel}).`
-      );
-    } else if (today.max <= coldThreshold) {
-      notes.push(
-        `Today's high ${formatNumber(today.max)}${units.tempLabel} is colder than usual for this date (≈10th percentile ${formatNumber(coldThreshold)}${units.tempLabel}).`
-      );
-    }
-  }
-
-  if (precips.length >= 3 && today.precipitation !== null) {
-    const typical = average(precips);
-    if (today.precipitation >= typical * 2 && today.precipitation > 2) {
-      notes.push(
-        `Precipitation is elevated for this date (${formatPrecip(today.precipitation, units)} ${units.precipLabel} vs typical ~${formatPrecip(typical, units)}).`
-      );
-    } else if (typical > 0 && today.precipitation <= typical * 0.2) {
-      notes.push(
-        `Today looks drier than usual for this date (${formatPrecip(today.precipitation, units)} ${units.precipLabel} vs typical ~${formatPrecip(typical, units)}).`
-      );
-    }
-  }
-
-  return notes.length ? notes.join(" ") : null;
-}
-
-async function analyzeAirQualityIfNotable(geo: GeocodeResult, anchorDate: string): Promise<string | null> {
-  const url = new URL(AIR_QUALITY_API_URL);
-  url.searchParams.set("latitude", String(geo.latitude));
-  url.searchParams.set("longitude", String(geo.longitude));
-  url.searchParams.set("hourly", "european_aqi,pm2_5,pm10");
-  url.searchParams.set("forecast_days", "1");
-  url.searchParams.set("timezone", geo.timezone ?? "auto");
-
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = (await safeJson(res)) as {
-    hourly?: { time?: string[]; european_aqi?: number[]; pm2_5?: number[]; pm10?: number[] };
-  };
-  const times = data.hourly?.time ?? [];
-  const aqis = data.hourly?.european_aqi ?? [];
-  const pm25 = data.hourly?.pm2_5 ?? [];
-  const pm10 = data.hourly?.pm10 ?? [];
-
-  let maxAqi = -Infinity;
-  let idx = -1;
-  times.forEach((time, i) => {
-    if (!time.startsWith(anchorDate)) return;
-    const value = aqis[i];
-    if (typeof value === "number" && value > maxAqi) {
-      maxAqi = value;
-      idx = i;
-    }
-  });
-
-  if (idx === -1 || !Number.isFinite(maxAqi)) return null;
-  const descriptor = maxAqi >= 80 ? "very poor" : maxAqi <= 20 ? "excellent" : null;
-  if (!descriptor) return null;
-
-  const pmParts: string[] = [];
-  if (typeof pm25[idx] === "number") pmParts.push(`PM2.5 ${pm25[idx]!.toFixed(1)} µg/m³`);
-  if (typeof pm10[idx] === "number") pmParts.push(`PM10 ${pm10[idx]!.toFixed(1)} µg/m³`);
-
-  return `Air quality is ${descriptor} today (max AQI ${Math.round(maxAqi)}${pmParts.length ? `, ${pmParts.join(", ")}` : ""}).`;
-}
-
-export const weatherTool = tool(
-  async ({ location, units }) => {
+export const getWeatherCurrentTool = tool(
+  async ({ lat, lon, units, country }) => {
     try {
-      const trimmedLocation = (location ?? "").trim();
-      if (!trimmedLocation) return "Please provide a location (city, region, or coordinates).";
+      const unitChoice = chooseUnits(units, country, lat, lon);
+      const url = new URL(FORECAST_API_URL);
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lon));
+      url.searchParams.set("timezone", "auto");
+      url.searchParams.set("forecast_days", "1");
+      url.searchParams.set(
+        "current",
+        "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,relative_humidity_2m,weather_code"
+      );
+      applyUnitParams(url, unitChoice);
 
-      const unitChoice = resolveUnits(units);
-      const geo = await geocodeLocation(trimmedLocation);
-      const forecast = await fetchForecast(geo, unitChoice);
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.text();
+        return `Weather lookup failed: ${res.status} ${res.statusText} ${body}`;
+      }
 
-      const [historicalNote, airQualityNote] = await Promise.all([
-        analyzeHistoricalIfNotable(geo, unitChoice, forecast.anchorDate, forecast.today),
-        analyzeAirQualityIfNotable(geo, forecast.anchorDate)
-      ]);
+      const data = (await safeJson(res)) as {
+        current?: {
+          time?: string;
+          temperature_2m?: number;
+          apparent_temperature?: number;
+          precipitation?: number;
+          wind_speed_10m?: number;
+          relative_humidity_2m?: number;
+          weather_code?: number;
+        };
+        timezone?: string;
+      };
 
+      if (!data.current || !data.current.time) {
+        return "Current weather is unavailable for these coordinates.";
+      }
+
+      const codeLabel = formatWeatherCode(data.current.weather_code);
+      const precip = data.current.precipitation ?? null;
       const lines = [
-        `Location: ${geo.name}${geo.country ? `, ${geo.country}` : ""} (${geo.latitude.toFixed(2)}, ${geo.longitude.toFixed(2)}) tz=${forecast.timezone}`,
-        formatDaySummary("Today", forecast.today, unitChoice),
-        formatDaySummary("In 2 days", forecast.dayPlusTwo, unitChoice)
-      ];
-
-      if (historicalNote) lines.push(`Historical: ${historicalNote}`);
-      if (airQualityNote) lines.push(`Air quality: ${airQualityNote}`);
+        `Current @ ${data.current.time} (tz ${data.timezone ?? "auto"})`,
+        `Temp ${formatNumber(maybeNumber(data.current.temperature_2m))}${unitChoice.tempLabel} (feels ${formatNumber(maybeNumber(data.current.apparent_temperature))}${unitChoice.tempLabel})`,
+        `Wind ${formatNumber(maybeNumber(data.current.wind_speed_10m))} ${unitChoice.windLabel}; Humidity ${formatNumber(maybeNumber(data.current.relative_humidity_2m), 0)}%`,
+        precip !== null ? `Precip ${formatPrecip(maybeNumber(precip), unitChoice)} ${unitChoice.precipLabel}/h` : "Precip data unavailable",
+        codeLabel ? `Conditions: ${codeLabel}` : null
+      ].filter(Boolean);
 
       return lines.join("\n");
     } catch (err) {
@@ -359,12 +246,195 @@ export const weatherTool = tool(
     }
   },
   {
-    name: "get_weather",
-    description:
-      "Get today's weather and the forecast two days out using Open-Meteo, optionally noting unusual conditions or air quality.",
+    name: "get_weather_current",
+    description: "Get current conditions for specific coordinates (lat, lon) via Open-Meteo.",
     schema: z.object({
-      location: z.string().min(2).optional(),
-      units: z.enum(["metric", "imperial"]).optional()
+      lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
+      lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
+      units: z.enum(["metric", "imperial"]).optional().describe("Force metric or imperial units."),
+      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
+    })
+  }
+);
+
+export const getWeatherForecastTool = tool(
+  async ({ lat, lon, target, units, country }) => {
+    try {
+      const unitChoice = chooseUnits(units, country, lat, lon);
+      const url = new URL(FORECAST_API_URL);
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lon));
+      url.searchParams.set("timezone", "auto");
+      url.searchParams.set(
+        "daily",
+        [
+          "temperature_2m_max",
+          "temperature_2m_min",
+          "apparent_temperature_max",
+          "apparent_temperature_min",
+          "precipitation_sum",
+          "precipitation_probability_max",
+          "wind_speed_10m_max"
+        ].join(",")
+      );
+      url.searchParams.set("hourly", "temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m");
+      url.searchParams.set("forecast_days", "7");
+      applyUnitParams(url, unitChoice);
+
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.text();
+        return `Weather lookup failed: ${res.status} ${res.statusText} ${body}`;
+      }
+
+      const data = (await safeJson(res)) as {
+        daily?: DailyWeather;
+        hourly?: HourlyWeather;
+        timezone?: string;
+      };
+
+      const daily = data.daily;
+      const hourly = data.hourly;
+      if (!daily?.time || !daily.time.length) return "Forecast data unavailable for these coordinates.";
+      const anchorDate = daily.time[0];
+      if (!anchorDate) return "Forecast data missing anchor date.";
+
+      if (!target) {
+        const today = formatDailySummary("Today", 0, daily, unitChoice);
+        const tomorrow = daily.time[1] ? formatDailySummary("Tomorrow", 1, daily, unitChoice) : null;
+        return [today, tomorrow, `Timezone: ${data.timezone ?? "auto"}`].filter(Boolean).join("\n");
+      }
+
+      const parsedTarget = parseTarget(target, anchorDate);
+      if (!parsedTarget) return "Could not understand the requested date/time. Try YYYY-MM-DD or 'tomorrow'.";
+
+      const dateIdx = daily.time.indexOf(parsedTarget.date);
+      const targetTime = parsedTarget.time;
+      if (targetTime && hourly?.time?.length) {
+        const candidatesForDate = hourly.time
+          .map((time, idx) => ({ time, idx }))
+          .filter(({ time }) => time.startsWith(parsedTarget.date));
+        if (!candidatesForDate.length) {
+          return `No hourly data available on ${parsedTarget.date}.`;
+        }
+        const targetIso = `${parsedTarget.date}T${targetTime}`;
+        const nearest = nearestIndex(targetIso, candidatesForDate.map((c) => c.time));
+        const chosen = candidatesForDate[nearest];
+        if (!chosen) return `No hourly data available near ${targetIso}.`;
+        const hourlyLine = formatHourlySummary(chosen.time, chosen.idx, hourly, unitChoice);
+        return [`Forecast for ${parsedTarget.date} (tz ${data.timezone ?? "auto"})`, hourlyLine].join("\n");
+      }
+
+      if (dateIdx === -1) {
+        return `No forecast found for ${parsedTarget.date}. Available range starts ${anchorDate}.`;
+      }
+
+      const dailyLine = formatDailySummary("Forecast", dateIdx, daily, unitChoice);
+      return [dailyLine, `Timezone: ${data.timezone ?? "auto"}`].join("\n");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Weather lookup failed: ${msg}`;
+    }
+  },
+  {
+    name: "get_weather_forecast",
+    description:
+      "Get forecast for coordinates (lat, lon). Accepts a target date/time like 'tomorrow' or '2025-02-15T15:00Z'.",
+    schema: z.object({
+      lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
+      lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
+      target: z
+        .string()
+        .optional()
+        .describe("Date or datetime (e.g., 'tomorrow', '2025-02-15', '2025-02-15T15:00Z')."),
+      units: z.enum(["metric", "imperial"]).optional(),
+      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
+    })
+  }
+);
+
+export const getWeatherHistoricalTool = tool(
+  async ({ lat, lon, target, units, country }) => {
+    try {
+      const unitChoice = chooseUnits(units, country, lat, lon);
+      const targetDate =
+        target?.trim() && !/^\s*$/.test(target)
+          ? target.trim()
+          : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const parsed = parseTarget(targetDate, new Date().toISOString().slice(0, 10));
+      if (!parsed) return "Could not understand the requested historical date/time.";
+
+      const url = new URL(HISTORICAL_API_URL);
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lon));
+      url.searchParams.set("timezone", "auto");
+      url.searchParams.set("start_date", parsed.date);
+      url.searchParams.set("end_date", parsed.date);
+      url.searchParams.set(
+        "daily",
+        [
+          "temperature_2m_max",
+          "temperature_2m_min",
+          "apparent_temperature_max",
+          "apparent_temperature_min",
+          "precipitation_sum",
+          "wind_speed_10m_max"
+        ].join(",")
+      );
+      if (parsed.time) url.searchParams.set("hourly", "temperature_2m,apparent_temperature,precipitation,wind_speed_10m");
+      applyUnitParams(url, unitChoice);
+
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.text();
+        return `Weather lookup failed: ${res.status} ${res.statusText} ${body}`;
+      }
+
+      const data = (await safeJson(res)) as {
+        daily?: DailyWeather;
+        hourly?: HourlyWeather;
+        timezone?: string;
+      };
+
+      const daily = data.daily;
+      if (!daily?.time?.length) return "No historical data returned for that date.";
+      const dateIdx = daily.time.indexOf(parsed.date);
+      if (dateIdx === -1) return `No historical data found for ${parsed.date}.`;
+
+      if (parsed.time && data.hourly?.time?.length) {
+        const candidatesForDate = data.hourly.time
+          .map((time, idx) => ({ time, idx }))
+          .filter(({ time }) => time.startsWith(parsed.date));
+        if (!candidatesForDate.length) return `No hourly historical data on ${parsed.date}.`;
+        const targetIso = `${parsed.date}T${parsed.time}`;
+        const nearest = nearestIndex(targetIso, candidatesForDate.map((c) => c.time));
+        const chosen = candidatesForDate[nearest];
+        if (!chosen) return `No hourly data available near ${targetIso}.`;
+        const hourlyLine = formatHourlySummary(chosen.time, chosen.idx, data.hourly, unitChoice);
+        return [`Historical for ${parsed.date} (tz ${data.timezone ?? "auto"})`, hourlyLine].join("\n");
+      }
+
+      const dailyLine = formatDailySummary("Historical", dateIdx, daily, unitChoice);
+      return [dailyLine, `Timezone: ${data.timezone ?? "auto"}`].join("\n");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Weather lookup failed: ${msg}`;
+    }
+  },
+  {
+    name: "get_weather_historical",
+    description:
+      "Get historical weather for coordinates (lat, lon) on a specific date or datetime (e.g., '2024-10-10').",
+    schema: z.object({
+      lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
+      lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
+      target: z
+        .string()
+        .optional()
+        .describe("Historical date/datetime. Defaults to yesterday if omitted."),
+      units: z.enum(["metric", "imperial"]).optional(),
+      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
     })
   }
 );

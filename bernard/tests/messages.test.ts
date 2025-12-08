@@ -28,15 +28,15 @@ void test("mapOpenAIToMessages supports legacy function_call", () => {
     {
       role: "assistant",
       content: null,
-      function_call: { name: "get_weather", arguments: { location: "SF", units: "imperial" } }
+      function_call: { name: "get_weather_current", arguments: { lat: 37.77, lon: -122.42, units: "imperial" } }
     }
   ];
 
   const output = mapOpenAIToMessages(input);
   const ai = output[0] as AIMessage;
   assert.equal(ai.tool_calls?.length, 1);
-  assert.equal(ai.tool_calls?.[0].function.name, "get_weather");
-  assert.equal(ai.tool_calls?.[0].function.arguments, '{"location":"SF","units":"imperial"}');
+  assert.equal(ai.tool_calls?.[0].function.name, "get_weather_current");
+  assert.equal(ai.tool_calls?.[0].function.arguments, '{"lat":37.77,"lon":-122.42,"units":"imperial"}');
 });
 
 void test("mapOpenAIToMessages falls back to tool name when id missing", () => {

@@ -337,7 +337,7 @@ class MockApiClient implements ApiClient {
       {
         id: this.createId(),
         role: 'tool',
-        content: { name: 'get_weather', args: { location: 'Seattle', date: 'tomorrow' } },
+        content: { name: 'get_weather_forecast', args: { lat: 47.6062, lon: -122.3321, target: 'tomorrow' } },
         createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000 + 60_000).toISOString()
       },
       {

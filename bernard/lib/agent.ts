@@ -279,6 +279,77 @@ type InstrumentedTool = {
   invoke: (input: unknown, runOpts?: unknown) => Promise<unknown>;
 };
 
+type ToolVerificationResult = boolean | { ok: boolean; reason?: string };
+
+type ConfiguredTool = InstrumentedTool & {
+  verifyConfiguration?: () => ToolVerificationResult;
+};
+
+type ToolAvailability = {
+  ready: InstrumentedTool[];
+  unavailable: Array<{ name: string; reason: string }>;
+};
+
+function normalizeVerificationResult(result: ToolVerificationResult): { ok: boolean; reason?: string } {
+  if (typeof result === "boolean") return { ok: result };
+  const normalized: { ok: boolean; reason?: string } = { ok: result.ok };
+  if (result.reason) normalized.reason = result.reason;
+  return normalized;
+}
+
+function evaluateToolAvailability(toolsList: ConfiguredTool[] = baseTools as ConfiguredTool[]): ToolAvailability {
+  const ready: InstrumentedTool[] = [];
+  const unavailable: ToolAvailability["unavailable"] = [];
+
+  for (const tool of toolsList) {
+    if (!tool.verifyConfiguration) {
+      ready.push(tool);
+      continue;
+    }
+
+    try {
+      const verification = normalizeVerificationResult(tool.verifyConfiguration());
+      if (verification.ok) {
+        ready.push(tool);
+      } else {
+        unavailable.push({
+          name: tool.name,
+          reason: verification.reason ?? "Tool configuration is missing or invalid."
+        });
+      }
+    } catch (err) {
+      unavailable.push({
+        name: tool.name,
+        reason:
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : "Tool configuration verification failed."
+      });
+    }
+  }
+
+  return { ready, unavailable };
+}
+
+function buildToolAvailabilityMessage(unavailable: ToolAvailability["unavailable"]): string | null {
+  if (!unavailable.length) return null;
+  const summary = unavailable.map((t) => `${t.name}: ${t.reason}`).join("; ");
+  return `Unavailable tools (configuration errors): ${summary}`;
+}
+
+function ensureToolAvailabilityContext(messages: BaseMessage[], availabilityMessage: string | null): BaseMessage[] {
+  if (!availabilityMessage) return messages;
+  const hasAvailabilityContext = messages.some(
+    (message) =>
+      (message as { _getType?: () => string })._getType?.() === "system" &&
+      (message as { content?: unknown }).content === availabilityMessage
+  );
+  if (hasAvailabilityContext) return messages;
+  return [...messages, new SystemMessage({ content: availabilityMessage })];
+}
+
 type TokenUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -373,7 +444,7 @@ type GraphDeps = {
   model?: ChatOpenAI;
   intentModel?: ChatOpenAI;
   responseModel?: ChatOpenAI;
-  tools?: InstrumentedTool[];
+  tools?: ConfiguredTool[];
   ChatOpenAI?: typeof ChatOpenAI;
   toolNode?: ToolNode;
   onUpdate?: (messages: BaseMessage[]) => void | Promise<void>;
@@ -410,7 +481,11 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       temperature: 0.2
     });
 
-  const instrumentedTools = instrumentTools(ctx, deps.tools);
+  const { ready: verifiedTools, unavailable: unavailableTools } = evaluateToolAvailability(
+    deps.tools as ConfiguredTool[] | undefined
+  );
+  const toolAvailabilityMessage = buildToolAvailabilityMessage(unavailableTools);
+  const instrumentedTools = instrumentTools(ctx, verifiedTools);
   const respondTool = toolFactory(async () => "respond", {
     name: "respond",
     description:
@@ -605,7 +680,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     initialMessages: BaseMessage[],
     onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
   ): Promise<BaseMessage[]> => {
-  let messages = ensureToolFormatInstructions(ensureSystemPrompt(initialMessages));
+    let messages = ensureToolAvailabilityContext(
+      ensureToolFormatInstructions(ensureSystemPrompt(initialMessages)),
+      toolAvailabilityMessage
+    );
     let responded = false;
     let forcedReason: string | null = null;
     let lastToolCallsSignature: string | null = null;
@@ -674,7 +752,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   /* c8 ignore start */
   async function* streamMessages(initialMessages: BaseMessage[]) {
-  let messages = ensureToolFormatInstructions(ensureSystemPrompt(initialMessages));
+    let messages = ensureToolAvailabilityContext(
+      ensureToolFormatInstructions(ensureSystemPrompt(initialMessages)),
+      toolAvailabilityMessage
+    );
     let responded = false;
     let lastIntentChunk: unknown;
     let forcedReason: string | null = null;
@@ -762,8 +843,30 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
       }
       const parsedToolCalls = await parseToolCallsWithParser(aggregated as unknown as BaseMessage);
-      const toolCalls =
+
+      const aggregatedToolCallChunks =
+        (aggregated as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
+        (aggregated as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
+
+      const chunkCalls =
+        aggregatedToolCallChunks ??
+        (Array.isArray(latestToolCallChunks) && latestToolCallChunks.length ? latestToolCallChunks : null);
+
+      const normalizedChunkCalls =
+        chunkCalls && Array.isArray(chunkCalls) && chunkCalls.length ? normalizeToolCalls(chunkCalls) : [];
+
+      let toolCalls =
         parsedToolCalls.length > 0 ? parsedToolCalls : extractToolCallsFromMessage(aggregated as ToolCallMessage);
+
+      const isValidToolName = (name?: unknown) =>
+        typeof name === "string" && name.trim().length > 0 && name.trim() !== "tool_call";
+
+      const hasNamedToolCalls = toolCalls.some((call) => isValidToolName(call?.name ?? call.function?.name));
+
+      if ((!toolCalls.length || !hasNamedToolCalls) && normalizedChunkCalls.length) {
+        toolCalls = normalizedChunkCalls;
+      }
+
       if (toolCalls.length) {
         (aggregated as { tool_calls?: unknown[] }).tool_calls = toolCalls;
       }
@@ -778,7 +881,15 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         ...(typeof tokensOut === "number" ? { tokensOut } : {})
       });
 
-      messages = [...messages, aggregated];
+      const aggregatedMessage = new AIMessage({
+        content: aggregated.content,
+        additional_kwargs: (aggregated as { additional_kwargs?: unknown }).additional_kwargs,
+        response_metadata: (aggregated as { response_metadata?: unknown }).response_metadata,
+        usage_metadata: (aggregated as { usage_metadata?: unknown }).usage_metadata,
+        ...(toolCalls.length ? ({ tool_calls: toolCalls } as { tool_calls: AIMessage["tool_calls"] }) : {})
+      });
+
+      messages = [...messages, aggregatedMessage];
       const wantsRespond = toolCalls.some(isRespondToolCall);
 
       const toolCallsSignature = canonicalToolCalls(toolCalls);

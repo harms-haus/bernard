@@ -18,7 +18,10 @@
 - Tooling set (scripted, synchronous where possible)
   - `web_search`: hits a configurable search API (default Brave) with bearer auth; limit count to small numbers to bound latency.
   - `set_timer`: short-lived timers (<=60s) using in-process delays; only for conversational pacing, not scheduling.
-  - `get_weather`: Open-Meteo forecasts plus optional historical/air-quality notes; accepts metric/imperial.
+  - `geocode_search`: forward geocoding via OpenStreetMap Nominatim; requires a user agent and respects optional language/country hints.
+  - `get_weather_current`: Open-Meteo current conditions for provided coordinates (lat, lon).
+  - `get_weather_forecast`: Open-Meteo forecast for provided coordinates and target date/time.
+  - `get_weather_historical`: Open-Meteo historical weather for provided coordinates and target date/time.
 - Ingress device (ESPHome, ingress mode)
   - ESP32-S3-Box voice assistant profile with display states (idle/listening/thinking/replying/error/muted/timer-finished).
   - Wake-word selection (on-device micro_wake_word vs HA-provided) and media player for timer alarms.
@@ -44,8 +47,9 @@
   - Tests: `npm test` (runs `tsx --test` over the `tests/` tree).
 - Tooling considerations
   - `web_search` requires a search API key; return a friendly message when missing.
-  - `get_weather` uses Open-Meteo; endpoints are overrideable, and no API key is required by default.
   - `set_timer` blocks the worker; keep durations short and avoid queuing long timers.
+  - Weather tools use Open-Meteo; endpoints are overrideable, and no API key is required by default. Supply lat/lon directly; units default to imperial for likely-US coordinates unless overridden.
+  - `geocode_search` calls Nominatim; set `NOMINATIM_USER_AGENT` (and optional `NOMINATIM_EMAIL`/`NOMINATIM_REFERER`) to comply with usage policy.
 - Token service
   - Requires a reachable Redis instance; namespace tokens under a dedicated prefix to avoid collisions.
   - Admin actions are bearer-protected; rotate the admin key regularly and avoid reusing it for other services.

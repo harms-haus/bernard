@@ -198,6 +198,77 @@ test("instrumented tool falls back to raw input when JSON parse fails", async ()
   assert.equal(toolInvocations[0], "{not-json");
 });
 
+test("tools failing verification are excluded but surfaced in context", async () => {
+  const keeper = noopRecordKeeper();
+  let boundTools: any[] = [];
+  let availabilityContext: string | null = null;
+
+  const goodTool = {
+    name: "good_tool",
+    description: "ok",
+    verifyConfiguration() {
+      return { ok: true };
+    },
+    async invoke() {
+      return "good";
+    }
+  };
+
+  const badTool = {
+    name: "bad_tool",
+    description: "bad",
+    verifyConfiguration() {
+      return { ok: false, reason: "missing config" };
+    },
+    async invoke() {
+      throw new Error("should not execute");
+    }
+  };
+
+  class FakeChatOpenAI {
+    bindTools(tools: any[]) {
+      boundTools = tools;
+      return {
+        async invoke(messages: any[]) {
+          availabilityContext =
+            messages
+              .filter((m: any) => m._getType?.() === "system")
+              .map((m: any) => m.content)
+              .find((content: any) => typeof content === "string" && content.includes("Unavailable tools")) ?? null;
+          return new AIMessage("done");
+        }
+      };
+    }
+
+    async invoke() {
+      return new AIMessage("done");
+    }
+  }
+
+  const { buildGraph } = await import("../lib/agent?tool-config-gating");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-config",
+      conversationId: "conv-config",
+      requestId: "req-config",
+      token: "tok",
+      model: "model-config"
+    },
+    { model: new FakeChatOpenAI() as any, tools: [goodTool as any, badTool as any] }
+  );
+
+  await graph.invoke({ messages: [new HumanMessage("hello")] });
+
+  const toolNames = boundTools.map((t: any) => t.name);
+  assert.ok(toolNames.includes("good_tool"));
+  assert.ok(toolNames.includes("respond"));
+  assert.ok(!toolNames.includes("bad_tool"));
+  assert.ok(availabilityContext);
+  assert.ok(availabilityContext?.includes("bad_tool"));
+  assert.ok(availabilityContext?.includes("missing config"));
+});
+
 test("stream yields intermediate states through tool loop", async () => {
   const toolInvocations: unknown[] = [];
   const keeper = noopRecordKeeper();
@@ -307,6 +378,87 @@ test("stream suppresses intent-only content until response", async () => {
   }
 
   assert.deepEqual(contents, ["final-response"]);
+});
+
+test("response model sees prior tool outputs in streaming path", async () => {
+  const keeper = noopRecordKeeper();
+  const toolInvocations: unknown[] = [];
+
+  const stubTool = {
+    name: "stub_tool",
+    description: "stub streaming tool",
+    async invoke() {
+      toolInvocations.push("invoked");
+      return "stream-tool-result";
+    }
+  };
+
+  class FakeStreamingIntentModel {
+    private call = 0;
+    bindTools() {
+      return {
+        async stream() {
+          this.call += 1;
+          if (this.call === 1) {
+            async function* firstPass() {
+              yield new AIMessageChunk({
+                content: "",
+                tool_call_chunks: [
+                  { id: "t1", type: "tool_call", function: { name: "stub_tool", arguments: "{}" } } as any
+                ]
+              } as any);
+            }
+            return firstPass();
+          }
+
+          async function* secondPass() {
+            yield new AIMessageChunk({ content: "handoff" } as any);
+          }
+          return secondPass();
+        }
+      };
+    }
+  }
+
+  class FakeResponseModel {
+    readonly received: unknown[][] = [];
+    async stream(messages: unknown[]) {
+      this.received.push(messages as unknown[]);
+      async function* gen() {
+        yield new AIMessageChunk({ content: "final" } as any);
+      }
+      return gen();
+    }
+  }
+
+  const responseModel = new FakeResponseModel();
+  const { buildGraph } = await import("../lib/agent?streaming-response-context");
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-streaming-tool-context",
+      conversationId: "conv-streaming-tool-context",
+      requestId: "req-streaming-tool-context",
+      token: "tok-streaming",
+      model: "model-streaming"
+    },
+    {
+      intentModel: new FakeStreamingIntentModel() as any,
+      responseModel: responseModel as any,
+      tools: [stubTool as any]
+    }
+  );
+
+  for await (const _chunk of await graph.stream({ messages: [new HumanMessage("hello")] })) {
+    // exhaust the stream; assertions happen after completion
+  }
+
+  assert.equal(toolInvocations.length, 1);
+  assert.ok(responseModel.received.length >= 1);
+  const responseContext = responseModel.received[0] as Array<{ _getType?: () => string; content?: unknown }>;
+  const toolMessage = responseContext.find((m) => m._getType?.() === "tool");
+  assert.ok(toolMessage, "expected tool message in response context");
+  assert.match(String((toolMessage as any).content ?? ""), /stream-tool-result/);
 });
 
 test("respond tool ends the loop and skips regular tools", async () => {

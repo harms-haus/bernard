@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { AIMessage, HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { buildGraph } from "../lib/agent";
-import { weatherTool } from "../libs/tools/weather";
+import { getWeatherCurrentTool } from "../libs/tools/weather";
 
 type FakeToolCall = { id: string; name: string; args: unknown };
 type FakeUsage = { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };
@@ -249,40 +249,18 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
   resetFakes();
   const originalFetch = globalThis.fetch;
   const mockResponses: Response[] = [
-    new Response(JSON.stringify({ results: [{ name: "Paris", latitude: 1, longitude: 2, timezone: "UTC" }] }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    }),
     new Response(
       JSON.stringify({
-        daily: {
-          time: ["2024-04-01", "2024-04-02", "2024-04-03"],
-          temperature_2m_max: [20, 21, 22],
-          temperature_2m_min: [10, 11, 12],
-          apparent_temperature_max: [19, 20, 21],
-          apparent_temperature_min: [9, 10, 11],
-          precipitation_sum: [2, 1, 0],
-          precipitation_probability_max: [30, 20, 10],
-          wind_speed_10m_max: [12, 10, 8]
+        current: {
+          time: "2024-04-01T10:00",
+          temperature_2m: 20,
+          apparent_temperature: 19,
+          precipitation: 0,
+          wind_speed_10m: 5,
+          relative_humidity_2m: 60,
+          weather_code: 1
         },
-        timezone: "UTC"
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    ),
-    new Response(
-      JSON.stringify({
-        daily: {
-          time: ["2023-04-01", "2022-04-01", "2021-04-01"],
-          temperature_2m_max: [18, 17, 16],
-          temperature_2m_min: [8, 7, 6],
-          precipitation_sum: [1, 1, 1]
-        }
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    ),
-    new Response(
-      JSON.stringify({
-        hourly: { time: ["2024-04-01T01:00"], european_aqi: [15], pm2_5: [4], pm10: [6] }
+        timezone: "Europe/Paris"
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     )
@@ -296,7 +274,7 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
   queueResponses(
     {
       content: "Calling tool",
-      toolCalls: [{ id: "w1", name: "get_weather", args: { location: "Paris", units: "metric" } }],
+      toolCalls: [{ id: "w1", name: "get_weather_current", args: { lat: 48.8566, lon: 2.3522, units: "metric" } }],
       usage: { prompt_tokens: 5, completion_tokens: 2 },
       usagePath: "response_metadata"
     },
@@ -322,7 +300,7 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
       token: "tok-weather",
       model: "model-weather"
     },
-    { model: new FakeChatOpenAI() as any, tools: [weatherTool as any] }
+    { model: new FakeChatOpenAI() as any, tools: [getWeatherCurrentTool as any] }
   );
 
   try {
@@ -331,11 +309,11 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
     const finalMessage = result.messages[result.messages.length - 1] as AIMessage | undefined;
 
     assert.ok(toolMessage, "expected a tool message");
-    assert.match(String((toolMessage as any).content ?? ""), /Location: Paris/);
+    assert.match(String((toolMessage as any).content ?? ""), /Current @ 2024-04-01T10:00/);
     assert.equal(finalMessage?.content, "done");
 
     assert.equal(keeper.toolResults.length, 2);
-    const weatherEntry = keeper.toolResults.find(([, name]) => name === "get_weather") as
+    const weatherEntry = keeper.toolResults.find(([, name]) => name === "get_weather_current") as
       | [string, string, Record<string, unknown>]
       | undefined;
     assert.ok(weatherEntry);
