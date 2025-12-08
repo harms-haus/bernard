@@ -4,6 +4,7 @@ import test from "node:test";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { buildGraph } from "../lib/agent";
+import { bernardSystemPrompt } from "../lib/systemPrompt";
 
 const makeKeeper = () => {
   const toolResults: unknown[] = [];
@@ -79,6 +80,127 @@ test("runner forces a respond when identical tool calls repeat", async () => {
   assert.ok(
     keeper.toolResults.length === toolInvocations || keeper.toolResults.length === toolInvocations + 1
   );
+});
+
+test("response context omits tool scaffolding for final model call", async () => {
+  const keeper = {
+    llmCalls: [] as Array<[string, Record<string, unknown>]>,
+    async recordToolResult(..._args: unknown[]) {},
+    async recordOpenRouterResult(..._args: unknown[]) {},
+    async recordLLMCall(...args: [string, Record<string, unknown>]) {
+      this.llmCalls.push(args);
+    }
+  };
+
+  const responseInvocations: unknown[][] = [];
+  const responseModel = {
+    async invoke(messages: unknown[]) {
+      responseInvocations.push(messages);
+      return new AIMessage("done");
+    }
+  };
+
+  let intentCalls = 0;
+  const intentModel = {
+    bindTools() {
+      return {
+        async invoke() {
+          intentCalls += 1;
+          if (intentCalls === 1) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [
+                {
+                  id: "echo_1",
+                  type: "tool_call",
+                  function: { name: "echo", arguments: '{"echo":"hi"}' }
+                } as any
+              ]
+            });
+          }
+          return new AIMessage({
+            content: "",
+            tool_calls: [
+              {
+                id: "respond_1",
+                type: "tool_call",
+                function: { name: "respond", arguments: "{}" }
+              } as any
+            ]
+          });
+        }
+      };
+    }
+  };
+
+  const tools = [
+    {
+      name: "echo",
+      description: "returns ok",
+      verifyConfiguration: () => true,
+      async invoke({ echo }: { echo?: string }) {
+        return echo ?? "ok";
+      }
+    },
+    {
+      name: "broken",
+      description: "always unavailable",
+      verifyConfiguration: () => ({ ok: false, reason: "missing config" }),
+      async invoke() {
+        return "should not run";
+      }
+    }
+  ];
+
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-context",
+      conversationId: "conv-context",
+      requestId: "req-context",
+      token: "tok",
+      responseModel: "response-model"
+    },
+    { intentModel: intentModel as any, responseModel: responseModel as any, tools: tools as any }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("hi there")] });
+  const final = result.messages[result.messages.length - 1] as any;
+  assert.equal(final.content, "done");
+
+  const responseCall = keeper.llmCalls.find(([, payload]) => (payload as any).model === "response-model");
+  assert.ok(responseCall, "expected response llm call to be recorded");
+  const responseContext = ((responseCall as [string, { context: AIMessage[] }])[1].context ?? []) as any[];
+
+  const systemMessages = responseContext.filter((m) => (m as any)._getType?.() === "system");
+  assert.deepEqual(
+    systemMessages.map((m) => (m as any).content),
+    [bernardSystemPrompt]
+  );
+
+  assert.ok(responseContext.some((m) => (m as any)._getType?.() === "human"), "user question should be present");
+  assert.ok(
+    responseContext.some(
+      (m) =>
+        Array.isArray((m as any).tool_calls) &&
+        (m as any).tool_calls.some((tc: any) => (tc.function?.name ?? tc.name) === "echo")
+    ),
+    "tool call context should be present"
+  );
+  assert.ok(
+    responseContext.some((m) => (m as any)._getType?.() === "tool" && (m as any).name === "echo"),
+    "tool result should be present"
+  );
+  assert.ok(
+    !responseContext.some(
+      (m) =>
+        (m as any)._getType?.() === "system" &&
+        typeof (m as any).content === "string" &&
+        (m as any).content.toLowerCase().includes("unavailable tools")
+    ),
+    "tool availability context should be omitted"
+  );
+  assert.ok(responseInvocations.length >= 1, "response model should be invoked");
 });
 
 

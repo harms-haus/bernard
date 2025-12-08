@@ -620,12 +620,20 @@ export class ChatComponent {
   }
 
   private defaultEndpoint() {
-    const stored = this.readStored(this.endpointStorageKey);
+    const base = environment.apiBaseUrl?.trim() || '/api';
+    const normalizedBase = base.replace(/\/$/, '');
+    const defaultEndpoint = `${normalizedBase}/v1/chat/completions`;
+    const previousDefault = `${normalizedBase}/agent`;
+
+    const stored = this.readStored(this.endpointStorageKey)?.trim();
     if (stored) {
+      if (stored === previousDefault) {
+        this.writeStored(this.endpointStorageKey, defaultEndpoint);
+        return defaultEndpoint;
+      }
       return stored;
     }
-    const base = environment.apiBaseUrl?.trim() || '/api';
-    return `${base.replace(/\/$/, '')}/agent`;
+    return defaultEndpoint;
   }
 
   private defaultToken() {

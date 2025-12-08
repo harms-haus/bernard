@@ -424,8 +424,31 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     return [...messages, new SystemMessage({ content: context })];
   };
 
-  const responseContext = (messages: BaseMessage[]) =>
-    ensureResponseSystemPrompt(stripIntentOnlySystemMessages(dropRespondToolCalls(messages), TOOL_FORMAT_INSTRUCTIONS, intentSystemPrompt));
+  const stripToolingSystemMessages = (messages: BaseMessage[]) => {
+    const maybeToolAvailability = toolAvailabilityMessage;
+    return messages.filter((message) => {
+      const isSystem = (message as { _getType?: () => string })._getType?.() === "system";
+      if (!isSystem) return true;
+      const content = (message as { content?: unknown }).content;
+      if (typeof content !== "string") return true;
+      if (content === TOOL_FORMAT_INSTRUCTIONS) return false;
+      if (content === intentSystemPrompt) return false;
+      if (maybeToolAvailability && content === maybeToolAvailability) return false;
+      const normalized = content.toLowerCase();
+      if (normalized.startsWith("unavailable tools")) return false;
+      if (normalized.includes("last attempt to call a tool failed")) return false;
+      if (normalized.startsWith("tool loop capped")) return false;
+      if (normalized.includes("failed tools:")) return false;
+      return true;
+    });
+  };
+
+  const responseContext = (messages: BaseMessage[]) => {
+    const withoutRespond = dropRespondToolCalls(messages);
+    const withoutTooling = stripToolingSystemMessages(withoutRespond);
+    const intentLess = stripIntentOnlySystemMessages(withoutTooling, TOOL_FORMAT_INSTRUCTIONS, intentSystemPrompt);
+    return ensureResponseSystemPrompt(intentLess);
+  };
 
   const recordRespondMetrics = async (usage: TokenUsage, latencyMs: number, ok: boolean, errorType?: string) => {
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
