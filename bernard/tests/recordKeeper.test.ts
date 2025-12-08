@@ -60,6 +60,26 @@ void test("reuses conversation within idle window", async () => {
   assert.equal(first.conversationId, second.conversationId);
 });
 
+void test("creates conversation when client supplies new id", async () => {
+  const redis = new FakeRedis();
+  const redisClient = redis as unknown as Redis;
+  const keeper = new RecordKeeper(redisClient);
+  const providedId = "conv-client-supplied";
+
+  const { conversationId, isNewConversation } = await keeper.startRequest("tok-client", "model-client", {
+    conversationId: providedId,
+    place: "living-room"
+  });
+
+  assert.equal(conversationId, providedId);
+  assert.equal(isNewConversation, true);
+  const convo = await keeper.getConversation(conversationId);
+  assert.ok(convo);
+  assert.equal(convo?.status, "open");
+  assert.equal(convo?.requestCount, 1);
+  assert.ok(convo?.placeTags?.includes("living-room"));
+});
+
 void test("closes idle conversation and writes summary", async () => {
   const redis = new FakeRedis();
   const redisClient = redis as unknown as Redis;

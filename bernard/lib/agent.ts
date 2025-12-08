@@ -320,7 +320,9 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   }) as ReturnType<typeof instrumentTools>[number];
   const intentTools = [...instrumentedTools, respondTool];
 
-  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: true });
+  // Surface tool errors to the caller instead of swallowing them as messages so the
+  // pipeline can fail fast and propagate meaningful failure reasons.
+  const toolNode = deps.toolNode ?? new ToolNode(instrumentedTools, { handleToolErrors: false });
   const intentStep = callIntentModel(ctx, intentModelName, intentLLM, intentTools);
   const streamingIntentModel = intentLLM.bindTools(intentTools);
   const maxIterations = 20;

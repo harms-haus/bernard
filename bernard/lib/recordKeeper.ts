@@ -214,9 +214,15 @@ export class RecordKeeper {
     const now = Date.now();
     const nowISO = nowIso();
 
-    const conversationId = opts.conversationId ?? (await this.findActiveConversationForToken(token, now));
-    const finalConversationId = conversationId ?? uniqueId("conv");
-    const isNewConversation = !conversationId;
+    const providedConversationId = opts.conversationId;
+    const existingConversation = providedConversationId ? await this.getConversation(providedConversationId) : null;
+    const activeConversationId =
+      !providedConversationId && !existingConversation ? await this.findActiveConversationForToken(token, now) : null;
+
+    const finalConversationId =
+      existingConversation?.id ?? providedConversationId ?? activeConversationId ?? uniqueId("conv");
+    const shouldCreateConversation = !existingConversation && !activeConversationId;
+    const isReopeningClosedConversation = existingConversation?.status === "closed";
     const requestId = uniqueId("req");
 
     const convKey = this.key(`conv:${finalConversationId}`);
@@ -224,7 +230,7 @@ export class RecordKeeper {
 
     const multi = this.redis.multi();
 
-    if (isNewConversation) {
+    if (shouldCreateConversation) {
       multi.hset(convKey, {
         status: "open",
         startedAt: nowISO,
@@ -238,9 +244,17 @@ export class RecordKeeper {
         lastRequestAt: nowISO
       });
     } else {
-      multi
-        .hset(convKey, { lastTouchedAt: nowISO, lastRequestAt: nowISO })
-        .hincrby(convKey, "requestCount", 1);
+      const convUpdates: Record<string, string> = {
+        lastTouchedAt: nowISO,
+        lastRequestAt: nowISO
+      };
+      if (isReopeningClosedConversation) {
+        convUpdates["status"] = "open";
+        convUpdates["closedAt"] = "";
+        convUpdates["closeReason"] = "";
+        multi.zrem(this.key("convs:closed"), finalConversationId);
+      }
+      multi.hset(convKey, convUpdates).hincrby(convKey, "requestCount", 1);
     }
 
     multi
@@ -265,7 +279,7 @@ export class RecordKeeper {
       await this.mergeSetField(convKey, "placeTags", [opts.place]);
     }
 
-    return { requestId, conversationId: finalConversationId, isNewConversation };
+    return { requestId, conversationId: finalConversationId, isNewConversation: shouldCreateConversation };
   }
 
   async completeRequest(requestId: string, latencyMs: number) {
