@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { AIMessage, AIMessageChunk, HumanMessage, ToolMessage } from "@langchain/core/messages";
-import { bernardSystemPrompt, intentSystemPrompt } from "../lib/systemPrompt";
+import { bernardSystemPromptBase, intentSystemPromptBase } from "../lib/systemPrompt";
 
 const noopRecordKeeper = () => {
   const toolResults: unknown[] = [];
@@ -735,14 +735,25 @@ test("intent and response prompts stay separated", async () => {
     { intentModel: new FakeIntentModel() as any, responseModel: new FakeResponseModel() as any, tools: [] }
   ).invoke({ messages: [new HumanMessage("hi")] });
 
-  assert.ok(
-    seenIntentSystems.some((systems) => systems.includes(intentSystemPrompt)),
-    "intent prompt not present"
+  const hasIntentPrompt = seenIntentSystems.some((systems) =>
+    systems.some(
+      (content) =>
+        typeof content === "string" &&
+        content.startsWith(intentSystemPromptBase) &&
+        /Current date\/time:/i.test(content)
+    )
   );
-  assert.ok(
-    seenResponseSystems.some((systems) => systems.includes(bernardSystemPrompt)),
-    "response prompt not present"
+  assert.ok(hasIntentPrompt, "intent prompt not present");
+
+  const hasResponsePrompt = seenResponseSystems.some((systems) =>
+    systems.some(
+      (content) =>
+        typeof content === "string" &&
+        content.startsWith(bernardSystemPromptBase) &&
+        /Current date\/time:/i.test(content)
+    )
   );
+  assert.ok(hasResponsePrompt, "response prompt not present");
 });
 
 test("falls back to env defaults when ctx model is missing", async () => {

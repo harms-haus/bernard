@@ -5,7 +5,7 @@ import { tool as toolFactory } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
-import { bernardSystemPrompt, intentSystemPrompt } from "./systemPrompt";
+import { bernardSystemPromptBase, intentSystemPromptBase, buildSystemPrompts } from "./systemPrompt";
 import { extractTokenUsage, parseToolInput, safeStringify, type TokenUsage } from "./messages";
 import type { MessageRecord, OpenRouterResult, ToolResult } from "./recordKeeper";
 import {
@@ -191,26 +191,6 @@ export function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[]
   );
 }
 
-function ensureIntentSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
-  const hasIntentPrompt = messages.some(
-    (message) =>
-      (message as { _getType?: () => string })._getType?.() === "system" &&
-      (message as { content?: unknown }).content === intentSystemPrompt
-  );
-  if (hasIntentPrompt) return messages;
-  return [new SystemMessage({ content: intentSystemPrompt }), ...messages];
-}
-
-function ensureResponseSystemPrompt(messages: BaseMessage[]): BaseMessage[] {
-  const hasResponsePrompt = messages.some(
-    (message) =>
-      (message as { _getType?: () => string })._getType?.() === "system" &&
-      (message as { content?: unknown }).content === bernardSystemPrompt
-  );
-  if (hasResponsePrompt) return messages;
-  return [new SystemMessage({ content: bernardSystemPrompt }), ...messages];
-}
-
 function ensureToolFormatInstructions(messages: BaseMessage[]): BaseMessage[] {
   const hasToolFormat = messages.some(
     (message) =>
@@ -360,6 +340,31 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const onUpdateHook = deps.onUpdate;
   let lastRunnableToolName: string | null = null;
   const signatureCounts = new Map<string, number>();
+  const { bernardSystemPrompt, intentSystemPrompt } = buildSystemPrompts();
+  const matchesPromptBase = (content: unknown, basePrompt: string) =>
+    typeof content === "string" && content.startsWith(basePrompt);
+
+  const upsertSystemPrompt = (messages: BaseMessage[], prompt: string, basePrompt: string): BaseMessage[] => {
+    const hasCurrentPrompt = messages.some(
+      (message) =>
+        (message as { _getType?: () => string })._getType?.() === "system" &&
+        typeof (message as { content?: unknown }).content === "string" &&
+        (message as { content?: string }).content === prompt
+    );
+    if (hasCurrentPrompt) return messages;
+    const withoutPriorPrompt = messages.filter((message) => {
+      if ((message as { _getType?: () => string })._getType?.() !== "system") return true;
+      const content = (message as { content?: unknown }).content;
+      return !matchesPromptBase(content, basePrompt);
+    });
+    return [new SystemMessage({ content: prompt }), ...withoutPriorPrompt];
+  };
+
+  const ensureIntentSystemPrompt = (messages: BaseMessage[]): BaseMessage[] =>
+    upsertSystemPrompt(messages, intentSystemPrompt, intentSystemPromptBase);
+
+  const ensureResponseSystemPrompt = (messages: BaseMessage[]): BaseMessage[] =>
+    upsertSystemPrompt(messages, bernardSystemPrompt, bernardSystemPromptBase);
 
   const normalizeArgs = (raw: unknown) => parseToolInput(raw);
 
@@ -432,7 +437,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       const content = (message as { content?: unknown }).content;
       if (typeof content !== "string") return true;
       if (content === TOOL_FORMAT_INSTRUCTIONS) return false;
-      if (content === intentSystemPrompt) return false;
+      if (matchesPromptBase(content, intentSystemPromptBase)) return false;
       if (maybeToolAvailability && content === maybeToolAvailability) return false;
       const normalized = content.toLowerCase();
       if (normalized.startsWith("unavailable tools")) return false;

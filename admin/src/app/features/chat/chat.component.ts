@@ -5,14 +5,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputTextareaModule } from 'primeng/inputtextarea';
-import { RippleModule } from 'primeng/ripple';
 import { PrimeNGConfig } from 'primeng/api';
 import { TagModule } from 'primeng/tag';
 import { MessageModule } from 'primeng/message';
 
 import { environment } from '../../config/environment';
-
-type ToolCallStatus = 'waiting' | 'in-progress' | 'ended-success' | 'ended-failure';
 
 type ToolCallMessage = {
   kind: 'tool';
@@ -21,9 +18,6 @@ type ToolCallMessage = {
   toolCallId: string;
   toolName: string;
   args: unknown;
-  response?: string;
-  status: ToolCallStatus;
-  collapsed: boolean;
   createdAt: number;
 };
 
@@ -38,6 +32,8 @@ type ChatMessage = {
 
 type ChatItem = ChatMessage | ToolCallMessage;
 
+const RESPOND_TOOL_NAME = 'respond';
+
 @Component({
   selector: 'app-chat',
   imports: [
@@ -46,7 +42,6 @@ type ChatItem = ChatMessage | ToolCallMessage;
     ButtonModule,
     InputTextModule,
     InputTextareaModule,
-    RippleModule,
     TagModule,
     MessageModule
   ],
@@ -241,13 +236,11 @@ export class ChatComponent {
       const errorMessage = this.extractErrorMessage(chunk);
       if (errorMessage) {
         this.error.set(errorMessage);
-        this.markLatestToolFailure(errorMessage);
         this.updateAssistant(assistantId, `Request failed: ${errorMessage}`, false);
         return;
       }
       const toolEvents = this.extractToolEvents(chunk);
       toolEvents.calls.forEach((call) => this.upsertToolCall(call));
-      toolEvents.responses.forEach((response) => this.updateToolResponse(response));
 
       const content = this.extractAssistantContent(chunk);
       if (content !== null) {
@@ -445,11 +438,16 @@ export class ChatComponent {
 
   private extractToolEvents(chunk: unknown): {
     calls: Array<{ id: string; name: string; args: unknown }>;
-    responses: Array<{ toolCallId: string; content: string; ok: boolean }>;
   } {
     const messages = this.coalesceMessages(chunk as Record<string, unknown>);
     const calls: Array<{ id: string; name: string; args: unknown }> = [];
-    const responses: Array<{ toolCallId: string; content: string; ok: boolean }> = [];
+
+    const addCall = (idRaw: unknown, nameRaw: unknown, args: unknown) => {
+      const name = typeof nameRaw === 'string' ? nameRaw : 'tool';
+      const id = idRaw ? String(idRaw) : this.createId();
+      if (name === RESPOND_TOOL_NAME) return;
+      calls.push({ id, name, args });
+    };
 
     for (const msg of messages) {
       if (!msg || typeof msg !== 'object') continue;
@@ -468,35 +466,45 @@ export class ChatComponent {
           const rawArgs =
             (call as { function?: { arguments?: unknown } }).function?.arguments ??
             (call as { arguments?: unknown }).arguments;
-          calls.push({
-            id:
-              (call as { id?: unknown }).id?.toString() ??
-              (call as { function?: { name?: unknown } }).function?.name?.toString() ??
-              this.createId(),
-            name: typeof name === 'string' ? name : 'tool',
-            args: this.parseArgs(rawArgs)
-          });
+          const id =
+            (call as { id?: unknown }).id?.toString() ??
+            (call as { function?: { name?: unknown } }).function?.name?.toString() ??
+            this.createId();
+          addCall(id, name, this.parseArgs(rawArgs));
         }
-      }
-
-      const toolCallId =
-        (msg as { tool_call_id?: unknown }).tool_call_id ??
-        (msg as { kwargs?: { tool_call_id?: unknown } }).kwargs?.tool_call_id ??
-        (msg as { additional_kwargs?: { tool_call_id?: unknown } }).additional_kwargs?.tool_call_id;
-      if (toolCallId) {
-        const content =
-          this.extractMessageContent(msg as Record<string, unknown>) ??
-          this.contentFromCandidates([msg]) ??
-          '';
-        responses.push({
-          toolCallId: String(toolCallId),
-          content,
-          ok: true
-        });
       }
     }
 
-    return { calls, responses };
+    // OpenAI-compatible chunks (choices with tool_calls)
+    const choices = (chunk as { choices?: unknown[] }).choices;
+    if (Array.isArray(choices)) {
+      for (const choice of choices) {
+        const delta = (choice as { delta?: unknown }).delta;
+        const message = (choice as { message?: unknown }).message;
+        this.collectToolCallsFromOpenAI(delta, addCall);
+        this.collectToolCallsFromOpenAI(message, addCall);
+      }
+    }
+
+    return { calls };
+  }
+
+  private collectToolCallsFromOpenAI(
+    part: unknown,
+    addCall: (id: string, name: string, args: unknown) => void
+  ) {
+    if (!part || typeof part !== 'object') return;
+    const toolCalls = (part as { tool_calls?: unknown[] }).tool_calls;
+    if (!Array.isArray(toolCalls)) return;
+
+    for (const call of toolCalls) {
+      if (!call || typeof call !== 'object') continue;
+      const fn = (call as { function?: { name?: unknown; arguments?: unknown } }).function;
+      const id = (call as { id?: unknown }).id ?? (call as { index?: unknown }).index ?? fn?.name;
+      const rawArgs = fn?.arguments ?? (call as { arguments?: unknown }).arguments;
+      const name = fn?.name ?? (call as { name?: unknown }).name ?? 'tool';
+      addCall(id ? String(id) : this.createId(), typeof name === 'string' ? name : 'tool', this.parseArgs(rawArgs));
+    }
   }
 
   private parseArgs(raw: unknown): unknown {
@@ -518,7 +526,11 @@ export class ChatComponent {
       if (existingIndex !== -1) {
         const existing = working[existingIndex] as ToolCallMessage;
         working.splice(existingIndex, 1);
-        const merged: ToolCallMessage = { ...existing, toolName: call.name, args: call.args };
+        const mergedArgs =
+          typeof existing.args === 'string' && typeof call.args === 'string'
+            ? existing.args + call.args
+            : call.args ?? existing.args;
+        const merged: ToolCallMessage = { ...existing, toolName: call.name, args: mergedArgs };
         const assistantIndex = this.latestAssistantIndex(working);
         if (assistantIndex !== -1) {
           working.splice(assistantIndex, 0, merged);
@@ -535,8 +547,6 @@ export class ChatComponent {
         toolCallId: call.id,
         toolName: call.name,
         args: call.args,
-        status: 'in-progress',
-        collapsed: true,
         createdAt: Date.now()
       };
       const assistantIndex = this.latestAssistantIndex(working);
@@ -558,47 +568,18 @@ export class ChatComponent {
     return -1;
   }
 
-  private updateToolResponse(response: { toolCallId: string; content: string; ok: boolean }) {
-    this.messages.update((list) =>
-      list.map((item) =>
-        item.kind === 'tool' && item.toolCallId === response.toolCallId
-          ? {
-              ...item,
-              response: response.content,
-              status: response.ok ? 'ended-success' : 'ended-failure',
-              collapsed: true
-            }
-          : item
-      )
-    );
-  }
-
-  private markLatestToolFailure(reason: string) {
-    this.messages.update((list) => {
-      for (let i = list.length - 1; i >= 0; i -= 1) {
-        const item = list[i];
-        if (item.kind === 'tool') {
-          const combined = `${reason}\n\nTool call payload:\n${this.formatArgs(item.args)}`;
-          const updated: ToolCallMessage = {
-            ...item,
-            response: combined,
-            status: 'ended-failure',
-            collapsed: false
-          };
-          return [...list.slice(0, i), updated, ...list.slice(i + 1)];
-        }
-      }
-      return list;
-    });
-  }
-
   private updateAssistant(id: string, content: string, streaming: boolean) {
     this.messages.update((list) =>
       list.map((item) =>
         item.kind === 'chat' && item.id === id
           ? {
               ...item,
-              content,
+              content:
+                streaming && typeof item.content === 'string'
+                  ? content.startsWith(item.content)
+                    ? content
+                    : `${item.content}${content}`
+                  : content,
               pending: streaming
             }
           : item
@@ -681,26 +662,19 @@ export class ChatComponent {
     return `${name}${this.inlineArgs(args)}`;
   }
 
-  protected toggleToolResponse(id: string) {
-    this.messages.update((list) =>
-      list.map((item) =>
-        item.kind === 'tool' && item.id === id ? { ...item, collapsed: !item.collapsed } : item
-      )
-    );
-  }
-
   private inlineArgs(args: unknown): string {
-    if (args === null || args === undefined) return '()';
-    if (typeof args === 'string') return `(${this.compactString(args) || '…'})`;
-    if (typeof args === 'number' || typeof args === 'boolean') return `(${String(args)})`;
+    const normalized = this.normalizeArgs(args);
+    if (normalized === null || normalized === undefined) return '()';
+    if (typeof normalized === 'string') return `(${this.compactString(normalized) || '…'})`;
+    if (typeof normalized === 'number' || typeof normalized === 'boolean') return `(${String(normalized)})`;
 
-    if (Array.isArray(args)) {
-      const preview = args.map((value) => this.inlineValue(value)).join(', ');
+    if (Array.isArray(normalized)) {
+      const preview = normalized.map((value) => this.inlineValue(value)).join(', ');
       return `(${this.compactString(preview) || '…'})`;
     }
 
-    if (typeof args === 'object') {
-      const record = args as Record<string, unknown>;
+    if (typeof normalized === 'object') {
+      const record = normalized as Record<string, unknown>;
       const lat = this.pickCoordinate(record, ['lat', 'latitude']);
       const lon = this.pickCoordinate(record, ['lon', 'longitude']);
       if (lat !== null && lon !== null) {
@@ -719,7 +693,23 @@ export class ChatComponent {
       return `(${this.compactString(preview + suffix) || '…'})`;
     }
 
-    return `(${this.compactString(String(args)) || '…'})`;
+    return `(${this.compactString(String(normalized)) || '…'})`;
+  }
+
+  private normalizeArgs(args: unknown): unknown {
+    if (typeof args !== 'string') return args;
+    const trimmed = args.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        // fall through to raw string
+      }
+    }
+    return args;
   }
 
   private inlineValue(value: unknown): string {

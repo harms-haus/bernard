@@ -4,7 +4,7 @@ import test from "node:test";
 import { SystemMessage } from "@langchain/core/messages";
 
 import { TOOL_FORMAT_INSTRUCTIONS } from "../lib/agentRunner";
-import { intentSystemPrompt } from "../lib/systemPrompt";
+import { buildSystemPrompts } from "../lib/systemPrompt";
 import {
   buildToolValidationMessage,
   canonicalToolCalls,
@@ -42,6 +42,7 @@ test("canonicalToolCalls sorts by name and arguments for stable signatures", () 
 });
 
 test("stripIntentOnlySystemMessages removes prompt scaffolding", () => {
+  const { intentSystemPrompt } = buildSystemPrompts(new Date("2025-01-01T12:00:00Z"));
   const messages = [
     new SystemMessage(TOOL_FORMAT_INSTRUCTIONS),
     new SystemMessage(intentSystemPrompt),

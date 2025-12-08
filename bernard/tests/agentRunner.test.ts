@@ -4,7 +4,7 @@ import test from "node:test";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { buildGraph } from "../lib/agent";
-import { bernardSystemPrompt } from "../lib/systemPrompt";
+import { bernardSystemPromptBase } from "../lib/systemPrompt";
 
 const makeKeeper = () => {
   const toolResults: unknown[] = [];
@@ -168,15 +168,30 @@ test("response context omits tool scaffolding for final model call", async () =>
   const final = result.messages[result.messages.length - 1] as any;
   assert.equal(final.content, "done");
 
-  const responseCall = keeper.llmCalls.find(([, payload]) => (payload as any).model === "response-model");
-  assert.ok(responseCall, "expected response llm call to be recorded");
+  const responseCall = keeper.llmCalls.find(([, payload]) => {
+    const ctx = (payload as any).context as AIMessage[] | undefined;
+    if (!Array.isArray(ctx)) return false;
+    return ctx.some(
+      (m: any) => m._getType?.() === "system" && typeof m.content === "string" && m.content.startsWith(bernardSystemPromptBase)
+    );
+  });
+  assert.ok(responseCall, "expected response llm call with response prompt to be recorded");
   const responseContext = ((responseCall as [string, { context: AIMessage[] }])[1].context ?? []) as any[];
 
   const systemMessages = responseContext.filter((m) => (m as any)._getType?.() === "system");
-  assert.deepEqual(
-    systemMessages.map((m) => (m as any).content),
-    [bernardSystemPrompt]
+  const systemContents = systemMessages.map((m) => (m as any).content) as string[];
+  const responsePrompts = systemContents.filter(
+    (c) => typeof c === "string" && c.startsWith(bernardSystemPromptBase)
   );
+  assert.ok(responsePrompts.length >= 1, "response system prompt missing");
+  assert.ok(responsePrompts.some((c) => /Current date\/time:/i.test(c)), "response prompt missing timestamp");
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (timeZone) {
+    assert.ok(
+      responsePrompts.some((c) => c.includes(timeZone)),
+      "response system prompt missing timezone"
+    );
+  }
 
   assert.ok(responseContext.some((m) => (m as any)._getType?.() === "human"), "user question should be present");
   assert.ok(

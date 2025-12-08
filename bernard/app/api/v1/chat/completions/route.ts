@@ -10,7 +10,6 @@ import {
   extractUsageFromMessages,
   findLastAssistantMessage,
   isBernardModel,
-  isToolMessage,
   mapChatMessages,
   safeStringify,
   summarizeToolOutputs,
@@ -203,7 +202,6 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const sentToolCalls = new Set<string>();
-      const sentToolMessages = new Set<string>();
       let latestMessages: BaseMessage[] | null = null;
       let streamedContent = "";
       let usageChunk: Record<string, unknown> | null = null;
@@ -261,19 +259,6 @@ export async function POST(req: NextRequest) {
                 if (newCalls.length) {
                   sendDelta({ tool_calls: newCalls as unknown[] });
                 }
-              }
-            }
-          }
-
-          // tool responses
-          for (const message of maybeMessages) {
-            if (isToolMessage(message)) {
-              const content = contentFromMessage(message);
-              const key = `${(message as { tool_call_id?: string }).tool_call_id ?? "tool"}::${content}`;
-              if (sentToolMessages.has(key)) continue;
-              sentToolMessages.add(key);
-              if (content) {
-                sendDelta({ content });
               }
             }
           }
