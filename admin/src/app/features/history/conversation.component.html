@@ -41,263 +41,52 @@
       @if (!messages().length) {
         <p class="muted">No messages yet.</p>
       } @else {
-        @for (message of messages(); track message.id) {
-          @if (traceFor(message); as trace) {
-            <article class="message trace">
-              <div class="message-header">
-                <div class="trace-heading">
-                  <p-tag value="LLM call" severity="secondary"></p-tag>
-                  <span class="muted small">{{ trace.model || 'Unknown model' }}</span>
-                </div>
-                <div class="header-actions">
-                  <span class="muted">{{ (trace.at || message.createdAt) | date: 'short' }}</span>
-                  <button
-                    pButton
-                    type="button"
-                    class="text-toggle"
-                    [label]="isTextOnly(message.id) ? 'Formatted' : 'Just text'"
-                    icon="pi pi-code"
-                    [text]="true"
-                    [aria-pressed]="isTextOnly(message.id)"
-                    (click)="toggleTextOnly(message.id)"
-                  ></button>
-                </div>
-              </div>
-              <div class="message-body trace-body">
-                <div class="trace-meta muted small">
-                  @if (trace.latencyMs !== undefined) {
-                    <span>{{ trace.latencyMs }} ms</span>
+        <div class="thread">
+          @for (message of messages(); track message.id) {
+            @if (traceFor(message); as trace) {
+              <app-llm-call [trace]="trace" [createdAt]="message.createdAt"></app-llm-call>
+            } @else {
+              <div class="thread-row">
+                @switch (message.role) {
+                  @case ('user') {
+                    <app-user-message-bubble
+                      [text]="renderContent(message)"
+                      [footer]="messageFooter(message)"
+                    />
                   }
-                  @if (trace.tokens) {
-                    <span>tokens: {{ trace.tokens | json }}</span>
-                  }
-                </div>
-
-                @if (isTextOnly(message.id)) {
-                  <pre class="content raw-json">{{ rawTrace(trace) }}</pre>
-                } @else {
-                  <div class="trace-section">
-                    <button
-                      type="button"
-                      class="section-toggle"
-                      (click)="toggleContextSection(message.id)"
-                      [attr.aria-expanded]="isContextExpanded(message.id)"
-                    >
-                      <span class="section-title">Context</span>
-                      <span class="chevron" [class.expanded]="isContextExpanded(message.id)">
-                        {{ isContextExpanded(message.id) ? '▴' : '▾' }}
-                      </span>
-                    </button>
-                    @if (isContextExpanded(message.id)) {
-                      @if (!trace.context.length) {
-                        <p class="muted small">None</p>
-                      } @else {
-                        @for (entry of trace.context; track entry.id) {
-                          <div
-                            class="message trace-entry"
-                            [class.user]="entry.role === 'user'"
-                            [class.assistant]="entry.role === 'assistant' && !entry.tool_calls?.length"
-                            [class.system]="entry.role === 'system'"
-                            [class.tool]="entry.role === 'tool'"
-                          >
-                            <div class="message-header">
-                              <p-tag [value]="messageLabel(entry)" [severity]="messageSeverity(entry)"></p-tag>
-                            </div>
-                            <div class="message-body">
-                              @if (!isTextOnly(entry.id) && entry.tool_calls?.length) {
-                                <div class="tool-call-list" aria-label="Tool calls">
-                                  @for (call of entry.tool_calls; let i = $index; track call.id || i) {
-                                    @let callKey = call.id || (entry.id + '-call-' + i);
-                                    <div class="tool-call">
-                                      <button
-                                        type="button"
-                                        class="tool-call-toggle"
-                                        (click)="toggleToolCall(callKey); $event.stopPropagation()"
-                                        [attr.aria-expanded]="isToolCallExpanded(callKey)"
-                                        [attr.aria-controls]="callKey + '-details'"
-                                      >
-                                        <div class="tool-call-header">
-                                          <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
-                                          <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
-                                          <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
-                                            {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
-                                          </span>
-                                        </div>
-                                      </button>
-                                      @if (isToolCallExpanded(callKey)) {
-                                        <div class="tool-call-body" [id]="callKey + '-details'">
-                                          @if (toolCallArguments(call); as argBlock) {
-                                            @if (argBlock.text) {
-                                              <pre class="content tool-call-args">{{ argBlock.text }}</pre>
-                                            }
-                                            @if (!argBlock.parsed || !argBlock.text) {
-                                              <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
-                                            }
-                                          }
-                                          <div class="tool-call-id muted small">ID: {{ callKey }}</div>
-                                        </div>
-                                      }
-                                    </div>
-                                  }
-                                </div>
-                              }
-                              <pre class="content">{{ isTextOnly(entry.id) ? rawTraceEntry(entry) : traceEntryContent(entry) }}</pre>
-                            </div>
-                          </div>
-                        }
+                  @case ('assistant') {
+                    <app-assistant-message-bubble
+                      [text]="renderContent(message)"
+                      [footer]="messageFooter(message)"
+                    />
+                    @if (message.tool_calls?.length) {
+                      @for (call of message.tool_calls; let i = $index; track call.id || i) {
+                        <app-tool-call-bubble
+                          [call]="call"
+                          [footer]="messageFooter(message)"
+                        ></app-tool-call-bubble>
                       }
                     }
-                  </div>
-
-                  <div class="trace-section">
-                    <button
-                      type="button"
-                      class="section-toggle"
-                      (click)="toggleResultSection(message.id)"
-                      [attr.aria-expanded]="!isResultCollapsed(message.id)"
-                    >
-                      <span class="section-title">Result</span>
-                      <span class="chevron" [class.expanded]="!isResultCollapsed(message.id)">
-                        {{ isResultCollapsed(message.id) ? '▾' : '▴' }}
-                      </span>
-                    </button>
-                    @if (!isResultCollapsed(message.id)) {
-                      @if (!trace.result.length) {
-                        <p class="muted small">None</p>
-                      } @else {
-                        @for (entry of trace.result; track entry.id) {
-                          @if (isResultEntryEmpty(entry)) {
-                            <div class="empty-result">
-                              <pre class="content empty-placeholder">[empty]</pre>
-                            </div>
-                          } @else {
-                            <div
-                              class="message trace-entry"
-                              [class.user]="entry.role === 'user'"
-                              [class.assistant]="entry.role === 'assistant' && !entry.tool_calls?.length"
-                              [class.system]="entry.role === 'system'"
-                              [class.tool]="entry.role === 'tool'"
-                            >
-                              <div class="message-header">
-                                <p-tag [value]="messageLabel(entry)" [severity]="messageSeverity(entry)"></p-tag>
-                              </div>
-                              <div class="message-body">
-                                @if (!isTextOnly(entry.id) && entry.tool_calls?.length) {
-                                  <div class="tool-call-list" aria-label="Tool calls">
-                                    @for (call of entry.tool_calls; let i = $index; track call.id || i) {
-                                      @let callKey = call.id || (entry.id + '-call-' + i);
-                                      <div class="tool-call">
-                                        <button
-                                          type="button"
-                                          class="tool-call-toggle"
-                                          (click)="toggleToolCall(callKey); $event.stopPropagation()"
-                                          [attr.aria-expanded]="isToolCallExpanded(callKey)"
-                                          [attr.aria-controls]="callKey + '-details'"
-                                        >
-                                          <div class="tool-call-header">
-                                            <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
-                                            <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
-                                            <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
-                                              {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
-                                            </span>
-                                          </div>
-                                        </button>
-                                        @if (isToolCallExpanded(callKey)) {
-                                          <div class="tool-call-body" [id]="callKey + '-details'">
-                                            @if (toolCallArguments(call); as argBlock) {
-                                              @if (argBlock.text) {
-                                                <pre class="content tool-call-args">{{ argBlock.text }}</pre>
-                                              }
-                                              @if (!argBlock.parsed || !argBlock.text) {
-                                                <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
-                                              }
-                                            }
-                                            <div class="tool-call-id muted small">ID: {{ callKey }}</div>
-                                          </div>
-                                        }
-                                      </div>
-                                    }
-                                  </div>
-                                }
-                                <pre class="content">{{ isTextOnly(entry.id) ? rawTraceEntry(entry) : traceEntryContent(entry) }}</pre>
-                              </div>
-                            </div>
-                          }
-                        }
-                      }
-                    }
-                  </div>
+                  }
+                  @case ('system') {
+                    <app-system-message-bubble
+                      [text]="renderContent(message)"
+                      [footer]="messageFooter(message)"
+                    />
+                  }
+                  @default {
+                    <app-tool-call-bubble
+                      [call]="toolCallFromMessage(message)"
+                      [name]="message.name || 'Tool'"
+                      [content]="renderContent(message)"
+                      [footer]="messageFooter(message)"
+                    ></app-tool-call-bubble>
+                  }
                 }
               </div>
-            </article>
-          } @else {
-            <article
-              class="message"
-              [class.user]="message.role === 'user'"
-              [class.assistant]="message.role === 'assistant' && !message.tool_calls?.length"
-              [class.system]="message.role === 'system'"
-              [class.tool]="message.role === 'tool'"
-              [class.tool-call-article]="message.tool_calls?.length"
-            >
-              <div class="message-header">
-                <p-tag [value]="messageLabel(message)" [severity]="messageSeverity(message)"></p-tag>
-                <div class="header-actions">
-                  <span class="muted">{{ message.createdAt | date: 'short' }}</span>
-                  <button
-                    pButton
-                    type="button"
-                    class="text-toggle"
-                    [label]="isTextOnly(message.id) ? 'Formatted' : 'Just text'"
-                    icon="pi pi-code"
-                    [text]="true"
-                    [aria-pressed]="isTextOnly(message.id)"
-                    (click)="toggleTextOnly(message.id)"
-                  ></button>
-                </div>
-              </div>
-              <div class="message-body">
-                @if (!isTextOnly(message.id) && message.tool_calls?.length) {
-                  <div class="tool-call-list" aria-label="Tool calls">
-                    @for (call of message.tool_calls; let i = $index; track call.id || i) {
-                      @let callKey = call.id || (message.id + '-call-' + i);
-                      <div class="tool-call">
-                        <button
-                          type="button"
-                          class="tool-call-toggle"
-                          (click)="toggleToolCall(callKey); $event.stopPropagation()"
-                          [attr.aria-expanded]="isToolCallExpanded(callKey)"
-                          [attr.aria-controls]="callKey + '-details'"
-                        >
-                          <div class="tool-call-header">
-                            <span class="tool-call-name">{{ toolCallLabel(call) }}</span>
-                            <span class="tool-call-args-inline">{{ inlineToolCallArguments(call) || 'View call' }}</span>
-                            <span class="chevron" [class.expanded]="isToolCallExpanded(callKey)">
-                              {{ isToolCallExpanded(callKey) ? '▾' : '▸' }}
-                            </span>
-                          </div>
-                        </button>
-                        @if (isToolCallExpanded(callKey)) {
-                          <div class="tool-call-body" [id]="callKey + '-details'">
-                            @if (toolCallArguments(call); as argBlock) {
-                              @if (argBlock.text) {
-                                <pre class="content tool-call-args">{{ argBlock.text }}</pre>
-                              }
-                              @if (!argBlock.parsed || !argBlock.text) {
-                                <pre class="content tool-call-raw">{{ toolCallRaw(call) }}</pre>
-                              }
-                            }
-                            <div class="tool-call-id muted small">ID: {{ callKey }}</div>
-                          </div>
-                        }
-                      </div>
-                    }
-                  </div>
-                }
-                <pre class="content">{{ isTextOnly(message.id) ? rawMessage(message) : messagePreview(message) }}</pre>
-              </div>
-            </article>
+            }
           }
-        }
+        </div>
       }
     }
   </div>
@@ -370,4 +159,3 @@
     </div>
   </div>
 </section>
-

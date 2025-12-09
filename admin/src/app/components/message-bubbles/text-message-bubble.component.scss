@@ -1,0 +1,11 @@
+.content {
+  color: var(--text-color, #0f172a);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.content.muted {
+  color: var(--text-secondary, #475569);
+}
+

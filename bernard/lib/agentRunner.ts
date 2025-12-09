@@ -19,6 +19,7 @@ import {
   canonicalToolCalls,
   ensureToolAvailabilityContext,
   evaluateToolAvailability,
+  extractToolCallsFromContent,
   extractToolCallsFromMessage,
   hasToolCall,
   latestToolCalls,
@@ -177,6 +178,52 @@ function dedupeToolCalls(toolCalls: ToolCallRecord[]): ToolCallRecord[] {
   });
 }
 
+function dedupeIntentToolCalls(toolCalls: ToolCallRecord[]): ToolCallRecord[] {
+  const seenById = new Set<string>();
+  const seenBySignature = new Set<string>();
+  const result: ToolCallRecord[] = [];
+
+  for (const call of toolCalls) {
+    if (!call) continue;
+    const rawId = (call as { id?: unknown }).id;
+    const id = typeof rawId === "string" && rawId.trim() ? rawId : null;
+    const name = call.name ?? call.function?.name ?? "tool_call";
+    const args = safeStringify((call as { args?: unknown }).args ?? {});
+    const signature = `${name}:${args}`;
+
+    if (id && seenById.has(id)) continue;
+    if (!id && seenBySignature.has(signature)) continue;
+
+    if (id) seenById.add(id);
+    seenBySignature.add(signature);
+    result.push(call);
+  }
+
+  return result;
+}
+
+function resolveIntentToolCalls(message: BaseMessage, fallbackToolCalls: ToolCallRecord[] = []): ToolCallRecord[] {
+  const parsedToolCalls = parseToolCallsWithParser(message);
+  const extractedToolCalls = extractToolCallsFromMessage(message as ToolCallMessage);
+  const contentToolCalls = extractToolCallsFromContent((message as { content?: unknown }).content);
+  const combined = [...parsedToolCalls, ...extractedToolCalls, ...contentToolCalls, ...fallbackToolCalls];
+  if (!combined.length) return [];
+  const normalized = normalizeToolCalls(combined);
+  return dedupeIntentToolCalls(normalized);
+}
+
+function buildIntentMessage(message: BaseMessage, toolCalls: ToolCallRecord[]): AIMessage {
+  return new AIMessage({
+    content: "",
+    additional_kwargs: (message as { additional_kwargs?: Record<string, unknown> }).additional_kwargs,
+    response_metadata: (message as { response_metadata?: unknown }).response_metadata,
+    usage_metadata: (message as { usage_metadata?: unknown }).usage_metadata,
+    ...(toolCalls.length
+      ? ({ tool_calls: toolCalls as unknown as AIMessage["tool_calls"] } as { tool_calls: AIMessage["tool_calls"] })
+      : {})
+  } as AIMessageFields);
+}
+
 async function recordLLMTrace(
   ctx: AgentContext,
   modelName: string,
@@ -301,13 +348,8 @@ function callIntentModel(ctx: AgentContext, modelName: string, model: ChatOpenAI
     const latency = Date.now() - start;
     const usage = extractTokenUsage(result);
 
-    const parsedToolCalls = parseToolCallsWithParser(result);
-    const normalizedToolCalls = normalizeToolCalls(
-      parsedToolCalls.length ? parsedToolCalls : extractToolCallsFromMessage(result as ToolCallMessage)
-    );
-    if (normalizedToolCalls.length) {
-      (result as { tool_calls?: unknown[] }).tool_calls = normalizedToolCalls;
-    }
+    const toolCalls = resolveIntentToolCalls(result);
+    const intentMessage = buildIntentMessage(result, toolCalls);
 
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
     const tokensOut = usage.completion_tokens ?? usage.output_tokens;
@@ -325,9 +367,9 @@ function callIntentModel(ctx: AgentContext, modelName: string, model: ChatOpenAI
     if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
 
     await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
-    await recordLLMTrace(ctx, modelName, start, latency, usage, state.messages, result);
+    await recordLLMTrace(ctx, modelName, start, latency, usage, state.messages, intentMessage);
 
-    return { messages: [result] };
+    return { messages: [intentMessage] };
   };
 }
 
@@ -631,11 +673,6 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         throw new Error("Model returned no chunks");
       }
 
-      if (latestToolCallChunks) {
-        (aggregated as { tool_call_chunks?: unknown[] }).tool_call_chunks = latestToolCallChunks;
-      }
-
-      const parsedToolCalls = parseToolCallsWithParser(aggregated as unknown as BaseMessage);
       const aggregatedToolCallChunks =
         (aggregated as { tool_call_chunks?: unknown[]; additional_kwargs?: { tool_call_chunks?: unknown[] } }).tool_call_chunks ??
         (aggregated as { additional_kwargs?: { tool_call_chunks?: unknown[] } }).additional_kwargs?.tool_call_chunks;
@@ -644,19 +681,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         (Array.isArray(latestToolCallChunks) && latestToolCallChunks.length ? latestToolCallChunks : null);
       const normalizedChunkCalls =
         chunkCalls && Array.isArray(chunkCalls) && chunkCalls.length ? normalizeToolCalls(chunkCalls) : [];
-      let toolCalls =
-        parsedToolCalls.length > 0 ? parsedToolCalls : extractToolCallsFromMessage(aggregated as ToolCallMessage);
-      const hasNamedToolCalls = toolCalls.some((call) => {
-        const name = call?.name ?? call.function?.name;
-        return typeof name === "string" && name.trim().length > 0 && name.trim() !== "tool_call";
-      });
-      if ((!toolCalls.length || !hasNamedToolCalls) && normalizedChunkCalls.length) {
-        toolCalls = normalizedChunkCalls;
-      }
-      if (toolCalls.length) {
-        toolCalls = normalizeToolCalls(toolCalls);
-        (aggregated as { tool_calls?: unknown[] }).tool_calls = toolCalls;
-      }
+      const toolCalls = resolveIntentToolCalls(aggregated as unknown as BaseMessage, normalizedChunkCalls);
 
       const usage = extractTokenUsage(aggregated);
       const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
@@ -669,17 +694,9 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         ...(typeof tokensOut === "number" ? { tokensOut } : {})
       });
 
-      const aggregatedMessage = new AIMessage({
-        content: aggregated.content,
-        additional_kwargs: (aggregated as { additional_kwargs?: Record<string, unknown> }).additional_kwargs,
-        response_metadata: (aggregated as { response_metadata?: unknown }).response_metadata,
-        usage_metadata: (aggregated as { usage_metadata?: unknown }).usage_metadata,
-        ...(toolCalls.length
-          ? ({ tool_calls: toolCalls as unknown as AIMessage["tool_calls"] } as { tool_calls: AIMessage["tool_calls"] })
-          : {})
-      } as AIMessageFields);
-      await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, aggregatedMessage);
-      return [aggregatedMessage];
+      const intentMessage = buildIntentMessage(aggregated as unknown as BaseMessage, toolCalls);
+      await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, intentMessage);
+      return [intentMessage];
     }
 
     const result = await intentStep({ messages });

@@ -344,4 +344,94 @@ test("runner blocks duplicate parallel tool calls", async () => {
   assert.ok(duplicateValidation, "duplicate parallel calls should be surfaced as a validation failure");
 });
 
+test("intent tool calls drop response text and parse JSON-only portion", async () => {
+  const keeper = {
+    toolResults: [] as unknown[],
+    routerResults: [] as Array<[string, string, Record<string, unknown>]>,
+    llmCalls: [] as unknown[],
+    async recordToolResult(...args: unknown[]) {
+      this.toolResults.push(args);
+    },
+    async recordOpenRouterResult(...args: [string, string, Record<string, unknown>]) {
+      this.routerResults.push(args);
+    },
+    async recordLLMCall(...args: unknown[]) {
+      this.llmCalls.push(args);
+    }
+  };
+
+  const echoInputs: unknown[] = [];
+  const echoTool = {
+    name: "echo",
+    description: "returns input",
+    async invoke(input: unknown) {
+      echoInputs.push(input);
+      return "ok";
+    }
+  };
+
+  const intentModel = {
+    bindTools() {
+      let callCount = 0;
+      return {
+        async invoke() {
+          callCount += 1;
+          if (callCount === 1) {
+            return new AIMessage({
+              content:
+                "I will issue a tool call now.\n```json\n{\"tool_calls\":[{\"id\":\"echo-1\",\"type\":\"function\",\"function\":{\"name\":\"echo\",\"arguments\":\"{\\\"phrase\\\":\\\"hi\\\"}\"}}]}\n```\nThe rest of this text should be discarded.",
+              response_metadata: { token_usage: { prompt_tokens: 9, completion_tokens: 3 } }
+            } as any);
+          }
+          return new AIMessage({ content: "" });
+        }
+      };
+    }
+  };
+
+  const responseModel = {
+    async invoke() {
+      return new AIMessage("done");
+    }
+  };
+
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-intent-sanitize",
+      conversationId: "conv-intent-sanitize",
+      requestId: "req-intent-sanitize",
+      token: "tok",
+      intentModel: "intent-model",
+      responseModel: "response-model"
+    },
+    { intentModel: intentModel as any, responseModel: responseModel as any, tools: [echoTool as any] }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("ping")] });
+
+  const intentMessages = result.messages.filter(
+    (m: any) => m?._getType?.() === "ai" && Array.isArray(m.tool_calls) && m.tool_calls.length
+  );
+  assert.equal(intentMessages.length, 1, "intent tool call message should be present");
+  const intentMessage = intentMessages[0] as any;
+  assert.equal(intentMessage.content, "", "intent message content should be stripped");
+  assert.equal(intentMessage.tool_calls[0]?.function?.name, "echo");
+  assert.equal(intentMessage.tool_calls[0]?.function?.arguments, '{"phrase":"hi"}');
+
+  assert.equal(echoInputs.length, 1, "tool should execute once");
+  assert.deepEqual(echoInputs[0], { phrase: "hi" });
+
+  const intentMetrics = keeper.routerResults.find(([, modelName]) => modelName === "intent-model");
+  assert.ok(intentMetrics, "intent model metrics should be recorded");
+  const intentPayload = intentMetrics ? (intentMetrics[2] as Record<string, unknown>) : {};
+  assert.equal(intentPayload["tokensIn"], 9);
+  assert.equal(intentPayload["tokensOut"], 3);
+
+  const leakedIntentText = result.messages.some(
+    (m: any) => typeof m?.content === "string" && m.content.includes("I will issue a tool call")
+  );
+  assert.ok(!leakedIntentText, "intent response text should not appear in history");
+});
+
 

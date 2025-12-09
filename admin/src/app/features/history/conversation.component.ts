@@ -10,29 +10,12 @@ import { finalize, interval, Subscription } from 'rxjs';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
 import { ConversationDetail, ConversationMessage } from '../../data/models';
-
-type ToolCall = NonNullable<ConversationMessage['tool_calls']>[number];
-
-type TraceEntry = {
-  id: string;
-  role: ConversationMessage['role'];
-  name?: string;
-  content: unknown;
-  tool_call_id?: string;
-  tool_calls?: ToolCall[];
-  raw: unknown;
-};
-
-type LlmTrace = {
-  type: 'llm_call';
-  model?: string;
-  at?: string;
-  latencyMs?: number;
-  tokens?: Record<string, unknown>;
-  context: TraceEntry[];
-  result: TraceEntry[];
-  raw: unknown;
-};
+import { AssistantMessageBubbleComponent } from '../../components/message-bubbles/assistant-message-bubble.component';
+import { SystemMessageBubbleComponent } from '../../components/message-bubbles/system-message-bubble.component';
+import { ToolCallBubbleComponent } from '../../components/message-bubbles/tool-call-bubble.component';
+import { UserMessageBubbleComponent } from '../../components/message-bubbles/user-message-bubble.component';
+import { LlmCallComponent } from './llm-call/llm-call.component';
+import { LlmTrace, ToolCall, TraceEntry } from './llm-call/llm-trace.types';
 
 type TraceEntryInput = {
   role?: unknown;
@@ -54,7 +37,18 @@ type LlmCallContent = {
 
 @Component({
   selector: 'app-conversation',
-  imports: [CommonModule, ButtonModule, TagModule, MessageModule, TooltipModule],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    TagModule,
+    MessageModule,
+    TooltipModule,
+    AssistantMessageBubbleComponent,
+    SystemMessageBubbleComponent,
+    ToolCallBubbleComponent,
+    UserMessageBubbleComponent,
+    LlmCallComponent
+  ],
   templateUrl: './conversation.component.html',
   styleUrl: './conversation.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -69,10 +63,6 @@ export class ConversationComponent {
   readonly error = signal<string | null>(null);
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
-  readonly expandedToolCalls = signal<Set<string>>(new Set());
-  readonly textOnlyMessages = signal<Set<string>>(new Set());
-  readonly contextExpanded = signal<Set<string>>(new Set());
-  readonly resultCollapsed = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -105,157 +95,32 @@ export class ConversationComponent {
     return this.renderValue(message.content);
   }
 
-  private argumentValue(call: ToolCall): unknown {
-    const fn = call.function && typeof call.function === 'object' ? call.function : undefined;
-    if (fn?.arguments !== undefined) return fn.arguments;
-    if (call.arguments !== undefined) return call.arguments;
-    if (call.args !== undefined) return call.args;
-    if (fn?.args !== undefined) return fn.args;
-    if ((call as { input?: unknown }).input !== undefined) return (call as { input?: unknown }).input;
-    if ((fn as { input?: unknown })?.input !== undefined) return (fn as { input?: unknown }).input;
-    return undefined;
+  messageFooter(message: ConversationMessage): string {
+    const role = this.roleLabel(message.role);
+    if (!message.createdAt) return role;
+    const date = new Date(message.createdAt);
+    if (Number.isNaN(date.getTime())) return role;
+    return `${role} • ${date.toLocaleString()}`;
   }
 
-  toolCallArguments(call: ToolCall): { text: string; parsed: boolean } {
-    const raw = this.argumentValue(call);
-    if (raw === undefined || raw === null || raw === '') return { text: '(no arguments)', parsed: true };
-    if (typeof raw === 'string') {
-      try {
-        return { text: JSON.stringify(JSON.parse(raw), null, 2), parsed: true };
-      } catch {
-        return { text: raw, parsed: false };
-      }
+  toolCallFromMessage(message: ConversationMessage): ToolCall | null {
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      return message.tool_calls[message.tool_calls.length - 1] as ToolCall;
     }
-    if (typeof raw === 'object') {
-      try {
-        return { text: JSON.stringify(raw, null, 2), parsed: true };
-      } catch {
-        return { text: String(raw), parsed: false };
-      }
-    }
-    return { text: String(raw), parsed: false };
+    return null;
   }
 
-  inlineToolCallArguments(call: ToolCall): string {
-    const raw = this.rawArgumentText(call);
-    if (raw) return raw;
-    const { text } = this.toolCallArguments(call);
-    return text;
-  }
-
-  toolCallRaw(call: ToolCall): string {
-    const raw = this.rawArgumentText(call);
-    if (raw) return raw;
-    try {
-      return JSON.stringify(call, null, 2);
-    } catch {
-      return String(this.argumentValue(call) ?? call);
-    }
-  }
-
-  toggleToolCall(callId: string) {
-    this.expandedToolCalls.update((current) => {
-      const next = new Set(current);
-      if (next.has(callId)) {
-        next.delete(callId);
-      } else {
-        next.add(callId);
-      }
-      return next;
-    });
-  }
-
-  isToolCallExpanded(callId: string) {
-    return this.expandedToolCalls().has(callId);
-  }
-
-  toggleTextOnly(id: string) {
-    this.textOnlyMessages.update((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
-  isTextOnly(id: string) {
-    return this.textOnlyMessages().has(id);
-  }
-
-  toggleContextSection(messageId: string) {
-    this.contextExpanded.update((current) => {
-      const next = new Set(current);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
-      }
-      return next;
-    });
-  }
-
-  isContextExpanded(messageId: string) {
-    return this.contextExpanded().has(messageId);
-  }
-
-  toggleResultSection(messageId: string) {
-    this.resultCollapsed.update((current) => {
-      const next = new Set(current);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
-      }
-      return next;
-    });
-  }
-
-  isResultCollapsed(messageId: string) {
-    return this.resultCollapsed().has(messageId);
-  }
-
-  toolCallLabel(call: ToolCall) {
-    return call.name || call.function?.name || 'Tool call';
-  }
-
-  private rawArgumentText(call: ToolCall): string | null {
-    const raw = this.argumentValue(call);
-    if (raw === undefined || raw === null) return null;
-    if (typeof raw === 'string') return raw;
-    try {
-      return JSON.stringify(raw, null, 2);
-    } catch {
-      return String(raw);
-    }
-  }
-
-  messageLabel(message: { role: ConversationMessage['role'] }) {
-    if (message.role === 'assistant') {
+  roleLabel(role: ConversationMessage['role']) {
+    if (role === 'assistant') {
       return 'Assistant';
     }
-    if (message.role === 'tool') {
+    if (role === 'tool') {
       return 'Tool';
     }
-    if (message.role === 'system') {
+    if (role === 'system') {
       return 'System';
     }
     return 'User';
-  }
-
-  messageSeverity(message: { role: ConversationMessage['role'] }) {
-    if (message.role === 'assistant') {
-      return 'success';
-    }
-    if (message.role === 'tool') {
-      return 'warning';
-    }
-    if (message.role === 'system') {
-      return 'secondary';
-    }
-    return 'info';
   }
 
   private load(id: string, withLoader: boolean) {
@@ -355,47 +220,12 @@ export class ConversationComponent {
     };
   }
 
-  traceEntryContent(entry: TraceEntry): string {
-    return this.renderValue(entry.content);
-  }
-
-  isResultEntryEmpty(entry: TraceEntry) {
-    const rendered = this.renderValue(entry.content);
-    const hasContent = rendered.trim().length > 0;
-    const hasToolCalls = Array.isArray(entry.tool_calls) && entry.tool_calls.length > 0;
-    return !hasContent && !hasToolCalls;
-  }
-
-  messagePreview(message: ConversationMessage): string {
-    return this.renderContent(message);
-  }
-
-  rawMessage(message: ConversationMessage): string {
-    return this.safeStringify(message);
-  }
-
-  rawTrace(trace: LlmTrace): string {
-    return this.safeStringify(trace.raw);
-  }
-
-  rawTraceEntry(entry: TraceEntry): string {
-    return this.safeStringify(entry.raw);
-  }
-
   private renderValue(content: unknown): string {
     if (typeof content === 'string') return content;
     try {
       return JSON.stringify(content, null, 2);
     } catch {
       return String(content ?? '');
-    }
-  }
-
-  private safeStringify(value: unknown): string {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value ?? '');
     }
   }
 

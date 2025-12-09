@@ -1,0 +1,161 @@
+<section class="llm-call" [class.collapsed]="!expanded()">
+  <button
+    type="button"
+    class="llm-header"
+    (click)="toggleExpanded()"
+    [attr.aria-expanded]="expanded()"
+    aria-controls="llm-call-body"
+  >
+    <div class="header-left">
+      <span class="model">{{ modelLabel() }}</span>
+    </div>
+    <div class="header-center">
+      @if (timestampValue(); as ts) {
+        <span class="timestamp">{{ ts | date: 'short' }}</span>
+      } @else {
+        <span class="timestamp muted">—</span>
+      }
+    </div>
+    <div class="header-right">
+      <span class="latency">{{ latencyLabel() }}</span>
+      <span class="chevron">{{ expanded() ? '▴' : '▾' }}</span>
+    </div>
+  </button>
+
+  <div class="llm-body" id="llm-call-body" [class.collapsed-body]="!expanded()">
+    @if (expanded()) {
+      <div class="toolbar">
+        <div class="toolbar-left">
+          @if (tokenSummaryLabel(); as tokens) {
+            <span class="tokens-summary">{{ tokens }}</span>
+          }
+        </div>
+        <div class="toolbar-right">
+          <button
+            pButton
+            type="button"
+            class="toolbar-button"
+            [text]="true"
+            [icon]="copied() ? 'pi pi-check' : 'pi pi-copy'"
+            [label]="copied() ? 'Copied' : 'Copy call'"
+            [aria-pressed]="copied()"
+            (click)="copyTrace()"
+          ></button>
+          <button
+            pButton
+            type="button"
+            class="toolbar-button"
+            [text]="true"
+            icon="pi pi-code"
+            [label]="textOnly() ? 'Formatted' : 'Text only'"
+            [aria-pressed]="textOnly()"
+            (click)="toggleTextOnly()"
+          ></button>
+        </div>
+      </div>
+
+      <div class="section">
+        <button
+          type="button"
+          class="section-header"
+          (click)="toggleContext()"
+          [attr.aria-expanded]="contextExpanded()"
+          aria-controls="llm-context"
+        >
+          <span class="section-title">Context</span>
+          <span class="chevron">{{ contextExpanded() ? '▴' : '▾' }}</span>
+        </button>
+        @if (contextExpanded()) {
+          <ng-container [ngTemplateOutlet]="contextList"></ng-container>
+        }
+      </div>
+
+      <div class="section">
+        <button
+          type="button"
+          class="section-header"
+          (click)="toggleResult()"
+          [attr.aria-expanded]="!resultCollapsed()"
+          aria-controls="llm-result"
+        >
+          <span class="section-title">Result</span>
+          <span class="chevron">{{ resultCollapsed() ? '▾' : '▴' }}</span>
+        </button>
+        @if (!resultCollapsed()) {
+          <ng-container [ngTemplateOutlet]="resultList"></ng-container>
+        }
+      </div>
+    } @else {
+      <div class="section result-collapsed">
+        <ng-container [ngTemplateOutlet]="resultList"></ng-container>
+      </div>
+    }
+  </div>
+</section>
+
+<ng-template #entryTemplate let-entry>
+  @if (isEntryEmpty(entry)) {
+    <app-system-message-bubble text="[empty]" [footer]="entryFooter(entry)" />
+  } @else {
+    @switch (entry.role) {
+      @case ('user') {
+        <app-user-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+      }
+      @case ('assistant') {
+        <app-assistant-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+        @if (!textOnly() && entry.tool_calls?.length) {
+          @for (call of entry.tool_calls; let i = $index; track call.id || i) {
+            <app-tool-call-bubble
+              [call]="call"
+              [footer]="entryFooter(entry)"
+              [textOnly]="textOnly()"
+            ></app-tool-call-bubble>
+          }
+        }
+      }
+      @case ('system') {
+        <app-system-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+      }
+      @default {
+        <app-tool-call-bubble
+          [call]="toolCallFromEntry(entry)"
+          [name]="entry.name || 'Tool'"
+          [content]="entryText(entry)"
+          [footer]="entryFooter(entry)"
+          [textOnly]="textOnly()"
+        ></app-tool-call-bubble>
+      }
+    }
+  }
+</ng-template>
+
+<ng-template #contextList>
+  @if (!contextEntries().length) {
+    <p class="muted small">None</p>
+  } @else {
+    <div class="message-list" id="llm-context">
+      @for (entry of contextEntries(); track entry.id) {
+        <ng-container
+          [ngTemplateOutlet]="entryTemplate"
+          [ngTemplateOutletContext]="{ $implicit: entry }"
+        ></ng-container>
+      }
+    </div>
+  }
+</ng-template>
+
+<ng-template #resultList>
+  @if (!resultEntries().length) {
+    <p class="muted small">None</p>
+  } @else {
+    <div class="message-list" id="llm-result">
+      @for (entry of resultEntries(); track entry.id) {
+        <ng-container
+          [ngTemplateOutlet]="entryTemplate"
+          [ngTemplateOutletContext]="{ $implicit: entry }"
+        ></ng-container>
+      }
+    </div>
+  }
+</ng-template>
+

@@ -146,6 +146,99 @@ export function parseToolCallsWithParser(message: BaseMessage): ToolCallRecord[]
   return parsed;
 }
 
+function flattenContentToString(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object") {
+          const text = (part as { text?: unknown }).text;
+          if (typeof text === "string") return text;
+          const innerContent = (part as { content?: unknown }).content;
+          if (typeof innerContent === "string") return innerContent;
+          return safeStringify(part);
+        }
+        return "";
+      })
+      .join("\n");
+  }
+  if (content && typeof content === "object") {
+    const text = (content as { text?: unknown }).text;
+    if (typeof text === "string") return text;
+    const innerContent = (content as { content?: unknown }).content;
+    if (typeof innerContent === "string") return innerContent;
+  }
+  return "";
+}
+
+function stripJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenceMatch?.[1]) return fenceMatch[1];
+  return trimmed;
+}
+
+function tryParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonFromText(text: string): unknown | null {
+  const cleaned = stripJsonFence(text);
+  const direct = tryParseJson(cleaned);
+  if (direct !== null) return direct;
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1);
+    const parsed = tryParseJson(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const candidate = cleaned.slice(firstBracket, lastBracket + 1);
+    const parsed = tryParseJson(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  return null;
+}
+
+function normalizeParsedToolCalls(parsed: unknown): ToolCallRecord[] {
+  if (Array.isArray(parsed)) {
+    return normalizeToolCalls(parsed);
+  }
+  if (!isRecord(parsed)) return [];
+
+  const parsedToolCalls = (parsed as { tool_calls?: unknown[] }).tool_calls;
+  if (Array.isArray(parsedToolCalls)) {
+    return normalizeToolCalls(parsedToolCalls);
+  }
+
+  const hasFunction = "function" in parsed && (parsed as Record<string, unknown>)["function"] !== undefined;
+  const hasName = "name" in parsed && (parsed as Record<string, unknown>)["name"] !== undefined;
+  if (hasFunction || hasName) {
+    return normalizeToolCalls([parsed as ToolCallRecord]);
+  }
+
+  return [];
+}
+
+export function extractToolCallsFromContent(content: unknown): ToolCallRecord[] {
+  const text = flattenContentToString(content);
+  if (!text.trim()) return [];
+  const parsedJson = extractJsonFromText(text);
+  if (parsedJson === null) return [];
+  return normalizeParsedToolCalls(parsedJson);
+}
+
 export function hasToolCall(messages: BaseMessage[]): boolean {
   const last = messages[messages.length - 1];
   const toolCalls = (last as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } } | undefined)?.tool_calls;

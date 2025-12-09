@@ -136,6 +136,11 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
       usagePath: "response_metadata"
     },
     {
+      content: "",
+      usage: { prompt_tokens: 1, completion_tokens: 0 },
+      usagePath: "response_metadata"
+    },
+    {
       content: "done",
       usage: { prompt_tokens: 4, completion_tokens: 2 },
       usagePath: "response_metadata"
@@ -167,13 +172,13 @@ test("runs tool path and records metrics", { timeout: 2000 }, async () => {
   const respondEntry = keeper.toolResults.find(([, name]) => name === "respond");
   assert.ok(respondEntry);
 
-  assert.equal(keeper.modelResults.length, 2);
+  assert.equal(keeper.modelResults.length, 3);
   const [, , firstModelMetrics] = keeper.modelResults[0] as [string, string, Record<string, number>];
-  const [, , secondModelMetrics] = keeper.modelResults[1] as [string, string, Record<string, number>];
+  const [, , responseModelMetrics] = keeper.modelResults[2] as [string, string, Record<string, number>];
   assert.equal(firstModelMetrics.tokensIn, 5);
   assert.equal(firstModelMetrics.tokensOut, 2);
-  assert.equal(secondModelMetrics.tokensIn, 4);
-  assert.equal(secondModelMetrics.tokensOut, 2);
+  assert.equal(responseModelMetrics.tokensIn, 4);
+  assert.equal(responseModelMetrics.tokensOut, 2);
 });
 
 test("short-circuits when no tool calls are requested", { timeout: 2000 }, async () => {
@@ -273,6 +278,11 @@ test("invokes weather tool end-to-end through the agent graph", { timeout: 3000 
       content: "Calling tool",
       toolCalls: [{ id: "w1", name: "get_weather_current", args: { lat: 48.8566, lon: 2.3522, units: "metric" } }],
       usage: { prompt_tokens: 5, completion_tokens: 2 },
+      usagePath: "response_metadata"
+    },
+    {
+      content: "",
+      usage: { prompt_tokens: 1, completion_tokens: 0 },
       usagePath: "response_metadata"
     },
     {
