@@ -3,8 +3,46 @@ import test from "node:test";
 
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
+import { __runnerTestHooks } from "../lib/agentRunner";
 import { buildGraph } from "../lib/agent";
 import { bernardSystemPromptBase, MAX_PARALLEL_TOOL_CALLS } from "../lib/systemPrompt";
+
+const { shouldOmitIntentMessage, stripEmptyAssistantMessages } = __runnerTestHooks;
+
+test("shouldOmitIntentMessage only drops empty, tool-less intent outputs", () => {
+  const emptyIntent = new AIMessage({ content: "" });
+  assert.equal(shouldOmitIntentMessage(emptyIntent, []), true);
+
+  const textIntent = new AIMessage({ content: "respond directly" });
+  assert.equal(shouldOmitIntentMessage(textIntent, []), false);
+
+  const toolCall = {
+    id: "call_1",
+    type: "function",
+    function: { name: "echo", arguments: "{}" }
+  };
+  const toolIntent = new AIMessage({ content: "", tool_calls: [toolCall] } as any);
+  assert.equal(shouldOmitIntentMessage(toolIntent, [toolCall] as any), false);
+});
+
+test("stripEmptyAssistantMessages removes empty assistant turns but keeps tool calls", () => {
+  const human = new HumanMessage("hi");
+  const emptyAssistant = new AIMessage({ content: "" });
+  const assistantWithText = new AIMessage({ content: "non-empty" });
+  const toolCall = {
+    id: "call_2",
+    type: "function",
+    function: { name: "echo", arguments: "{}" }
+  };
+  const assistantWithTool = new AIMessage({ content: "", tool_calls: [toolCall] } as any);
+
+  const filtered = stripEmptyAssistantMessages([human, emptyAssistant, assistantWithText, assistantWithTool]);
+
+  assert.equal(filtered.length, 3);
+  assert.ok(filtered.includes(human));
+  assert.ok(filtered.includes(assistantWithText));
+  assert.ok(filtered.includes(assistantWithTool));
+});
 
 const makeKeeper = () => {
   const toolResults: unknown[] = [];

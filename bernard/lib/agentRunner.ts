@@ -102,6 +102,19 @@ function isEmptyIntentOutput(messages: BaseMessage[]): boolean {
   return false;
 }
 
+function shouldOmitIntentMessage(message: BaseMessage, toolCalls: ToolCallRecord[]): boolean {
+  if (toolCalls.length) return false;
+  return isEmptyIntentOutput([message]);
+}
+
+function stripEmptyAssistantMessages(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((message) => {
+    const type = (message as { _getType?: () => string })._getType?.();
+    if (type !== "ai") return true;
+    return !isEmptyIntentOutput([message]);
+  });
+}
+
 function extractRawToolInput(input: unknown, runOpts?: unknown): unknown {
   const candidates: unknown[] = [];
 
@@ -353,7 +366,8 @@ function callIntentModel(ctx: AgentContext, modelName: string, model: ChatOpenAI
     const usage = extractTokenUsage(result);
 
     const toolCalls = resolveIntentToolCalls(result);
-    const intentMessage = buildIntentMessage(result, toolCalls);
+    const omitIntentMessage = shouldOmitIntentMessage(result, toolCalls);
+    const intentMessage = omitIntentMessage ? null : buildIntentMessage(result, toolCalls);
 
     const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
     const tokensOut = usage.completion_tokens ?? usage.output_tokens;
@@ -371,9 +385,9 @@ function callIntentModel(ctx: AgentContext, modelName: string, model: ChatOpenAI
     if (typeof tokensOut === "number") openRouterResult.tokensOut = tokensOut;
 
     await ctx.recordKeeper.recordOpenRouterResult(ctx.turnId, modelName, openRouterResult);
-    await recordLLMTrace(ctx, modelName, start, latency, usage, state.messages, intentMessage);
+    await recordLLMTrace(ctx, modelName, start, latency, usage, state.messages, intentMessage ?? result);
 
-    return { messages: [intentMessage] };
+    return { messages: intentMessage ? [intentMessage] : [] };
   };
 }
 
@@ -531,7 +545,8 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   };
 
   const responseContext = (messages: BaseMessage[]) => {
-    const withoutTooling = stripToolingSystemMessages(messages);
+    const withoutEmpty = stripEmptyAssistantMessages(messages);
+    const withoutTooling = stripToolingSystemMessages(withoutEmpty);
     const intentLess = stripIntentOnlySystemMessages(withoutTooling, TOOL_FORMAT_INSTRUCTIONS, intentSystemPrompt);
     return ensureResponseSystemPrompt(intentLess);
   };
@@ -685,7 +700,8 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         (Array.isArray(latestToolCallChunks) && latestToolCallChunks.length ? latestToolCallChunks : null);
       const normalizedChunkCalls =
         chunkCalls && Array.isArray(chunkCalls) && chunkCalls.length ? normalizeToolCalls(chunkCalls) : [];
-      const toolCalls = resolveIntentToolCalls(aggregated as unknown as BaseMessage, normalizedChunkCalls);
+      const sourceMessage = aggregated as unknown as BaseMessage;
+      const toolCalls = resolveIntentToolCalls(sourceMessage, normalizedChunkCalls);
 
       const usage = extractTokenUsage(aggregated);
       const tokensIn = usage.prompt_tokens ?? usage.input_tokens;
@@ -698,9 +714,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         ...(typeof tokensOut === "number" ? { tokensOut } : {})
       });
 
-      const intentMessage = buildIntentMessage(aggregated as unknown as BaseMessage, toolCalls);
-      await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, intentMessage);
-      return [intentMessage];
+      const omitIntentMessage = shouldOmitIntentMessage(sourceMessage, toolCalls);
+      const intentMessage = omitIntentMessage ? null : buildIntentMessage(sourceMessage, toolCalls);
+      await recordLLMTrace(ctx, intentModelName, start, latencyMs, usage, messages, intentMessage ?? sourceMessage);
+      return intentMessage ? [intentMessage] : [];
     }
 
     const result = await intentStep({ messages });
@@ -712,7 +729,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
     onUpdate: (messages: BaseMessage[]) => void | Promise<void> = onUpdateHook ?? (() => {})
   ): Promise<BaseMessage[]> => {
     let messages = ensureToolAvailabilityContext(
-      ensureToolFormatInstructions(ensureIntentSystemPrompt(initialMessages)),
+      ensureToolFormatInstructions(ensureIntentSystemPrompt(stripEmptyAssistantMessages(initialMessages))),
       toolAvailabilityMessage
     );
     let responded = false;
@@ -793,7 +810,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 
   async function* streamMessages(initialMessages: BaseMessage[]) {
     let messages = ensureToolAvailabilityContext(
-      ensureToolFormatInstructions(ensureIntentSystemPrompt(initialMessages)),
+      ensureToolFormatInstructions(ensureIntentSystemPrompt(stripEmptyAssistantMessages(initialMessages))),
       toolAvailabilityMessage
     );
     let responded = false;
@@ -896,7 +913,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
 export const __runnerTestHooks = {
   classifyError,
   hasToolCall,
-  extractRawToolInput
+  extractRawToolInput,
+  isEmptyIntentOutput,
+  stripEmptyAssistantMessages,
+  shouldOmitIntentMessage
 };
 
 
