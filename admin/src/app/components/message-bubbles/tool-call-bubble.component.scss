@@ -20,31 +20,6 @@
     box-shadow 0.2s ease;
 }
 
-.tool-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.35rem 0.75rem;
-  width: 100%;
-  background: transparent;
-  border: none;
-  padding: 0.35rem 0.25rem;
-  text-align: left;
-  border-radius: 10px;
-  position: relative;
-  transition: background-color 0.15s ease;
-  cursor: pointer;
-}
-
-.tool-header:hover {
-  background: var(--surface-hover, rgba(148, 163, 184, 0.12));
-}
-
-.tool-header:focus-visible {
-  outline: 2px solid var(--primary-color, #6366f1);
-  outline-offset: 2px;
-}
-
 .tool-signature {
   font-weight: 700;
   color: var(--text-primary);
@@ -55,13 +30,8 @@
   align-items: center;
 }
 
-.chevron {
-  color: var(--text-secondary, #94a3b8);
-  font-size: 1rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1rem;
+.tool-preview {
+  color: var(--text-color, #e2e8f0);
 }
 
 .tool-call-args {

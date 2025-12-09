@@ -1,42 +1,42 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { ToolCall } from '../../data/models';
-import { MessageBubbleShellComponent } from './message-bubble-shell.component';
+import { MessageBubbleComponent } from './message-bubble.component';
 
 @Component({
   selector: 'app-tool-call-bubble',
-  imports: [CommonModule, MessageBubbleShellComponent],
+  imports: [CommonModule, MessageBubbleComponent],
   template: `
-    <app-message-bubble-shell role="tool" align="start" [footer]="footer()">
-      <div class="tool-block">
-        <button
-          type="button"
-          class="tool-header"
-          (click)="toggleExpanded()"
-          [attr.aria-expanded]="isExpanded()"
-        >
-          <div class="tool-signature" [title]="signature()">{{ signature() }}</div>
-          <span class="chevron" [class.expanded]="isExpanded()">{{ isExpanded() ? '▴' : '▾' }}</span>
-        </button>
+    <app-message-bubble role="tool" align="start" [footer]="footer()">
+      <div class="tool-block" message-bubble-content>
+        <div class="tool-signature" [title]="signature()">{{ signature() }}</div>
 
-        @if (showArguments()) {
-          <pre class="content tool-call-args">{{ argumentText() }}</pre>
-        }
-
-        @if (hasContent()) {
-          <pre class="content tool-response">{{ renderedContent() }}</pre>
-        }
-
-        @if (textOnly() && rawCall()) {
-          <pre class="content raw-call">{{ rawCall() }}</pre>
-        }
-
-        @if ((isExpanded() || textOnly()) && callId()) {
-          <div class="call-id">ID: {{ callId() }}</div>
+        @if (hasPreviewContent()) {
+          <p class="content tool-preview">{{ contentPreview() }}</p>
         }
       </div>
-    </app-message-bubble-shell>
+
+      @if (hasExpandableContent()) {
+        <div class="tool-block" message-bubble-expanding-content>
+          @if (hasArguments()) {
+            <p class="content tool-call-args">{{ argumentText() }}</p>
+          }
+
+          @if (hasContent()) {
+            <p class="content tool-response">{{ renderedContent() }}</p>
+          }
+
+          @if (textOnly() && rawCall()) {
+            <p class="content raw-call">{{ rawCall() }}</p>
+          }
+
+          @if (callId()) {
+            <div class="call-id">ID: {{ callId() }}</div>
+          }
+        </div>
+      }
+    </app-message-bubble>
   `,
   styleUrl: './tool-call-bubble.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -48,8 +48,6 @@ export class ToolCallBubbleComponent {
   readonly footer = input<string | null>(null);
   readonly textOnly = input<boolean>(false);
 
-  private readonly expanded = signal<boolean>(false);
-
   protected readonly displayName = computed(() => this.name() ?? this.callName(this.call()));
   protected readonly callId = computed(() => this.resolveCallId(this.call()));
   protected readonly signature = computed(() => this.buildSignature(this.displayName(), this.call()));
@@ -58,14 +56,22 @@ export class ToolCallBubbleComponent {
   protected readonly renderedContent = computed(() =>
     this.textOnly() ? this.safeStringify(this.content()) : this.content() ?? ''
   );
-  protected readonly isExpanded = computed(() => this.expanded());
 
-  protected readonly showArguments = computed(() => this.expanded() || this.textOnly());
-  protected readonly hasContent = computed(() => Boolean(this.content()));
+  protected readonly hasArguments = computed(() => {
+    const raw = this.argumentValue(this.call());
+    return raw !== undefined && raw !== null && raw !== '';
+  });
+  protected readonly hasContent = computed(() => Boolean(this.renderedContent().trim()));
+  protected readonly hasPreviewContent = computed(() => Boolean(this.contentPreview().trim()));
+  protected readonly hasExpandableContent = computed(
+    () =>
+      this.hasArguments() ||
+      this.hasContent() ||
+      (this.textOnly() && Boolean(this.rawCall().trim())) ||
+      Boolean(this.callId())
+  );
 
-  toggleExpanded() {
-    this.expanded.update((current) => !current);
-  }
+  protected readonly contentPreview = computed(() => this.compact(this.renderedContent(), 160));
 
   private callName(call: ToolCall | null): string {
     if (!call) return 'Tool call';

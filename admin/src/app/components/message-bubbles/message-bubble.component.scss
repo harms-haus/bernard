@@ -6,16 +6,37 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.15rem;
+  gap: 0.35rem;
 }
 
 .message.outgoing {
   align-items: flex-end;
 }
 
+.message-bubble-header,
+.message-bubble-footer {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  padding: 0 0.35rem;
+  align-self: flex-start;
+}
+
+.message-bubble-footer {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.message-bubble-footer.outgoing {
+  align-self: flex-end;
+}
+
+.message-bubble-header.outgoing {
+  align-self: flex-end;
+}
+
 .bubble {
   max-width: min(780px, 72%);
-  padding: 0.35rem 0.7rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 12px;
   border: 1px solid var(--chat-bubble-border, var(--surface-border));
   background: var(--chat-bubble, var(--surface-panel));
@@ -23,6 +44,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.2s ease;
+}
+
+.bubble.expandable {
+  cursor: pointer;
 }
 
 .bubble[data-role='assistant'] {
@@ -46,23 +75,46 @@
   box-shadow: none;
 }
 
-.bubble p {
+.bubble-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.bubble-main.reverse {
+  flex-direction: row-reverse;
+}
+
+.message-bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.message-bubble-content .content {
   margin: 0;
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
 }
 
-.role-footer {
-  font-size: 0.85rem;
-  font-style: italic;
-  color: var(--text-secondary);
+.message-bubble-expanding-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin-top: 0.15rem;
-  padding: 0 0.35rem;
-  align-self: flex-start;
 }
 
-.role-footer.outgoing {
-  align-self: flex-end;
+.chevron {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
 }
 
 @media (max-width: 700px) {

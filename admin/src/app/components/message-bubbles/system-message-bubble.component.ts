@@ -1,15 +1,15 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import { MessageBubbleShellComponent } from './message-bubble-shell.component';
+import { MessageBubbleComponent } from './message-bubble.component';
 
 @Component({
   selector: 'app-system-message-bubble',
-  imports: [CommonModule, MessageBubbleShellComponent],
+  imports: [CommonModule, MessageBubbleComponent],
   template: `
-    <app-message-bubble-shell role="system" align="start" [footer]="footer()">
-      <pre class="content muted">{{ text() }}</pre>
-    </app-message-bubble-shell>
+    <app-message-bubble role="system" align="start" [footer]="footer()">
+      <p class="content muted" message-bubble-content>{{ displayText() }}</p>
+    </app-message-bubble>
   `,
   styleUrl: './text-message-bubble.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -17,5 +17,7 @@ import { MessageBubbleShellComponent } from './message-bubble-shell.component';
 export class SystemMessageBubbleComponent {
   readonly text = input<string>('');
   readonly footer = input<string | null>(null);
+
+  protected readonly displayText = computed(() => this.text());
 }
 
