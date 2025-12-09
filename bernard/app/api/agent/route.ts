@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { buildGraph, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
+import { buildGraph, mapOpenAIToMessages, mapRecordsToMessages, type OpenAIMessage } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import { ConversationSummaryService } from "@/lib/conversationSummary";
 import { getRedis } from "@/lib/redis";
@@ -267,14 +267,18 @@ export async function POST(req: NextRequest) {
   if (body.place) requestOpts.place = body.place;
   if (body.clientMeta) requestOpts.clientMeta = body.clientMeta;
   if (body.conversationId) requestOpts.conversationId = body.conversationId;
-  const { requestId, conversationId } = await keeper.startRequest(token, responseModel, requestOpts);
+  const { requestId, conversationId, isNewConversation } = await keeper.startRequest(token, responseModel, requestOpts);
 
-  const inputHasSystem = hasSystemMessage(inputMessages);
   const inboundMessages = newInboundMessages(inputMessages);
+  const inputHasSystem = hasSystemMessage(inputMessages);
+  const existingRecords = isNewConversation ? [] : await keeper.getMessages(conversationId);
+  const conversationHistory = existingRecords.length ? mapRecordsToMessages(existingRecords) : [];
+  const contextMessages = [...conversationHistory, ...inboundMessages];
+
   if (inboundMessages.length) {
     await keeper.appendMessages(conversationId, inboundMessages);
   }
-  const responseBaseIndex = inputMessages.length + (inputHasSystem ? 0 : 1);
+  const responseBaseIndex = contextMessages.length + (inputHasSystem ? 0 : 1);
   const turnId = await keeper.startTurn(requestId, conversationId, token, responseModel);
 
   const graph = buildGraph({
@@ -292,8 +296,8 @@ export async function POST(req: NextRequest) {
 
   if (!shouldStream) {
     try {
-      const result = await graph.invoke({ messages: inputMessages });
-      const allMessages = result.messages ?? inputMessages;
+      const result = await graph.invoke({ messages: contextMessages });
+      const allMessages = result.messages ?? contextMessages;
       if (allMessages?.length) {
         const baseIndex = Math.min(responseBaseIndex, allMessages.length);
         const newMessages = allMessages.slice(baseIndex);
@@ -329,7 +333,7 @@ export async function POST(req: NextRequest) {
 
   let iterator: AsyncIterable<GraphStreamChunk>;
   try {
-    iterator = graph.stream({ messages: inputMessages });
+    iterator = graph.stream({ messages: contextMessages });
   } catch (err) {
     if (isRateLimit(err)) {
       await keeper.recordRateLimit(token, responseModel);
@@ -432,7 +436,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        if (latestMessages && latestMessages.length > inputMessages.length) {
+        if (latestMessages && latestMessages.length > contextMessages.length) {
           const baseIndex = Math.min(responseBaseIndex, latestMessages.length);
           const newMessages = latestMessages.slice(baseIndex);
           await keeper.appendMessages(conversationId, newMessages);

@@ -1,5 +1,6 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
+import type { MessageRecord } from "./recordKeeper";
 
 type ToolCall = {
   id: string;
@@ -157,6 +158,62 @@ export function extractUsageFromMessages(messages: BaseMessage[]) {
   const assistant = findLastAssistantMessage(messages);
   if (!assistant) return {};
   return extractTokenUsage(assistant);
+}
+
+function isTraceMessage(record: MessageRecord): boolean {
+  const traceType = (record.metadata as { traceType?: string } | undefined)?.traceType;
+  if (traceType === "llm_call") return true;
+  return record.name === "llm_call";
+}
+
+type MessageContentLike = string | Array<{ type: string; text?: string }>;
+
+function normalizeRecordContent(content: MessageRecord["content"]): MessageContentLike {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content as Array<{ type: string; text?: string }>;
+  if (content && typeof content === "object") return safeStringify(content);
+  return "";
+}
+
+export function messageRecordToBaseMessage(record: MessageRecord): BaseMessage | null {
+  if (isTraceMessage(record)) return null;
+
+  const normalizedContent = normalizeRecordContent(record.content);
+  const base = { content: normalizedContent, ...(record.name ? { name: record.name } : {}) } as {
+    content: MessageContentLike;
+    name?: string;
+  };
+
+  switch (record.role) {
+    case "system":
+      return new SystemMessage(base);
+    case "user":
+      return new HumanMessage(base);
+    case "assistant": {
+      const aiFields: AIMessageFields = { content: normalizedContent };
+      if (record.tool_calls?.length) {
+        (aiFields as { tool_calls?: AIMessage["tool_calls"] }).tool_calls = record.tool_calls as unknown as AIMessage["tool_calls"];
+      }
+      if (record.name) {
+        (aiFields as { name?: string }).name = record.name;
+      }
+      return new AIMessage(aiFields);
+    }
+    case "tool":
+      return new ToolMessage({
+        tool_call_id: record.tool_call_id ?? record.name ?? "tool_call",
+        content: typeof normalizedContent === "string" ? normalizedContent : safeStringify(normalizedContent),
+        ...(record.name ? { name: record.name } : {})
+      });
+    default:
+      return new HumanMessage(base);
+  }
+}
+
+export function mapRecordsToMessages(records: MessageRecord[]): BaseMessage[] {
+  return records
+    .map((record) => messageRecordToBaseMessage(record))
+    .filter((msg): msg is BaseMessage => Boolean(msg));
 }
 
 export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
