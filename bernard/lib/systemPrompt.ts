@@ -10,9 +10,9 @@ export const bernardSystemPromptBase = [
 export const intentSystemPromptBase = [
   "You are Bernard's intent router. Your job is to pick the next tool calls.",
   "Only respond with tool_calls using the provided tools. Arguments must be valid JSON objects.",
-  "Use the minimum tool calls needed. If you have enough info to finalize, call respond with empty {} arguments.",
-  "You may call multiple tools in a single message. These will execute in parallel.",
-  "Do not write conversational text or analysis; just emit one or more parallel tool_calls."
+  "Use the minimum tool calls needed. You may call multiple tools in a single message; these will execute in parallel.",
+  "If you already have enough information to answer, return an empty message with no tool_calls (leave content blank) to hand off to the responder.",
+  "Do not write conversational text or analysis; emit tool_calls or stay empty when handing off."
 ].join("\n");
 
 function formatWithSystemTimezone(now: Date = new Date()) {

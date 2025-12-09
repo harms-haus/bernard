@@ -118,16 +118,7 @@ test("response context omits tool scaffolding for final model call", async () =>
               ]
             });
           }
-          return new AIMessage({
-            content: "",
-            tool_calls: [
-              {
-                id: "respond_1",
-                type: "tool_call",
-                function: { name: "respond", arguments: "{}" }
-              } as any
-            ]
-          });
+          return new AIMessage({ content: "" });
         }
       };
     }

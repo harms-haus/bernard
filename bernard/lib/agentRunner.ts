@@ -12,12 +12,10 @@ import {
   buildToolAvailabilityMessage,
   buildToolValidationMessage,
   canonicalToolCalls,
-  dropRespondToolCalls,
   ensureToolAvailabilityContext,
   evaluateToolAvailability,
   extractToolCallsFromMessage,
   hasToolCall,
-  isRespondToolCall,
   latestToolCalls,
   normalizeToolCalls,
   parseToolCallsWithParser,
@@ -80,6 +78,24 @@ function classifyError(err: unknown): string {
   return "other";
 }
 
+function isEmptyIntentOutput(messages: BaseMessage[]): boolean {
+  if (!messages.length) return true;
+  const last = messages[messages.length - 1];
+  const hasToolCalls = extractToolCallsFromMessage(last as ToolCallMessage).length > 0;
+  if (hasToolCalls) return false;
+  const content = (last as { content?: unknown }).content;
+  if (content === null || content === undefined) return true;
+  if (typeof content === "string") return content.trim().length === 0;
+  if (Array.isArray(content)) {
+    const combined = content
+      .map((part) => (typeof part === "string" ? part : safeStringify(part)))
+      .join("")
+      .trim();
+    return combined.length === 0;
+  }
+  return false;
+}
+
 function extractRawToolInput(input: unknown, runOpts?: unknown): unknown {
   const candidates: unknown[] = [];
 
@@ -132,6 +148,28 @@ function normalizeTokenAccounting(usage: TokenUsage) {
     ...(typeof cacheWrite === "number" ? { cacheWrite } : {}),
     ...(cachedFlag ? { cached: true } : {})
   };
+}
+
+function dedupeToolCalls(toolCalls: ToolCallRecord[]): ToolCallRecord[] {
+  const seen = new Set<string>();
+  return toolCalls.filter((call) => {
+    const name = call.name ?? call.function?.name ?? "unknown_tool";
+    const args = (call as { args?: unknown }).args;
+    if (args && typeof args === "object") {
+      const { lat, lon } = args as { lat?: unknown; lon?: unknown };
+      const latNum = typeof lat === "number" ? lat : null;
+      const lonNum = typeof lon === "number" ? lon : null;
+      const latPresent = lat !== undefined;
+      const lonPresent = lon !== undefined;
+      const latValid = !latPresent || (latNum !== null && Number.isFinite(latNum) && latNum >= -90 && latNum <= 90);
+      const lonValid = !lonPresent || (lonNum !== null && Number.isFinite(lonNum) && lonNum >= -180 && lonNum <= 180);
+      if (!latValid || !lonValid) return false;
+    }
+    const key = `${name}:${safeStringify(args)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function recordLLMTrace(
@@ -322,14 +360,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   const { ready: verifiedTools, unavailable: unavailableTools } = evaluateToolAvailability(deps.tools);
   const toolAvailabilityMessage = buildToolAvailabilityMessage(unavailableTools);
   const instrumentedTools = instrumentTools(ctx, verifiedTools);
-  const respondTool: ReturnType<typeof instrumentTools>[number] = toolFactory(() => "respond", {
-    name: "respond",
-    description:
-      "Use this when you are ready to stop gathering data and deliver the final answer to the user. " +
-      "Do not request additional tools after calling this.",
-    schema: z.object({}).default({})
-  });
-  const intentTools = [...instrumentedTools, respondTool];
+  const intentTools = instrumentedTools;
   const intentToolNames = new Set(intentTools.map((tool) => tool.name));
   const toolMap = new Map<string, ReturnType<typeof instrumentTools>[number]>(
     instrumentedTools.map((tool) => [tool.name, tool])
@@ -449,8 +480,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
   };
 
   const responseContext = (messages: BaseMessage[]) => {
-    const withoutRespond = dropRespondToolCalls(messages);
-    const withoutTooling = stripToolingSystemMessages(withoutRespond);
+    const withoutTooling = stripToolingSystemMessages(messages);
     const intentLess = stripIntentOnlySystemMessages(withoutTooling, TOOL_FORMAT_INSTRUCTIONS, intentSystemPrompt);
     return ensureResponseSystemPrompt(intentLess);
   };
@@ -672,7 +702,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       messages = [...messages, ...intentMessages];
       await onUpdate(messages);
 
-      const toolCalls = latestToolCalls(messages);
+      const toolCalls = intentMessages.length ? latestToolCalls(messages) : [];
       const validation = validateToolCalls(toolCalls, intentToolNames);
 
       if (validation.invalid.length) {
@@ -681,8 +711,8 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         continue;
       }
 
-      const runnableCalls = validation.valid.filter((call) => !isRespondToolCall(call));
-      const wantsRespond = validation.valid.some(isRespondToolCall);
+      const runnableCalls = dedupeToolCalls(validation.valid);
+      const intentOutputEmpty = isEmptyIntentOutput(intentMessages);
 
       const toolCallsSignature = canonicalToolCalls(runnableCalls, normalizeArgs);
       if (toolCallsSignature && runnableCalls.length) {
@@ -701,8 +731,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         signatureCounts.set(toolCallsSignature, count + 1);
       }
 
-      if (wantsRespond || runnableCalls.length === 0 || forcedReason) {
-        if (!forcedReason && !wantsRespond && runnableCalls.length === 0 && sawToolExecution) {
+      const shouldRespond = forcedReason || intentOutputEmpty || runnableCalls.length === 0;
+
+      if (shouldRespond) {
+        if (!forcedReason && !intentOutputEmpty && runnableCalls.length === 0 && sawToolExecution) {
           await ctx.recordKeeper.recordToolResult(ctx.turnId, "respond", { ok: true, latencyMs: 0 });
           responded = true;
           break;
@@ -747,7 +779,7 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       messages = [...messages, ...intentMessages];
       if (onUpdateHook) await onUpdateHook(messages);
 
-      const toolCalls = latestToolCalls(messages);
+      const toolCalls = intentMessages.length ? latestToolCalls(messages) : [];
       const validation = validateToolCalls(toolCalls, intentToolNames);
 
       if (validation.invalid.length) {
@@ -757,8 +789,8 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         continue;
       }
 
-      const runnableCalls = validation.valid.filter((call) => !isRespondToolCall(call));
-      const wantsRespond = validation.valid.some(isRespondToolCall);
+      const runnableCalls = dedupeToolCalls(validation.valid);
+      const intentOutputEmpty = isEmptyIntentOutput(intentMessages);
 
       const toolCallsSignature = canonicalToolCalls(runnableCalls, normalizeArgs);
       if (toolCallsSignature && runnableCalls.length) {
@@ -780,7 +812,9 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
         signatureCounts.set(toolCallsSignature, count + 1);
       }
 
-      if (wantsRespond || runnableCalls.length === 0 || forcedReason) {
+      const shouldRespond = forcedReason || intentOutputEmpty || runnableCalls.length === 0;
+
+      if (shouldRespond) {
         const contextualized = addFailureContext(messages, forcedReason);
         if (onUpdateHook) await onUpdateHook(contextualized);
         for await (const responseChunk of streamRespond(contextualized)) {

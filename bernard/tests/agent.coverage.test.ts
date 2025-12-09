@@ -272,8 +272,8 @@ test("tools failing verification are excluded but surfaced in context", async ()
 
   const toolNames = boundTools.map((t: any) => t.name);
   assert.ok(toolNames.includes("good_tool"));
-  assert.ok(toolNames.includes("respond"));
   assert.ok(!toolNames.includes("bad_tool"));
+  assert.ok(!toolNames.includes("respond"));
   assert.ok(availabilityContext);
   assert.ok(availabilityContext?.includes("bad_tool"));
   assert.ok(availabilityContext?.includes("missing config"));
@@ -475,7 +475,7 @@ test("response model sees prior tool outputs in streaming path", async () => {
   }
 });
 
-test("respond tool ends the loop and skips regular tools", async () => {
+test("empty intent output ends the loop and skips regular tools", async () => {
   const toolInvocations: unknown[] = [];
   const keeper = noopRecordKeeper();
 
@@ -495,10 +495,7 @@ test("respond tool ends the loop and skips regular tools", async () => {
         async invoke() {
           if (!this.called) {
             this.called = true;
-            return new AIMessage({
-              content: "",
-              tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
-            } as any);
+            return new AIMessage({ content: "" } as any);
           }
           return new AIMessage("unreachable");
         }
@@ -510,15 +507,15 @@ test("respond tool ends the loop and skips regular tools", async () => {
     }
   };
 
-  const { buildGraph } = await import("../lib/agent?respond-tool");
+  const { buildGraph } = await import("../lib/agent?empty-intent-handoff");
   const graph = buildGraph(
     {
       recordKeeper: keeper as any,
-      turnId: "turn-respond",
-      conversationId: "conv-respond",
-      requestId: "req-respond",
+      turnId: "turn-empty-intent",
+      conversationId: "conv-empty-intent",
+      requestId: "req-empty-intent",
       token: "tok",
-      model: "model-respond"
+      model: "model-empty"
     },
     { tools: [defaultTool as any], ChatOpenAI: FakeChatOpenAI as any }
   );
@@ -564,10 +561,7 @@ test("invalid tool calls are retried with error context", async () => {
               ]
             } as any);
           }
-          return new AIMessage({
-            content: "",
-            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
-          } as any);
+          return new AIMessage({ content: "" } as any);
         }
       };
     }
@@ -645,10 +639,7 @@ test("multi-round tools feed the response context", async () => {
               tool_calls: [{ id: "t2", type: "tool_call", function: { name: "second_tool", arguments: "{}" } } as any]
             } as any);
           }
-          return new AIMessage({
-            content: "",
-            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
-          } as any);
+          return new AIMessage({ content: "" } as any);
         }
       };
     }
@@ -704,7 +695,7 @@ test("intent and response prompts stay separated", async () => {
           seenIntentSystems.push(systems);
           return new AIMessage({
             content: "",
-            tool_calls: [{ id: "resp", type: "tool_call", function: { name: "respond", arguments: "{}" } } as any]
+            tool_calls: []
           } as any);
         }
       };

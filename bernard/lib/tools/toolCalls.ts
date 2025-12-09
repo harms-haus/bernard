@@ -156,11 +156,6 @@ export function hasToolCall(messages: BaseMessage[]): boolean {
   );
 }
 
-export function isRespondToolCall(call: ToolCallRecord): boolean {
-  const name = call?.name ?? call.function?.name;
-  return name === "respond";
-}
-
 export function extractToolCallsFromMessage(message: ToolCallMessage | null | undefined): ToolCallRecord[] {
   if (!message) return [];
   const direct = (message as { tool_calls?: unknown[] }).tool_calls;
@@ -174,10 +169,6 @@ export function latestToolCalls(messages: BaseMessage[]): ToolCallRecord[] {
   if (!messages.length) return [];
   const last = messages[messages.length - 1];
   return extractToolCallsFromMessage(last as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } });
-}
-
-export function dropRespondToolCalls(messages: BaseMessage[]): BaseMessage[] {
-  return messages.filter((message) => !extractToolCallsFromMessage(message as ToolCallMessage).some(isRespondToolCall));
 }
 
 export function validateToolCalls(toolCalls: ToolCallRecord[], allowedTools: Set<string>): {
@@ -311,17 +302,15 @@ export function canonicalToolCalls(
   normalizeArgs: (raw: unknown) => unknown = parseToolInput
 ): string | null {
   if (!toolCalls.length) return null;
-  const normalized = toolCalls
-    .filter((call) => !isRespondToolCall(call))
-    .map((call) => {
-      const name = call.name ?? call.function?.name ?? "unknown_tool";
-      const args = isRecord((call as { args?: unknown }).args)
-        ? (call as { args?: Record<string, unknown> }).args
-        : normalizeArgs(
-            (call as { arguments?: unknown }).arguments ?? call.function?.arguments ?? (call as { input?: unknown }).input
-          );
-      return { name, args };
-    });
+  const normalized = toolCalls.map((call) => {
+    const name = call.name ?? call.function?.name ?? "unknown_tool";
+    const args = isRecord((call as { args?: unknown }).args)
+      ? (call as { args?: Record<string, unknown> }).args
+      : normalizeArgs(
+          (call as { arguments?: unknown }).arguments ?? call.function?.arguments ?? (call as { input?: unknown }).input
+        );
+    return { name, args };
+  });
   normalized.sort((a, b) => {
     if (a.name === b.name) return safeStringify(a.args).localeCompare(safeStringify(b.args));
     return a.name.localeCompare(b.name);
