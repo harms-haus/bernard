@@ -204,6 +204,14 @@
   color: var(--text-color, #e2e8f0);
 }
 
+.empty-result {
+  padding: 0.25rem 0;
+}
+
+.empty-placeholder {
+  color: var(--text-secondary, #94a3b8);
+}
+
 .tool-call-args {
   background: var(--surface-card, #1f2937);
   border-radius: 6px;

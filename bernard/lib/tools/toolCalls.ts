@@ -12,6 +12,11 @@ export type ToolValidationError = { call: ToolCallRecord; reason: string };
 
 export type ToolVerificationResult = boolean | { ok: boolean; reason?: string };
 
+export type ToolValidationOptions = {
+  maxParallelCalls?: number;
+  enforceUniqueParallelCalls?: boolean;
+};
+
 export type InstrumentedTool = {
   name: string;
   description: string;
@@ -171,14 +176,38 @@ export function latestToolCalls(messages: BaseMessage[]): ToolCallRecord[] {
   return extractToolCallsFromMessage(last as { tool_calls?: unknown[]; additional_kwargs?: { tool_calls?: unknown[] } });
 }
 
-export function validateToolCalls(toolCalls: ToolCallRecord[], allowedTools: Set<string>): {
+export function validateToolCalls(
+  toolCalls: ToolCallRecord[],
+  allowedTools: Set<string>,
+  options: ToolValidationOptions = {}
+): {
   valid: ToolCallRecord[];
   invalid: ToolValidationError[];
 } {
+  const { maxParallelCalls = Infinity, enforceUniqueParallelCalls = false } = options;
+  const maxParallel = Number.isFinite(maxParallelCalls) && maxParallelCalls > 0 ? maxParallelCalls : Infinity;
   const valid: ToolCallRecord[] = [];
   const invalid: ToolValidationError[] = [];
+  const seenSignatures = new Set<string>();
 
-  for (const call of toolCalls) {
+  for (let index = 0; index < toolCalls.length; index++) {
+    const call = toolCalls[index];
+    if (!call) {
+      invalid.push({
+        call: { name: "unknown_tool" },
+        reason: "Tool call entry is missing"
+      });
+      continue;
+    }
+
+    if (index >= maxParallel) {
+      invalid.push({
+        call,
+        reason: `Too many parallel tool calls (max ${maxParallel} per turn)`
+      });
+      continue;
+    }
+
     const name = (call?.name ?? call.function?.name) as unknown;
     const id = (call as { id?: unknown }).id ?? (call as { function?: { name?: unknown } }).function?.name ?? name;
 
@@ -217,6 +246,18 @@ export function validateToolCalls(toolCalls: ToolCallRecord[], allowedTools: Set
         arguments: typeof argsRaw === "string" ? argsRaw : safeStringify(normalizedArgs)
       }
     };
+
+    if (enforceUniqueParallelCalls) {
+      const signature = `${name}:${safeStringify(normalizedArgs)}`;
+      if (seenSignatures.has(signature)) {
+        invalid.push({
+          call,
+          reason: "Parallel tool calls must be unique by tool name and arguments"
+        });
+        continue;
+      }
+      seenSignatures.add(signature);
+    }
 
     valid.push(normalizedCall);
   }

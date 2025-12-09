@@ -5,7 +5,12 @@ import { tool as toolFactory } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
-import { bernardSystemPromptBase, intentSystemPromptBase, buildSystemPrompts } from "./systemPrompt";
+import {
+  bernardSystemPromptBase,
+  intentSystemPromptBase,
+  buildSystemPrompts,
+  MAX_PARALLEL_TOOL_CALLS
+} from "./systemPrompt";
 import { extractTokenUsage, parseToolInput, safeStringify, type TokenUsage } from "./messages";
 import type { MessageRecord, OpenRouterResult, ToolResult } from "./recordKeeper";
 import {
@@ -703,7 +708,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       await onUpdate(messages);
 
       const toolCalls = intentMessages.length ? latestToolCalls(messages) : [];
-      const validation = validateToolCalls(toolCalls, intentToolNames);
+      const validation = validateToolCalls(toolCalls, intentToolNames, {
+        maxParallelCalls: MAX_PARALLEL_TOOL_CALLS,
+        enforceUniqueParallelCalls: true
+      });
 
       if (validation.invalid.length) {
         messages = [...messages, new SystemMessage({ content: buildToolValidationMessage(validation.invalid) })];
@@ -780,7 +788,10 @@ export function buildGraph(ctx: AgentContext, deps: GraphDeps = {}) {
       if (onUpdateHook) await onUpdateHook(messages);
 
       const toolCalls = intentMessages.length ? latestToolCalls(messages) : [];
-      const validation = validateToolCalls(toolCalls, intentToolNames);
+      const validation = validateToolCalls(toolCalls, intentToolNames, {
+        maxParallelCalls: MAX_PARALLEL_TOOL_CALLS,
+        enforceUniqueParallelCalls: true
+      });
 
       if (validation.invalid.length) {
         messages = [...messages, new SystemMessage({ content: buildToolValidationMessage(validation.invalid) })];

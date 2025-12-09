@@ -4,7 +4,7 @@ import test from "node:test";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { buildGraph } from "../lib/agent";
-import { bernardSystemPromptBase } from "../lib/systemPrompt";
+import { bernardSystemPromptBase, MAX_PARALLEL_TOOL_CALLS } from "../lib/systemPrompt";
 
 const makeKeeper = () => {
   const toolResults: unknown[] = [];
@@ -207,6 +207,141 @@ test("response context omits tool scaffolding for final model call", async () =>
     "tool availability context should be omitted"
   );
   assert.ok(responseInvocations.length >= 1, "response model should be invoked");
+});
+
+test("runner blocks turns with too many parallel tool calls", async () => {
+  const keeper = makeKeeper();
+  let toolInvocations = 0;
+
+  const echoTool = {
+    name: "echo",
+    description: "returns ok",
+    async invoke() {
+      toolInvocations += 1;
+      return "ok";
+    }
+  };
+
+  const responseModel = {
+    async invoke() {
+      return new AIMessage("done");
+    }
+  };
+
+  const intentModel = {
+    bindTools() {
+      let callCount = 0;
+      const overLimitCalls = Array.from({ length: MAX_PARALLEL_TOOL_CALLS + 1 }, (_value, index) => ({
+        id: `echo_${index}`,
+        type: "tool_call",
+        function: { name: "echo", arguments: "{}" }
+      })) as any[];
+
+      return {
+        async invoke() {
+          callCount += 1;
+          if (callCount === 1) {
+            return new AIMessage({
+              content: "",
+              tool_calls: overLimitCalls
+            });
+          }
+          return new AIMessage({ content: "" });
+        }
+      };
+    }
+  };
+
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-too-many",
+      conversationId: "conv-too-many",
+      requestId: "req-too-many",
+      token: "tok"
+    },
+    { intentModel: intentModel as any, responseModel: responseModel as any, tools: [echoTool as any] }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("hi")] });
+  assert.equal(toolInvocations, 0, "tool calls should not execute when over the parallel limit");
+  const validationMessage = result.messages.find(
+    (m: any) =>
+      m?._getType?.() === "system" &&
+      typeof m.content === "string" &&
+      m.content.includes("Too many parallel tool calls")
+  );
+  assert.ok(validationMessage, "parallel limit violation should be surfaced as system feedback");
+});
+
+test("runner blocks duplicate parallel tool calls", async () => {
+  const keeper = makeKeeper();
+  let toolInvocations = 0;
+
+  const echoTool = {
+    name: "echo",
+    description: "returns ok",
+    async invoke() {
+      toolInvocations += 1;
+      return "ok";
+    }
+  };
+
+  const responseModel = {
+    async invoke() {
+      return new AIMessage("done");
+    }
+  };
+
+  const intentModel = {
+    bindTools() {
+      let callCount = 0;
+      return {
+        async invoke() {
+          callCount += 1;
+          if (callCount === 1) {
+            return new AIMessage({
+              content: "",
+              tool_calls: [
+                {
+                  id: "echo_1",
+                  type: "tool_call",
+                  function: { name: "echo", arguments: '{"x":1}' }
+                } as any,
+                {
+                  id: "echo_dup",
+                  type: "tool_call",
+                  function: { name: "echo", arguments: '{"x":1}' }
+                } as any
+              ]
+            });
+          }
+          return new AIMessage({ content: "" });
+        }
+      };
+    }
+  };
+
+  const graph = buildGraph(
+    {
+      recordKeeper: keeper as any,
+      turnId: "turn-duplicates",
+      conversationId: "conv-duplicates",
+      requestId: "req-duplicates",
+      token: "tok"
+    },
+    { intentModel: intentModel as any, responseModel: responseModel as any, tools: [echoTool as any] }
+  );
+
+  const result = await graph.invoke({ messages: [new HumanMessage("hi")] });
+  assert.equal(toolInvocations, 0, "duplicate tool calls should not execute");
+  const duplicateValidation = result.messages.find(
+    (m: any) =>
+      m?._getType?.() === "system" &&
+      typeof m.content === "string" &&
+      m.content.includes("Parallel tool calls must be unique")
+  );
+  assert.ok(duplicateValidation, "duplicate parallel calls should be surfaced as a validation failure");
 });
 
 

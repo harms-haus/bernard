@@ -359,6 +359,13 @@ export class ConversationComponent {
     return this.renderValue(entry.content);
   }
 
+  isResultEntryEmpty(entry: TraceEntry) {
+    const rendered = this.renderValue(entry.content);
+    const hasContent = rendered.trim().length > 0;
+    const hasToolCalls = Array.isArray(entry.tool_calls) && entry.tool_calls.length > 0;
+    return !hasContent && !hasToolCalls;
+  }
+
   messagePreview(message: ConversationMessage): string {
     return this.renderContent(message);
   }
