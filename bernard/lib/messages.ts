@@ -216,6 +216,50 @@ export function mapRecordsToMessages(records: MessageRecord[]): BaseMessage[] {
     .filter((msg): msg is BaseMessage => Boolean(msg));
 }
 
+export function messageRecordToOpenAI(record: MessageRecord): OpenAIMessage | null {
+  if (isTraceMessage(record)) {
+    return {
+      role: "system",
+      name: record.name ?? "llm_call",
+      content: typeof record.content === "string" ? record.content : safeStringify(record.content),
+      ...(record.metadata ? { metadata: record.metadata } : {})
+    } as OpenAIMessage;
+  }
+
+  const base: OpenAIMessage = {
+    role: record.role,
+    content:
+      typeof record.content === "string"
+        ? record.content
+        : Array.isArray(record.content)
+          ? (record.content as Array<{ type: string; text?: string }>)
+          : safeStringify(record.content)
+  } as OpenAIMessage;
+
+  if (record.name) base.name = record.name;
+  if (record.role === "tool" && (record.tool_call_id || record.name)) {
+    base.tool_call_id = record.tool_call_id ?? record.name;
+  }
+
+  if (record.tool_calls?.length) {
+    base.tool_calls = record.tool_calls.map((call, index) => {
+      const fn = call.function ?? {};
+      const id = (call.id ?? fn.name ?? `tool_call_${index}`).toString();
+      const name = (call.name ?? fn.name ?? "tool_call").toString();
+      const rawArgs =
+        fn.arguments ?? (call as { arguments?: unknown }).arguments ?? (call as { args?: unknown }).args ?? call.input;
+      const normalizedArgs = typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs);
+      return {
+        id,
+        type: (call.type as string) ?? "function",
+        function: { name, arguments: normalizedArgs }
+      };
+    });
+  }
+
+  return base;
+}
+
 export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
   return input.map((msg) => {
     const content = msg.content ?? "";

@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import { describe, it } from "node:test";
 
 import { bumpFreshness, ttlSeconds, computeExpiryMs, isExpired, type MemoryRecord } from "../lib/memoryStore";
 

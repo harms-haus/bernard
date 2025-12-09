@@ -8,7 +8,7 @@ import {
   getWeatherHistoricalTool
 } from "@/libs/weather";
 
-export const tools = [
+export const intentTools = [
   webSearchTool,
   timerTool,
   geocodeSearchTool,
@@ -27,6 +27,5 @@ export {
   getWeatherForecastTool,
   getWeatherHistoricalTool
 };
-
 
 

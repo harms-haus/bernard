@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import { describe, it } from "node:test";
 
 import { classifyMemory } from "../lib/memoryDeduper";
 import type { MemorySearchHit } from "../lib/memoryStore";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { webSearchTool } from "../libs/tools/web-search";
+import { webSearchTool } from "../agent/harness/intent/tools/web-search";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;

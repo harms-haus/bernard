@@ -93,6 +93,27 @@
     }
   </div>
 
+  <div class="conversation-actions" aria-live="polite">
+    <button
+      pButton
+      type="button"
+      [icon]="copyButtonIcon()"
+      [label]="copyButtonLabel()"
+      [disabled]="!transactionJson() || loading()"
+      (click)="copyTransaction()"
+    ></button>
+    @if (copyStatus() !== 'idle') {
+      <span
+        class="copy-status"
+        [class.success]="copyStatus() === 'success'"
+        [class.error]="copyStatus() === 'error'"
+        role="status"
+      >
+        {{ copyStatusText() }}
+      </span>
+    }
+  </div>
+
   <div class="metadata">
     <div class="panel">
       <h3>Summary</h3>

@@ -63,6 +63,7 @@ export class ConversationComponent {
   readonly error = signal<string | null>(null);
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
+  readonly copyStatus = signal<'idle' | 'success' | 'error'>('idle');
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -72,6 +73,26 @@ export class ConversationComponent {
   readonly idTooltip = computed(() => {
     const id = this.conversation()?.id;
     return id ? `ID: ${id}` : 'ID not available';
+  });
+  readonly transactionPayload = computed(() => {
+    const convo = this.conversation();
+    if (!convo) return null;
+    return {
+      conversation: convo,
+      messages: this.messages()
+    };
+  });
+  readonly transactionJson = computed(() => {
+    const payload = this.transactionPayload();
+    if (!payload) return null;
+    return this.safeStringify(payload);
+  });
+  readonly copyButtonLabel = computed(() => (this.copyStatus() === 'success' ? 'Copied' : 'Copy transaction'));
+  readonly copyButtonIcon = computed(() => (this.copyStatus() === 'success' ? 'pi pi-check' : 'pi pi-copy'));
+  readonly copyStatusText = computed(() => {
+    if (this.copyStatus() === 'success') return 'Copied conversation to clipboard';
+    if (this.copyStatus() === 'error') return 'Unable to copy conversation';
+    return '';
   });
 
   constructor() {
@@ -88,6 +109,28 @@ export class ConversationComponent {
 
   back() {
     void this.router.navigate(['/history']);
+  }
+
+  async copyTransaction() {
+    this.copyStatus.set('idle');
+    const text = this.transactionJson();
+    if (!text) {
+      this.copyStatus.set('error');
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      this.copyStatus.set('error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copyStatus.set('success');
+      setTimeout(() => this.copyStatus.set('idle'), 2000);
+    } catch (error) {
+      console.error('Unable to copy conversation', error);
+      this.copyStatus.set('error');
+      setTimeout(() => this.copyStatus.set('idle'), 2500);
+    }
   }
 
   renderContent(message: ConversationMessage): string {
@@ -212,6 +255,14 @@ export class ConversationComponent {
       return JSON.stringify(content, null, 2);
     } catch {
       return String(content ?? '');
+    }
+  }
+
+  private safeStringify(value: unknown): string {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value ?? '');
     }
   }
 

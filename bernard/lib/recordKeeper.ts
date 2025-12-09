@@ -541,41 +541,70 @@ export class RecordKeeper {
       startedAt?: string;
       latencyMs?: number;
       tokens?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
+      requestId?: string;
+      turnId?: string;
+      stage?: string;
+      contextLimit?: number;
+      contentPreviewChars?: number;
     }
   ) {
-    const contextSnapshots = details.context.map((msg) => snapshotMessageForTrace(msg));
+    const previewLimit = details.contentPreviewChars ?? 200;
+    const maxContext = details.contextLimit ?? 12;
+
+    const trimSnapshot = (snap: ReturnType<typeof snapshotMessageForTrace>) => ({
+      ...snap,
+      ...(snap.content && typeof snap.content === "string" && snap.content.length > previewLimit
+        ? { content: `${snap.content.slice(0, previewLimit)}…` }
+        : {})
+    });
+
+    const contextSnapshots = details.context.map((msg) => snapshotMessageForTrace(msg)).map(trimSnapshot);
     const resultMessages = Array.isArray(details.result)
       ? details.result
       : details.result
         ? [details.result]
         : [];
-    const resultSnapshots = resultMessages.map((msg) => snapshotMessageForTrace(msg));
+    const resultSnapshots = resultMessages.map((msg) => snapshotMessageForTrace(msg)).map(trimSnapshot);
 
     const traceContent: Record<string, unknown> = {
       type: "llm_call",
       model: details.model,
       at: details.startedAt ?? nowIso(),
-      context: contextSnapshots
+      stage: details.stage,
+      context: contextSnapshots.slice(-maxContext)
     };
     if (resultSnapshots.length) traceContent["result"] = resultSnapshots;
     if (typeof details.latencyMs === "number") traceContent["latencyMs"] = details.latencyMs;
     if (details.tokens) traceContent["tokens"] = details.tokens;
+    if (details.requestId) traceContent["requestId"] = details.requestId;
+    if (details.turnId) traceContent["turnId"] = details.turnId;
 
     const message: MessageRecord = {
       id: uniqueId("msg"),
       role: "system",
-      name: "llm_call",
+      name: details.stage ? `llm_call.${details.stage}` : "llm_call",
       content: traceContent,
       createdAt: nowIso(),
       metadata: {
         traceType: "llm_call",
         model: details.model,
+        ...(details.stage ? { traceStage: details.stage } : {}),
         ...(details.tokens ? { tokens: details.tokens } : {}),
-        ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {})
+        ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {}),
+        ...(details.requestId ? { requestId: details.requestId } : {}),
+        ...(details.turnId ? { turnId: details.turnId } : {})
       }
     };
 
     await this.appendMessages(conversationId, [message]);
+  }
+
+  async getFullConversation(conversationId: string): Promise<{ records: MessageRecord[]; messages: OpenAIMessage[] }> {
+    const records = await this.getMessages(conversationId);
+    const messages = records
+      .map((record) => messageRecordToOpenAI(record))
+      .filter((m): m is OpenAIMessage => Boolean(m));
+    return { records, messages };
   }
 
   async recordRateLimit(token: string, model: string, reason?: string) {
