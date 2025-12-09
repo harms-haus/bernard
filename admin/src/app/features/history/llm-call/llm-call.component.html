@@ -102,7 +102,9 @@
         <app-user-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
       }
       @case ('assistant') {
-        <app-assistant-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+        @if (hasEntryContent(entry)) {
+          <app-assistant-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+        }
         @if (!textOnly() && entry.tool_calls?.length) {
           @for (call of entry.tool_calls; let i = $index; track call.id || i) {
             <app-tool-call-bubble

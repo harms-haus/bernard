@@ -1,3 +1,7 @@
+:host {
+  display: block;
+}
+
 .tool-block {
   border: 1px solid var(--surface-border);
   border-radius: 12px;
@@ -5,10 +9,11 @@
   background: var(--surface-card);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  width: fit-content;
-  max-width: 70%;
-  align-self: flex-start;
+  gap: 0.65rem;
+  width: min(100%, 860px);
+  max-width: 100%;
+  align-self: stretch;
+  box-sizing: border-box;
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
@@ -16,9 +21,10 @@
 }
 
 .tool-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.35rem 0.75rem;
   width: 100%;
   background: transparent;
   border: none;
@@ -39,39 +45,14 @@
   outline-offset: 2px;
 }
 
-.tool-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.tool-name {
+.tool-signature {
   font-weight: 700;
   color: var(--text-primary);
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.tool-id {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.tool-inline {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-}
-
-.tool-args-inline {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .chevron {
@@ -111,11 +92,24 @@
   margin: 0;
   font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
   color: var(--text-color, #e2e8f0);
+  width: 100%;
+}
+
+.call-id {
+  text-align: center;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.95rem;
+  margin-top: 0.1rem;
 }
 
 @media (max-width: 700px) {
   .tool-block {
     max-width: 100%;
+    width: 100%;
+  }
+
+  .tool-header {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -55,10 +55,12 @@
                     />
                   }
                   @case ('assistant') {
-                    <app-assistant-message-bubble
-                      [text]="renderContent(message)"
-                      [footer]="messageFooter(message)"
-                    />
+                    @if (hasContent(message)) {
+                      <app-assistant-message-bubble
+                        [text]="renderContent(message)"
+                        [footer]="messageFooter(message)"
+                      />
+                    }
                     @if (message.tool_calls?.length) {
                       @for (call of message.tool_calls; let i = $index; track call.id || i) {
                         <app-tool-call-bubble

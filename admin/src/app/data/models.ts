@@ -146,3 +146,31 @@ export type CreateUserRequest = {
 export type UpdateUserRequest = Partial<Pick<CreateUserRequest, 'displayName' | 'isAdmin'>> & {
   status?: Extract<UserStatus, 'active' | 'disabled'>;
 };
+
+export type Memory = {
+  id: string;
+  label: string;
+  content: string;
+  conversationId: string;
+  createdAt: string;
+  refreshedAt: string;
+  freshnessMaxDays: number;
+  successorId?: string;
+};
+
+export type CreateMemoryRequest = {
+  label: string;
+  content: string;
+  conversationId: string;
+};
+
+export type UpdateMemoryRequest = Partial<Pick<CreateMemoryRequest, 'label' | 'content' | 'conversationId'>> & {
+  successorId?: string | null;
+  refresh?: boolean;
+};
+
+export type MemorizeResponse = {
+  memory: Memory;
+  outcome: 'created' | 'updated' | 'refreshed';
+  predecessorId?: string;
+};

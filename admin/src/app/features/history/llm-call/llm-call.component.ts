@@ -118,6 +118,11 @@ export class LlmCallComponent {
     return role;
   }
 
+  protected hasEntryContent(entry: TraceEntry): boolean {
+    const rendered = this.renderValue(entry.content);
+    return rendered.trim().length > 0;
+  }
+
   protected latencyText(latencyMs: number | undefined): string {
     if (typeof latencyMs === 'number' && Number.isFinite(latencyMs)) {
       return `${Math.round(latencyMs)}ms`;

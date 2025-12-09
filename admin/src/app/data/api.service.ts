@@ -16,6 +16,9 @@ import {
   RecordKeeperStatus,
   ServiceConfig,
   Token,
+  Memory,
+  CreateMemoryRequest,
+  UpdateMemoryRequest,
   UpdateServiceRequest,
   UpdateTokenRequest,
   UpdateUserRequest,
@@ -56,6 +59,11 @@ export interface ApiClient {
   listHistory(query?: HistoryQuery): Observable<HistoryListResponse>;
   getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
   deleteConversation(id: string): Observable<void>;
+  listMemories(): Observable<Memory[]>;
+  createMemory(body: CreateMemoryRequest): Observable<Memory>;
+  updateMemory(id: string, body: UpdateMemoryRequest): Observable<Memory>;
+  refreshMemory(id: string): Observable<Memory>;
+  deleteMemory(id: string): Observable<void>;
   getMe(): Observable<User | null>;
   listUsers(): Observable<User[]>;
   createUser(body: CreateUserRequest): Observable<User>;
@@ -158,6 +166,32 @@ class HttpApiClient implements ApiClient {
     return this.http
       .delete<{ removed: boolean }>(`${this.baseUrl}/admin/history/${id}`, this.options())
       .pipe(map(() => void 0));
+  }
+
+  listMemories() {
+    return this.http
+      .get<{ memories: Memory[] }>(`${this.baseUrl}/memories`, this.options())
+      .pipe(map((res) => res.memories ?? []));
+  }
+
+  createMemory(body: CreateMemoryRequest) {
+    return this.http
+      .post<{ memory: Memory }>(`${this.baseUrl}/memories`, body, this.options())
+      .pipe(map((res) => res.memory));
+  }
+
+  updateMemory(id: string, body: UpdateMemoryRequest) {
+    return this.http
+      .patch<{ memory: Memory }>(`${this.baseUrl}/memories/${id}`, body, this.options())
+      .pipe(map((res) => res.memory));
+  }
+
+  refreshMemory(id: string) {
+    return this.updateMemory(id, { refresh: true });
+  }
+
+  deleteMemory(id: string) {
+    return this.http.delete<void>(`${this.baseUrl}/memories/${id}`, this.options());
   }
 
   getMe() {
@@ -284,6 +318,18 @@ class MockApiClient implements ApiClient {
     active: this.createId(),
     closed: this.createId()
   };
+
+  private memories: Memory[] = [
+    {
+      id: this.createId(),
+      label: 'home address',
+      content: '555 Homeward Dr.',
+      conversationId: this.conversationIds.active,
+      createdAt: new Date().toISOString(),
+      refreshedAt: new Date().toISOString(),
+      freshnessMaxDays: 7
+    }
+  ];
 
   private conversations: ConversationDetail[] = [
     {
@@ -527,6 +573,50 @@ class MockApiClient implements ApiClient {
     this.conversations = this.conversations.filter((conv) => conv.id !== id);
     delete this.messages[id];
     return of(void 0).pipe(delay(80));
+  }
+
+  listMemories() {
+    return of(this.memories).pipe(delay(60));
+  }
+
+  createMemory(body: CreateMemoryRequest) {
+    const memory: Memory = {
+      id: this.createId(),
+      label: body.label,
+      content: body.content,
+      conversationId: body.conversationId,
+      createdAt: new Date().toISOString(),
+      refreshedAt: new Date().toISOString(),
+      freshnessMaxDays: 7
+    };
+    this.memories = [memory, ...this.memories];
+    return of(memory).pipe(delay(80));
+  }
+
+  updateMemory(id: string, body: UpdateMemoryRequest) {
+    this.memories = this.memories.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            ...(body.label ? { label: body.label } : {}),
+            ...(body.content ? { content: body.content } : {}),
+            ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+            ...(body.successorId !== undefined ? { successorId: body.successorId ?? undefined } : {}),
+            refreshedAt: body.refresh ? new Date().toISOString() : m.refreshedAt
+          }
+        : m
+    );
+    const found = this.memories.find((m) => m.id === id) as Memory;
+    return of(found).pipe(delay(60));
+  }
+
+  refreshMemory(id: string) {
+    return this.updateMemory(id, { refresh: true });
+  }
+
+  deleteMemory(id: string) {
+    this.memories = this.memories.filter((m) => m.id !== id);
+    return of(void 0).pipe(delay(40));
   }
 
   getMe() {

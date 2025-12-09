@@ -16,16 +16,8 @@ import { MessageBubbleShellComponent } from './message-bubble-shell.component';
           (click)="toggleExpanded()"
           [attr.aria-expanded]="isExpanded()"
         >
-          <div class="tool-meta">
-            <div class="tool-name">{{ displayName() }}</div>
-            @if (callId()) {
-              <div class="tool-id">ID: {{ callId() }}</div>
-            }
-          </div>
-          <div class="tool-inline">
-            <span class="tool-args-inline">{{ inlineArgs() || 'View call' }}</span>
-            <span class="chevron" [class.expanded]="isExpanded()">{{ isExpanded() ? '▴' : '▾' }}</span>
-          </div>
+          <div class="tool-signature" [title]="signature()">{{ signature() }}</div>
+          <span class="chevron" [class.expanded]="isExpanded()">{{ isExpanded() ? '▴' : '▾' }}</span>
         </button>
 
         @if (showArguments()) {
@@ -38,6 +30,10 @@ import { MessageBubbleShellComponent } from './message-bubble-shell.component';
 
         @if (textOnly() && rawCall()) {
           <pre class="content raw-call">{{ rawCall() }}</pre>
+        }
+
+        @if ((isExpanded() || textOnly()) && callId()) {
+          <div class="call-id">ID: {{ callId() }}</div>
         }
       </div>
     </app-message-bubble-shell>
@@ -56,7 +52,7 @@ export class ToolCallBubbleComponent {
 
   protected readonly displayName = computed(() => this.name() ?? this.callName(this.call()));
   protected readonly callId = computed(() => this.resolveCallId(this.call()));
-  protected readonly inlineArgs = computed(() => this.inlineArguments(this.call()));
+  protected readonly signature = computed(() => this.buildSignature(this.displayName(), this.call()));
   protected readonly argumentText = computed(() => this.describeArguments(this.call()));
   protected readonly rawCall = computed(() => this.safeStringify(this.call()));
   protected readonly renderedContent = computed(() =>
@@ -93,25 +89,9 @@ export class ToolCallBubbleComponent {
     return null;
   }
 
-  private inlineArguments(call: ToolCall | null): string {
-    const raw = this.argumentValue(call);
-    if (raw === undefined || raw === null) return '';
-    if (typeof raw === 'string') return this.compact(raw, 80);
-    if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
-
-    if (Array.isArray(raw)) {
-      const preview = raw
-        .slice(0, 3)
-        .map((entry) => (typeof entry === 'string' ? this.compact(entry, 24) : JSON.stringify(entry)))
-        .join(', ');
-      return this.compact(preview, 80);
-    }
-
-    try {
-      return this.compact(JSON.stringify(raw), 80);
-    } catch {
-      return this.compact(String(raw), 80);
-    }
+  private buildSignature(name: string, call: ToolCall | null): string {
+    const args = this.argumentValue(call);
+    return `${name}${this.formatArgumentList(args)}`;
   }
 
   private describeArguments(call: ToolCall | null): string {
@@ -149,11 +129,59 @@ export class ToolCallBubbleComponent {
     return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
   }
 
+  private formatArgumentList(args: unknown): string {
+    const normalized = this.parseMaybeJson(args);
+    if (normalized === undefined || normalized === null || normalized === '') return '()';
+    return `(${this.formatValue(normalized)})`;
+  }
+
+  private formatValue(value: unknown, depth = 0): string {
+    if (value === null || value === undefined) return '—';
+    if (typeof value === 'string') return this.compact(value, 120);
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+    if (Array.isArray(value)) {
+      if (depth > 1) return '[…]';
+      const rendered = value.slice(0, 4).map((entry) => this.formatValue(entry, depth + 1)).join(', ');
+      const suffix = value.length > 4 ? ', …' : '';
+      return `[${rendered}${suffix}]`;
+    }
+
+    if (typeof value === 'object') {
+      if (depth > 1) return '{…}';
+      const entries = Object.entries(value as Record<string, unknown>);
+      if (!entries.length) return '{}';
+      const rendered = entries
+        .slice(0, 6)
+        .map(([key, val]) => `${key}: ${this.formatValue(val, depth + 1)}`)
+        .join(', ');
+      const suffix = entries.length > 6 ? ' …' : '';
+      return `${rendered}${suffix}`;
+    }
+
+    return this.compact(String(value), 120);
+  }
+
   private safeStringify(value: unknown): string {
     try {
       return JSON.stringify(value, null, 2);
     } catch {
       return String(value ?? '');
+    }
+  }
+
+  private parseMaybeJson(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const looksLikeJson =
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'));
+    if (!looksLikeJson) return value;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
     }
   }
 }

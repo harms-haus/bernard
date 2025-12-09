@@ -49,6 +49,7 @@ export class App {
     { label: 'Dashboard', icon: 'pi pi-home', routerLink: '/dashboard', routerLinkActiveOptions: { exact: true } },
     { label: 'Access Tokens', icon: 'pi pi-key', routerLink: '/tokens' },
     { label: 'Services', icon: 'pi pi-server', routerLink: '/services' },
+    { label: 'Memories', icon: 'pi pi-database', routerLink: '/memories' },
     { label: 'History', icon: 'pi pi-history', routerLink: '/history' },
     { label: 'Users', icon: 'pi pi-users', routerLink: '/users' }
   ]);

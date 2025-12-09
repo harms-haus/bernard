@@ -1,4 +1,5 @@
 import { geocodeSearchTool } from "./geocode";
+import { memorizeTool } from "./memorize";
 import { timerTool } from "./timer";
 import { webSearchTool } from "./web-search";
 import {
@@ -11,6 +12,7 @@ export const tools = [
   webSearchTool,
   timerTool,
   geocodeSearchTool,
+  memorizeTool,
   getWeatherCurrentTool,
   getWeatherForecastTool,
   getWeatherHistoricalTool
@@ -18,6 +20,7 @@ export const tools = [
 
 export {
   geocodeSearchTool,
+  memorizeTool,
   timerTool,
   webSearchTool,
   getWeatherCurrentTool,

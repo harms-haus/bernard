@@ -260,7 +260,11 @@ export function instrumentTools(ctx: AgentContext, toolsList: InstrumentedTool[]
           const rawInput = extractRawToolInput(input, runOpts);
           const parsedInput = parseToolInput(rawInput);
           const normalizedInput = parsedInput === undefined ? {} : parsedInput;
-          const res = await t.invoke(normalizedInput, runOpts);
+          const res = await t.invoke(normalizedInput, {
+            ...(runOpts ?? {}),
+            conversationId: ctx.conversationId,
+            turnId: ctx.turnId
+          });
           await ctx.recordKeeper.recordToolResult(ctx.turnId, t.name, { ok: true, latencyMs: Date.now() - start });
           return res;
         } catch (err) {

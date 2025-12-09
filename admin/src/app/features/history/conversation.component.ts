@@ -1,12 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
 import { MessageModule } from 'primeng/message';
 import { TooltipModule } from 'primeng/tooltip';
-import { finalize, interval, Subscription } from 'rxjs';
+import { finalize } from 'rxjs';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
 import { ConversationDetail, ConversationMessage } from '../../data/models';
@@ -57,7 +57,7 @@ export class ConversationComponent {
   private readonly api = inject<ApiClient>(API_CLIENT);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private pollSub: Subscription | null = null;
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly loading = signal<boolean>(true);
   readonly error = signal<string | null>(null);
@@ -75,7 +75,7 @@ export class ConversationComponent {
   });
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const id = params.get('id');
       if (!id) {
         this.error.set('Missing conversation id');
@@ -83,7 +83,6 @@ export class ConversationComponent {
         return;
       }
       this.load(id, true);
-      this.startPolling(id);
     });
   }
 
@@ -101,6 +100,13 @@ export class ConversationComponent {
     const date = new Date(message.createdAt);
     if (Number.isNaN(date.getTime())) return role;
     return `${role} • ${date.toLocaleString()}`;
+  }
+
+  hasContent(message: ConversationMessage): boolean {
+    const value = message.content;
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return true;
   }
 
   toolCallFromMessage(message: ConversationMessage): ToolCall | null {
@@ -130,7 +136,7 @@ export class ConversationComponent {
     this.api
       .getConversation(id)
       .pipe(
-        takeUntilDestroyed(),
+        takeUntilDestroyed(this.destroyRef),
         finalize(() => {
           if (withLoader) {
             this.loading.set(false);
@@ -151,26 +157,6 @@ export class ConversationComponent {
           this.loading.set(false);
         }
       });
-  }
-
-  private startPolling(id: string) {
-    this.stopPolling();
-    this.pollSub = interval(2500)
-      .pipe(takeUntilDestroyed())
-      .subscribe(() => {
-        const convo = this.conversation();
-        if (!convo || convo.status !== 'open') {
-          return;
-        }
-        this.load(id, false);
-      });
-  }
-
-  private stopPolling() {
-    if (this.pollSub) {
-      this.pollSub.unsubscribe();
-      this.pollSub = null;
-    }
   }
 
   traceFor(message: ConversationMessage): LlmTrace | null {

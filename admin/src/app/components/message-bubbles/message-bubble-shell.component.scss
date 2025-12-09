@@ -38,6 +38,14 @@
   background: var(--chat-system-bg, var(--surface-ground));
 }
 
+.bubble[data-role='tool'] {
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
 .bubble p,
 .bubble pre {
   margin: 0;
