@@ -3,21 +3,12 @@
 }
 
 .tool-block {
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
-  padding: 0.35rem 0.7rem;
-  background: var(--surface-card);
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  width: min(100%, 860px);
+  gap: 0.45rem;
+  width: 100%;
   max-width: 100%;
-  align-self: stretch;
   box-sizing: border-box;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.2s ease;
 }
 
 .tool-signature {
@@ -34,17 +25,10 @@
   color: var(--text-color, #e2e8f0);
 }
 
-.tool-call-args {
-  background: var(--surface-card, #1f2937);
-  border-radius: 10px;
-  padding: 0.5rem;
-  border: 1px solid var(--surface-border, #334155);
-}
-
 .tool-response {
-  background: var(--surface-panel, #0b1220);
+  background: var(--surface-section, #0f172a);
   border-radius: 10px;
-  padding: 0.5rem;
+  padding: 0.6rem 0.75rem;
   border: 1px solid var(--surface-border, #334155);
 }
 

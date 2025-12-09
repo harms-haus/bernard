@@ -8,6 +8,10 @@
   background: var(--surface-card);
 }
 
+.llm-call.collapsed {
+  border-radius: 12px;
+}
+
 .llm-header {
   width: 100%;
   display: grid;
@@ -23,7 +27,7 @@
 }
 
 .llm-call.collapsed .llm-header {
-  border-radius: 12px 12px 0 0;
+  border-radius: 12px;
 }
 
 .header-left {
@@ -69,10 +73,6 @@
   border-top: 1px solid var(--surface-border);
   background: var(--chat-frame, var(--surface-panel));
   border-radius: 0 0 12px 12px;
-}
-
-.llm-body.collapsed-body {
-  padding: 0.75rem 1rem 0.85rem;
 }
 
 .toolbar {

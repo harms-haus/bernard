@@ -68,16 +68,17 @@
 }
 
 .bubble[data-role='tool'] {
-  max-width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
+  max-width: min(900px, 100%);
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  box-shadow: var(--chat-bubble-shadow, 0 4px 12px rgba(15, 23, 42, 0.08));
 }
 
 .bubble-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
 }
 
@@ -106,6 +107,12 @@
   flex-direction: column;
   gap: 0.35rem;
   margin-top: 0.15rem;
+}
+
+.bubble[data-role='tool'] .message-bubble-expanding-content {
+  border-top: 1px solid var(--surface-border);
+  padding-top: 0.4rem;
+  margin-top: 0.35rem;
 }
 
 .chevron {

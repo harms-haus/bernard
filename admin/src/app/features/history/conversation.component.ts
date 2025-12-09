@@ -35,6 +35,20 @@ type LlmCallContent = {
   result?: unknown;
 };
 
+type ToolInteractionThreadItem = {
+  kind: 'tool-interaction';
+  id: string;
+  call: ToolCall | null;
+  response: ConversationMessage | null;
+  name?: string | null;
+  source: ConversationMessage;
+};
+
+type ThreadItem =
+  | { kind: 'llm-call'; id: string; trace: LlmTrace; createdAt: string | null }
+  | { kind: 'user' | 'assistant-text' | 'system'; id: string; message: ConversationMessage }
+  | ToolInteractionThreadItem;
+
 @Component({
   selector: 'app-conversation',
   imports: [
@@ -93,6 +107,77 @@ export class ConversationComponent {
     if (this.copyStatus() === 'success') return 'Copied conversation to clipboard';
     if (this.copyStatus() === 'error') return 'Unable to copy conversation';
     return '';
+  });
+  readonly threadItems = computed<ThreadItem[]>(() => {
+    const list = this.messages();
+    const responseByCallId = new Map<string, ConversationMessage>();
+    list.forEach((message) => {
+      if (message.role === 'tool' && typeof message.tool_call_id === 'string' && message.tool_call_id) {
+        responseByCallId.set(message.tool_call_id, message);
+      }
+    });
+
+    const usedResponses = new Set<string>();
+    const items: ThreadItem[] = [];
+
+    list.forEach((message) => {
+      const trace = this.traceFor(message);
+      if (trace) {
+        items.push({
+          kind: 'llm-call',
+          id: message.id,
+          trace,
+          createdAt: message.createdAt ?? null
+        });
+        return;
+      }
+
+      if (message.role === 'assistant') {
+        if (this.hasContent(message)) {
+          items.push({ kind: 'assistant-text', id: message.id, message });
+        }
+
+        const calls = Array.isArray(message.tool_calls) ? (message.tool_calls as ToolCall[]) : [];
+        calls.forEach((call, index) => {
+          const callId = this.resolveCallId(call);
+          const response = callId ? responseByCallId.get(callId) ?? null : null;
+          if (response) {
+            usedResponses.add(response.id);
+          }
+          items.push({
+            kind: 'tool-interaction',
+            id: `${message.id}:call:${callId ?? index}`,
+            call,
+            response,
+            name: message.name ?? null,
+            source: message
+          });
+        });
+        return;
+      }
+
+      if (message.role === 'tool') {
+        if (usedResponses.has(message.id)) return;
+        items.push({
+          kind: 'tool-interaction',
+          id: message.id,
+          call: this.toolCallFromMessage(message),
+          response: message,
+          name: message.name ?? null,
+          source: message
+        });
+        return;
+      }
+
+      if (message.role === 'system') {
+        items.push({ kind: 'system', id: message.id, message });
+        return;
+      }
+
+      items.push({ kind: 'user', id: message.id, message });
+    });
+
+    return items;
   });
 
   constructor() {
@@ -157,6 +242,16 @@ export class ConversationComponent {
       return message.tool_calls[message.tool_calls.length - 1] as ToolCall;
     }
     return null;
+  }
+
+  toolInteractionFooter(item: ToolInteractionThreadItem): string | null {
+    const footerSource = item.response ?? item.source;
+    return footerSource ? this.messageFooter(footerSource) : null;
+  }
+
+  toolInteractionContent(message: ConversationMessage | null): string {
+    if (!message) return '';
+    return this.renderValue(message.content);
   }
 
   roleLabel(role: ConversationMessage['role']) {
@@ -256,6 +351,16 @@ export class ConversationComponent {
     } catch {
       return String(content ?? '');
     }
+  }
+
+  private resolveCallId(call: ToolCall | null): string | null {
+    if (!call) return null;
+    if (typeof call.id === 'string' && call.id) return call.id;
+    const toolCallId = (call as { tool_call_id?: unknown }).tool_call_id;
+    if (typeof toolCallId === 'string' && toolCallId) return toolCallId;
+    if (call.function?.name && typeof call.function.name === 'string') return call.function.name;
+    if (typeof call.type === 'string' && call.type) return call.type;
+    return null;
   }
 
   private safeStringify(value: unknown): string {

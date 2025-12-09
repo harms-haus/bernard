@@ -8,6 +8,16 @@ import { SystemMessageBubbleComponent } from '../../../components/message-bubble
 import { ToolCallBubbleComponent } from '../../../components/message-bubbles/tool-call-bubble.component';
 import { UserMessageBubbleComponent } from '../../../components/message-bubbles/user-message-bubble.component';
 
+type ToolInteractionEntry = {
+  kind: 'tool-interaction';
+  id: string;
+  call: ToolCall | null;
+  response: TraceEntry | null;
+  source: TraceEntry;
+};
+
+type RenderEntry = ToolInteractionEntry | { kind: 'message'; entry: TraceEntry };
+
 @Component({
   selector: 'app-llm-call',
   imports: [
@@ -36,8 +46,12 @@ export class LlmCallComponent {
   protected readonly timestampValue = computed(() => this.trace().at ?? this.createdAt());
   protected readonly latencyLabel = computed(() => this.latencyText(this.trace().latencyMs));
   protected readonly tokenSummaryLabel = computed(() => this.tokenSummary(this.trace().tokens));
-  protected readonly contextEntries = computed(() => this.trace().context ?? []);
-  protected readonly resultEntries = computed(() => this.trace().result ?? []);
+  protected readonly contextEntryViews = computed(() =>
+    this.buildEntryViews(this.trace().context ?? [])
+  );
+  protected readonly resultEntryViews = computed(() =>
+    this.buildEntryViews(this.trace().result ?? [])
+  );
 
   toggleExpanded() {
     this.expanded.update((current) => !current);
@@ -92,6 +106,11 @@ export class LlmCallComponent {
       return entry.tool_calls[entry.tool_calls.length - 1] as ToolCall;
     }
     return null;
+  }
+
+  protected toolEntryContent(entry: ToolInteractionEntry): string {
+    const target = entry.response ?? entry.source;
+    return this.entryText(target);
   }
 
   protected tokenSummary(tokens: Record<string, unknown> | undefined): string | null {
@@ -156,6 +175,69 @@ export class LlmCallComponent {
     } catch {
       return String(value ?? '');
     }
+  }
+
+  private buildEntryViews(entries: TraceEntry[]): RenderEntry[] {
+    const responsesById = new Map<string, TraceEntry>();
+    entries.forEach((entry) => {
+      if (entry.role === 'tool' && typeof entry.tool_call_id === 'string' && entry.tool_call_id) {
+        responsesById.set(entry.tool_call_id, entry);
+      }
+    });
+
+    const used = new Set<string>();
+    const views: RenderEntry[] = [];
+
+    entries.forEach((entry) => {
+      if (entry.role === 'assistant') {
+        if (this.hasEntryContent(entry)) {
+          views.push({ kind: 'message', entry });
+        }
+
+        const calls = Array.isArray(entry.tool_calls) ? (entry.tool_calls as ToolCall[]) : [];
+        calls.forEach((call, index) => {
+          const callId = this.resolveCallId(call);
+          const response = callId ? responsesById.get(callId) ?? null : null;
+          if (response) {
+            used.add(response.id);
+          }
+          views.push({
+            kind: 'tool-interaction',
+            id: `${entry.id}:call:${callId ?? index}`,
+            call,
+            response,
+            source: entry
+          });
+        });
+        return;
+      }
+
+      if (entry.role === 'tool') {
+        if (used.has(entry.id)) return;
+        views.push({
+          kind: 'tool-interaction',
+          id: entry.id,
+          call: this.toolCallFromEntry(entry),
+          response: entry,
+          source: entry
+        });
+        return;
+      }
+
+      views.push({ kind: 'message', entry });
+    });
+
+    return views;
+  }
+
+  private resolveCallId(call: ToolCall | null): string | null {
+    if (!call) return null;
+    if (typeof call.id === 'string' && call.id) return call.id;
+    const toolCallId = (call as { tool_call_id?: unknown }).tool_call_id;
+    if (typeof toolCallId === 'string' && toolCallId) return toolCallId;
+    if (call.function?.name && typeof call.function.name === 'string') return call.function.name;
+    if (typeof call.type === 'string' && call.type) return call.type;
+    return null;
   }
 }
 

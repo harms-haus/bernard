@@ -22,8 +22,8 @@
     </div>
   </button>
 
-  <div class="llm-body" id="llm-call-body" [class.collapsed-body]="!expanded()">
-    @if (expanded()) {
+  @if (expanded()) {
+    <div class="llm-body" id="llm-call-body">
       <div class="toolbar">
         <div class="toolbar-left">
           @if (tokenSummaryLabel(); as tokens) {
@@ -85,58 +85,60 @@
           <ng-container [ngTemplateOutlet]="resultList"></ng-container>
         }
       </div>
-    } @else {
-      <div class="section result-collapsed">
-        <ng-container [ngTemplateOutlet]="resultList"></ng-container>
-      </div>
-    }
-  </div>
+    </div>
+  }
 </section>
 
-<ng-template #entryTemplate let-entry>
-  @if (isEntryEmpty(entry)) {
-    <app-system-message-bubble text="[empty]" [footer]="entryFooter(entry)" />
+<ng-template #entryTemplate let-view>
+  @if (view.kind === 'tool-interaction') {
+    <app-tool-call-bubble
+      [call]="view.call"
+      [name]="view.source.name || 'Tool'"
+      [content]="toolEntryContent(view)"
+      [footer]="entryFooter(view.response ?? view.source)"
+      [textOnly]="textOnly()"
+      [collapsed]="!expanded()"
+    ></app-tool-call-bubble>
   } @else {
-    @switch (entry.role) {
-      @case ('user') {
-        <app-user-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
-      }
-      @case ('assistant') {
-        @if (hasEntryContent(entry)) {
-          <app-assistant-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
+    @if (isEntryEmpty(view.entry)) {
+      <app-system-message-bubble text="[empty]" [footer]="entryFooter(view.entry)" />
+    } @else {
+      @switch (view.entry.role) {
+        @case ('user') {
+          <app-user-message-bubble [text]="entryText(view.entry)" [footer]="entryFooter(view.entry)" />
         }
-        @if (!textOnly() && entry.tool_calls?.length) {
-          @for (call of entry.tool_calls; let i = $index; track call.id || i) {
-            <app-tool-call-bubble
-              [call]="call"
-              [footer]="entryFooter(entry)"
-              [textOnly]="textOnly()"
-            ></app-tool-call-bubble>
+        @case ('assistant') {
+          @if (hasEntryContent(view.entry)) {
+            <app-assistant-message-bubble
+              [text]="entryText(view.entry)"
+              [footer]="entryFooter(view.entry)"
+            />
           }
         }
-      }
-      @case ('system') {
-        <app-system-message-bubble [text]="entryText(entry)" [footer]="entryFooter(entry)" />
-      }
-      @default {
-        <app-tool-call-bubble
-          [call]="toolCallFromEntry(entry)"
-          [name]="entry.name || 'Tool'"
-          [content]="entryText(entry)"
-          [footer]="entryFooter(entry)"
-          [textOnly]="textOnly()"
-        ></app-tool-call-bubble>
+        @case ('system') {
+          <app-system-message-bubble [text]="entryText(view.entry)" [footer]="entryFooter(view.entry)" />
+        }
+        @default {
+          <app-tool-call-bubble
+            [call]="toolCallFromEntry(view.entry)"
+            [name]="view.entry.name || 'Tool'"
+            [content]="entryText(view.entry)"
+            [footer]="entryFooter(view.entry)"
+            [textOnly]="textOnly()"
+            [collapsed]="!expanded()"
+          ></app-tool-call-bubble>
+        }
       }
     }
   }
 </ng-template>
 
 <ng-template #contextList>
-  @if (!contextEntries().length) {
+  @if (!contextEntryViews().length) {
     <p class="muted small">None</p>
   } @else {
     <div class="message-list" id="llm-context">
-      @for (entry of contextEntries(); track entry.id) {
+      @for (entry of contextEntryViews(); track entry.kind === 'tool-interaction' ? entry.id : entry.entry.id) {
         <ng-container
           [ngTemplateOutlet]="entryTemplate"
           [ngTemplateOutletContext]="{ $implicit: entry }"
@@ -147,11 +149,11 @@
 </ng-template>
 
 <ng-template #resultList>
-  @if (!resultEntries().length) {
+  @if (!resultEntryViews().length) {
     <p class="muted small">None</p>
   } @else {
     <div class="message-list" id="llm-result">
-      @for (entry of resultEntries(); track entry.id) {
+      @for (entry of resultEntryViews(); track entry.kind === 'tool-interaction' ? entry.id : entry.entry.id) {
         <ng-container
           [ngTemplateOutlet]="entryTemplate"
           [ngTemplateOutletContext]="{ $implicit: entry }"

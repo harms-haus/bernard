@@ -69,6 +69,7 @@ export class MessageBubbleComponent {
   readonly align = input<BubbleAlign>('start');
   readonly footer = input<string | null>(null);
   readonly expandable = input<boolean>(true);
+  readonly hasExpandableHint = input<boolean>(false);
 
   private readonly expanded = signal(false);
 
@@ -107,11 +108,10 @@ export class MessageBubbleComponent {
 
   protected readonly hasExpandingContent = computed(() => {
     const el = this.expandingSlot()?.nativeElement;
-    return Boolean(el && el.textContent && el.textContent.trim());
+    const slotHasContent = Boolean(el && el.textContent && el.textContent.trim());
+    return slotHasContent || this.hasExpandableHint();
   });
-  protected readonly effectiveExpandable = computed(
-    () => this.expandable() && this.hasExpandingContent()
-  );
+  protected readonly effectiveExpandable = computed(() => this.expandable() && this.hasExpandingContent());
 
   toggleExpanded() {
     if (!this.effectiveExpandable()) return;

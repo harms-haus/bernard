@@ -8,32 +8,20 @@ import { MessageBubbleComponent } from './message-bubble.component';
   selector: 'app-tool-call-bubble',
   imports: [CommonModule, MessageBubbleComponent],
   template: `
-    <app-message-bubble role="tool" align="start" [footer]="footer()">
+    <app-message-bubble
+      role="tool"
+      align="start"
+      [footer]="footer()"
+      [expandable]="bubbleExpandable()"
+      [hasExpandableHint]="bubbleExpandable()"
+    >
       <div class="tool-block" message-bubble-content>
         <div class="tool-signature" [title]="signature()">{{ signature() }}</div>
-
-        @if (hasPreviewContent()) {
-          <p class="content tool-preview">{{ contentPreview() }}</p>
-        }
       </div>
 
-      @if (hasExpandableContent()) {
+      @if (showExpandingContent()) {
         <div class="tool-block" message-bubble-expanding-content>
-          @if (hasArguments()) {
-            <p class="content tool-call-args">{{ argumentText() }}</p>
-          }
-
-          @if (hasContent()) {
-            <p class="content tool-response">{{ renderedContent() }}</p>
-          }
-
-          @if (textOnly() && rawCall()) {
-            <p class="content raw-call">{{ rawCall() }}</p>
-          }
-
-          @if (callId()) {
-            <div class="call-id">ID: {{ callId() }}</div>
-          }
+          <p class="content tool-response">{{ responseText() }}</p>
         </div>
       }
     </app-message-bubble>
@@ -47,31 +35,25 @@ export class ToolCallBubbleComponent {
   readonly name = input<string | null>(null);
   readonly footer = input<string | null>(null);
   readonly textOnly = input<boolean>(false);
+  readonly collapsed = input<boolean>(false);
 
   protected readonly displayName = computed(() => this.name() ?? this.callName(this.call()));
-  protected readonly callId = computed(() => this.resolveCallId(this.call()));
   protected readonly signature = computed(() => this.buildSignature(this.displayName(), this.call()));
-  protected readonly argumentText = computed(() => this.describeArguments(this.call()));
-  protected readonly rawCall = computed(() => this.safeStringify(this.call()));
   protected readonly renderedContent = computed(() =>
     this.textOnly() ? this.safeStringify(this.content()) : this.content() ?? ''
   );
-
-  protected readonly hasArguments = computed(() => {
-    const raw = this.argumentValue(this.call());
-    return raw !== undefined && raw !== null && raw !== '';
+  protected readonly hasResponse = computed(() => this.content() !== null && this.content() !== undefined);
+  protected readonly responseText = computed(() => {
+    const rendered = this.renderedContent().trim();
+    return rendered || '(no tool response)';
   });
-  protected readonly hasContent = computed(() => Boolean(this.renderedContent().trim()));
-  protected readonly hasPreviewContent = computed(() => Boolean(this.contentPreview().trim()));
-  protected readonly hasExpandableContent = computed(
-    () =>
-      this.hasArguments() ||
-      this.hasContent() ||
-      (this.textOnly() && Boolean(this.rawCall().trim())) ||
-      Boolean(this.callId())
+  protected readonly bubbleExpandable = computed(
+    () => !this.collapsed() && this.hasExpandableContent()
   );
-
-  protected readonly contentPreview = computed(() => this.compact(this.renderedContent(), 160));
+  protected readonly showExpandingContent = computed(
+    () => !this.collapsed() && this.hasExpandableContent()
+  );
+  protected readonly hasExpandableContent = computed(() => this.hasResponse());
 
   private callName(call: ToolCall | null): string {
     if (!call) return 'Tool call';
@@ -85,28 +67,9 @@ export class ToolCallBubbleComponent {
     return 'Tool call';
   }
 
-  private resolveCallId(call: ToolCall | null): string | null {
-    if (!call) return null;
-    if (call.id && typeof call.id === 'string') return call.id;
-    const toolCallId = (call as { tool_call_id?: unknown })['tool_call_id'];
-    if (typeof toolCallId === 'string' && toolCallId) return toolCallId;
-    if (call.function?.name && typeof call.function.name === 'string') return call.function.name;
-    if (typeof call.type === 'string') return call.type;
-    return null;
-  }
-
   private buildSignature(name: string, call: ToolCall | null): string {
     const args = this.argumentValue(call);
     return `${name}${this.formatArgumentList(args)}`;
-  }
-
-  private describeArguments(call: ToolCall | null): string {
-    const raw = this.argumentValue(call);
-    if (raw === undefined || raw === null || raw === '') return '(no arguments)';
-    if (typeof raw === 'string') {
-      return this.tryParseJson(raw);
-    }
-    return this.safeStringify(raw);
   }
 
   private argumentValue(call: ToolCall | null): unknown {
@@ -119,14 +82,6 @@ export class ToolCallBubbleComponent {
     if ((call as { input?: unknown }).input !== undefined) return (call as { input?: unknown }).input;
     if ((fn as { input?: unknown })?.input !== undefined) return (fn as { input?: unknown }).input;
     return undefined;
-  }
-
-  private tryParseJson(value: string): string {
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      return value;
-    }
   }
 
   private compact(value: string, max = 80): string {

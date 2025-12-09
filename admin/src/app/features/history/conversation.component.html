@@ -42,51 +42,40 @@
         <p class="muted">No messages yet.</p>
       } @else {
         <div class="thread">
-          @for (message of messages(); track message.id) {
-            @if (traceFor(message); as trace) {
-              <app-llm-call [trace]="trace" [createdAt]="message.createdAt"></app-llm-call>
-            } @else {
-              <div class="thread-row">
-                @switch (message.role) {
-                  @case ('user') {
-                    <app-user-message-bubble
-                      [text]="renderContent(message)"
-                      [footer]="messageFooter(message)"
-                    />
-                  }
-                  @case ('assistant') {
-                    @if (hasContent(message)) {
-                      <app-assistant-message-bubble
-                        [text]="renderContent(message)"
-                        [footer]="messageFooter(message)"
-                      />
-                    }
-                    @if (message.tool_calls?.length) {
-                      @for (call of message.tool_calls; let i = $index; track call.id || i) {
-                        <app-tool-call-bubble
-                          [call]="call"
-                          [footer]="messageFooter(message)"
-                        ></app-tool-call-bubble>
-                      }
-                    }
-                  }
-                  @case ('system') {
-                    <app-system-message-bubble
-                      [text]="renderContent(message)"
-                      [footer]="messageFooter(message)"
-                    />
-                  }
-                  @default {
-                    <app-tool-call-bubble
-                      [call]="toolCallFromMessage(message)"
-                      [name]="message.name || 'Tool'"
-                      [content]="renderContent(message)"
-                      [footer]="messageFooter(message)"
-                    ></app-tool-call-bubble>
-                  }
+          @for (item of threadItems(); track item.id) {
+            <div class="thread-row">
+              @switch (item.kind) {
+                @case ('llm-call') {
+                  <app-llm-call [trace]="item.trace" [createdAt]="item.createdAt"></app-llm-call>
                 }
-              </div>
-            }
+                @case ('user') {
+                  <app-user-message-bubble
+                    [text]="renderContent(item.message)"
+                    [footer]="messageFooter(item.message)"
+                  />
+                }
+                @case ('assistant-text') {
+                  <app-assistant-message-bubble
+                    [text]="renderContent(item.message)"
+                    [footer]="messageFooter(item.message)"
+                  />
+                }
+                @case ('system') {
+                  <app-system-message-bubble
+                    [text]="renderContent(item.message)"
+                    [footer]="messageFooter(item.message)"
+                  />
+                }
+                @case ('tool-interaction') {
+                  <app-tool-call-bubble
+                    [call]="item.call"
+                    [name]="item.name || null"
+                    [content]="toolInteractionContent(item.response)"
+                    [footer]="toolInteractionFooter(item)"
+                  ></app-tool-call-bubble>
+                }
+              }
+            </div>
           }
         </div>
       }
