@@ -41,13 +41,30 @@ function toToolCalls(raw: unknown): ToolCall[] {
     .filter(Boolean);
 }
 
+type CallerOpts = {
+  maxTokens?: number;
+};
+
 class ChatModelCaller implements LLMCaller {
   constructor(private readonly modelName: string, private readonly client: ChatOpenAI) {}
 
   async call(input: LLMCallConfig): Promise<LLMResponse> {
     const bound = input.tools ? this.client.bindTools(input.tools) : this.client;
+    const timeoutMs = 10_000; // cap total call time to 10s
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
     const started = Date.now();
-    const message = await bound.invoke(input.messages);
+    let message;
+    try {
+      message = await bound.invoke(input.messages, { signal: controller.signal });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(`LLM call timed out after ${timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     const latency = Date.now() - started;
     const usage = extractTokenUsage(message);
     const text = contentFromMessage(message) ?? "";
@@ -79,7 +96,7 @@ class ChatModelCaller implements LLMCaller {
         turnId: meta.turnId,
         stage: meta.traceName,
         contextLimit: 12,
-        contentPreviewChars: 240
+        contentPreviewChars: null
       });
     }
 
@@ -87,14 +104,15 @@ class ChatModelCaller implements LLMCaller {
   }
 }
 
-function makeCaller(model: string, temperature: number) {
+function makeCaller(model: string, temperature: number, opts: CallerOpts = {}) {
   const apiKey = resolveApiKey();
   const baseURL = resolveBaseUrl();
   const client = new ChatOpenAI({
     model,
     apiKey,
     configuration: { baseURL },
-    temperature
+    temperature,
+    maxTokens: opts.maxTokens
   });
   return new ChatModelCaller(model, client);
 }
@@ -104,8 +122,8 @@ export function createOrchestrator(
   opts: OrchestratorConfigInput = {}
 ): { orchestrator: Orchestrator; config: HarnessConfig } {
   const config = buildHarnessConfig(opts);
-  const intentCaller = makeCaller(config.intentModel, 0);
-  const responseCaller = makeCaller(config.responseModel, 0.5);
+  const intentCaller = makeCaller(config.intentModel, 0, { maxTokens: 750 }); // cap intent to ~750 out tokens
+  const responseCaller = makeCaller(config.responseModel, 0.5, opts.responseCallerOptions);
 
   const intentHarness = new IntentHarness(intentCaller, intentTools, config.maxIntentIterations ?? 4);
   const memoryHarness = new MemoryHarness();

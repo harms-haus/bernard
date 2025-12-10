@@ -115,7 +115,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const inboundDelta = newInboundMessages(inputMessages);
-    const { orchestrator } = createOrchestrator(keeper, { intentModel, responseModel });
+    const { orchestrator } = createOrchestrator(keeper, {
+      intentModel,
+      responseModel,
+      responseCallerOptions: { maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : undefined }
+    });
     const result = await orchestrator.run({
       conversationId,
       incoming: inputMessages,

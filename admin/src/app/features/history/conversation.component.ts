@@ -46,6 +46,7 @@ type ToolInteractionThreadItem = {
 
 type ThreadItem =
   | { kind: 'llm-call'; id: string; trace: LlmTrace; createdAt: string | null }
+  | { kind: 'error'; id: string; message: ConversationMessage }
   | { kind: 'user' | 'assistant-text' | 'system'; id: string; message: ConversationMessage }
   | ToolInteractionThreadItem;
 
@@ -170,7 +171,11 @@ export class ConversationComponent {
       }
 
       if (message.role === 'system') {
-        items.push({ kind: 'system', id: message.id, message });
+        const isError =
+          message.name === 'orchestrator.error' ||
+          message.metadata?.['traceType'] === 'error' ||
+          message.metadata?.['traceType'] === 'orchestrator.error';
+        items.push({ kind: isError ? 'error' : 'system', id: message.id, message });
         return;
       }
 
@@ -231,6 +236,9 @@ export class ConversationComponent {
   }
 
   hasContent(message: ConversationMessage): boolean {
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length) return false;
+    const finishReason = (message.metadata as Record<string, unknown> | undefined)?.['finish_reason'];
+    if (finishReason === 'tool_calls') return false;
     const value = message.content;
     if (value === null || value === undefined) return false;
     if (typeof value === 'string') return value.trim().length > 0;

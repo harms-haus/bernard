@@ -48,6 +48,12 @@
                 @case ('llm-call') {
                   <app-llm-call [trace]="item.trace" [createdAt]="item.createdAt"></app-llm-call>
                 }
+                @case ('error') {
+                  <app-system-message-bubble
+                    [text]="renderContent(item.message)"
+                    [footer]="messageFooter(item.message)"
+                  />
+                }
                 @case ('user') {
                   <app-user-message-bubble
                     [text]="renderContent(item.message)"

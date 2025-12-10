@@ -1,3 +1,4 @@
+import { SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
 import type { IntentHarness, IntentInput, IntentOutput } from "../harness/intent/intent.harness";
@@ -55,37 +56,54 @@ export class Orchestrator {
       now: () => new Date()
     };
 
-    const [intentRes, memoryRes] = await Promise.all([
-      this.intent.run(input.intentInput ?? {}, ctx),
-      this.memory.run(input.memoryInput ?? {}, ctx)
-    ]);
+    try {
+      const [intentRes, memoryRes] = await Promise.all([
+        this.intent.run(input.intentInput ?? {}, ctx),
+        this.memory.run(input.memoryInput ?? {}, ctx)
+      ]);
 
-    // Persist intent transcript deltas (assistant tool_calls + tool results) and refresh context
-    const intentDelta = intentRes.output.transcript.slice(conversation.turns.length).filter(
-      (msg) => (msg as { _getType?: () => string })._getType?.() !== "system"
-    );
-    if (this.recordKeeper && intentDelta.length) {
-      await this.recordKeeper.appendMessages(input.conversationId, intentDelta);
+      // Persist intent transcript deltas (assistant tool_calls + tool results) and refresh context
+      const intentDelta = intentRes.output.transcript.slice(conversation.turns.length).filter(
+        (msg) => (msg as { _getType?: () => string })._getType?.() !== "system"
+      );
+      if (this.recordKeeper && intentDelta.length) {
+        await this.recordKeeper.appendMessages(input.conversationId, intentDelta);
+      }
+      if (intentDelta.length) {
+        conversation = buildConversationThread([...conversation.turns, ...intentDelta]);
+        ctx = { ...ctx, conversation };
+      }
+
+      const responseRes = await this.respond.run(
+        { intent: intentRes.output, memories: memoryRes.output } satisfies ResponseInput,
+        ctx
+      );
+
+      if (this.recordKeeper && responseRes.output?.message) {
+        await this.recordKeeper.appendMessages(input.conversationId, [responseRes.output.message]);
+      }
+
+      return {
+        intent: intentRes.output,
+        memories: memoryRes.output,
+        response: responseRes.output
+      };
+    } catch (err) {
+      const errorText = err instanceof Error ? err.message : String(err);
+      if (this.recordKeeper) {
+        const errorMessage = new SystemMessage({
+          content: `Orchestration failed: ${errorText}`,
+          name: "orchestrator.error"
+        });
+        (errorMessage as { response_metadata?: Record<string, unknown> }).response_metadata = {
+          traceType: "error",
+          errorStage: "orchestrator",
+          errorMessage: errorText
+        };
+        await this.recordKeeper.appendMessages(input.conversationId, [errorMessage]);
+      }
+      throw err;
     }
-    if (intentDelta.length) {
-      conversation = buildConversationThread([...conversation.turns, ...intentDelta]);
-      ctx = { ...ctx, conversation };
-    }
-
-    const responseRes = await this.respond.run(
-      { intent: intentRes.output, memories: memoryRes.output } satisfies ResponseInput,
-      ctx
-    );
-
-    if (this.recordKeeper && responseRes.output?.message) {
-      await this.recordKeeper.appendMessages(input.conversationId, [responseRes.output.message]);
-    }
-
-    return {
-      intent: intentRes.output,
-      memories: memoryRes.output,
-      response: responseRes.output
-    };
   }
 }
 

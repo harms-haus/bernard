@@ -7,6 +7,7 @@ export type OrchestratorConfigInput = {
   memoryModel?: string;
   maxIntentIterations?: number;
   timeoutsMs?: HarnessConfig["timeoutsMs"];
+  responseCallerOptions?: { maxTokens?: number };
 };
 
 export function buildHarnessConfig(overrides: OrchestratorConfigInput = {}): HarnessConfig {

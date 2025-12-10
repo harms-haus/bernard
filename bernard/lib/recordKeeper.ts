@@ -548,15 +548,16 @@ export class RecordKeeper {
       contentPreviewChars?: number;
     }
   ) {
-    const previewLimit = details.contentPreviewChars ?? 200;
+    const previewLimit = Number.isFinite(details.contentPreviewChars) ? details.contentPreviewChars : null;
     const maxContext = details.contextLimit ?? 12;
 
-    const trimSnapshot = (snap: ReturnType<typeof snapshotMessageForTrace>) => ({
-      ...snap,
-      ...(snap.content && typeof snap.content === "string" && snap.content.length > previewLimit
-        ? { content: `${snap.content.slice(0, previewLimit)}…` }
-        : {})
-    });
+    const trimSnapshot = (snap: ReturnType<typeof snapshotMessageForTrace>) => {
+      if (previewLimit === null) return snap;
+      if (snap.content && typeof snap.content === "string" && snap.content.length > previewLimit) {
+        return { ...snap, content: `${snap.content.slice(0, previewLimit)}…` };
+      }
+      return snap;
+    };
 
     const contextSnapshots = details.context.map((msg) => snapshotMessageForTrace(msg)).map(trimSnapshot);
     const resultMessages = Array.isArray(details.result)
