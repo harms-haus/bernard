@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
 import { Orchestrator } from "../agent/orchestrator/orchestrator";
 import { buildHarnessConfig } from "../agent/orchestrator/config";
@@ -9,7 +9,7 @@ import { IntentHarness } from "../agent/harness/intent/intent.harness";
 import { MemoryHarness } from "../agent/harness/memory/memory.harness";
 import { ResponseHarness } from "../agent/harness/respond/respond.harness";
 import { UtilityHarness } from "../agent/harness/utility/utility.harness";
-import type { HarnessContext, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
+import type { HarnessContext, LLMCaller, LLMCallConfig, LLMResponse } from "../agent/harness/lib/types";
 
 class FakeLLMCaller implements LLMCaller {
   constructor(private readonly responses: LLMResponse[]) {}
@@ -65,6 +65,75 @@ test("Orchestrator runs intent+memory then response once", async () => {
   assert.equal(result.response.text, "final response");
   assert.equal(result.intent.transcript.length >= baseConversation.length, true);
   assert.ok(Array.isArray(result.memories.memories));
+});
+
+test("Orchestrator removes blank/response tool messages before response prompt", async () => {
+  const toolCallMessage = new AIMessage({
+    content: "",
+    tool_calls: [{ id: "search_call", function: { name: "search", arguments: "{}" } }] as any
+  } as any);
+  const toolResult = new ToolMessage({ tool_call_id: "search_call", name: "search", content: "search result" });
+  const blankToolResult = new ToolMessage({ tool_call_id: "search_call", name: "search", content: "   " });
+  const respondCall = new AIMessage({
+    content: "",
+    tool_calls: [{ id: "respond_call", function: { name: "respond", arguments: "{}" } }] as any
+  } as any);
+  const respondResult = new ToolMessage({
+    tool_call_id: "respond_call",
+    name: "respond",
+    content: "Ready to hand off"
+  });
+
+  const transcript = [...baseConversation, toolCallMessage, toolResult, blankToolResult, respondCall, respondResult];
+  const intentHarness = {
+    async run() {
+      return {
+        output: { transcript, toolCalls: [], done: true },
+        done: true
+      };
+    }
+  } as unknown as IntentHarness;
+
+  let responseCallInput: LLMCallConfig | undefined;
+  const responseHarness = new ResponseHarness({
+    async call(input) {
+      responseCallInput = input;
+      return {
+        text: "ok",
+        message: new AIMessage({ content: "ok" })
+      };
+    }
+  });
+
+  const orchestrator = new Orchestrator(
+    null,
+    ctxBase.config,
+    intentHarness,
+    new MemoryHarness(),
+    responseHarness,
+    new UtilityHarness()
+  );
+
+  await orchestrator.run({
+    conversationId: "conv-filter",
+    incoming: baseConversation
+  });
+
+  assert.ok(responseCallInput);
+  const responseMessages = (responseCallInput?.messages ?? []).filter(
+    (msg) => (msg as { _getType?: () => string })._getType?.() !== "system"
+  );
+  const contents = responseMessages.map((msg) => String((msg as { content?: unknown }).content ?? ""));
+
+  assert.equal(responseMessages.length, 2);
+  assert.ok(contents.every((content) => content.trim().length > 0));
+  assert.ok(contents.some((content) => content.includes("hi orchestrator")));
+  assert.ok(contents.some((content) => content.includes("search result")));
+
+  const toolNames = responseMessages
+    .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
+    .map((msg) => (msg as { name?: string }).name);
+  assert.ok(!toolNames.includes("respond"));
 });
 
 

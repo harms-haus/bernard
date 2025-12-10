@@ -76,14 +76,14 @@ export const getWeatherHistoricalTool = tool(
   {
     name: "get_weather_historical",
     description:
-      "Get historical weather for coordinates (lat, lon, date/time: example '2024-10-10T15:00Z', '2024-10-10').",
+      "Get historical weather for coordinates (lat, lon, date/datetime: example 'YYYY-MM-DDTHH:mmZ', 'YYYY-MM-DD').",
     schema: z.object({
       lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
       lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
       target: z
         .string()
         .optional()
-        .describe("Historical date/datetime (example '2024-10-10T15:00Z', '2024-10-10')."),
+        .describe("Historical date/datetime (example 'YYYY-MM-DDTHH:mmZ', 'YYYY-MM-DD')."),
       units: z.enum(["metric", "imperial"]).optional(),
       country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
     })

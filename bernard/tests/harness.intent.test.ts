@@ -319,7 +319,7 @@ test("IntentHarness requires failed tools to be fixed before respond succeeds", 
   assert.ok(toolMessages.some((content) => content.includes("Ready to hand off")));
 });
 
-test("IntentHarness rejects calling respond() alone", async () => {
+test("IntentHarness allows respond() alone when no tools are needed", async () => {
   const respondCall = {
     id: "respond_only",
     name: "respond",
@@ -332,23 +332,17 @@ test("IntentHarness rejects calling respond() alone", async () => {
       text: "",
       message: new AIMessage({ content: "", tool_calls: [respondCall] } as any),
       toolCalls: [respondCall]
-    },
-    {
-      text: "",
-      message: new AIMessage({ content: "" }),
-      toolCalls: []
     }
   ]);
 
   const harness = new IntentHarness(caller, [], 2);
   const result = await harness.run({}, baseCtx);
 
+  assert.equal(result.output.done, true);
   const toolMessages = result.output.transcript
     .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
     .map((msg) => String((msg as { content?: unknown }).content ?? ""));
-  assert.ok(
-    toolMessages.some((content) => content.includes("respond() failed: it must accompany at least one tool call"))
-  );
+  assert.ok(toolMessages.some((content) => content.includes("No tool calls needed")));
 });
 
 test("IntentHarness allows respond() alone after prior successful tools", async () => {

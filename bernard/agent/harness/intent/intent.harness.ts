@@ -295,24 +295,15 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
               );
               continue;
             }
-            if (successfulToolRuns === 0) {
-              const reason =
-                "respond() failed: it must accompany at least one tool call or follow successful tool calls from an earlier turn.";
-              transcript.push(
-                new ToolMessage({
-                  tool_call_id: call.id,
-                  name: call.name,
-                  content: reason
-                })
-              );
-              callFailures.push({ call, reason });
-              continue;
-            }
+            const readyContent =
+              successfulToolRuns > 0
+                ? "All required tool calls already succeeded earlier in this run. Ready to hand off to the responder."
+                : "No tool calls needed this turn. Ready to hand off to the responder.";
             transcript.push(
               new ToolMessage({
                 tool_call_id: call.id,
                 name: call.name,
-                content: "All required tool calls already succeeded earlier in this run. Ready to hand off to the responder."
+                content: readyContent
               })
             );
             return { output: { transcript, toolCalls: [], done: true }, done: true };

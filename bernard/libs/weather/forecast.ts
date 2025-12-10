@@ -84,14 +84,14 @@ export const getWeatherForecastTool = tool(
   {
     name: "get_weather_forecast",
     description:
-      "Get forecast for coordinates (lat, lon, date/time: example '2025-02-15T15:00Z').",
+      "Get forecast for coordinates (lat, lon, date/datetime: example 'YYYY-MM-DDTHH:mmZ', 'YYYY-MM-DD').",
     schema: z.object({
       lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
       lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
       target: z
         .string()
         .optional()
-        .describe("Date or datetime (example '2025-02-15T15:00Z', '2025-02-15')."),
+        .describe("Date/datetime (example 'YYYY-MM-DDTHH:mmZ', 'YYYY-MM-DD')."),
       units: z.enum(["metric", "imperial"]).optional(),
       country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
     })

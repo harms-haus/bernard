@@ -2,23 +2,21 @@
   <div class="section-header">
     <div>
       <h1>Chat with Bernard</h1>
-      <p class="muted">Sends live requests to {{ endpointLabel() }}.</p>
+      <p class="muted">Sends live requests to {{ endpointLabel() || '/v1/chat/completions' }}.</p>
     </div>
     <div class="section-actions">
-      <p-tag value="Live" severity="success"></p-tag>
       <button
         pButton
         type="button"
         icon="pi pi-refresh"
         label="New conversation"
-        [disabled]="sending()"
-        (click)="resetConversation()"
         severity="secondary"
+        (click)="resetConversation()"
       ></button>
     </div>
   </div>
 
-  <div class="config">
+  <div class="config" aria-label="Chat configuration">
     <div class="field">
       <label for="endpoint">API endpoint</label>
       <input
@@ -28,7 +26,7 @@
         autocomplete="url"
         [formControl]="form.controls.endpoint"
       />
-      <small class="muted">Defaults to the running Bernard instance (localhost:3000).</small>
+      <small class="muted">Defaults to the running Bernard instance (/v1/chat/completions).</small>
     </div>
     <div class="field">
       <label for="token">Bearer token</label>
@@ -49,61 +47,19 @@
   }
 
   <div class="chat-frame" aria-live="polite">
-    @if (messages().length === 0) {
-      <p class="muted empty">Start chatting to see messages here.</p>
-    } @else {
-      <div class="messages">
-        @for (message of messages(); track message.id; let i = $index) {
-          @switch (message.kind) {
-            @case ('tool') {
-              <div class="tool-block">
-                <div class="tool-header">
-                  <div class="tool-meta">
-                    <div class="tool-name" [title]="formatArgs(message.args)">
-                      {{ formatToolSignature(message.toolName, message.args) }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            }
-            @default {
-              <div class="message" [class.outgoing]="message.role === 'user'">
-                <div class="bubble" [attr.data-role]="message.role">
-                  @if (message.pending) {
-                    <div class="meta">
-                      <span class="pending">responding…</span>
-                    </div>
-                  }
-                  <p>{{ message.content || '…' }}</p>
-                </div>
-                @if (isLastChatRole(i)) {
-                  <div class="role-footer" [class.outgoing]="message.role === 'user'">
-                    {{ roleLabel(message.role) }}
-                  </div>
-                }
-              </div>
-            }
-          }
-        }
-      </div>
-    }
+    <deep-chat
+      #deepChat
+      class="deep-chat-host"
+      [style.width.%]="100"
+      [style.maxWidth.%]="100"
+      [connect]="connectConfig()"
+      [chatStyle]="chatStyle"
+      [messageStyles]="messageStyles"
+      [textInput]="textInputConfig"
+      [errorMessages]="errorMessages"
+      [submitButtonStyles]="submitButtonStyles"
+    ></deep-chat>
   </div>
-
-  <form class="composer" (ngSubmit)="send()">
-    <label for="message">Message</label>
-    <div class="composer-row">
-      <textarea
-        id="message"
-        rows="3"
-        pInputTextarea
-        autoResize="true"
-        placeholder="Ask Bernard to check status, set a timer, or search the web…"
-        [formControl]="form.controls.message"
-        (keydown)="handleComposerKeydown($event)"
-      ></textarea>
-      <button pButton type="submit" label="Send" icon="pi pi-send" [disabled]="!canSend()"></button>
-    </div>
-  </form>
 </section>
 
 

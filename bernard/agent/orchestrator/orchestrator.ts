@@ -8,6 +8,37 @@ import type { UtilityHarness } from "../harness/utility/utility.harness";
 import type { HarnessContext, HarnessResult, HarnessConfig, ConversationThread } from "../harness/lib/types";
 import { buildConversationThread } from "../record-keeper/record-keeper";
 import type { RecordKeeper } from "@/lib/recordKeeper";
+import { contentFromMessage } from "@/lib/messages";
+
+const RESPOND_TOOL_NAME = "respond";
+
+function isRespondToolCall(message: BaseMessage): boolean {
+  const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
+  if (Array.isArray(toolCalls)) {
+    for (const call of toolCalls) {
+      const fn = (call as { function?: { name?: string } }).function;
+      const name = (call as { name?: string }).name ?? fn?.name;
+      if (name === RESPOND_TOOL_NAME) return true;
+    }
+  }
+  const legacyFn = (message as { function_call?: { name?: string } }).function_call;
+  if (legacyFn?.name === RESPOND_TOOL_NAME) return true;
+  const messageType = (message as { _getType?: () => string })._getType?.();
+  if (messageType === "tool") {
+    const name = (message as { name?: string }).name ?? (message as { tool_call_id?: string }).tool_call_id;
+    return name === RESPOND_TOOL_NAME;
+  }
+  return false;
+}
+
+function isBlankMessage(message: BaseMessage): boolean {
+  const content = contentFromMessage(message);
+  return !content || !content.trim();
+}
+
+function filterMessagesForResponseContext(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((message) => !isRespondToolCall(message) && !isBlankMessage(message));
+}
 
 export type OrchestratorRunInput = {
   conversationId: string;
@@ -74,9 +105,14 @@ export class Orchestrator {
         ctx = { ...ctx, conversation };
       }
 
+      const responseConversation = buildConversationThread(
+        filterMessagesForResponseContext(conversation.turns)
+      );
+      const responseCtx = { ...ctx, conversation: responseConversation };
+
       const responseRes = await this.respond.run(
         { intent: intentRes.output, memories: memoryRes.output } satisfies ResponseInput,
-        ctx
+        responseCtx
       );
 
       if (this.recordKeeper && responseRes.output?.message) {
