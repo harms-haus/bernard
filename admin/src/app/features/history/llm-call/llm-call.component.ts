@@ -52,6 +52,22 @@ export class LlmCallComponent {
   protected readonly resultEntryViews = computed(() =>
     this.buildEntryViews(this.trace().result ?? [])
   );
+  protected readonly toolName = (entry: TraceEntry | null, call: ToolCall | null): string | null => {
+    const entryName = entry?.name;
+    if (typeof entryName === 'string' && entryName.trim()) return entryName.trim();
+
+    const functionName = call?.function?.name;
+    if (typeof functionName === 'string' && functionName.trim()) return functionName.trim();
+
+    const callName = call?.name;
+    if (typeof callName === 'string' && callName.trim()) return callName.trim();
+
+    const callType = call?.type;
+    if (typeof callType === 'string' && callType.trim()) return callType.trim();
+
+    const resolved = this.resolveCallId(call);
+    return resolved ?? null;
+  };
 
   toggleExpanded() {
     this.expanded.update((current) => !current);

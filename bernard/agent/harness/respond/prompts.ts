@@ -9,7 +9,7 @@ export const bernardSystemPrompt = [
   "Context: you are very likely to answer with text-to-speech, so make sure your response is readable aloud."
 ].join("\n");
 
-export function buildResponseSystemPrompt(now: Date = new Date()) {
+export function buildCurrentDateTimePrompt(now: Date = new Date()) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const formatter = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
@@ -21,8 +21,12 @@ export function buildResponseSystemPrompt(now: Date = new Date()) {
     timeZone,
     timeZoneName: "short"
   });
-  const currentDateTime = `Current date/time: ${formatter.format(now)} (${timeZone})`;
-  return [bernardSystemPrompt, currentDateTime].join("\n");
+  return `Current date/time: ${formatter.format(now)} (${timeZone})`;
+}
+
+export function buildResponseSystemPrompt(now: Date = new Date()) {
+  const sections: Array<string | null> = [buildCurrentDateTimePrompt(now), bernardSystemPrompt];
+  return sections.filter((section): section is string => Boolean(section)).join("\n\n");
 }
 
 

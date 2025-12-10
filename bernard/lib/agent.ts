@@ -28,14 +28,28 @@ type LegacyGraphContext = {
   intentModel?: string;
 };
 
+function newInboundMessages(messages: BaseMessage[]): BaseMessage[] {
+  let lastAssistantIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const type = (messages[i] as { _getType?: () => string })._getType?.();
+    if (type === "ai") {
+      lastAssistantIndex = i;
+      break;
+    }
+  }
+  return messages.slice(lastAssistantIndex + 1);
+}
+
 export function buildGraph(ctx: LegacyGraphContext, _deps: Record<string, unknown> = {}) {
   const responseModel = ctx.responseModel ?? ctx.model ?? getPrimaryModel("response");
   const intentModel = ctx.intentModel ?? getPrimaryModel("intent", { fallback: [responseModel] });
   const { orchestrator } = createOrchestrator(ctx.recordKeeper, { intentModel, responseModel });
   const invoke = async (input: { messages: BaseMessage[] }) => {
+    const persistable = newInboundMessages(input.messages);
     const result = await orchestrator.run({
       conversationId: ctx.conversationId,
       incoming: input.messages,
+      persistable,
       intentInput: {},
       memoryInput: {}
     });

@@ -35,10 +35,10 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
       model: ctx.config.responseModel,
       messages,
       meta: {
-        conversationId: ctx.conversationId,
-        requestId: ctx.requestId,
-        turnId: ctx.turnId,
-        recordKeeper: ctx.recordKeeper,
+        ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
+        ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+        ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
+        ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
         traceName: "response"
       }
     });

@@ -93,7 +93,7 @@
   @if (view.kind === 'tool-interaction') {
     <app-tool-call-bubble
       [call]="view.call"
-      [name]="view.source.name || 'Tool'"
+      [name]="toolName(view.source, view.call)"
       [content]="toolEntryContent(view)"
       [footer]="entryFooter(view.response ?? view.source)"
       [textOnly]="textOnly()"
@@ -121,7 +121,7 @@
         @default {
           <app-tool-call-bubble
             [call]="toolCallFromEntry(view.entry)"
-            [name]="view.entry.name || 'Tool'"
+            [name]="toolName(view.entry, toolCallFromEntry(view.entry))"
             [content]="entryText(view.entry)"
             [footer]="entryFooter(view.entry)"
             [textOnly]="textOnly()"
