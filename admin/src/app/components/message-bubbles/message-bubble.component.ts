@@ -29,13 +29,17 @@ type BubbleAlign = 'start' | 'end';
         [class.expandable]="effectiveExpandable()"
         [class.expanded]="isExpanded()"
         [attr.data-role]="role()"
-        [attr.tabindex]="effectiveExpandable() ? 0 : null"
-        [attr.role]="effectiveExpandable() ? 'button' : null"
-        [attr.aria-expanded]="effectiveExpandable() ? isExpanded() : null"
-        (click)="toggleExpanded()"
-        (keydown)="onKeydown($event)"
       >
-        <div class="bubble-main" [class.reverse]="isOutgoing()">
+        <div
+          class="bubble-main"
+          [class.reverse]="isOutgoing()"
+          [class.clickable]="effectiveExpandable()"
+          [attr.tabindex]="effectiveExpandable() ? 0 : null"
+          [attr.role]="effectiveExpandable() ? 'button' : null"
+          [attr.aria-expanded]="effectiveExpandable() ? isExpanded() : null"
+          (click)="onToggleRequested()"
+          (keydown)="onKeydown($event)"
+        >
           <div class="message-bubble-content">
             <ng-content select="[message-bubble-content]" />
           </div>
@@ -113,7 +117,7 @@ export class MessageBubbleComponent {
   });
   protected readonly effectiveExpandable = computed(() => this.expandable() && this.hasExpandingContent());
 
-  toggleExpanded() {
+  onToggleRequested() {
     if (!this.effectiveExpandable()) return;
     this.expanded.update((current) => !current);
   }
@@ -123,7 +127,7 @@ export class MessageBubbleComponent {
     const key = event.key;
     if (key === 'Enter' || key === ' ') {
       event.preventDefault();
-      this.toggleExpanded();
+      this.onToggleRequested();
     }
   }
 }

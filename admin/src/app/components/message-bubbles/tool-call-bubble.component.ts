@@ -93,34 +93,7 @@ export class ToolCallBubbleComponent {
   private formatArgumentList(args: unknown): string {
     const normalized = this.parseMaybeJson(args);
     if (normalized === undefined || normalized === null || normalized === '') return '()';
-    return `(${this.formatValue(normalized)})`;
-  }
-
-  private formatValue(value: unknown, depth = 0): string {
-    if (value === null || value === undefined) return '—';
-    if (typeof value === 'string') return this.compact(value, 120);
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-
-    if (Array.isArray(value)) {
-      if (depth > 1) return '[…]';
-      const rendered = value.slice(0, 4).map((entry) => this.formatValue(entry, depth + 1)).join(', ');
-      const suffix = value.length > 4 ? ', …' : '';
-      return `[${rendered}${suffix}]`;
-    }
-
-    if (typeof value === 'object') {
-      if (depth > 1) return '{…}';
-      const entries = Object.entries(value as Record<string, unknown>);
-      if (!entries.length) return '{}';
-      const rendered = entries
-        .slice(0, 6)
-        .map(([key, val]) => `${key}: ${this.formatValue(val, depth + 1)}`)
-        .join(', ');
-      const suffix = entries.length > 6 ? ' …' : '';
-      return `${rendered}${suffix}`;
-    }
-
-    return this.compact(String(value), 120);
+    return `(${this.safeStringify(normalized)})`;
   }
 
   private safeStringify(value: unknown): string {
