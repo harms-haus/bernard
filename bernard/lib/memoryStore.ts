@@ -266,15 +266,43 @@ export class MemoryStore {
     return hits;
   }
 
-  static verifyConfiguration(config: EmbeddingConfig = {}): { ok: boolean; reason?: string } {
-    const embeddingCheck = verifyEmbeddingConfig(config);
-    if (!embeddingCheck.ok) return embeddingCheck;
-    return { ok: true };
+  static verifyConfiguration(config: EmbeddingConfig = {}): Promise<{ ok: boolean; reason?: string }> {
+    return verifyMemoryConfiguration(config);
   }
 }
 
 export async function getMemoryStore(config: EmbeddingConfig = {}): Promise<MemoryStore> {
   const vectorStore = getVectorStore(config);
   return new MemoryStore(getRedis(), vectorStore);
+}
+
+async function verifyRedisSearch(client: RedisClientType): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    await client.sendCommand(["FT._LIST"]);
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const reason = message.toLowerCase().includes("unknown command")
+      ? "Redis search module missing (RediSearch/redis-stack required)."
+      : `Redis search check failed: ${message}`;
+    return { ok: false, reason };
+  }
+}
+
+export async function verifyMemoryConfiguration(
+  config: EmbeddingConfig = {}
+): Promise<{ ok: boolean; reason?: string }> {
+  const embeddingCheck = verifyEmbeddingConfig(config);
+  if (!embeddingCheck.ok) return embeddingCheck;
+
+  try {
+    const client = await getVectorClient();
+    const searchCheck = await verifyRedisSearch(client);
+    if (!searchCheck.ok) return searchCheck;
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason: message };
+  }
 }
 

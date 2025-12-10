@@ -47,19 +47,27 @@ ensure_redis() {
 
   local container_name="bernard-redis"
   local volume_name="bernard-redis-data"
+  local redis_image="${REDIS_IMAGE:-redis/redis-stack-server:7.4.0-v0}"
 
   if docker ps -a --format '{{.Names}}' | grep -Fxq "${container_name}"; then
-    echo "Starting existing redis container ${container_name}..."
-    docker start "${container_name}" >/dev/null
-  else
-    echo "Creating redis container ${container_name} with volume ${volume_name}..."
-    docker run -d \
-      --name "${container_name}" \
-      -p "${REDIS_PORT}:6379" \
-      -v "${volume_name}:/data" \
-      redis:7 \
-      --save 60 1 --appendonly yes >/dev/null
+    local current_image
+    current_image="$(docker inspect -f '{{.Config.Image}}' "${container_name}" 2>/dev/null || true)"
+    if [[ "${current_image}" == "${redis_image}" ]]; then
+      echo "Starting existing redis container ${container_name}..."
+      docker start "${container_name}" >/dev/null
+      return
+    fi
+
+    echo "Replacing redis container ${container_name} with image ${redis_image}..."
+    docker rm -f "${container_name}" >/dev/null || true
   fi
+
+  echo "Creating redis container ${container_name} with volume ${volume_name}..."
+  docker run -d \
+    --name "${container_name}" \
+    -p "${REDIS_PORT}:6379" \
+    -v "${volume_name}:/data" \
+    "${redis_image}" >/dev/null
 
   REDIS_CONTAINER="${container_name}"
   echo "Redis container ready: ${REDIS_CONTAINER}"

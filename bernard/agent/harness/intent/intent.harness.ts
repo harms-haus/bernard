@@ -19,7 +19,7 @@ export type IntentTool = {
   description?: string;
   schema?: unknown;
   invoke: (input: Record<string, unknown>) => Promise<unknown>;
-  verifyConfiguration?: () => { ok: boolean; reason?: string };
+  verifyConfiguration?: () => { ok: boolean; reason?: string } | Promise<{ ok: boolean; reason?: string }>;
 };
 
 export type IntentOutput = {
@@ -30,27 +30,6 @@ export type IntentOutput = {
 
 type DisabledTool = { name: string; reason?: string | undefined };
 type ToolFailure = { call: ToolCall; reason: string };
-
-function partitionTools(tools: IntentTool[]): { available: IntentTool[]; disabled: DisabledTool[] } {
-  const available: IntentTool[] = [];
-  const disabled: DisabledTool[] = [];
-  for (const tool of tools) {
-    if (tool.verifyConfiguration) {
-      try {
-        const verify = tool.verifyConfiguration();
-        if (!verify?.ok) {
-          disabled.push({ name: tool.name, reason: verify?.reason });
-          continue;
-        }
-      } catch (err) {
-        disabled.push({ name: tool.name, reason: err instanceof Error ? err.message : String(err) });
-        continue;
-      }
-    }
-    available.push(tool);
-  }
-  return { available, disabled };
-}
 
 function buildRespondTool(): IntentTool {
   return {
@@ -114,8 +93,10 @@ function canonicalToolKey(name: string, args: Record<string, unknown>): string {
 
 export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   private readonly tools: IntentTool[];
-  private readonly toolsForLLM: IntentTool[];
-  private readonly disabledTools: DisabledTool[];
+  private toolsForLLM: IntentTool[] = [];
+  private disabledTools: DisabledTool[] = [];
+  private availableTools: IntentTool[] = [];
+  private toolsReady?: Promise<void>;
   private readonly llm: LLMCaller;
   private readonly maxIterations: number;
 
@@ -124,14 +105,40 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     if (tools.some((tool) => tool.name === RESPOND_TOOL_NAME)) {
       throw new Error(`Intent tool name "${RESPOND_TOOL_NAME}" is reserved by the harness.`);
     }
-    const { available, disabled } = partitionTools(tools);
-    this.tools = available;
-    this.toolsForLLM = [...available, buildRespondTool()];
-    this.disabledTools = disabled;
+    this.tools = tools;
     this.maxIterations = maxIterations;
   }
 
+  private async ensureToolsReady() {
+    if (this.toolsReady) return this.toolsReady;
+    this.toolsReady = (async () => {
+      const available: IntentTool[] = [];
+      const disabled: DisabledTool[] = [];
+      for (const tool of this.tools) {
+        if (tool.verifyConfiguration) {
+          try {
+            const verify = await tool.verifyConfiguration();
+            if (!verify?.ok) {
+              disabled.push({ name: tool.name, reason: verify?.reason });
+              continue;
+            }
+          } catch (err) {
+            disabled.push({ name: tool.name, reason: err instanceof Error ? err.message : String(err) });
+            continue;
+          }
+        }
+        available.push(tool);
+      }
+      this.availableTools = available;
+      this.disabledTools = disabled;
+      this.toolsForLLM = [...available, buildRespondTool()];
+    })();
+    return this.toolsReady;
+  }
+
   async run(input: IntentInput, ctx: HarnessContext): Promise<HarnessResult<IntentOutput>> {
+    await this.ensureToolsReady();
+
     const transcript: BaseMessage[] = [...ctx.conversation.turns];
     const historyLength = transcript.length;
     if (input.messageText) {
