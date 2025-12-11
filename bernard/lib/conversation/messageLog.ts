@@ -10,7 +10,10 @@ function uniqueId(prefix: string) {
   return `${prefix}_${Math.random().toString(16).slice(2, 12)}`;
 }
 
-function mapMessageRole(type: string | undefined): MessageRecord["role"] {
+/**
+ * Normalize LangChain message types to the roles persisted in Redis.
+ */
+export function mapMessageRole(type: string | undefined): MessageRecord["role"] {
   if (type === "ai" || type === "assistant") return "assistant";
   if (type === "human" || type === "user") return "user";
   if (type === "system") return "system";
@@ -18,7 +21,11 @@ function mapMessageRole(type: string | undefined): MessageRecord["role"] {
   return "user";
 }
 
-function normalizeMessageContent(content: unknown): MessageRecord["content"] {
+/**
+ * Accept permissive content shapes from LangChain and coerce them into
+ * a record-friendly representation.
+ */
+export function normalizeMessageContent(content: unknown): MessageRecord["content"] {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) return content.filter((part) => typeof part === "object") as Array<Record<string, unknown>>;
   if (content && typeof content === "object") return content as Record<string, unknown>;
@@ -29,7 +36,10 @@ function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord
   return "role" in msg && "createdAt" in msg;
 }
 
-function toToolCallEntry(raw: unknown): ToolCallEntry {
+/**
+ * Safely strip unknown tool call inputs down to the subset we persist.
+ */
+export function toToolCallEntry(raw: unknown): ToolCallEntry {
   if (!raw || typeof raw !== "object") {
     const name = typeof raw === "string" ? raw : safeStringify(raw ?? "");
     return { name };
@@ -53,7 +63,10 @@ function toToolCallEntry(raw: unknown): ToolCallEntry {
   return normalized;
 }
 
-function contentToText(content: unknown): string {
+/**
+ * Convert arbitrary message content into a string suitable for tracing.
+ */
+export function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const flattened = content
@@ -82,7 +95,10 @@ function contentToText(content: unknown): string {
   return safeStringify(content);
 }
 
-function countToolCallsInMessages(messages: MessageRecord[]): number {
+/**
+ * Count tool calls by inspecting assistant tool_calls and tool role outputs.
+ */
+export function countToolCallsInMessages(messages: MessageRecord[]): number {
   return messages.reduce((total, message) => {
     const fromToolCalls =
       message.role === "assistant" && Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
@@ -91,7 +107,10 @@ function countToolCallsInMessages(messages: MessageRecord[]): number {
   }, 0);
 }
 
-function isErrorRecord(message: MessageRecord): boolean {
+/**
+ * Identify orchestrator and trace errors.
+ */
+export function isErrorRecord(message: MessageRecord): boolean {
   const name = message.name ?? "";
   const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType ?? "";
   if (traceType === "error" || traceType === "orchestrator.error") return true;
@@ -99,7 +118,10 @@ function isErrorRecord(message: MessageRecord): boolean {
   return false;
 }
 
-function countUserAssistantMessages(messages: MessageRecord[]): number {
+/**
+ * Count user and assistant messages for conversation stats.
+ */
+export function countUserAssistantMessages(messages: MessageRecord[]): number {
   return messages.reduce((total, message) => {
     return message.role === "user" || message.role === "assistant" ? total + 1 : total;
   }, 0);
@@ -133,6 +155,9 @@ export function snapshotMessageForTrace(message: BaseMessage | MessageRecord) {
   };
 }
 
+/**
+ * Persists conversation messages to Redis while maintaining lightweight counters.
+ */
 export class MessageLog {
   constructor(private readonly redis: Redis, private readonly key: (suffix: string) => string) {}
 
@@ -185,6 +210,9 @@ export class MessageLog {
     return message;
   }
 
+  /**
+   * Append messages to the conversation log and update relevant counters.
+   */
   async append(conversationId: string, messages: Array<BaseMessage | MessageRecord>, convKey: string) {
     if (!messages.length) return;
     const serialized = messages.map((msg) => this.serializeMessage(msg));

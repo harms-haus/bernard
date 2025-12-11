@@ -104,10 +104,13 @@ export type BernardSettings = {
   backups: BackupSettings;
 };
 
-type Section = keyof BernardSettings;
+export type Section = keyof BernardSettings;
 type PersistedSettings = Partial<Record<Section, unknown>>;
 
-const parseJson = <T>(raw: string | null, schema: z.ZodSchema<T>): T | null => {
+/**
+ * Safely parses JSON and validates it against a Zod schema, returning null on failure.
+ */
+export const parseJson = <T>(raw: string | null, schema: z.ZodSchema<T>): T | null => {
   if (!raw) return null;
   try {
     return schema.parse(JSON.parse(raw));
@@ -116,7 +119,10 @@ const parseJson = <T>(raw: string | null, schema: z.ZodSchema<T>): T | null => {
   }
 };
 
-function normalizeList(raw?: string | string[] | null): string[] {
+/**
+ * Normalizes comma-separated or JSON array strings/arrays into a trimmed string array.
+ */
+export function normalizeList(raw?: string | string[] | null): string[] {
   if (Array.isArray(raw)) {
     return raw.map((item) => String(item).trim()).filter(Boolean);
   }
@@ -140,7 +146,10 @@ function normalizeList(raw?: string | string[] | null): string[] {
     .filter(Boolean);
 }
 
-function defaultModelCategory(envKey: string, fallback?: string[]): ModelCategorySettings {
+/**
+ * Builds a model category from env vars (preferred) with optional fallback lists.
+ */
+export function defaultModelCategory(envKey: string, fallback?: string[]): ModelCategorySettings {
   const configured = normalizeList(process.env[envKey]);
   const legacy = normalizeList(process.env["OPENROUTER_MODEL"]);
   const primary = configured[0] ?? fallback?.[0] ?? legacy[0] ?? DEFAULT_MODEL;
@@ -148,7 +157,10 @@ function defaultModelCategory(envKey: string, fallback?: string[]): ModelCategor
   return { primary, fallbacks };
 }
 
-function defaultModels(): ModelsSettings {
+/**
+ * Default model selections for each category, cascading from response models.
+ */
+export function defaultModels(): ModelsSettings {
   const response = defaultModelCategory("RESPONSE_MODELS");
   const intent = defaultModelCategory("INTENT_MODELS", [response.primary]);
   const memory = defaultModelCategory("MEMORY_MODELS", [response.primary]);
@@ -157,7 +169,10 @@ function defaultModels(): ModelsSettings {
   return { response, intent, memory, utility, aggregation };
 }
 
-function defaultServices(): ServicesSettings {
+/**
+ * Default third-party service configuration sourced from environment variables.
+ */
+export function defaultServices(): ServicesSettings {
   return {
     memory: {
       embeddingModel: process.env["EMBEDDING_MODEL"],
@@ -186,7 +201,10 @@ function defaultServices(): ServicesSettings {
   };
 }
 
-function defaultOauth(): OAuthSettings {
+/**
+ * Default OAuth provider configuration derived from shared and provider env vars.
+ */
+export function defaultOauth(): OAuthSettings {
   const base = {
     authUrl: process.env["OAUTH_AUTH_URL"] ?? "",
     tokenUrl: process.env["OAUTH_TOKEN_URL"] ?? "",
@@ -219,7 +237,10 @@ function defaultOauth(): OAuthSettings {
   };
 }
 
-function defaultBackups(): BackupSettings {
+/**
+ * Default backup settings with guarded numeric parsing and sensible fallbacks.
+ */
+export function defaultBackups(): BackupSettings {
   const toNumber = (value: string | undefined, fallback: number) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -232,7 +253,10 @@ function defaultBackups(): BackupSettings {
   };
 }
 
-function ensureDirectory(dir: string) {
+/**
+ * Ensures a directory exists on disk, creating it recursively when missing.
+ */
+export function ensureDirectory(dir: string) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -242,7 +266,10 @@ export class SettingsStore {
   private readonly namespace: string;
   private readonly onChange?: (section: Section) => void;
 
-  constructor(private readonly redis: Redis = getRedis(), opts: { namespace?: string; onChange?: (section: Section) => void } = {}) {
+  constructor(
+    private readonly redis: Pick<Redis, "get" | "set"> = getRedis(),
+    opts: { namespace?: string; onChange?: (section: Section) => void } = {}
+  ) {
     this.namespace = opts.namespace ?? SETTINGS_NAMESPACE;
     this.onChange = opts.onChange;
   }

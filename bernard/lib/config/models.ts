@@ -1,8 +1,27 @@
 import { getSettings } from "./settingsCache";
-import type { ModelCategorySettings } from "./settingsStore";
+import type { BernardSettings, ModelCategorySettings } from "./settingsStore";
 
 const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+
+export const DEFAULT_MODEL_ID = DEFAULT_MODEL;
+
+type SettingsFetcher = (forceRefresh?: boolean) => Promise<BernardSettings>;
+let fetchSettings: SettingsFetcher = getSettings;
+
+/**
+ * Swap out the settings fetcher (primarily for tests).
+ */
+export function setSettingsFetcher(fetcher: SettingsFetcher) {
+  fetchSettings = fetcher;
+}
+
+/**
+ * Restore the default settings fetcher.
+ */
+export function resetSettingsFetcher() {
+  fetchSettings = getSettings;
+}
 
 export type ModelCategory = "response" | "intent" | "aggregation" | "utility" | "memory";
 
@@ -27,7 +46,10 @@ export type ResolvedModel = {
   options?: ModelCallOptions;
 };
 
-function normalizeList(raw?: string | string[] | null): string[] {
+/**
+ * Normalize a raw list from env or configuration into a trimmed string array.
+ */
+export function normalizeList(raw?: string | string[] | null): string[] {
   if (Array.isArray(raw)) {
     return raw.map((item) => String(item).trim()).filter(Boolean);
   }
@@ -51,7 +73,10 @@ function normalizeList(raw?: string | string[] | null): string[] {
     .filter(Boolean);
 }
 
-function listFromSettings(category: ModelCategory, settings?: ModelCategorySettings): string[] {
+/**
+ * Resolve a model list for a category from settings, falling back to env vars.
+ */
+export function listFromSettings(category: ModelCategory, settings?: ModelCategorySettings): string[] {
   if (!settings) return [];
   const models = [settings.primary, ...(settings.fallbacks ?? [])].map((m) => m.trim()).filter(Boolean);
   if (models.length) return models;
@@ -60,6 +85,9 @@ function listFromSettings(category: ModelCategory, settings?: ModelCategorySetti
   return envModels.length ? envModels : [];
 }
 
+/**
+ * Resolve a prioritized list of models for a category.
+ */
 export async function getModelList(
   category: ModelCategory,
   opts: { fallback?: string[]; override?: string | string[] } = {}
@@ -67,7 +95,7 @@ export async function getModelList(
   const override = normalizeList(opts.override);
   if (override.length) return override;
 
-  const settings = await getSettings();
+  const settings = await fetchSettings();
   const fromSettings = listFromSettings(category, settings.models[category] as ModelCategorySettings | undefined);
   if (fromSettings.length) return fromSettings;
 
@@ -85,6 +113,9 @@ export async function getModelList(
   return [DEFAULT_MODEL];
 }
 
+/**
+ * Resolve the first model id for a category (or a default).
+ */
 export async function getPrimaryModel(
   category: ModelCategory,
   opts: { fallback?: string[]; override?: string | string[] } = {}
@@ -93,14 +124,23 @@ export async function getPrimaryModel(
   return models[0] ?? DEFAULT_MODEL;
 }
 
+/**
+ * Resolve the base URL, preferring call options over explicit and env defaults.
+ */
 export function resolveBaseUrl(baseURL?: string, options?: ModelCallOptions): string {
   return options?.baseUrl ?? baseURL ?? process.env["OPENROUTER_BASE_URL"] ?? DEFAULT_BASE_URL;
 }
 
+/**
+ * Resolve the API key, preferring call options over explicit and env defaults.
+ */
 export function resolveApiKey(apiKey?: string, options?: ModelCallOptions): string | undefined {
   return options?.apiKey ?? apiKey ?? process.env["OPENROUTER_API_KEY"];
 }
 
+/**
+ * Split a combined model/provider string into its parts.
+ */
 export function splitModelAndProvider(modelId: string): { model: string; providerOnly?: string[] } {
   const [rawModel, rawProvider] = modelId.split("|", 2);
   const model = (rawModel ?? modelId).trim();
@@ -111,11 +151,14 @@ export function splitModelAndProvider(modelId: string): { model: string; provide
   return { model: model || modelId, providerOnly: providerOnly?.length ? providerOnly : undefined };
 }
 
+/**
+ * Resolve the primary model and any configured call options for a category.
+ */
 export async function resolveModel(
   category: ModelCategory,
   opts: { fallback?: string[]; override?: string | string[] } = {}
 ): Promise<ResolvedModel> {
-  const settings = await getSettings();
+  const settings = await fetchSettings();
   const modelSettings = settings.models[category] as ModelCategorySettings | undefined;
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;

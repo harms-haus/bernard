@@ -6,6 +6,9 @@ const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;
 const EMBEDDING_VERIFY_TIMEOUT_MS = 5_000;
 const EMBEDDING_LOG_PREFIX = "[embeddings]";
 
+/**
+ * Runtime configuration for embedding requests.
+ */
 export type EmbeddingConfig = {
   apiKey?: string;
   baseUrl?: string;
@@ -13,10 +16,34 @@ export type EmbeddingConfig = {
 };
 
 type VerifyResult = { ok: boolean; reason?: string };
+type ResolvedEmbeddingConfig = { apiKey: string; baseUrl?: string; model: string };
+type EmbeddingFactoryOptions = ConstructorParameters<typeof OpenAIEmbeddings>[0];
+type EmbeddingFactory = (options: EmbeddingFactoryOptions) => OpenAIEmbeddings;
 
-let cachedEmbeddingCheck: { expiresAt: number; result: VerifyResult } | null = null;
-let inflightEmbeddingCheck: Promise<VerifyResult> | null = null;
-let loggedModelConfig = false;
+type EmbeddingState = {
+  cachedEmbeddingCheck: { expiresAt: number; result: VerifyResult } | null;
+  inflightEmbeddingCheck: Promise<VerifyResult> | null;
+  loggedModelConfig: boolean;
+};
+
+const EMBEDDING_STATE_KEY = Symbol.for("bernard.embeddings.state");
+
+function getEmbeddingState(): EmbeddingState {
+  const g = globalThis as Record<string | symbol, unknown>;
+  if (!g[EMBEDDING_STATE_KEY]) {
+    g[EMBEDDING_STATE_KEY] = {
+      cachedEmbeddingCheck: null,
+      inflightEmbeddingCheck: null,
+      loggedModelConfig: false
+    } satisfies EmbeddingState;
+  }
+  return g[EMBEDDING_STATE_KEY] as EmbeddingState;
+}
+
+const embeddingState = getEmbeddingState();
+
+let settingsFetcher: typeof getSettings = getSettings;
+let embeddingsFactory: EmbeddingFactory = (options) => new OpenAIEmbeddings(options);
 
 function embeddingUrl(baseUrl: string | undefined): string {
   const base = baseUrl ?? "https://api.openai.com/v1";
@@ -24,14 +51,14 @@ function embeddingUrl(baseUrl: string | undefined): string {
 }
 
 function logModelConfig(source: "probe" | "runtime", baseUrl: string | undefined, model: string) {
-  if (loggedModelConfig && source === "runtime") return;
-  if (source === "runtime") loggedModelConfig = true;
+  if (embeddingState.loggedModelConfig && source === "runtime") return;
+  if (source === "runtime") embeddingState.loggedModelConfig = true;
   const base = baseUrl ? baseUrl.replace(/\/+$/, "") : "default(openai)";
   console.info(`${EMBEDDING_LOG_PREFIX} ${source} resolved base=${base} model=${model}`);
 }
 
-async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<{ apiKey?: string; baseUrl?: string; model: string }> {
-  const settings = await getSettings().catch(() => null);
+async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<ResolvedEmbeddingConfig> {
+  const settings = await settingsFetcher().catch(() => null);
   const service = settings?.services.memory;
   const apiKey = config.apiKey ?? service?.embeddingApiKey ?? process.env["EMBEDDING_API_KEY"];
   const baseUrl = config.baseUrl ?? service?.embeddingBaseUrl ?? process.env["EMBEDDING_BASE_URL"];
@@ -39,8 +66,7 @@ async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<{ apiKey
   return { apiKey: apiKey ?? "", baseUrl, model };
 }
 
-async function runEmbeddingProbe(config: EmbeddingConfig): Promise<VerifyResult> {
-  const resolved = await resolveEmbeddingConfig(config);
+async function runEmbeddingProbe(resolved: ResolvedEmbeddingConfig): Promise<VerifyResult> {
   if (!resolved.apiKey) {
     return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
   }
@@ -83,31 +109,41 @@ async function runEmbeddingProbe(config: EmbeddingConfig): Promise<VerifyResult>
   }
 }
 
+/**
+ * Validate embeddings configuration by running a short probe request.
+ */
 export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promise<VerifyResult> {
-  const resolved = await resolveEmbeddingConfig(config);
-  if (!resolved.apiKey) {
-    return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
-  }
-
   const now = Date.now();
-  if (cachedEmbeddingCheck && now < cachedEmbeddingCheck.expiresAt) {
-    return cachedEmbeddingCheck.result;
+  if (embeddingState.cachedEmbeddingCheck && now < embeddingState.cachedEmbeddingCheck.expiresAt) {
+    return embeddingState.cachedEmbeddingCheck.result;
   }
 
-  if (!inflightEmbeddingCheck) {
-    const startedAt = now;
-    inflightEmbeddingCheck = runEmbeddingProbe(config).then((result) => {
-      cachedEmbeddingCheck = { result, expiresAt: startedAt + EMBEDDING_VERIFY_TTL_MS };
-      return result;
-    });
-    inflightEmbeddingCheck.finally(() => {
-      inflightEmbeddingCheck = null;
-    });
+  if (embeddingState.inflightEmbeddingCheck) {
+    return embeddingState.inflightEmbeddingCheck;
   }
 
-  return inflightEmbeddingCheck;
+  const startedAt = now;
+  embeddingState.inflightEmbeddingCheck = (async () => {
+    const resolved = await resolveEmbeddingConfig(config);
+    if (!resolved.apiKey) {
+      return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
+    }
+
+    const result = await runEmbeddingProbe(resolved);
+    embeddingState.cachedEmbeddingCheck = { result, expiresAt: startedAt + EMBEDDING_VERIFY_TTL_MS };
+    return result;
+  })();
+
+  embeddingState.inflightEmbeddingCheck.finally(() => {
+    embeddingState.inflightEmbeddingCheck = null;
+  });
+
+  return embeddingState.inflightEmbeddingCheck;
 }
 
+/**
+ * Return an embeddings client using the resolved configuration.
+ */
 export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<OpenAIEmbeddings> {
   const resolved = await resolveEmbeddingConfig(config);
   if (!resolved.apiKey) {
@@ -116,10 +152,33 @@ export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<O
 
   logModelConfig("runtime", resolved.baseUrl, resolved.model);
 
-  return new OpenAIEmbeddings({
+  return embeddingsFactory({
     apiKey: resolved.apiKey,
     modelName: resolved.model,
     configuration: resolved.baseUrl ? { baseURL: resolved.baseUrl } : undefined
   });
+}
+
+/**
+ * Override the settings loader (used by tests).
+ */
+export function setSettingsFetcher(fetcher: typeof getSettings) {
+  settingsFetcher = fetcher;
+}
+
+/**
+ * Override the embeddings factory (used by tests).
+ */
+export function setEmbeddingsFactory(factory: EmbeddingFactory) {
+  embeddingsFactory = factory;
+}
+
+/**
+ * Clear cached verification state and log guards.
+ */
+export function resetEmbeddingVerificationState() {
+  embeddingState.cachedEmbeddingCheck = null;
+  embeddingState.inflightEmbeddingCheck = null;
+  embeddingState.loggedModelConfig = false;
 }
 

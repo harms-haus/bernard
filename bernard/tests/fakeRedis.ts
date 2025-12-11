@@ -5,12 +5,17 @@ type StringStore = Map<string, string>;
 type SetStore = Map<string, Set<string>>;
 
 class FakeMulti {
-  private actions: Array<() => void> = [];
+  private actions: Array<() => Promise<unknown> | unknown> = [];
 
   constructor(private readonly redis: FakeRedis) {}
 
   hset(key: string, values: Record<string, string | number> | string, value?: string | number): this {
     this.actions.push(() => this.redis.hset(key, values as any, value as any));
+    return this;
+  }
+
+  hget(key: string, field: string): this {
+    this.actions.push(() => this.redis.hget(key, field));
     return this;
   }
 
@@ -59,9 +64,23 @@ class FakeMulti {
     return this;
   }
 
-  exec(): Promise<unknown[]> {
-    this.actions.forEach((fn) => fn());
-    return Promise.resolve([]);
+  /**
+   * Execute queued operations and return pairs that mirror ioredis multi results.
+   * Each entry is shaped as [error, value].
+   */
+  async exec(): Promise<Array<[unknown, unknown]>> {
+    const results = await Promise.all(
+      this.actions.map(async (fn) => {
+        try {
+          const value = await fn();
+          return [null, value] as [null, unknown];
+        } catch (err) {
+          return [err, undefined] as [unknown, undefined];
+        }
+      })
+    );
+    this.actions = [];
+    return results;
   }
 }
 

@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/
 import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
 import { jsonrepair } from "jsonrepair";
 
-import type { MessageRecord } from "./types";
+import type { MessageRecord, ToolCallEntry } from "./types";
 
 type ToolCall = {
   id: string;
@@ -39,10 +39,16 @@ export type LangGraphToolCall = NonNullable<AIMessage["tool_calls"]>[number];
 
 export const VALID_ROLES = new Set<OpenAIMessage["role"]>(["system", "user", "assistant", "tool"]);
 
+/**
+ * Narrow an unknown value to a record.
+ */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/**
+ * Detect ChatML markers anywhere within a message-like payload.
+ */
 export function containsChatMLMarkers(value: unknown): boolean {
   if (typeof value === "string") return value.includes("<|") || value.includes("|>");
   if (Array.isArray(value)) return value.some((part) => containsChatMLMarkers(part));
@@ -55,6 +61,9 @@ export function containsChatMLMarkers(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Safely stringify values, falling back to String() when JSON.stringify fails.
+ */
 export function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -63,6 +72,9 @@ export function safeStringify(value: unknown): string {
   }
 }
 
+/**
+ * Parse tool input; attempts JSON.parse then jsonrepair before giving up.
+ */
 export function parseToolInput(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
   const candidate = raw.trim();
@@ -79,6 +91,9 @@ export function parseToolInput(raw: unknown): unknown {
   }
 }
 
+/**
+ * Parse tool input and return diagnostics about repair attempts.
+ */
 export function parseToolInputWithDiagnostics(raw: unknown): {
   value: unknown;
   success: boolean;
@@ -105,6 +120,9 @@ export function parseToolInputWithDiagnostics(raw: unknown): {
   }
 }
 
+/**
+ * Normalize content from a LangChain BaseMessage to a string when possible.
+ */
 export function contentFromMessage(message: BaseMessage | null): string | null {
   if (!message) return null;
   const content = (message as { content?: unknown }).content;
@@ -127,6 +145,9 @@ export function contentFromMessage(message: BaseMessage | null): string | null {
   return null;
 }
 
+/**
+ * Find the last assistant/ai message in a list.
+ */
 export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
@@ -135,11 +156,14 @@ export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage |
     if (candidate._getType?.() === "ai") return message;
     // LangChain sometimes uses `getType`
     const getType = (message as { getType?: () => string }).getType;
-    if (getType?.() === "ai") return message;
+    if (getType?.call(message) === "ai") return message;
   }
   return null;
 }
 
+/**
+ * Collect tool calls from any message that already includes tool_calls.
+ */
 export function collectToolCalls(messages: BaseMessage[]) {
   const calls: Array<{
     id: string;
@@ -170,6 +194,9 @@ export function collectToolCalls(messages: BaseMessage[]) {
   return calls;
 }
 
+/**
+ * Convert a list of messages into the OpenAI chat message shape using the last assistant.
+ */
 export function toOpenAIChatMessage(messages: BaseMessage[]) {
   const lastAssistant = findLastAssistantMessage(messages);
   const toolCalls = collectToolCalls(messages);
@@ -180,6 +207,9 @@ export function toOpenAIChatMessage(messages: BaseMessage[]) {
   };
 }
 
+/**
+ * Extract token usage details from a provider result.
+ */
 export function extractTokenUsage(result: unknown): TokenUsage {
   if (!result || typeof result !== "object") return {};
   const withUsage = result as {
@@ -189,6 +219,9 @@ export function extractTokenUsage(result: unknown): TokenUsage {
   return withUsage.response_metadata?.token_usage ?? withUsage.usage_metadata ?? {};
 }
 
+/**
+ * Extract token usage from the last assistant message.
+ */
 export function extractUsageFromMessages(messages: BaseMessage[]) {
   const assistant = findLastAssistantMessage(messages);
   if (!assistant) return {};
@@ -210,6 +243,9 @@ function normalizeRecordContent(content: MessageRecord["content"]): MessageConte
   return "";
 }
 
+/**
+ * Convert a persisted MessageRecord into a LangChain BaseMessage.
+ */
 export function messageRecordToBaseMessage(record: MessageRecord, opts: { includeTraces?: boolean } = {}): BaseMessage | null {
   if (!opts.includeTraces && isTraceMessage(record)) return null;
 
@@ -245,12 +281,31 @@ export function messageRecordToBaseMessage(record: MessageRecord, opts: { includ
   }
 }
 
+/**
+ * Map message records to LangChain messages, optionally keeping trace messages.
+ */
 export function mapRecordsToMessages(records: MessageRecord[], opts: { includeTraces?: boolean } = {}): BaseMessage[] {
   return records
     .map((record) => messageRecordToBaseMessage(record, opts))
     .filter((msg): msg is BaseMessage => Boolean(msg));
 }
 
+function normalizeRecordToolCall(call: ToolCallEntry, index: number): ToolCall {
+  const fn = call.function ?? {};
+  const id = (call.id ?? fn.name ?? `tool_call_${index}`).toString();
+  const name = (call.name ?? fn.name ?? "tool_call").toString();
+  const rawArgs = fn.arguments ?? (call as { arguments?: unknown }).arguments ?? call.args ?? call.input;
+  const normalizedArgs = typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs);
+  return {
+    id,
+    type: (call.type as string) ?? "function",
+    function: { name, arguments: normalizedArgs }
+  };
+}
+
+/**
+ * Convert a MessageRecord into an OpenAIMessage.
+ */
 export function messageRecordToOpenAI(record: MessageRecord): OpenAIMessage | null {
   if (isTraceMessage(record)) {
     return {
@@ -272,29 +327,57 @@ export function messageRecordToOpenAI(record: MessageRecord): OpenAIMessage | nu
   } as OpenAIMessage;
 
   if (record.name) base.name = record.name;
-  if (record.role === "tool" && (record.tool_call_id || record.name)) {
-    base.tool_call_id = record.tool_call_id ?? record.name;
+  if (record.role === "tool") {
+    base.tool_call_id = record.tool_call_id ?? record.name ?? "tool_call";
   }
 
   if (record.tool_calls?.length) {
-    base.tool_calls = record.tool_calls.map((call, index) => {
-      const fn = call.function ?? {};
-      const id = (call.id ?? fn.name ?? `tool_call_${index}`).toString();
-      const name = (call.name ?? fn.name ?? "tool_call").toString();
-      const rawArgs =
-        fn.arguments ?? (call as { arguments?: unknown }).arguments ?? (call as { args?: unknown }).args ?? call.input;
-      const normalizedArgs = typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs);
-      return {
-        id,
-        type: (call.type as string) ?? "function",
-        function: { name, arguments: normalizedArgs }
-      };
-    });
+    base.tool_calls = record.tool_calls.map((call, index) => normalizeRecordToolCall(call, index));
   }
 
   return base;
 }
 
+function buildToolCallFromOpenAI(call: ToolCall, index: number): LangGraphToolCall {
+  const name = call.function.name ?? "tool_call";
+  const fallbackId = `${name}_${index}`;
+  const id = typeof call.id === "string" && call.id.trim() ? call.id : fallbackId;
+  const rawArgs = call.function.arguments;
+  const parsedArgs = parseToolInput(rawArgs);
+  const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+
+  return {
+    id,
+    type: "tool_call",
+    name,
+    args: argsObject,
+    function: {
+      name,
+      arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
+    }
+  } as LangGraphToolCall;
+}
+
+function buildToolCallFromLegacyFunctionCall(call: LegacyFunctionCall): LangGraphToolCall {
+  const rawArgs = call.arguments;
+  const parsedArgs = parseToolInput(rawArgs);
+  const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+
+  return {
+    id: call.name ?? "function_call",
+    type: "tool_call",
+    name: call.name,
+    args: argsObject,
+    function: {
+      name: call.name,
+      arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
+    }
+  } as LangGraphToolCall;
+}
+
+/**
+ * Convert OpenAI chat messages into LangChain messages, guarding against ChatML markers.
+ */
 export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
   return input.map((msg) => {
     const content = msg.content ?? "";
@@ -314,41 +397,12 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
 
         if (Array.isArray(msg.tool_calls)) {
           for (const call of msg.tool_calls) {
-            const name = call.function.name ?? "tool_call";
-            const fallbackId = `${name}_${toolCalls.length}`;
-            const id = typeof call.id === "string" && call.id.trim() ? call.id : fallbackId;
-            const rawArgs = call.function.arguments;
-            const parsedArgs = parseToolInput(rawArgs);
-            const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
-
-            toolCalls.push({
-              id,
-              type: "tool_call",
-              name,
-              args: argsObject,
-              function: {
-                name,
-                arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
-              }
-            } as LangGraphToolCall);
+            toolCalls.push(buildToolCallFromOpenAI(call, toolCalls.length));
           }
         }
 
         if (msg.function_call) {
-          const rawArgs = msg.function_call.arguments;
-          const parsedArgs = parseToolInput(rawArgs);
-        const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
-
-          toolCalls.push({
-            id: msg.function_call.name ?? "function_call",
-            type: "tool_call",
-            name: msg.function_call.name,
-          args: argsObject,
-            function: {
-              name: msg.function_call.name,
-              arguments: typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs)
-            }
-          } as LangGraphToolCall);
+          toolCalls.push(buildToolCallFromLegacyFunctionCall(msg.function_call));
         }
 
         const aiFields: AIMessageFields = { content };
@@ -368,6 +422,9 @@ export function mapOpenAIToMessages(input: OpenAIMessage[]): BaseMessage[] {
   });
 }
 
+/**
+ * Extract a messages array from various possible chunk shapes.
+ */
 export function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
   if (!chunk || typeof chunk !== "object") return null;
 
@@ -385,6 +442,9 @@ export function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
   return null;
 }
 
+/**
+ * Summarize only tool messages to a minimal array of id/content.
+ */
 export function summarizeToolOutputs(messages: BaseMessage[]) {
   return messages
     .filter((m) => (m as { _getType?: () => string })._getType?.() === "tool")
@@ -395,6 +455,9 @@ export function summarizeToolOutputs(messages: BaseMessage[]) {
     });
 }
 
+/**
+ * Quick type guard for tool messages.
+ */
 export function isToolMessage(message: BaseMessage) {
   return (message as { _getType?: () => string })._getType?.() === "tool";
 }

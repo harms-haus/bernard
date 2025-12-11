@@ -4,8 +4,14 @@ import { ChatOpenAI } from "@langchain/openai";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "../config/models";
 import type { MessageRecord } from "./types";
 
+/**
+ * Flags returned by the summarizer indicating safety or parsing issues.
+ */
 export type SummaryFlags = { explicit?: boolean; forbidden?: boolean; summaryError?: boolean };
 
+/**
+ * Result payload from a conversation summary request.
+ */
 export type SummaryResult = {
   summary: string;
   tags: string[];
@@ -22,6 +28,17 @@ export class ConversationSummaryService {
     this.model = model;
   }
 
+  /**
+   * Create a service instance from a preconfigured chat model.
+   * Useful for testing where you want to inject a stubbed model.
+   */
+  static fromModel(model: ChatOpenAI) {
+    return new ConversationSummaryService(model);
+  }
+
+  /**
+   * Create a service using configured OpenRouter/OpenAI settings.
+   */
   static async create(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
     const configuredModel = opts?.model ?? (await getPrimaryModel("aggregation"));
     const { model, providerOnly } = splitModelAndProvider(configuredModel);
@@ -38,6 +55,9 @@ export class ConversationSummaryService {
     return new ConversationSummaryService(llm);
   }
 
+  /**
+   * Summarize a conversation, filtering traces and handling model errors gracefully.
+   */
   async summarize(conversationId: string, messages: MessageRecord[]): Promise<SummaryResult> {
     const filtered = messages.filter(
       (message) => (message.metadata as { traceType?: string } | undefined)?.traceType !== "llm_call"
@@ -67,11 +87,17 @@ export class ConversationSummaryService {
     }
   }
 
+  /**
+   * Keep only the most recent `limit` messages.
+   */
   private trimMessages(messages: MessageRecord[], limit: number): MessageRecord[] {
     if (messages.length <= limit) return messages;
     return messages.slice(-limit);
   }
 
+  /**
+   * Build the summarization prompt with serialized message content.
+   */
   private buildPrompt(conversationId: string, messages: MessageRecord[]): string {
     const entries = messages.map((m) => {
       const content =
@@ -91,10 +117,13 @@ Messages:
 ${entries.join("\n")}`;
   }
 
+  /**
+   * Parse LLM JSON output, falling back to empty values on error.
+   */
   private parseJson(content: string): SummaryResult {
     try {
       const parsed: unknown = JSON.parse(content);
-      if (!parsed || typeof parsed !== "object") {
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         return { summary: "", tags: [], keywords: [], places: [], flags: { summaryError: true } };
       }
       const summaryJson = parsed as {
@@ -128,6 +157,9 @@ ${entries.join("\n")}`;
     }
   }
 
+  /**
+   * Normalize unknown values to an array of strings.
+   */
   private toStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return value.map((item) => String(item));

@@ -73,30 +73,6 @@ function toNumber(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-type MessageWithDetails = BaseMessage & {
-  content?: unknown;
-  tool_call_id?: string;
-  tool_calls?: MessageRecord["tool_calls"];
-  response_metadata?: Record<string, unknown>;
-  usage_metadata?: { input_tokens?: number; output_tokens?: number };
-  name?: string;
-};
-
-function normalizeMessageContent(content: unknown): MessageRecord["content"] {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const records = content.filter((item) => item && typeof item === "object") as Array<Record<string, unknown>>;
-    if (records.length) return records;
-  }
-  if (content && typeof content === "object") {
-    return content as Record<string, unknown>;
-  }
-  if (typeof content === "number" || typeof content === "boolean") {
-    return String(content);
-  }
-  return "";
-}
-
 /**
  * Facade for logging conversation state, requests, turns, and messages in Redis.
  */
@@ -285,8 +261,6 @@ export class RecordKeeper {
     multi.hincrbyfloat(hashKey, "sum_sqr_ms", result.latencyMs * result.latencyMs);
     if (!result.ok && result.errorType) {
       multi.hincrby(hashKey, `error:${result.errorType}`, 1);
-    }
-    if (!result.ok && result.errorType) {
       await this.redis.hset(this.key(`turn:${turnId}`), { errorType: result.errorType });
     }
     await multi.exec();
@@ -429,7 +403,7 @@ export class RecordKeeper {
   async closeConversation(conversationId: string, reason: string = "idle") {
     const convKey = this.key(`conv:${conversationId}`);
     const convo = await this.redis.hgetall(convKey);
-    if (!convo) return;
+    if (!convo || Object.keys(convo).length === 0) return;
     const status = convo["status"];
     if (status === "closed") return;
 
@@ -437,22 +411,9 @@ export class RecordKeeper {
     const now = Date.now();
 
     const messages = await this.getMessages(conversationId);
-    let summary: SummaryResult | null = null;
-    if (this.summarizer) {
-      summary = await this.summarizer.summarize(conversationId, messages);
-    }
+    const summary = this.summarizer ? await this.summarizer.summarize(conversationId, messages) : null;
 
-    const updates: {
-      status: ConversationStatus;
-      closedAt: string;
-      closeReason: string;
-      lastTouchedAt: string;
-      summary?: string;
-      tags?: string;
-      flags?: string;
-      keywords?: string;
-      placeTags?: string;
-    } = {
+    const updates: Record<string, string> = {
       status: "closed",
       closedAt,
       closeReason: reason,
@@ -477,9 +438,7 @@ export class RecordKeeper {
   async closeIfIdle(now: number = Date.now()) {
     const cutoff = now - this.idleMs;
     const idleIds = await this.redis.zrangebyscore(this.key("convs:active"), 0, cutoff);
-    for (const id of idleIds) {
-      await this.closeConversation(id, "idle");
-    }
+    await Promise.all(idleIds.map((id) => this.closeConversation(id, "idle")));
   }
 
   async deleteConversation(conversationId: string): Promise<boolean> {
