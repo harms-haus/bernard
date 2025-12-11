@@ -70,6 +70,10 @@ const fallbackProviderConfig = (provider: OAuthProvider): ProviderConfig => {
   };
 };
 
+/**
+ * Resolve a provider configuration from cached settings when available, falling
+ * back to environment variables. Throws when required fields are missing.
+ */
 export const getProviderConfig = async (provider: OAuthProvider): Promise<ProviderConfig> => {
   const settings = await getSettings().catch(() => null);
   const fromSettings =
@@ -87,6 +91,10 @@ export const getProviderConfig = async (provider: OAuthProvider): Promise<Provid
 
 const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}:${provider}:${state}`;
 
+/**
+ * Begin an OAuth login by issuing a PKCE challenge, persisting state in Redis,
+ * and redirecting the caller to the provider authorization endpoint.
+ */
 export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
   const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
   const state = base64UrlEncode(crypto.randomBytes(24));
@@ -185,6 +193,10 @@ const fetchUserInfo = async (provider: OAuthProvider, userInfoUrl: string, acces
   return { id, displayName };
 };
 
+/**
+ * Handle an OAuth callback by validating state, exchanging the authorization
+ * code for a token, fetching user info, and creating a session cookie.
+ */
 export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");

@@ -11,10 +11,19 @@ export type SessionRecord = {
 const DEFAULT_NAMESPACE = "bernard:sessions";
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
+/**
+ * Stores short-lived session metadata in Redis and indexes sessions per-user.
+ * Keys are namespaced to avoid collisions across environments.
+ */
 export class SessionStore {
   private readonly namespace: string;
   private readonly ttlSeconds: number;
 
+  /**
+   * @param redis Redis connection used for reads/writes
+   * @param namespace Namespace prefix for all keys (defaults to bernard:sessions)
+   * @param ttlSeconds Optional TTL in seconds; falls back to SESSION_TTL_SECONDS env or 7 days
+   */
   constructor(private readonly redis: Redis, namespace = DEFAULT_NAMESPACE, ttlSeconds?: number) {
     this.namespace = namespace;
     this.ttlSeconds = ttlSeconds ?? Number(process.env["SESSION_TTL_SECONDS"] ?? DEFAULT_TTL_SECONDS);
@@ -28,6 +37,10 @@ export class SessionStore {
     return `${this.namespace}:user:${userId}:sessions`;
   }
 
+  /**
+   * Export all valid session records for the provided user IDs.
+   * Invalid or incomplete hashes are skipped.
+   */
   async exportAll(userIds: string[]): Promise<SessionRecord[]> {
     const records: SessionRecord[] = [];
     for (const userId of userIds) {
@@ -46,6 +59,9 @@ export class SessionStore {
     return records;
   }
 
+  /**
+   * Create a new session for a user, persisting both the hash and user set membership.
+   */
   async create(userId: string): Promise<SessionRecord> {
     const id = crypto.randomBytes(18).toString("hex");
     const createdAt = new Date().toISOString();
@@ -60,6 +76,9 @@ export class SessionStore {
     return { id, userId, createdAt, expiresAt };
   }
 
+  /**
+   * Retrieve a session by ID. Expired sessions are deleted and return null.
+   */
   async get(id: string): Promise<SessionRecord | null> {
     const data = await this.redis.hgetall(this.sessionKey(id));
     if (!data || !data["id"] || !data["userId"] || !data["expiresAt"]) return null;
@@ -78,6 +97,10 @@ export class SessionStore {
     };
   }
 
+  /**
+   * Delete a session by ID and remove it from the user's membership set.
+   * If userId is not provided, it is looked up from the stored hash.
+   */
   async delete(id: string, userId?: string): Promise<void> {
     const knownUser = userId ?? (await this.redis.hget(this.sessionKey(id), "userId"));
     const multi = this.redis.multi().del(this.sessionKey(id));
@@ -87,6 +110,9 @@ export class SessionStore {
     await multi.exec();
   }
 
+  /**
+   * Remove all sessions for a given user, clearing both hashes and the user membership set.
+   */
   async deleteForUser(userId: string): Promise<void> {
     const sessionIds = await this.redis.smembers(this.userSessionsKey(userId));
     const multi = this.redis.multi();

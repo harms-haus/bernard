@@ -16,6 +16,12 @@ export type TokenRecord = TokenInfo & { token: string };
 const DEFAULT_NAMESPACE = "bernard:tokens";
 const TOKEN_PREFIX = "brnd-";
 
+/**
+ * Persists bearer tokens and related metadata in Redis.
+ *
+ * Keys are stored under a configurable namespace and provide fast lookups by
+ * id, name, or token secret.
+ */
 export class TokenStore {
   private readonly namespace: string;
 
@@ -39,6 +45,9 @@ export class TokenStore {
     return `${this.namespace}:ids`;
   }
 
+  /**
+   * Export all known tokens including their secrets.
+   */
   async exportAll(): Promise<TokenRecord[]> {
     const ids = await this.redis.smembers(this.idsSet());
     const records: TokenRecord[] = [];
@@ -57,6 +66,11 @@ export class TokenStore {
     return records;
   }
 
+  /**
+   * Create a new token entry with a unique name.
+   *
+   * @throws Error if the name already exists.
+   */
   async create(name: string): Promise<TokenRecord> {
     const existingId = await this.redis.get(this.nameKey(name));
     if (existingId) {
@@ -84,6 +98,11 @@ export class TokenStore {
     return { id, name, token, status: "active", createdAt };
   }
 
+  /**
+   * Validate a token secret, mark it as used, and return its metadata.
+   *
+   * Returns null when the token is missing or disabled.
+   */
   async validate(token: string): Promise<TokenInfo | null> {
     const id = await this.redis.get(this.tokenKey(token));
     if (!id) return null;
@@ -106,6 +125,9 @@ export class TokenStore {
     };
   }
 
+  /**
+   * Fetch token metadata by id without mutating state.
+   */
   async get(id: string): Promise<TokenInfo | null> {
     const data = await this.redis.hgetall(this.idKey(id));
     if (!data || !data["id"]) return null;
@@ -123,6 +145,9 @@ export class TokenStore {
     return token;
   }
 
+  /**
+   * Resolve a token secret to its metadata without updating last-used.
+   */
   async resolve(token: string): Promise<TokenInfo | null> {
     const id = await this.redis.get(this.tokenKey(token));
     if (!id) return null;
@@ -141,6 +166,11 @@ export class TokenStore {
     return info;
   }
 
+  /**
+   * Update token name and/or status.
+   *
+   * @throws Error when renaming to an existing name owned by another token.
+   */
   async update(id: string, updates: { name?: string; status?: TokenStatus }): Promise<TokenInfo | null> {
     const current = await this.redis.hgetall(this.idKey(id));
     if (!current || !current["id"]) return null;
@@ -181,6 +211,11 @@ export class TokenStore {
     return token;
   }
 
+  /**
+   * Delete token record and all associated indexes.
+   *
+   * Returns false when the token is missing.
+   */
   async delete(id: string): Promise<boolean> {
     const data = await this.redis.hgetall(this.idKey(id));
     if (!data || !data["id"] || !data["token"] || !data["name"]) return false;
@@ -196,6 +231,9 @@ export class TokenStore {
     return true;
   }
 
+  /**
+   * List all stored tokens without secrets.
+   */
   async list(): Promise<TokenInfo[]> {
     const ids = await this.redis.smembers(this.idsSet());
     const tokens: Array<TokenInfo | null> = await Promise.all(

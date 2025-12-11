@@ -1,7 +1,13 @@
 import type Redis from "ioredis";
 
+/**
+ * Lifecycle state for a user record.
+ */
 export type UserStatus = "active" | "disabled" | "deleted";
 
+/**
+ * Persisted user record stored in Redis.
+ */
 export type UserRecord = {
   id: string;
   displayName: string;
@@ -14,6 +20,9 @@ export type UserRecord = {
 
 const DEFAULT_NAMESPACE = "bernard:users";
 
+/**
+ * CRUD helper for user records backed by Redis hashes and sets.
+ */
 export class UserStore {
   private readonly namespace: string;
 
@@ -56,13 +65,16 @@ export class UserStore {
     return ids.length;
   }
 
+  /**
+   * Insert or update a user coming from OAuth. The first user is promoted to admin.
+   */
   async upsertOAuthUser(id: string, displayName: string): Promise<UserRecord> {
     const key = this.userKey(id);
     const existing = await this.redis.hgetall(key);
     if (existing && existing["status"] === "deleted") {
       throw new Error("User has been deleted");
     }
-    const now = new Date().toISOString();
+    const now = new Date(Date.now()).toISOString();
 
     if (existing && existing["id"]) {
       await this.redis.hset(key, { displayName, lastLoginAt: now, updatedAt: now });
@@ -100,13 +112,16 @@ export class UserStore {
     return record;
   }
 
+  /**
+   * Create a user with an explicit admin flag. Fails if the user already exists.
+   */
   async create(user: { id: string; displayName: string; isAdmin: boolean }): Promise<UserRecord> {
     const key = this.userKey(user.id);
     const existing = await this.redis.hgetall(key);
     if (existing && existing["id"]) {
       throw new Error("User already exists");
     }
-    const now = new Date().toISOString();
+    const now = new Date(Date.now()).toISOString();
     const record: UserRecord = {
       id: user.id,
       displayName: user.displayName,
@@ -132,18 +147,27 @@ export class UserStore {
     return record;
   }
 
+  /**
+   * Look up a user by id.
+   */
   async get(id: string): Promise<UserRecord | null> {
     const data = await this.redis.hgetall(this.userKey(id));
     if (!data || !data["id"]) return null;
     return this.sanitize(data);
   }
 
+  /**
+   * List all stored users in the namespace.
+   */
   async list(): Promise<UserRecord[]> {
     const ids = await this.redis.smembers(this.idsSet());
     const users: Array<UserRecord | null> = await Promise.all(ids.map((id) => this.get(id)));
     return users.filter((u): u is UserRecord => u !== null);
   }
 
+  /**
+   * Update mutable fields on an existing active user.
+   */
   async update(id: string, updates: { displayName?: string; isAdmin?: boolean }): Promise<UserRecord | null> {
     const existing = await this.redis.hgetall(this.userKey(id));
     if (!existing || !existing["id"]) return null;
@@ -151,27 +175,33 @@ export class UserStore {
     const next: Record<string, string> = {};
     if (updates.displayName) next["displayName"] = updates.displayName;
     if (typeof updates.isAdmin === "boolean") next["isAdmin"] = String(updates.isAdmin);
-    next["updatedAt"] = new Date().toISOString();
+    next["updatedAt"] = new Date(Date.now()).toISOString();
     await this.redis.hset(this.userKey(id), next);
     const saved = await this.redis.hgetall(this.userKey(id));
     return this.sanitize(saved);
   }
 
+  /**
+   * Set the user's status (except deleted).
+   */
   async setStatus(id: string, status: Exclude<UserStatus, "deleted">): Promise<UserRecord | null> {
     const existing = await this.redis.hgetall(this.userKey(id));
     if (!existing || !existing["id"]) return null;
     if (existing["status"] === "deleted") return null;
-    await this.redis.hset(this.userKey(id), { status, updatedAt: new Date().toISOString() });
+    await this.redis.hset(this.userKey(id), { status, updatedAt: new Date(Date.now()).toISOString() });
     const saved = await this.redis.hgetall(this.userKey(id));
     return this.sanitize(saved);
   }
 
+  /**
+   * Soft delete a user, redacting their name and clearing admin rights.
+   */
   async delete(id: string): Promise<UserRecord | null> {
     const existing = await this.redis.hgetall(this.userKey(id));
     if (!existing || !existing["id"]) return null;
 
     const redactedName = existing["displayName"] ? `deleted-${existing["displayName"]}` : "deleted user";
-    const now = new Date().toISOString();
+    const now = new Date(Date.now()).toISOString();
     await this.redis.hset(this.userKey(id), {
       displayName: redactedName,
       isAdmin: "false",

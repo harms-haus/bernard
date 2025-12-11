@@ -20,6 +20,10 @@ export type AccessGrant = {
   user?: UserRecord;
 };
 
+/**
+ * Extract the bearer token from an Authorization header.
+ * Returns null when the header is absent, not bearer, or missing a token value.
+ */
 export function bearerToken(req: NextRequest) {
   const header = req.headers.get("authorization");
   if (!header) return null;
@@ -64,6 +68,10 @@ const isAdminBearer = (req: NextRequest) => {
   return scheme?.toLowerCase() === "bearer" && token === adminKey;
 };
 
+/**
+ * Resolve an authenticated user from the session cookie, if present.
+ * Accepts an optional Redis client to aid testing or dependency injection.
+ */
 export async function getAuthenticatedUser(req: NextRequest, redis?: Redis): Promise<AuthenticatedUser | null> {
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
   if (!sessionCookie) return null;
@@ -71,6 +79,10 @@ export async function getAuthenticatedUser(req: NextRequest, redis?: Redis): Pro
   return resolveSession(sessionCookie, stores);
 }
 
+/**
+ * Require an admin user either via ADMIN_API_KEY bearer token or an admin session cookie.
+ * Returns the authenticated admin user or null when not authorized.
+ */
 export async function requireAdmin(req: NextRequest): Promise<AuthenticatedUser | null> {
   if (isAdminBearer(req)) {
     const now = new Date().toISOString();
@@ -93,6 +105,9 @@ export async function requireAdmin(req: NextRequest): Promise<AuthenticatedUser 
   return sessionUser;
 }
 
+/**
+ * Build a Set-Cookie header value for a session with secure attributes.
+ */
 export function buildSessionCookie(sessionId: string, maxAgeSeconds: number) {
   const secure = process.env["NODE_ENV"] === "production";
   const parts = [
@@ -106,6 +121,9 @@ export function buildSessionCookie(sessionId: string, maxAgeSeconds: number) {
   return parts.join("; ");
 }
 
+/**
+ * Build a Set-Cookie header value that immediately clears the session.
+ */
 export function clearSessionCookie() {
   const secure = process.env["NODE_ENV"] === "production";
   const parts = [`${SESSION_COOKIE}=`, "Path=/", "Max-Age=0", "HttpOnly", "SameSite=Lax"];
@@ -113,6 +131,10 @@ export function clearSessionCookie() {
   return parts.join("; ");
 }
 
+/**
+ * Validate access using an API bearer token or session cookie.
+ * Returns an AccessGrant on success or a 401 Response on failure.
+ */
 export async function validateAccessToken(
   req: NextRequest,
   opts?: { redis?: Redis }
