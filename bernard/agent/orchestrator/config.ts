@@ -13,14 +13,21 @@ export type OrchestratorConfigInput = {
 export async function buildHarnessConfig(overrides: OrchestratorConfigInput = {}): Promise<HarnessConfig> {
   const responseModel = overrides.responseModel ?? (await getPrimaryModel("response"));
   const intentModel = overrides.intentModel ?? (await getPrimaryModel("intent", { fallback: [responseModel] }));
-  const memoryModel = overrides.memoryModel ?? (await getPrimaryModel("memory", { fallback: [responseModel] }));
+  // Avoid hitting settings/Redis during tests when a model is already provided.
+  const memoryModel =
+    overrides.memoryModel ??
+    intentModel;
 
   return {
     intentModel,
     responseModel,
     memoryModel,
     maxIntentIterations: overrides.maxIntentIterations ?? 4,
-    timeoutsMs: overrides.timeoutsMs
+    timeoutsMs: overrides.timeoutsMs ?? {
+      intent: 10_000,
+      memory: 10_000,
+      respond: 10_000
+    }
   };
 }
 

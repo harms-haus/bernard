@@ -19,6 +19,16 @@ const DEDUP_TIMEOUT_MS = (() => {
   }
   return parsed;
 })();
+const DEDUP_SETUP_TIMEOUT_MS = (() => {
+  const envValue = process.env["MEMORY_DEDUP_SETUP_TIMEOUT_MS"];
+  if (!envValue) return 1_000;
+  const parsed = Number(envValue);
+  if (isNaN(parsed) || parsed <= 0) {
+    console.warn(`Invalid MEMORY_DEDUP_SETUP_TIMEOUT_MS: "${envValue}", using default 1000ms`);
+    return 1_000;
+  }
+  return parsed;
+})();
 const DECISION_SCHEMA = z.object({
   decision: z.union([z.literal("new"), z.literal("update"), z.literal("duplicate")]),
   targetId: z.string().optional()
@@ -70,9 +80,23 @@ export async function classifyMemory(
 ): Promise<DedupDecision> {
   if (!neighbors.length) return { decision: "new" };
 
-  const resolvedModel = await resolveModel("utility");
+  const envApiKey = resolveApiKey();
+  if (!envApiKey) {
+    return fallbackDecision(neighbors);
+  }
+
+  const resolvedModel = await withTimeout(resolveModel("utility"), DEDUP_SETUP_TIMEOUT_MS, "memory dedup setup").catch((err) => {
+    const isTimeoutError =
+      (err instanceof Error && err.message.includes("memory dedup setup")) || (typeof err === "string" && err.includes("memory dedup setup"));
+    if (isTimeoutError) {
+      console.debug("memory dedup model resolution timed out; using heuristic", err);
+      return null;
+    }
+    throw err;
+  });
+  if (!resolvedModel) return fallbackDecision(neighbors);
   const { model: modelName, providerOnly } = splitModelAndProvider(resolvedModel.id);
-  const apiKey = resolveApiKey(undefined, resolvedModel.options);
+  const apiKey = resolveApiKey(envApiKey, resolvedModel.options);
   if (!apiKey) {
     return fallbackDecision(neighbors);
   }

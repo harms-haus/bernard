@@ -13,7 +13,12 @@ import { buildHarnessConfig, type OrchestratorConfigInput } from "./config";
 import { Orchestrator } from "./orchestrator";
 import { snapshotToolsForTrace } from "../harness/lib/toolSnapshot";
 
-function toToolCalls(raw: unknown): ToolCall[] {
+const DEFAULT_LLM_TIMEOUT_MS = 10_000;
+
+/**
+ * Normalizes mixed LangChain/OpenAI tool call shapes into the ToolCall contract.
+ */
+export function toToolCalls(raw: unknown): ToolCall[] {
   const toolCalls = (raw as { tool_calls?: unknown[] } | undefined)?.tool_calls;
   if (!Array.isArray(toolCalls)) return [];
   return toolCalls
@@ -47,33 +52,67 @@ type CallerOpts = {
   callOptions?: ModelCallOptions;
 };
 
-class ChatModelCaller implements LLMCaller {
-  constructor(private readonly modelName: string, private readonly client: ChatOpenAI) {}
+type ChatClient = {
+  bindTools(tools?: unknown[]): ChatClient;
+  invoke(messages: unknown, options?: { signal?: AbortSignal }): Promise<unknown>;
+};
+
+/**
+ * LLM caller that wraps ChatOpenAI with timeouts, tracing, and persistence.
+ */
+export class ChatModelCaller implements LLMCaller {
+  constructor(
+    private readonly modelName: string,
+    private readonly client: ChatClient,
+    private readonly timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS
+  ) {}
 
   async call(input: LLMCallConfig): Promise<LLMResponse> {
-    const bound = input.tools ? this.client.bindTools(input.tools) : this.client;
-    const timeoutMs = 10_000; // cap total call time to 10s
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
-    const started = Date.now();
-    const startedAt = new Date(started).toISOString();
-    let message;
+    const boundClient = this.bindClient(input);
+    const startedAt = new Date().toISOString();
+    const started = Date.parse(startedAt);
+    const { controller, timer } = this.createAbortController();
     try {
-      message = await bound.invoke(input.messages, { signal: controller.signal });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error(`LLM call timed out after ${timeoutMs}ms`);
-      }
-      throw err;
+      const message = await this.invokeWithTimeout(boundClient, input, controller);
+      const response = this.buildResponse(message, started, startedAt);
+      await this.recordIfNeeded(input, response, startedAt, Date.now() - started);
+      return response;
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  private bindClient(input: LLMCallConfig) {
+    return input.tools ? this.client.bindTools(input.tools) : this.client;
+  }
+
+  private createAbortController() {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error(`LLM call timed out after ${this.timeoutMs}ms`)),
+      this.timeoutMs
+    );
+    return { controller, timer };
+  }
+
+  private async invokeWithTimeout(bound: ChatClient, input: LLMCallConfig, controller: AbortController) {
+    try {
+      return await bound.invoke(input.messages, { signal: controller.signal });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(`LLM call timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    }
+  }
+
+  private buildResponse(message: unknown, started: number, startedAt: string): LLMResponse {
     const latency = Date.now() - started;
     const usage = extractTokenUsage(message);
-    const text = contentFromMessage(message) ?? "";
-    const response: LLMResponse = {
+    const text = contentFromMessage(message as any) ?? "";
+    return {
       text,
-      message,
+      message: message as LLMResponse["message"],
       toolCalls: toToolCalls(message),
       raw: message,
       usage: {
@@ -85,31 +124,31 @@ class ChatModelCaller implements LLMCaller {
       },
       trace: { model: this.modelName, latencyMs: latency, startedAt }
     };
+  }
 
+  private async recordIfNeeded(input: LLMCallConfig, response: LLMResponse, startedAt: string, latency: number) {
     const meta = input.meta;
     const shouldRecord = meta?.recordKeeper && meta.conversationId && !meta?.deferRecord;
-    if (shouldRecord) {
-      await meta.recordKeeper.recordLLMCall(meta.conversationId, {
-        model: input.model ?? this.modelName,
-        context: input.messages,
-        result: message,
-        startedAt,
-        latencyMs: latency,
-        tools: snapshotToolsForTrace(input.tools),
-        tokens: response.usage,
-        requestId: meta.requestId,
-        turnId: meta.turnId,
-        stage: meta.traceName,
-        contextLimit: 12,
-        contentPreviewChars: null
-      });
-    }
+    if (!shouldRecord) return;
 
-    return response;
+    await meta.recordKeeper.recordLLMCall(meta.conversationId, {
+      model: input.model ?? this.modelName,
+      context: input.messages,
+      result: response.raw,
+      startedAt,
+      latencyMs: latency,
+      tools: snapshotToolsForTrace(input.tools),
+      tokens: response.usage,
+      requestId: meta.requestId,
+      turnId: meta.turnId,
+      stage: meta.traceName,
+      contextLimit: 12,
+      contentPreviewChars: null
+    });
   }
 }
 
-function makeCaller(model: string, temperature: number, opts: CallerOpts = {}) {
+function buildChatClient(model: string, temperature: number, opts: CallerOpts = {}) {
   const apiKey = resolveApiKey(undefined, opts.callOptions);
   const baseURL = resolveBaseUrl(undefined, opts.callOptions);
   const parsedModel = splitModelAndProvider(model);
@@ -122,24 +161,44 @@ function makeCaller(model: string, temperature: number, opts: CallerOpts = {}) {
     maxTokens: opts.callOptions?.maxTokens ?? opts.maxTokens,
     ...(parsedModel.providerOnly ? { modelKwargs: { provider: { only: parsedModel.providerOnly } } } : {})
   });
-  return new ChatModelCaller(model, client);
+  return client as unknown as ChatClient;
 }
 
+/**
+ * Creates a model caller with bounded output and provider configuration.
+ */
+export function makeCaller(model: string, temperature: number, opts: CallerOpts = {}, client?: ChatClient) {
+  const chatClient = client ?? buildChatClient(model, temperature, opts);
+  return new ChatModelCaller(model, chatClient);
+}
+
+/**
+ * Builds and wires the orchestrator with configured harnesses.
+ */
 export async function createOrchestrator(
   recordKeeper: RecordKeeper | null,
-  opts: OrchestratorConfigInput = {}
+  opts: OrchestratorConfigInput = {},
+  deps: {
+    buildConfig?: typeof buildHarnessConfig;
+    resolveModelFn?: typeof resolveModel;
+    makeCallerFn?: typeof makeCaller;
+  } = {}
 ): Promise<{ orchestrator: Orchestrator; config: HarnessConfig }> {
-  const config = await buildHarnessConfig(opts);
+  const buildConfig = deps.buildConfig ?? buildHarnessConfig;
+  const resolveModelFn = deps.resolveModelFn ?? resolveModel;
+  const makeCallerFn = deps.makeCallerFn ?? makeCaller;
+
+  const config = await buildConfig(opts);
   const [intentResolved, responseResolved] = await Promise.all([
-    resolveModel("intent", { override: config.intentModel }),
-    resolveModel("response", { override: config.responseModel })
+    resolveModelFn("intent", { override: config.intentModel }),
+    resolveModelFn("response", { override: config.responseModel })
   ]);
 
-  const intentCaller = makeCaller(config.intentModel, 0, {
+  const intentCaller = makeCallerFn(config.intentModel, 0, {
     maxTokens: 750,
     callOptions: intentResolved.options
   }); // cap intent to ~750 out tokens
-  const responseCaller = makeCaller(config.responseModel, 0.5, {
+  const responseCaller = makeCallerFn(config.responseModel, 0.5, {
     maxTokens: opts.responseCallerOptions?.maxTokens,
     callOptions: responseResolved.options
   });

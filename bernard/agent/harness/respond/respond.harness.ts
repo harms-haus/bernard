@@ -52,8 +52,19 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
   constructor(private readonly llm: LLMCaller) {}
 
   async run(input: ResponseInput, ctx: HarnessContext): Promise<HarnessResult<ResponseOutput>> {
+    const messages = this.buildMessages(input, ctx);
+    const res = await this.llm.call({
+      model: ctx.config.responseModel,
+      messages,
+      meta: this.buildMeta(ctx)
+    });
+
+    const ensured = this.ensureResponse(res, ctx.conversation.turns);
+    return { output: ensured, done: true };
+  }
+
+  private buildMessages(input: ResponseInput, ctx: HarnessContext): BaseMessage[] {
     const systemPrompt = new SystemMessage(buildResponseSystemPrompt(ctx.now()));
-    // Use the conversation thread (which already includes the latest intent/tool turn)
     const messages = [systemPrompt, ...ctx.conversation.turns];
     if (input.memories?.memories?.length) {
       messages.push(
@@ -62,35 +73,34 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
         })
       );
     }
+    return messages;
+  }
 
-    const res = await this.llm.call({
-      model: ctx.config.responseModel,
-      messages,
-      meta: {
-        ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-        ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
-        ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
-        ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
-        traceName: "response"
-      }
-    });
+  private buildMeta(ctx: HarnessContext) {
+    return {
+      ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
+      ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+      ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
+      ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
+      traceName: "response"
+    };
+  }
 
+  private ensureResponse(
+    res: Awaited<ReturnType<LLMCaller["call"]>>,
+    turns: BaseMessage[]
+  ): ResponseOutput {
     const trimmed = (res.text ?? "").trim();
-    let message = res.message;
-    let text = res.text;
-
-    // Guard against silent/blank responses from the model so the user always hears something.
-    if (!trimmed) {
-      const fallback = buildBlankResponseFallback(ctx.conversation.turns);
-      text = fallback;
-      if (message) {
-        (message as { content?: unknown }).content = fallback;
-      } else {
-        message = new AIMessage({ content: fallback });
-      }
+    if (trimmed) {
+      const message = res.message ?? new AIMessage({ content: res.text });
+      (message as { content?: unknown }).content = res.text;
+      return { text: res.text, message };
     }
 
-    return { output: { text, message }, done: true };
+    const fallback = buildBlankResponseFallback(turns);
+    const message = res.message ?? new AIMessage({ content: fallback });
+    (message as { content?: unknown }).content = fallback;
+    return { text: fallback, message };
   }
 }
 

@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after, before } from "node:test";
 
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { IntentHarness, type IntentTool } from "../agent/harness/intent/intent.harness";
 import type { HarnessContext, LLMCallConfig, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
+
+const originalConsoleInfo = console.info;
+before(() => {
+  console.info = () => {};
+});
+
+after(() => {
+  console.info = originalConsoleInfo;
+});
 
 class FakeLLMCaller implements LLMCaller {
   constructor(private readonly responses: LLMResponse[]) {}
@@ -225,6 +234,60 @@ test("IntentHarness deduplicates identical tool calls within a single turn", asy
   assert.equal(invocations, 1);
   const toolMessages = result.output.transcript.filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool");
   assert.ok(toolMessages.some((msg) => String((msg as { content?: unknown }).content ?? "").includes("Duplicate tool call")));
+});
+
+test("IntentHarness logs recordKeeper when tool returns error result", async () => {
+  const toolCall = {
+    id: "call_error",
+    name: "failing_tool",
+    function: { name: "failing_tool", arguments: "{}" },
+    arguments: "{}"
+  };
+
+  const caller = new FakeLLMCaller([
+    {
+      text: "",
+      message: new AIMessage({ content: "", tool_calls: [toolCall] } as any),
+      toolCalls: [toolCall]
+    },
+    {
+      text: "",
+      message: new AIMessage({ content: "" }),
+      toolCalls: []
+    }
+  ]);
+
+  const recordToolResults: Array<{ turnId: string; toolName: string; result: unknown }> = [];
+  const recordKeeper = {
+    async recordToolResult(turnId: string, toolName: string, result: unknown) {
+      recordToolResults.push({ turnId, toolName, result });
+    },
+    async recordLLMCall() {}
+  };
+
+  const tools: IntentTool[] = [
+    {
+      name: "failing_tool",
+      async invoke() {
+        return { status: "error", message: "Geocoding failed: network error: timeout", errorType: "AbortError" };
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 3);
+  const ctx = { ...baseCtx, recordKeeper: recordKeeper as any, turnId: "turn-123" };
+  const result = await harness.run({}, ctx);
+
+  assert.equal(recordToolResults.length, 1);
+  assert.equal(recordToolResults[0]?.turnId, "turn-123");
+  assert.equal(recordToolResults[0]?.toolName, "failing_tool");
+  assert.equal((recordToolResults[0]?.result as { ok?: boolean })?.ok, false);
+  assert.equal((recordToolResults[0]?.result as { errorType?: string })?.errorType, "AbortError");
+
+  const toolMessages = result.output.transcript
+    .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
+    .map((msg) => String((msg as { content?: unknown }).content ?? ""));
+  assert.ok(toolMessages.some((content) => content.includes("network error")));
 });
 
 test("IntentHarness can finish via respond tool after successful calls", async () => {
@@ -454,6 +517,138 @@ test("IntentHarness short-circuits if the same tool call repeats with no new wor
     .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
     .map((msg) => String((msg as { content?: unknown }).content ?? ""));
   assert.ok(toolMessages.some((content) => content.includes("Tool calls already completed")));
+});
+
+test("IntentHarness repairs parse failures then succeeds", async () => {
+  const badCall = {
+    id: "bad",
+    name: "echo_tool",
+    function: { name: "echo_tool", arguments: "not-json[" },
+    arguments: "not-json["
+  };
+  const fixedCall = {
+    id: "fixed",
+    name: "echo_tool",
+    function: { name: "echo_tool", arguments: '{"value":"ok"}' },
+    arguments: '{"value":"ok"}'
+  };
+
+  const caller = new FakeLLMCaller([
+    { text: "", message: new AIMessage({ content: "", tool_calls: [badCall] } as any), toolCalls: [badCall] },
+    { text: "", message: new AIMessage({ content: "", tool_calls: [fixedCall] } as any), toolCalls: [fixedCall] },
+    { text: "", message: new AIMessage({ content: "" }), toolCalls: [] }
+  ]);
+
+  let invokedWith: unknown;
+  const tools: IntentTool[] = [
+    {
+      name: "echo_tool",
+      async invoke(input) {
+        invokedWith = input;
+        return { echoed: input };
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 4);
+  const result = await harness.run({}, baseCtx);
+
+  const messages = result.output.transcript.map((msg) => String((msg as { content?: unknown }).content ?? ""));
+  assert.ok(messages.some((m) => m.includes("Tool arguments parse failed")));
+  assert.ok(messages.some((m) => m.includes("Repair the tool call")));
+  assert.deepEqual(invokedWith, { value: "ok" });
+});
+
+test("IntentHarness stops after exceeding max correction attempts", async () => {
+  const badCalls = ["not-json[", "bad[", "worse["].map((arg, idx) => ({
+    id: `bad_${idx}`,
+    name: "echo_tool",
+    function: { name: "echo_tool", arguments: arg },
+    arguments: arg
+  }));
+
+  const caller = new FakeLLMCaller([
+    { text: "", message: new AIMessage({ content: "", tool_calls: [badCalls[0]] } as any), toolCalls: [badCalls[0]] },
+    { text: "", message: new AIMessage({ content: "", tool_calls: [badCalls[1]] } as any), toolCalls: [badCalls[1]] },
+    { text: "", message: new AIMessage({ content: "", tool_calls: [badCalls[2]] } as any), toolCalls: [badCalls[2]] }
+  ]);
+
+  const tools: IntentTool[] = [
+    {
+      name: "echo_tool",
+      async invoke() {
+        return "ok";
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 4);
+  await assert.rejects(() => harness.run({}, baseCtx), /tool arguments could not be repaired/);
+});
+
+test("IntentHarness caps parallel tool execution and skips extras", async () => {
+  const toolCalls = Array.from({ length: 5 }).map((_, idx) => ({
+    id: `call_${idx}`,
+    name: "echo_tool",
+    function: { name: "echo_tool", arguments: `{"value":"${idx}"}` },
+    arguments: `{"value":"${idx}"}`
+  }));
+
+  const caller = new FakeLLMCaller([
+    {
+      text: "",
+      message: new AIMessage({ content: "", tool_calls: toolCalls } as any),
+      toolCalls
+    },
+    { text: "", message: new AIMessage({ content: "" }), toolCalls: [] }
+  ]);
+
+  let invocations: string[] = [];
+  const tools: IntentTool[] = [
+    {
+      name: "echo_tool",
+      async invoke(input) {
+        invocations.push(String((input as { value?: string }).value));
+        return { echoed: input };
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 2);
+  const result = await harness.run({}, baseCtx);
+
+  assert.equal(invocations.length, 4);
+  const toolMessages = result.output.transcript
+    .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
+    .map((msg) => String((msg as { content?: unknown }).content ?? ""));
+  assert.ok(toolMessages.some((content) => content.includes("exceeded max parallel tool calls")));
+});
+
+test("IntentHarness throws when a failing tool repeats three times", async () => {
+  const repeatCall = {
+    id: "repeat_fail",
+    name: "flaky_tool",
+    function: { name: "flaky_tool", arguments: "{}" },
+    arguments: "{}"
+  };
+
+  const caller = new FakeLLMCaller([
+    { text: "", message: new AIMessage({ content: "", tool_calls: [repeatCall] } as any), toolCalls: [repeatCall] },
+    { text: "", message: new AIMessage({ content: "", tool_calls: [repeatCall] } as any), toolCalls: [repeatCall] },
+    { text: "", message: new AIMessage({ content: "", tool_calls: [repeatCall] } as any), toolCalls: [repeatCall] }
+  ]);
+
+  const tools: IntentTool[] = [
+    {
+      name: "flaky_tool",
+      async invoke() {
+        throw new Error("fail");
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 5);
+  await assert.rejects(() => harness.run({}, baseCtx), /repeated 3 times/);
 });
 
 

@@ -1,19 +1,77 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after, before } from "node:test";
 
-import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 
-import { Orchestrator } from "../agent/orchestrator/orchestrator";
+import { Orchestrator, type OrchestratorRunInput } from "../agent/orchestrator/orchestrator";
 import { buildHarnessConfig } from "../agent/orchestrator/config";
-import { IntentHarness } from "../agent/harness/intent/intent.harness";
-import { MemoryHarness } from "../agent/harness/memory/memory.harness";
-import { ResponseHarness } from "../agent/harness/respond/respond.harness";
+import { IntentHarness, type IntentOutput } from "../agent/harness/intent/intent.harness";
+import { MemoryHarness, type MemoryOutput } from "../agent/harness/memory/memory.harness";
+import { ResponseHarness, type ResponseOutput } from "../agent/harness/respond/respond.harness";
 import { UtilityHarness } from "../agent/harness/utility/utility.harness";
-import type { HarnessContext, LLMCaller, LLMCallConfig, LLMResponse } from "../agent/harness/lib/types";
+import type {
+  HarnessContext,
+  HarnessResult,
+  LLMCaller,
+  LLMCallConfig,
+  LLMResponse
+} from "../agent/harness/lib/types";
+import type { RecordKeeper } from "@/lib/recordKeeper";
+
+const originalConsoleInfo = console.info;
+
+before(() => {
+  console.info = () => {};
+});
+
+after(() => {
+  console.info = originalConsoleInfo;
+});
+
+type HarnessMock<TIn, TOut> = {
+  lastInput?: TIn;
+  lastCtx?: HarnessContext;
+  result: HarnessResult<TOut>;
+  run(input: TIn, ctx: HarnessContext): Promise<HarnessResult<TOut>>;
+};
+
+function createHarnessMock<TIn, TOut>(result: HarnessResult<TOut>, opts?: { throwError?: Error }): HarnessMock<TIn, TOut> {
+  return {
+    result,
+    async run(input: TIn, ctx: HarnessContext) {
+      this.lastInput = input;
+      this.lastCtx = ctx;
+      if (opts?.throwError) {
+        throw opts.throwError;
+      }
+      return this.result;
+    }
+  };
+}
+
+function createRecordKeeperMock() {
+  const calls: Array<{ conversationId: string; messages: unknown[] }> = [];
+  const recordKeeper: RecordKeeper = {
+    // @ts-expect-error only the needed method is mocked
+    async appendMessages(conversationId: string, messages: unknown[]) {
+      calls.push({ conversationId, messages });
+    }
+  };
+  return { recordKeeper, calls };
+}
+
+function baseInput(overrides: Partial<OrchestratorRunInput> = {}): OrchestratorRunInput {
+  return {
+    conversationId: "conv-1",
+    incoming: [new HumanMessage("hi")],
+    ...overrides
+  };
+}
 
 class FakeLLMCaller implements LLMCaller {
   constructor(private readonly responses: LLMResponse[]) {}
-  async call(): Promise<LLMResponse> {
+  async call(input?: LLMCallConfig): Promise<LLMResponse> {
+    // record and shift without strict input requirements for tests
     const next = this.responses.shift();
     if (!next) throw new Error("No fake LLM response available");
     return next;
@@ -30,6 +88,139 @@ const ctxBase: HarnessContext = {
   conversationId: "conv-test",
   now: () => new Date("2025-01-02T00:00:00Z")
 };
+
+test("persists initial messages, intent deltas, and response output", { timeout: 2000 }, async () => {
+  const { recordKeeper, calls } = createRecordKeeperMock();
+  const intentOutput: IntentOutput = {
+    transcript: [new HumanMessage("hi"), new AIMessage("tool call result")],
+    toolCalls: [],
+    done: true
+  };
+  const memoryOutput: MemoryOutput = { memories: [{ title: "note" }] };
+  const responseOutput: ResponseOutput = { text: "ok", message: new AIMessage("ok") };
+
+  const intentHarness = createHarnessMock({ output: intentOutput, done: true });
+  const memoryHarness = createHarnessMock({ output: memoryOutput, done: true });
+  const respondHarness = createHarnessMock({ output: responseOutput, done: true });
+
+  const orchestrator = new Orchestrator(
+    recordKeeper,
+    { intentModel: "intent", responseModel: "resp" },
+    intentHarness as any,
+    memoryHarness as any,
+    respondHarness as any,
+    {} as any
+  );
+
+  const result = await orchestrator.run(baseInput());
+
+  assert.equal(result.intent, intentOutput);
+  assert.equal(result.memories, memoryOutput);
+  assert.equal(result.response, responseOutput);
+
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0]?.messages.length, 1); // initial persist
+  assert.equal(calls[1]?.messages.length, 1); // intent delta
+  assert.equal(calls[2]?.messages.length, 1); // response message
+});
+
+test("response context excludes respond tool calls and blank messages", { timeout: 2000 }, async () => {
+  const { recordKeeper } = createRecordKeeperMock();
+  const respondToolCall = {
+    id: "call-1",
+    name: "respond",
+    function: { name: "respond", arguments: "{}" },
+    arguments: "{}"
+  };
+  const intentOutput: IntentOutput = {
+    transcript: [
+      new HumanMessage("hi"),
+      new AIMessage({ content: "" }),
+      new AIMessage({ content: "should skip", tool_calls: [respondToolCall] } as any)
+    ],
+    toolCalls: [],
+    done: true
+  };
+  const memoryOutput: MemoryOutput = { memories: [] };
+  const responseOutput: ResponseOutput = { text: "ok", message: new AIMessage("ok") };
+
+  const intentHarness = createHarnessMock({ output: intentOutput, done: true });
+  const memoryHarness = createHarnessMock({ output: memoryOutput, done: true });
+  const respondHarness = createHarnessMock({ output: responseOutput, done: true });
+
+  const orchestrator = new Orchestrator(
+    recordKeeper,
+    { intentModel: "intent", responseModel: "resp" },
+    intentHarness as any,
+    memoryHarness as any,
+    respondHarness as any,
+    {} as any
+  );
+
+  await orchestrator.run(baseInput());
+
+  const conversationTurns = respondHarness.lastCtx?.conversation.turns ?? [];
+  assert.equal(conversationTurns.length, 1);
+  assert.equal((conversationTurns[0] as { content?: unknown }).content, "hi");
+});
+
+test("skips initial persistence when disabled", { timeout: 2000 }, async () => {
+  const { recordKeeper, calls } = createRecordKeeperMock();
+
+  const intentOutput: IntentOutput = {
+    transcript: [new HumanMessage("hi"), new AIMessage("next")],
+    toolCalls: [],
+    done: true
+  };
+  const memoryOutput: MemoryOutput = { memories: [] };
+  const responseOutput: ResponseOutput = { text: "ok", message: new AIMessage("ok") };
+
+  const orchestrator = new Orchestrator(
+    recordKeeper,
+    { intentModel: "intent", responseModel: "resp" },
+    createHarnessMock({ output: intentOutput, done: true }) as any,
+    createHarnessMock({ output: memoryOutput, done: true }) as any,
+    createHarnessMock({ output: responseOutput, done: true }) as any,
+    {} as any
+  );
+
+  await orchestrator.run(baseInput({ persistInitial: false }));
+
+  assert.equal(calls.length, 2); // only intent delta + response
+});
+
+test("records error messages and rethrows", { timeout: 2000 }, async () => {
+  const { recordKeeper, calls } = createRecordKeeperMock();
+  const intentError = new Error("boom");
+
+  const intentHarness = createHarnessMock<unknown, IntentOutput>(
+    { output: { transcript: [], toolCalls: [], done: false }, done: false },
+    { throwError: intentError }
+  );
+  const memoryHarness = createHarnessMock<unknown, MemoryOutput>({ output: { memories: [] }, done: true });
+  const respondHarness = createHarnessMock<unknown, ResponseOutput>({
+    output: { text: "ok", message: new AIMessage("ok") },
+    done: true
+  });
+
+  const orchestrator = new Orchestrator(
+    recordKeeper,
+    { intentModel: "intent", responseModel: "resp" },
+    intentHarness as any,
+    memoryHarness as any,
+    respondHarness as any,
+    {} as any
+  );
+
+  await assert.rejects(() => orchestrator.run(baseInput({ persistInitial: false })), intentError);
+
+  assert.equal(calls.length, 1);
+  const errorMessage = calls[0]?.messages[0] as SystemMessage;
+  assert.equal(errorMessage.name, "orchestrator.error");
+  const metadata = (errorMessage as { response_metadata?: Record<string, unknown> }).response_metadata ?? {};
+  assert.equal(metadata.traceType, "error");
+  assert.equal(metadata.errorStage, "orchestrator");
+});
 
 test("Orchestrator runs intent+memory then response once", async () => {
   const intentCall = new FakeLLMCaller([
@@ -176,5 +367,3 @@ test("Response harness falls back when model returns a blank message", async () 
   assert.ok(result.response.text.trim().length > 0);
   assert.ok(result.response.text.includes("Forecast"));
 });
-
-

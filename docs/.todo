@@ -1,0 +1,17 @@
+# TODO
+
+## bernard
+
+- task list (by user)
+- calendar (by user, shared family calendars too)
+- reminders
+- service checker (proxmox, mealie, plex, etc)
+- overseer ingress
+- home assistant ingress
+- notifications (whole-home, or directed at a device)
+
+## admin
+
+- clean up everything really
+- clean up/standardize UI for settings pages
+- Decide on a unified chat UI for the admin app (no more split between "chat" and "history")

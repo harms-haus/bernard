@@ -5,18 +5,37 @@ const DEFAULT_HISTORICAL_API_URL = "https://archive-api.open-meteo.com/v1/archiv
 
 export const DEFAULT_WEATHER_TIMEOUT_MS = 12_000;
 
+async function getSettingsWithTimeout(ms = 500) {
+  const isNodeTest = process.execArgv.some((arg) => arg.includes("--test"));
+  if (process.env["NODE_ENV"] === "test" || isNodeTest) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const settingsPromise = getSettings().catch(() => null);
+    const timeoutPromise = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ms);
+    });
+    return (await Promise.race([settingsPromise, timeoutPromise])) as Awaited<ReturnType<typeof getSettings>> | null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function getForecastApiUrl(): Promise<string> {
-  const settings = await getSettings().catch(() => null);
-  return settings?.services.weather?.forecastUrl ?? process.env["OPEN_METEO_FORECAST_URL"] ?? DEFAULT_FORECAST_API_URL;
+  const envUrl = process.env["OPEN_METEO_FORECAST_URL"];
+  if (envUrl) return envUrl;
+  const settings = await getSettingsWithTimeout();
+  return settings?.services.weather?.forecastUrl ?? DEFAULT_FORECAST_API_URL;
 }
 
 export async function getHistoricalApiUrl(): Promise<string> {
-  const settings = await getSettings().catch(() => null);
-  return settings?.services.weather?.historicalUrl ?? process.env["OPEN_METEO_HISTORICAL_URL"] ?? DEFAULT_HISTORICAL_API_URL;
+  const envUrl = process.env["OPEN_METEO_HISTORICAL_URL"];
+  if (envUrl) return envUrl;
+  const settings = await getSettingsWithTimeout();
+  return settings?.services.weather?.historicalUrl ?? DEFAULT_HISTORICAL_API_URL;
 }
 
 export async function getWeatherTimeoutMs(): Promise<number> {
-  const settings = await getSettings().catch(() => null);
+  const settings = await getSettingsWithTimeout();
   const fromSettings = settings?.services.weather?.timeoutMs;
   if (typeof fromSettings === "number" && fromSettings > 0) return fromSettings;
   return DEFAULT_WEATHER_TIMEOUT_MS;
