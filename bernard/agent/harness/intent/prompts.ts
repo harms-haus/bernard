@@ -48,6 +48,7 @@ export function buildLangChainToolSystemPrompt(tools: ToolLikeForPrompt[]): stri
   return [
     `You have access to tools. When you call a tool, return an assistant message containing up to ${MAX_PARALLEL_TOOL_CALLS} tool_calls with the tool names and JSON arguments that satisfy the tools' JSON schemas. 
 These tool calls will execute in parallel. Tool_calls must be UNIQUE or they will not be executed.
+If a non-time-sensitive tool result you need is already in the conversation history, you do not need to call it again, reuse the tool call result from the conversation history
 To mark the end of tool calling because the task is complete or you have enough information, use the \"respond\" tool.
 If you need to call ${MAX_PARALLEL_TOOL_CALLS -1} or fewer final tools, you can ADD a \"respond\" tool call to the same message to finish calling tools after these tools complete.
 Example: {"role":"assistant","content":"","tool_calls":[{"type":"function","function":{"name":"geocode_search","arguments":"{\\"query\\":\\"Paris\\"}"}]} 

@@ -4,6 +4,7 @@ import { RedisVectorStore } from "@langchain/community/vectorstores/redis";
 import { Document } from "@langchain/core/documents";
 import { getEmbeddingModel, type EmbeddingConfig, verifyEmbeddingConfig } from "./embeddings";
 import { getRedis } from "./redis";
+import { withTimeout } from "./timeouts";
 import type Redis from "ioredis";
 import { createClient, type RedisClientType } from "redis";
 
@@ -42,6 +43,7 @@ const DEFAULT_FRESHNESS_DAYS = 7;
 const MAX_FRESHNESS_DAYS = 90;
 const MAX_INCREMENT_DAYS = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MEMORY_VECTOR_TIMEOUT_MS = parseInt(process.env["MEMORY_VECTOR_TIMEOUT_MS"] ?? "8000", 10) || 8_000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -65,6 +67,10 @@ export function ttlSeconds(record: MemoryRecord, nowMs = Date.now()): number {
   const expiresAt = computeExpiryMs(record);
   if (expiresAt <= nowMs) return 0;
   return Math.ceil((expiresAt - nowMs) / 1000);
+}
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 let cachedVectorClient: RedisClientType | null = null;
@@ -152,6 +158,14 @@ export class MemoryStore {
     await this.applyExpiry(record);
   }
 
+  private async safeUpsertVectorDoc(record: MemoryRecord) {
+    try {
+      await withTimeout(this.upsertVectorDoc(record), MEMORY_VECTOR_TIMEOUT_MS, "memory vector upsert");
+    } catch (err) {
+      console.warn(`[memory] vector upsert failed; continuing without embedding: ${formatError(err)}`);
+    }
+  }
+
   async createMemory(input: { label: string; content: string; conversationId: string }): Promise<MemoryRecord> {
     const id = crypto.randomUUID();
     const timestamp = nowIso();
@@ -165,7 +179,7 @@ export class MemoryStore {
       freshnessMaxDays: DEFAULT_FRESHNESS_DAYS
     };
     await this.storeMetadata(record);
-    await this.upsertVectorDoc(record);
+    await this.safeUpsertVectorDoc(record);
     return record;
   }
 
@@ -227,7 +241,7 @@ export class MemoryStore {
     };
     await this.storeMetadata(next);
     if (updates.content || updates.label) {
-      await this.upsertVectorDoc(next);
+      await this.safeUpsertVectorDoc(next);
     }
     return next;
   }
@@ -253,7 +267,17 @@ export class MemoryStore {
 
   async searchSimilar(content: string, limit = 5): Promise<MemorySearchHit[]> {
     const store = await this.vectorStore();
-    const results = await store.similaritySearchWithScore(content, limit);
+    let results: Array<[Document, number]> = [];
+    try {
+      results = await withTimeout(
+        store.similaritySearchWithScore(content, limit),
+        MEMORY_VECTOR_TIMEOUT_MS,
+        "memory similarity search"
+      );
+    } catch (err) {
+      console.warn(`[memory] similarity search failed; returning no neighbors: ${formatError(err)}`);
+      return [];
+    }
     const hits: MemorySearchHit[] = [];
     for (const [doc, score] of results) {
       const originId =

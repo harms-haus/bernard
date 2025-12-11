@@ -424,7 +424,7 @@ test("IntentHarness blocks respond() alone when earlier tools failed", async () 
   assert.ok(toolMessages.some((content) => content.includes("Previous tool call(s) in this run failed")));
 });
 
-test("IntentHarness fails after the same tool call repeats three times in a row", async () => {
+test("IntentHarness short-circuits if the same tool call repeats with no new work", async () => {
   const toolCall = {
     id: "repeat_call",
     name: "echo_tool",
@@ -448,7 +448,12 @@ test("IntentHarness fails after the same tool call repeats three times in a row"
   ];
 
   const harness = new IntentHarness(caller, tools, 5);
-  await assert.rejects(() => harness.run({}, baseCtx), /repeated 3 times/);
+  const result = await harness.run({}, baseCtx);
+  assert.equal(result.output.done, true);
+  const toolMessages = result.output.transcript
+    .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
+    .map((msg) => String((msg as { content?: unknown }).content ?? ""));
+  assert.ok(toolMessages.some((content) => content.includes("Tool calls already completed")));
 });
 
 

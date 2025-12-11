@@ -1,5 +1,6 @@
-import { classifyMemory, type DedupDecision } from "./memoryDeduper";
+import { classifyMemory, fallbackDecision, type DedupDecision } from "./memoryDeduper";
 import { getMemoryStore, type MemoryRecord, type MemorySearchHit } from "./memoryStore";
+import { withTimeout } from "./timeouts";
 
 export type MemorizeInput = {
   label: string;
@@ -17,6 +18,11 @@ export type MemorizeResult = {
   neighbors: MemorySearchHit[];
 };
 
+const MEMORY_STEP_TIMEOUT_MS = Number(process.env["MEMORY_STEP_TIMEOUT_MS"]) || 8_000;
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function normalizeInput(input: MemorizeInput): MemorizeInput {
   return {
     label: input.label.trim(),
@@ -31,8 +37,22 @@ export async function memorizeValue(
 ): Promise<MemorizeResult> {
   const normalized = normalizeInput(input);
   const store = deps.store ?? (await getMemoryStore());
-  const neighbors = await store.searchSimilar(normalized.content, 5);
-  const decision = await classifyMemory({ label: normalized.label, content: normalized.content }, neighbors);
+  const neighbors = await withTimeout(
+    store.searchSimilar(normalized.content, 5),
+    MEMORY_STEP_TIMEOUT_MS,
+    "memory search"
+  ).catch((err) => {
+    console.warn(`[memory] similarity search failed; proceeding without neighbors: ${formatError(err)}`);
+    return [];
+  });
+  const decision = await withTimeout(
+    classifyMemory({ label: normalized.label, content: normalized.content }, neighbors),
+    MEMORY_STEP_TIMEOUT_MS,
+    "memory dedup"
+  ).catch((err) => {
+    console.warn(`[memory] dedup decision failed; using fallback: ${formatError(err)}`);
+    return fallbackDecision(neighbors);
+  });
 
   const pickTargetId = (): string | undefined => {
     if (decision.targetId) return decision.targetId;

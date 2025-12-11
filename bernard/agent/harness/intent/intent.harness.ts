@@ -8,7 +8,6 @@ import {
 } from "./prompts";
 import type { Harness, HarnessContext, HarnessResult, LLMCaller, ToolCall } from "../lib/types";
 import type { MessageRecord } from "@/lib/recordKeeper";
-import { snapshotToolsForTrace } from "../lib/toolSnapshot";
 
 const RESPOND_TOOL_NAME = "respond";
 const MAX_CORRECTION_ATTEMPTS = 2;
@@ -207,11 +206,6 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     await this.ensureToolsReady();
 
     const transcript: BaseMessage[] = [...ctx.conversation.turns];
-    const historyLength = transcript.length;
-    if (input.messageText) {
-      transcript.push(new HumanMessage({ content: input.messageText }));
-    }
-
     const toolMap = new Map(this.toolsForLLM.map((tool) => [tool.name, tool]));
     let lastToolCalls: ToolCall[] = [];
     let previousCallKeys = new Set<string>();
@@ -222,14 +216,13 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
 
     for (let i = 0; i < (ctx.config.maxIntentIterations ?? this.maxIterations); i++) {
       const systemPrompt = buildIntentSystemPrompt(ctx.now(), this.toolsForLLM, this.disabledTools);
-      const intentPrompt = [
-        ...transcript.slice(0, historyLength),
-        new SystemMessage(systemPrompt),
-        ...transcript.slice(historyLength)
-      ] as BaseMessage[];
+      const context = [new SystemMessage(systemPrompt), ...transcript];
+      if (input.messageText) {
+        context.push(new HumanMessage({ content: input.messageText }));
+      }
       const res = await this.llm.call({
         model: ctx.config.intentModel,
-        messages: intentPrompt,
+        messages: context,
         tools: this.toolsForLLM,
         stream: false,
         meta: {
@@ -250,11 +243,10 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         if (ctx.recordKeeper) {
           const traceDetails = {
             model: ctx.config.intentModel,
-            context: intentPrompt,
+            context: context,
             result: res.message,
             latencyMs: res.trace?.latencyMs,
             toolLatencyMs: toolLatencyMsTotal,
-            tools: snapshotToolsForTrace(this.toolsForLLM),
             tokens: res.usage,
             requestId: ctx.requestId,
             turnId: ctx.turnId,
@@ -286,19 +278,18 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
       };
 
       try {
-        transcript.push(res.message);
         lastToolCalls = res.toolCalls ?? [];
 
         const hasTools = lastToolCalls.length > 0;
 
         // If no tools were requested, treat this as a handoff without persisting the assistant text.
-        if (!hasTools) {
-          // Remove the just-added assistant message to avoid duplicating content in history.
-          transcript.pop();
+        if (hasTools) {
+          transcript.push(res.message);
+        } else {
           return { output: { transcript, toolCalls: [], done: true }, done: true };
         }
 
-        const deduped: Array<{ call: ToolCall; args: Record<string, unknown>; key: string }> = [];
+        const deduped: Array<{ call: ToolCall; args: Record<string, unknown>; key: string; name: string }> = [];
         const parseDiagnostics = new Map<
           string,
           { success: boolean; error?: string | undefined; raw: unknown; args: Record<string, unknown> }
@@ -322,7 +313,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
             continue;
           }
           seenKeys.add(key);
-          deduped.push({ call, args, key });
+          deduped.push({ call, args, key, name: call.name });
           parseDiagnostics.set(call.id ?? key, {
             success: parsed.success,
             error: parsed.error,
@@ -348,6 +339,22 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         }
 
         const currentKeys = new Set(deduped.map((entry) => entry.key));
+        const hasNewCalls = deduped.some((entry) => !previousCallKeys.has(entry.key));
+        if (!hasNewCalls && successfulToolRuns > 0) {
+          // Avoid looping on identical calls once we've already run them successfully.
+          const note =
+            "Tool calls already completed in a prior turn; handing off to the responder.";
+          for (const entry of deduped) {
+            transcript.push(
+              new ToolMessage({
+                tool_call_id: entry.key,
+                name: entry.name,
+                content: note
+              })
+            );
+          }
+          return { output: { transcript: context, toolCalls: [], done: true }, done: true };
+        }
         for (const key of currentKeys) {
           const previousStreak = previousCallKeys.has(key) ? repeatCounts.get(key) ?? 1 : 0;
           const nextStreak = previousStreak ? previousStreak + 1 : 1;

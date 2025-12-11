@@ -1,72 +1,54 @@
 # AGENTS
 
-## What we are building
+## Purpose and shape
 
-- Bernard is an AI assistant pipeline that runs an ESPHome ingress device and forwards conversations through Home Assistant to an OpenRouter-backed LLM via a LangGraph agent.
-- The device handles wake words, STT/TTS, and on-device status UX; the backend focuses on reasoning, calling small scripted tools, and enforcing token-based access.
-- Keep descriptions generic and forward-looking: use current code as examples, but treat it as scaffolding rather than the final shape.
+- Bernard is an AI assistant pipeline: device capture → Home Assistant ingress → agent API → model/tool loop → streamed text back for TTS and device UX.
+- Treat current code as scaffolding. Patterns and contracts here should survive new tools, harnesses, and transport variants.
 
-## Components
+## Architecture patterns
 
-- Bernard Agent API (Next.js + LangGraph + ChatOpenAI/OpenRouter)
-  - Stateless agent graph that routes between the model node and a tool node until no tool calls remain, then streams updates as `text/event-stream`.
-  - Exposes a chat endpoint that accepts OpenAI-style message arrays and optional streaming; uses bearer tokens for auth.
-  - Uses Redis for token validation and simple global caching; token metadata is namespaced for safety.
-- Token service (Redis-backed)
-  - Admin-only endpoints create/list/delete named tokens; tokens are long random hex strings stored separately from metadata.
-  - Validation looks up tokens to recover the friendly name/metadata; failures are 401s to keep the surface minimal.
-- Tooling set (scripted, synchronous where possible)
-  - `web_search`: hits a configurable search API (default Brave) with bearer auth; limit count to small numbers to bound latency.
-  - `set_timer`: short-lived timers (<=60s) using in-process delays; only for conversational pacing, not scheduling.
-  - `geocode_search`: forward geocoding via OpenStreetMap Nominatim; requires a user agent and respects optional language/country hints.
-  - `get_weather_current`: Open-Meteo current conditions for provided coordinates (lat, lon).
-  - `get_weather_forecast`: Open-Meteo forecast for provided coordinates and target date/time.
-  - `get_weather_historical`: Open-Meteo historical weather for provided coordinates and target date/time.
-- Ingress device (ESPHome, ingress mode)
-  - ESP32-S3-Box voice assistant profile with display states (idle/listening/thinking/replying/error/muted/timer-finished).
-  - Wake-word selection (on-device micro_wake_word vs HA-provided) and media player for timer alarms.
-  - Uses `secrets.yaml` for Wi-Fi and any sensitive values; build produces a factory binary for flashing.
+- Stateless graph: a LangGraph-style loop alternates model output and tool execution until tools are exhausted, then streams partial tokens as `text/event-stream`. Keep nodes single-purpose and composable.
+- Token-gated access: bearer tokens map to friendly metadata in Redis; lookups fail fast with 401s. Namespaces prevent collisions.
+- Short, synchronous tools: favor quick, deterministic calls. External calls use strict timeouts and parameterized endpoints. Examples: a small web search helper, a brief in-process timer, or a weather fetcher that takes lat/lon directly.
+- Human-ready tool outputs: tools return concise summaries already suitable for the model to quote; avoid dumping raw JSON.
+- Prompt harnesses: prompts live with their calling harness; they set clear roles, delimit tool schemas, and keep output streaming-friendly. Use examples sparingly and update them when behavior shifts.
+- Device-first ingress: the ESPHome profile drives wake states and local UX; cloud pieces stay stateless so reconnects are cheap. Secrets remain in device `secrets.yaml`.
 
-## Tech and practices
+## Operational expectations
 
-- Next.js 16 app router, TypeScript, LangGraph, ioredis; tests use `node:test` via `tsx`.
-- Environment-driven config: OpenRouter keys/model/base URL, Redis URL, search API key/URL, admin API key; keep weather/search endpoints overrideable via env.
-- Prefer explicit failures over fallbacks; reject missing/invalid auth early.
-- Keep modules small and responsibility-scoped; no compatibility shims. Remove dead code.
-- Default to streaming responses; only send full JSON when explicitly requested.
-- Ask questions early when requirements are ambiguous; optimize for clarity over cleverness.
+- Config by environment: model keys/URL, Redis URL, search API key/URL, admin key, and overrideable weather/search endpoints. Missing config should error loudly.
+- Default to streaming; return full JSON only when explicitly requested by a caller.
+- Prefer explicit failures over silent fallbacks; log without leaking secrets.
+- Keep modules small and responsibility-scoped; remove dead code rather than layering shims.
+- Time-budget external calls; bound result counts to keep latency predictable.
 
-## Build, test, run
+## Build, test, run (API side)
 
-- Agent API
-  - Prereqs: Node LTS, npm. Copy the sample env file to a local env and populate required keys (OpenRouter, Redis, search, admin).
-  - Install deps: `npm install`.
-  - Dev server: `npm run dev` (Next.js).
-  - Production build: `npm run build`; start with `npm run start`.
-  - Lint: `npm run lint`.
-  - Tests: `npm test` (runs `tsx --test` over the `tests/` tree).
-- Tooling considerations
-  - `web_search` requires a search API key; return a friendly message when missing.
-  - `set_timer` blocks the worker; keep durations short and avoid queuing long timers.
-  - Weather tools use Open-Meteo; endpoints are overrideable, and no API key is required by default. Supply lat/lon directly; units default to imperial for likely-US coordinates unless overridden.
-  - `geocode_search` calls Nominatim; set `NOMINATIM_USER_AGENT` (and optional `NOMINATIM_EMAIL`/`NOMINATIM_REFERER`) to comply with usage policy.
-- Token service
-  - Requires a reachable Redis instance; namespace tokens under a dedicated prefix to avoid collisions.
-  - Admin actions are bearer-protected; rotate the admin key regularly and avoid reusing it for other services.
-- Ingress (ESPHome, ingress mode)
-  - Prereqs: Docker (for the ESPHome image) and a `secrets.yaml` containing Wi-Fi and any other required secrets.
-  - Build: run the provided build script; it mounts a RAM-backed cache and writes a factory binary into the `bin/` directory.
-  - Flash the factory binary to the ESP32-S3-Box; onboarding happens through Home Assistant ingress.
-  - No automated tests here—validate by pairing with HA, exercising wake word, STT→LLM→TTS loop, and the timer alarm.
+- Prereqs: Node LTS + npm; copy the sample env and fill required keys before running.
+- Install: `npm install`
+- Dev: `npm run dev`
+- Build: `npm run build` then `npm run start`
+- Lint: `npm run lint`
+- Tests: `npm test` (node:test via tsx over `tests/`)
 
-## Interaction model (intended)
+## Tool and harness guidance for growth
 
-- Voice captured on the device → Home Assistant voice pipeline → text request to Bernard Agent API with a bearer token → LangGraph routes between model and tools → response text returned for TTS → device updates display state and plays audio when needed (e.g., timer).
-- Keep prompts/tool outputs concise; prefer single-pass tool calls over deep recursion.
+- Add tools as single-purpose modules with tight schemas and short execution windows; make endpoints configurable. Use an example like the existing search helper: parameterize API URL/key, cap results, and return a brief summary.
+- Keep timers conversational, not schedulers; if blocking, cap duration (e.g., ~60s) and surface completion states to the device.
+- When adding data fetchers (e.g., another weather source), accept explicit coordinates/targets and prefer no-key providers unless necessary; if a key is needed, guard with environment configuration and user agent requirements.
+- Harnesses should isolate their prompts, describe available tools inline, and avoid recursion; update sample dialogues when tool behavior changes.
 
-## Expectations for future agents
+## Device and ingress notes
 
-- Keep breaking changes clean: update call sites rather than layering shims.
-- When extending tools, add focused schemas and return human-ready summaries.
-- Guard external calls with timeouts and meaningful error messages.
-- Avoid leaking secrets in logs or responses; treat env and `secrets.yaml` as the single sources of truth.
+- The ESP32-S3 profile handles wake-word selection, local states (idle/listening/thinking/replying/error/muted/timer-finished), and media for timers. Builds run via the provided script, writing a factory binary; flashing and onboarding happen through Home Assistant ingress.
+
+## Interaction flow (expected)
+
+- Voice/text → ingress → bearer-authenticated request to the agent → model/tool loop → streamed text back → device updates display/audio as needed.
+
+## Forward-looking principles
+
+- Favor clean breaks over compatibility layers: change call sites rather than add shims.
+- Guard new external calls with timeouts and meaningful error messaging.
+- Keep outputs concise and human-ready; avoid leaking secrets in any surface.
+- Document new patterns here when they emerge; use existing tools and harnesses only as examples, not an exhaustive list.

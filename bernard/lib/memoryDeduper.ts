@@ -1,14 +1,24 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
-import { safeStringify } from "./messages";
 import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "./models";
+import { withTimeout } from "./timeouts";
 import type { MemoryRecord, MemorySearchHit } from "./memoryStore";
 
 type Decision = "new" | "update" | "duplicate";
 
 export type DedupDecision = { decision: Decision; targetId?: string };
 
+const DEDUP_TIMEOUT_MS = (() => {
+  const envValue = process.env["MEMORY_DEDUP_TIMEOUT_MS"];
+  if (!envValue) return 8_000;
+  const parsed = Number(envValue);
+  if (isNaN(parsed) || parsed <= 0) {
+    console.warn(`Invalid MEMORY_DEDUP_TIMEOUT_MS: "${envValue}", using default 8000ms`);
+    return 8_000;
+  }
+  return parsed;
+})();
 const DECISION_SCHEMA = z.object({
   decision: z.union([z.literal("new"), z.literal("update"), z.literal("duplicate")]),
   targetId: z.string().optional()
@@ -37,13 +47,16 @@ function buildNeighborsSummary(neighbors: MemorySearchHit[]): string {
 function tryParseDecision(text: string): DedupDecision | null {
   try {
     const parsed = DECISION_SCHEMA.parse(JSON.parse(text));
-    return parsed;
+    if (parsed.targetId === undefined) {
+      return { decision: parsed.decision };
+    }
+    return { decision: parsed.decision, targetId: parsed.targetId };
   } catch {
     return null;
   }
 }
 
-function fallbackDecision(neighbors: MemorySearchHit[]): DedupDecision {
+export function fallbackDecision(neighbors: MemorySearchHit[]): DedupDecision {
   const best = neighbors[0];
   if (best && best.score > 0.9) {
     return { decision: "duplicate", targetId: best.record.id };
@@ -83,7 +96,19 @@ export async function classifyMemory(
     `Candidate content: ${candidate.content}\n` +
     `Neighbors:\n${neighborSummary}`;
 
-  const res = await model.invoke([{ role: "user", content: prompt }]);
+  let res: unknown;
+  try {
+    res = await withTimeout(model.invoke([{ role: "user", content: prompt }]), DEDUP_TIMEOUT_MS, "memory dedup");
+  } catch (err: unknown) {
+    const isTimeoutError =
+      (err instanceof Error && (err.name === "TimeoutError" || err.message.includes("memory dedup"))) ||
+      (typeof err === "string" && err.includes("memory dedup"));
+    if (isTimeoutError) {
+      console.debug("memory dedup classification timed out; using heuristic", err);
+      return fallbackDecision(neighbors);
+    }
+    throw err;
+  }
   const content = normalizeContent((res as { content?: unknown }).content);
   const parsed = content ? tryParseDecision(content) : null;
   if (parsed) return parsed;
