@@ -18,11 +18,37 @@ export type MemorizeResult = {
   neighbors: MemorySearchHit[];
 };
 
-const MEMORY_STEP_TIMEOUT_MS = Number(process.env["MEMORY_STEP_TIMEOUT_MS"]) || 8_000;
+export type MemorizeDependencies = {
+  store?: Awaited<ReturnType<typeof getMemoryStore>>;
+  classifyMemoryImpl?: typeof classifyMemory;
+  fallbackDecisionImpl?: typeof fallbackDecision;
+  withTimeoutImpl?: typeof withTimeout;
+  logger?: Pick<typeof console, "warn">;
+};
+
+const DEFAULT_MEMORY_STEP_TIMEOUT_MS = 8_000;
+
+/**
+ * Resolve the timeout used for memory operations, falling back to a safe default.
+ */
+export function resolveMemoryStepTimeoutMs(): number {
+  const raw = process.env["MEMORY_STEP_TIMEOUT_MS"];
+  if (!raw) return DEFAULT_MEMORY_STEP_TIMEOUT_MS;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed !== Number(raw)) return DEFAULT_MEMORY_STEP_TIMEOUT_MS;
+  return parsed;
+}
+
+/**
+ * Format unknown errors into human-readable strings.
+ */
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Normalize user input for storage and deduplication.
+ */
 function normalizeInput(input: MemorizeInput): MemorizeInput {
   return {
     label: input.label.trim(),
@@ -33,28 +59,33 @@ function normalizeInput(input: MemorizeInput): MemorizeInput {
 
 /**
  * Upsert a memory record with similarity search + deduplication guard rails.
+ *
+ * Dependencies are injectable to ease testing and to keep external calls controlled.
  */
-export async function memorizeValue(
-  input: MemorizeInput,
-  deps: { store?: Awaited<ReturnType<typeof getMemoryStore>> } = {}
-): Promise<MemorizeResult> {
+export async function memorizeValue(input: MemorizeInput, deps: MemorizeDependencies = {}): Promise<MemorizeResult> {
   const normalized = normalizeInput(input);
   const store = deps.store ?? (await getMemoryStore());
-  const neighbors = await withTimeout(
+  const classifyMemoryImpl = deps.classifyMemoryImpl ?? classifyMemory;
+  const fallbackDecisionImpl = deps.fallbackDecisionImpl ?? fallbackDecision;
+  const withTimeoutImpl = deps.withTimeoutImpl ?? withTimeout;
+  const logger = deps.logger ?? console;
+  const timeoutMs = resolveMemoryStepTimeoutMs();
+
+  const neighbors = await withTimeoutImpl(
     store.searchSimilar(normalized.content, 5),
-    MEMORY_STEP_TIMEOUT_MS,
+    timeoutMs,
     "memory search"
   ).catch((err) => {
-    console.warn(`[memory] similarity search failed; proceeding without neighbors: ${formatError(err)}`);
+    logger.warn(`[memory] similarity search failed; proceeding without neighbors: ${formatError(err)}`);
     return [];
   });
-  const decision = await withTimeout(
-    classifyMemory({ label: normalized.label, content: normalized.content }, neighbors),
-    MEMORY_STEP_TIMEOUT_MS,
+  const decision = await withTimeoutImpl(
+    classifyMemoryImpl({ label: normalized.label, content: normalized.content }, neighbors),
+    timeoutMs,
     "memory dedup"
   ).catch((err) => {
-    console.warn(`[memory] dedup decision failed; using fallback: ${formatError(err)}`);
-    return fallbackDecision(neighbors);
+    logger.warn(`[memory] dedup decision failed; using fallback: ${formatError(err)}`);
+    return fallbackDecisionImpl(neighbors);
   });
 
   const pickTargetId = (): string | undefined => {

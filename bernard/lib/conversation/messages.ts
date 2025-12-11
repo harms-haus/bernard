@@ -43,7 +43,7 @@ export const VALID_ROLES = new Set<OpenAIMessage["role"]>(["system", "user", "as
  * Narrow an unknown value to a record.
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -298,7 +298,7 @@ function normalizeRecordToolCall(call: ToolCallEntry, index: number): ToolCall {
   const normalizedArgs = typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs);
   return {
     id,
-    type: (call.type as string) ?? "function",
+    type: (call.type as "function" | undefined) ?? "function",
     function: { name, arguments: normalizedArgs }
   };
 }
@@ -344,7 +344,8 @@ function buildToolCallFromOpenAI(call: ToolCall, index: number): LangGraphToolCa
   const id = typeof call.id === "string" && call.id.trim() ? call.id : fallbackId;
   const rawArgs = call.function.arguments;
   const parsedArgs = parseToolInput(rawArgs);
-  const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+  const argsObject: Record<string, unknown> =
+    isRecord(parsedArgs) && !Array.isArray(parsedArgs) ? parsedArgs : { value: parsedArgs };
 
   return {
     id,
@@ -361,7 +362,8 @@ function buildToolCallFromOpenAI(call: ToolCall, index: number): LangGraphToolCa
 function buildToolCallFromLegacyFunctionCall(call: LegacyFunctionCall): LangGraphToolCall {
   const rawArgs = call.arguments;
   const parsedArgs = parseToolInput(rawArgs);
-  const argsObject: Record<string, unknown> = isRecord(parsedArgs) ? parsedArgs : { value: parsedArgs };
+  const argsObject: Record<string, unknown> =
+    isRecord(parsedArgs) && !Array.isArray(parsedArgs) ? parsedArgs : { value: parsedArgs };
 
   return {
     id: call.name ?? "function_call",

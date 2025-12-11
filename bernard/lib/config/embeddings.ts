@@ -21,8 +21,8 @@ type EmbeddingFactoryOptions = ConstructorParameters<typeof OpenAIEmbeddings>[0]
 type EmbeddingFactory = (options: EmbeddingFactoryOptions) => OpenAIEmbeddings;
 
 type EmbeddingState = {
-  cachedEmbeddingCheck: { expiresAt: number; result: VerifyResult } | null;
-  inflightEmbeddingCheck: Promise<VerifyResult> | null;
+  cachedEmbeddingCheck: Map<string, { expiresAt: number; result: VerifyResult }>;
+  inflightEmbeddingCheck: Map<string, Promise<VerifyResult>>;
   loggedModelConfig: boolean;
 };
 
@@ -32,8 +32,8 @@ function getEmbeddingState(): EmbeddingState {
   const g = globalThis as Record<string | symbol, unknown>;
   if (!g[EMBEDDING_STATE_KEY]) {
     g[EMBEDDING_STATE_KEY] = {
-      cachedEmbeddingCheck: null,
-      inflightEmbeddingCheck: null,
+      cachedEmbeddingCheck: new Map(),
+      inflightEmbeddingCheck: new Map(),
       loggedModelConfig: false
     } satisfies EmbeddingState;
   }
@@ -63,7 +63,19 @@ async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<Resolved
   const apiKey = config.apiKey ?? service?.embeddingApiKey ?? process.env["EMBEDDING_API_KEY"];
   const baseUrl = config.baseUrl ?? service?.embeddingBaseUrl ?? process.env["EMBEDDING_BASE_URL"];
   const model = config.model ?? service?.embeddingModel ?? process.env["EMBEDDING_MODEL"] ?? DEFAULT_EMBEDDING_MODEL;
-  return { apiKey: apiKey ?? "", baseUrl, model };
+  return {
+    apiKey: apiKey ?? "",
+    model,
+    ...(baseUrl ? { baseUrl } : {})
+  };
+}
+
+function embeddingConfigCacheKey(resolved: ResolvedEmbeddingConfig): string {
+  return JSON.stringify({
+    apiKey: resolved.apiKey,
+    baseUrl: resolved.baseUrl ?? null,
+    model: resolved.model
+  });
 }
 
 async function runEmbeddingProbe(resolved: ResolvedEmbeddingConfig): Promise<VerifyResult> {
@@ -113,32 +125,37 @@ async function runEmbeddingProbe(resolved: ResolvedEmbeddingConfig): Promise<Ver
  * Validate embeddings configuration by running a short probe request.
  */
 export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promise<VerifyResult> {
+  const resolved = await resolveEmbeddingConfig(config);
+  const cacheKey = embeddingConfigCacheKey(resolved);
   const now = Date.now();
-  if (embeddingState.cachedEmbeddingCheck && now < embeddingState.cachedEmbeddingCheck.expiresAt) {
-    return embeddingState.cachedEmbeddingCheck.result;
+  const cached = embeddingState.cachedEmbeddingCheck.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.result;
   }
 
-  if (embeddingState.inflightEmbeddingCheck) {
-    return embeddingState.inflightEmbeddingCheck;
+  const inflight = embeddingState.inflightEmbeddingCheck.get(cacheKey);
+  if (inflight) {
+    return inflight;
   }
 
   const startedAt = now;
-  embeddingState.inflightEmbeddingCheck = (async () => {
-    const resolved = await resolveEmbeddingConfig(config);
+  const probe = (async () => {
     if (!resolved.apiKey) {
       return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
     }
 
     const result = await runEmbeddingProbe(resolved);
-    embeddingState.cachedEmbeddingCheck = { result, expiresAt: startedAt + EMBEDDING_VERIFY_TTL_MS };
+    embeddingState.cachedEmbeddingCheck.set(cacheKey, { result, expiresAt: startedAt + EMBEDDING_VERIFY_TTL_MS });
     return result;
   })();
 
-  embeddingState.inflightEmbeddingCheck.finally(() => {
-    embeddingState.inflightEmbeddingCheck = null;
+  embeddingState.inflightEmbeddingCheck.set(cacheKey, probe);
+
+  probe.finally(() => {
+    embeddingState.inflightEmbeddingCheck.delete(cacheKey);
   });
 
-  return embeddingState.inflightEmbeddingCheck;
+  return probe;
 }
 
 /**
@@ -152,11 +169,13 @@ export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<O
 
   logModelConfig("runtime", resolved.baseUrl, resolved.model);
 
-  return embeddingsFactory({
-    apiKey: resolved.apiKey,
-    modelName: resolved.model,
-    configuration: resolved.baseUrl ? { baseURL: resolved.baseUrl } : undefined
-  });
+  return embeddingsFactory(
+    {
+      apiKey: resolved.apiKey,
+      modelName: resolved.model,
+      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {})
+    }
+  );
 }
 
 /**
@@ -177,8 +196,8 @@ export function setEmbeddingsFactory(factory: EmbeddingFactory) {
  * Clear cached verification state and log guards.
  */
 export function resetEmbeddingVerificationState() {
-  embeddingState.cachedEmbeddingCheck = null;
-  embeddingState.inflightEmbeddingCheck = null;
+  embeddingState.cachedEmbeddingCheck = new Map();
+  embeddingState.inflightEmbeddingCheck = new Map();
   embeddingState.loggedModelConfig = false;
 }
 

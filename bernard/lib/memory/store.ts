@@ -46,24 +46,54 @@ const MAX_INCREMENT_DAYS = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MEMORY_VECTOR_TIMEOUT_MS = parseInt(process.env["MEMORY_VECTOR_TIMEOUT_MS"] ?? "8000", 10) || 8_000;
 
+type VectorStoreFactory = (options: {
+  config: EmbeddingConfig & { indexName?: string; keyPrefix?: string };
+  embeddings: Awaited<ReturnType<typeof getEmbeddingModel>>;
+  redisClient: RedisClientType;
+  indexName: string;
+  keyPrefix: string;
+}) => Promise<VectorStoreLike>;
+
+type VectorClientFactory = () => Promise<RedisClientType>;
+type EmbeddingFactory = (config: EmbeddingConfig) => ReturnType<typeof getEmbeddingModel>;
+type RedisClientCreator = (options: { url: string }) => RedisClientType;
+type RedisVectorStoreBuilder = (options: {
+  embeddings: Awaited<ReturnType<typeof getEmbeddingModel>>;
+  redisClient: RedisClientType;
+  indexName: string;
+  keyPrefix: string;
+}) => Promise<VectorStoreLike> | VectorStoreLike;
+
 function nowIso() {
   return new Date().toISOString();
 }
 
+/**
+ * Increase freshness by 10% up to a maximum increment and ceiling.
+ */
 export function bumpFreshness(currentDays: number): number {
   const increment = Math.min(currentDays * 0.1, MAX_INCREMENT_DAYS);
   return Math.min(MAX_FRESHNESS_DAYS, currentDays + increment);
 }
 
+/**
+ * Compute the absolute expiry timestamp for a memory record in milliseconds.
+ */
 export function computeExpiryMs(record: MemoryRecord): number {
   const refreshed = new Date(record.refreshedAt).getTime();
   return refreshed + record.freshnessMaxDays * DAY_MS;
 }
 
+/**
+ * Determine whether a record is already expired at a given moment.
+ */
 export function isExpired(record: MemoryRecord, nowMs = Date.now()): boolean {
   return computeExpiryMs(record) <= nowMs;
 }
 
+/**
+ * Compute remaining TTL in seconds, clamped to zero when expired.
+ */
 export function ttlSeconds(record: MemoryRecord, nowMs = Date.now()): number {
   const expiresAt = computeExpiryMs(record);
   if (expiresAt <= nowMs) return 0;
@@ -78,11 +108,33 @@ let cachedVectorClient: RedisClientType | null = null;
 let cachedVectorStore: VectorStoreLike | null = null;
 let cachedVectorStoreConfig: { indexName: string; keyPrefix: string } | null = null;
 
-async function getVectorClient(): Promise<RedisClientType> {
+let redisClientCreator: RedisClientCreator = createClient;
+let redisVectorStoreBuilder: RedisVectorStoreBuilder = async ({ embeddings, redisClient, indexName, keyPrefix }) =>
+  new RedisVectorStore(embeddings, {
+    redisClient,
+    indexName,
+    keyPrefix
+  });
+
+const defaultVectorClientFactory: VectorClientFactory = async () => {
   if (cachedVectorClient) return cachedVectorClient;
   const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
-  const client = createClient({ url });
+  const client = redisClientCreator({ url });
   await client.connect();
+  cachedVectorClient = client;
+  return client;
+};
+
+const defaultVectorStoreFactory: VectorStoreFactory = async ({ embeddings, redisClient, indexName, keyPrefix }) =>
+  redisVectorStoreBuilder({ embeddings, redisClient, indexName, keyPrefix });
+
+let vectorClientFactory: VectorClientFactory = defaultVectorClientFactory;
+let vectorStoreFactory: VectorStoreFactory = defaultVectorStoreFactory;
+let embeddingFactory: EmbeddingFactory = getEmbeddingModel;
+
+async function getVectorClient(): Promise<RedisClientType> {
+  if (cachedVectorClient) return cachedVectorClient;
+  const client = await vectorClientFactory();
   cachedVectorClient = client;
   return client;
 }
@@ -96,13 +148,9 @@ async function getVectorStore(
     return cachedVectorStore;
   }
 
-  const embeddings = await getEmbeddingModel(config);
+  const embeddings = await embeddingFactory(config);
   const redisClient = await getVectorClient();
-  const store = new RedisVectorStore(embeddings, {
-    redisClient,
-    indexName,
-    keyPrefix
-  });
+  const store = await vectorStoreFactory({ config, embeddings, redisClient, indexName, keyPrefix });
   cachedVectorStore = store;
   cachedVectorStoreConfig = { indexName, keyPrefix };
   return store;
@@ -308,13 +356,23 @@ export class MemoryStore {
   }
 }
 
-export async function getMemoryStore(config: EmbeddingConfig = {}): Promise<MemoryStore> {
-  const settings = await getSettings().catch(() => null);
+type MemoryStoreDeps = {
+  redis?: Redis;
+  vectorStoreFactory?: typeof getVectorStore;
+  settingsFetcher?: typeof getSettings;
+};
+
+/**
+ * Construct a MemoryStore using configuration and optionally injected dependencies.
+ */
+export async function getMemoryStore(config: EmbeddingConfig = {}, deps: MemoryStoreDeps = {}): Promise<MemoryStore> {
+  const fetchSettings = deps.settingsFetcher ?? getSettings;
+  const settings = await fetchSettings().catch(() => null);
   const memory = settings?.services.memory;
   const indexName = memory?.indexName ?? DEFAULT_INDEX_NAME;
   const keyPrefix = memory?.keyPrefix ?? DEFAULT_KEY_PREFIX;
   const namespace = memory?.namespace ?? DEFAULT_NAMESPACE;
-  const vectorStore = getVectorStore({
+  const vectorStore = (deps.vectorStoreFactory ?? getVectorStore)({
     ...config,
     apiKey: config.apiKey ?? memory?.embeddingApiKey,
     baseUrl: config.baseUrl ?? memory?.embeddingBaseUrl,
@@ -322,7 +380,7 @@ export async function getMemoryStore(config: EmbeddingConfig = {}): Promise<Memo
     indexName,
     keyPrefix
   });
-  return new MemoryStore(getRedis(), vectorStore, namespace, keyPrefix);
+  return new MemoryStore(deps.redis ?? getRedis(), vectorStore, namespace, keyPrefix);
 }
 
 async function verifyRedisSearch(client: RedisClientType): Promise<{ ok: boolean; reason?: string }> {
@@ -338,20 +396,106 @@ async function verifyRedisSearch(client: RedisClientType): Promise<{ ok: boolean
   }
 }
 
+type VerifyMemoryDeps = {
+  verifyEmbeddings?: typeof verifyEmbeddingConfig;
+  redisClientFactory?: () => Promise<RedisClientType>;
+  redisSearchCheck?: (client: RedisClientType) => Promise<{ ok: boolean; reason?: string }>;
+};
+
+/**
+ * Validate embedding configuration and Redis search capabilities.
+ */
 export async function verifyMemoryConfiguration(
-  config: EmbeddingConfig = {}
+  config: EmbeddingConfig = {},
+  deps: VerifyMemoryDeps = {}
 ): Promise<{ ok: boolean; reason?: string }> {
-  const embeddingCheck = await verifyEmbeddingConfig(config);
+  const embeddingCheck = await (deps.verifyEmbeddings ?? verifyEmbeddingConfig)(config);
   if (!embeddingCheck.ok) return embeddingCheck;
 
   try {
-    const client = await getVectorClient();
-    const searchCheck = await verifyRedisSearch(client);
+    const client = await (deps.redisClientFactory ?? getVectorClient)();
+    const searchCheck = await (deps.redisSearchCheck ?? verifyRedisSearch)(client);
     if (!searchCheck.ok) return searchCheck;
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, reason: message };
   }
+}
+
+/**
+ * Override the vector client factory for testing.
+ */
+export function setVectorClientFactory(factory: VectorClientFactory) {
+  cachedVectorClient = null;
+  vectorClientFactory = factory;
+}
+
+/**
+ * Override the vector store factory for testing.
+ */
+export function setVectorStoreFactory(factory: VectorStoreFactory) {
+  cachedVectorStore = null;
+  cachedVectorStoreConfig = null;
+  vectorStoreFactory = factory;
+}
+
+/**
+ * Override the underlying Redis client creator used by the default client factory.
+ */
+export function setRedisClientCreator(creator: RedisClientCreator) {
+  cachedVectorClient = null;
+  redisClientCreator = creator;
+}
+
+/**
+ * Override the Redis vector store builder used by the default store factory.
+ */
+export function setRedisVectorStoreBuilder(builder: RedisVectorStoreBuilder) {
+  cachedVectorStore = null;
+  cachedVectorStoreConfig = null;
+  redisVectorStoreBuilder = builder;
+}
+
+/**
+ * Override the embedding model factory for testing.
+ */
+export function setEmbeddingModelFactory(factory: EmbeddingFactory) {
+  cachedVectorStore = null;
+  cachedVectorStoreConfig = null;
+  embeddingFactory = factory;
+}
+
+/**
+ * Reset cached clients and factories to defaults. Intended for tests.
+ */
+export function resetMemoryStoreState() {
+  if (cachedVectorClient && typeof (cachedVectorClient as { quit?: () => Promise<void> }).quit === "function") {
+    // Intentionally fire and forget to avoid blocking callers; tests can await closeVectorClient for determinism.
+    (cachedVectorClient as { quit?: () => Promise<void> }).quit?.().catch(() => {});
+  }
+  cachedVectorClient = null;
+  cachedVectorStore = null;
+  cachedVectorStoreConfig = null;
+  vectorClientFactory = defaultVectorClientFactory;
+  vectorStoreFactory = defaultVectorStoreFactory;
+  redisClientCreator = createClient;
+  redisVectorStoreBuilder = async ({ embeddings, redisClient, indexName, keyPrefix }) =>
+    new RedisVectorStore(embeddings, {
+      redisClient,
+      indexName,
+      keyPrefix
+    });
+  embeddingFactory = getEmbeddingModel;
+}
+
+/**
+ * Explicitly close the cached vector client when present. Useful for tests.
+ */
+export async function closeVectorClient(): Promise<void> {
+  if (cachedVectorClient && typeof (cachedVectorClient as { quit?: () => Promise<void> }).quit === "function") {
+    await (cachedVectorClient as { quit?: () => Promise<void> }).quit?.().catch(() => {});
+  }
+  cachedVectorClient = null;
 }
 

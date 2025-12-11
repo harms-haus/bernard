@@ -438,7 +438,12 @@ export class RecordKeeper {
   async closeIfIdle(now: number = Date.now()) {
     const cutoff = now - this.idleMs;
     const idleIds = await this.redis.zrangebyscore(this.key("convs:active"), 0, cutoff);
-    await Promise.all(idleIds.map((id) => this.closeConversation(id, "idle")));
+    const results = await Promise.allSettled(idleIds.map((id) => this.closeConversation(id, "idle")));
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      // Log failures for monitoring
+      console.error(`Failed to close ${failures.length} conversations`);
+    }
   }
 
   async deleteConversation(conversationId: string): Promise<boolean> {
