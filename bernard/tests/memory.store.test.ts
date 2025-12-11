@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { afterEach, beforeEach } from "node:test";
+import { afterEach, beforeEach, test } from "vitest";
 
 import { Document } from "@langchain/core/documents";
 
@@ -591,3 +591,4 @@ test("verifyMemoryConfiguration surfaces redis client errors", async () => {
   assert.equal(result.ok, false);
   assert.match(result.reason ?? "", /connection refused/);
 });
+

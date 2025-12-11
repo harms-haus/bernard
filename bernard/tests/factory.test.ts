@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, before } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
@@ -10,13 +10,13 @@ import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 
 const originalConsole = { error: console.error, warn: console.warn, info: console.info };
 
-before(() => {
+beforeAll(() => {
   console.error = () => {};
   console.warn = () => {};
   console.info = () => {};
 });
 
-after(() => {
+afterAll(() => {
   console.error = originalConsole.error;
   console.warn = originalConsole.warn;
   console.info = originalConsole.info;

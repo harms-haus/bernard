@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, beforeEach, test } from "vitest";
 
 import { OpenAIEmbeddings } from "@langchain/openai";
 
@@ -50,12 +50,12 @@ const mockFetchResponses = (responses: Array<Response | Error>) => {
   return calls;
 };
 
-test.beforeEach(() => {
+beforeEach(() => {
   setSettingsFetcher(async () => null as any);
   resetEmbeddingVerificationState();
 });
 
-test.afterEach(() => {
+afterEach(() => {
   resetEnv();
   resetEmbeddingVerificationState();
   setSettingsFetcher(getSettings);
@@ -240,3 +240,4 @@ void test(
     assert.equal((opts as any).configuration?.baseURL, "https://base.example.com/v1//");
   }
 );
+

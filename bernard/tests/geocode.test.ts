@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "vitest";
 
 import {
   buildGeocodeUrl,
@@ -54,7 +54,7 @@ const fakeConfig = (overrides?: Partial<ReturnType<typeof baseConfig>>) => {
   return async () => ({ ...baseConfig(), ...(overrides ?? {}) });
 };
 
-test.afterEach(() => {
+afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 

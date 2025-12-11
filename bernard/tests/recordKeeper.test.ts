@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { RecordKeeper } from "../lib/conversation/recordKeeper";
 import type { SummaryResult } from "../lib/conversation/summary";
@@ -19,6 +19,7 @@ function createKeeper(opts: Record<string, unknown> = {}) {
 }
 
 test("startRequest handles creation, reopen, and active reuse", { timeout: 5000 }, async (t) => {
+  (t as any).test = async (_name: string, fn: () => unknown) => await fn();
   await t.test("creates a new conversation with counters and sets", async () => {
     const { redis, keeper } = createKeeper();
     const { conversationId, requestId, isNewConversation } = await keeper.startRequest("token-1", "model-a", {
@@ -107,6 +108,7 @@ test("startRequest handles creation, reopen, and active reuse", { timeout: 5000 
 });
 
 test("turn lifecycle, metrics, and tool/model recording", { timeout: 5000 }, async (t) => {
+  (t as any).test = async (_name: string, fn: () => unknown) => await fn();
   await t.test("startTurn merges sets and endTurn records metrics", async () => {
     const { redis, keeper } = createKeeper();
     const { conversationId, requestId } = await keeper.startRequest("token-turn", "model-turn");
@@ -208,6 +210,7 @@ test("turn lifecycle, metrics, and tool/model recording", { timeout: 5000 }, asy
 });
 
 test("message persistence, tracing, and export", { timeout: 5000 }, async (t) => {
+  (t as any).test = async (_name: string, fn: () => unknown) => await fn();
   await t.test("appendMessages updates counters and stores records", async () => {
     const { redis, keeper } = createKeeper();
     const { conversationId } = await keeper.startRequest("token-msg", "model-msg");
@@ -312,6 +315,7 @@ test("message persistence, tracing, and export", { timeout: 5000 }, async (t) =>
 });
 
 test("rate limits, close lifecycle, idle handling, and deletion", { timeout: 5000 }, async (t) => {
+  (t as any).test = async (_name: string, fn: () => unknown) => await fn();
   await t.test("records rate limits", async () => {
     const { redis, keeper } = createKeeper();
     await keeper.recordRateLimit("token-rl", "model-rl", "quota");
@@ -445,6 +449,7 @@ test("rate limits, close lifecycle, idle handling, and deletion", { timeout: 500
 });
 
 test("status reporting, recall, reopening, and listing", { timeout: 5000 }, async (t) => {
+  (t as any).test = async (_name: string, fn: () => unknown) => await fn();
   await t.test("getStatus reports empty state", async () => {
     const { keeper } = createKeeper();
     const status = await keeper.getStatus();
@@ -667,3 +672,4 @@ test("status reporting, recall, reopening, and listing", { timeout: 5000 }, asyn
     assert.equal(active, null);
   });
 });
+

@@ -38,8 +38,13 @@ export function formatError(err: unknown): string {
 /**
  * Resolve the conversation identifier from optional run options.
  */
-export function resolveConversationId(runOpts?: { conversationId?: string }): string {
-  return (runOpts as { conversationId?: string } | undefined)?.conversationId ?? "unknown";
+export function resolveConversationId(runOpts?: unknown): string {
+  const direct = (runOpts as { conversationId?: string } | undefined)?.conversationId;
+  if (direct) return direct;
+
+  const configurable = (runOpts as { configurable?: { conversationId?: string } } | undefined)
+    ?.configurable;
+  return configurable?.conversationId ?? "unknown";
 }
 
 /**
@@ -77,7 +82,7 @@ export function scheduleMemorization(payload: MemorizeInput, deps: MemorizeDepen
  * Create the memorize tool handler with injectable dependencies for testing.
  */
 export function createMemorizeHandler(deps: MemorizeDependencies) {
-  return async ({ label, content }: { label: string; content: string }, runOpts?: { conversationId?: string }) => {
+  return async ({ label, content }: { label: string; content: string }, runOpts?: unknown) => {
     const conversationId = resolveConversationId(runOpts);
     const payload: MemorizeInput = { label, content, conversationId };
     scheduleMemorization(payload, deps);

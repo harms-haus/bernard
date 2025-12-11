@@ -1,5 +1,5 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
 
 export function turnToMessage(turn: BaseMessage): BaseMessage {
   return turn;
@@ -18,8 +18,10 @@ export function user(content: string) {
   return new HumanMessage({ content });
 }
 
-export function ai(content: string, opts: { toolCalls?: unknown[] } = {}) {
-  return new AIMessage({ content, ...(opts.toolCalls ? { tool_calls: opts.toolCalls } : {}) });
+export function ai(content: string, opts: { toolCalls?: AIMessageFields["tool_calls"] } = {}) {
+  const message: AIMessageFields = { content };
+  if (opts.toolCalls) message.tool_calls = opts.toolCalls;
+  return new AIMessage(message);
 }
 
 export function toolMessage(id: string, content: unknown, name?: string) {

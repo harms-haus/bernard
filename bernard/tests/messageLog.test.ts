@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
 
 import {
@@ -179,7 +179,7 @@ test("snapshotMessageForTrace normalizes roles, content, and tool calls", () => 
   assert.equal(recordSnap.name, "named");
 });
 
-test("append persists messages and updates counters with consistent timestamps", async (t) => {
+test("append persists messages and updates counters with consistent timestamps", async () => {
   const fixedMs = 1_700_000_000_000;
   const originalDate = Date;
   const originalRandom = Math.random;
@@ -252,12 +252,12 @@ test("append persists messages and updates counters with consistent timestamps",
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).Date = originalDate;
 
-  await t.test("append is a no-op when no messages provided", async () => {
+  {
     const noopRedis = new FakeRedis();
     const noopLog = new MessageLog(noopRedis as any, (suffix) => `ns:${suffix}`);
     await noopLog.append("c2", [], "conv:c2");
     assert.equal(noopRedis.multiCalls, 0);
-  });
+  }
 });
 
 test("getMessages tolerates invalid JSON and respects limit", async () => {
@@ -284,3 +284,4 @@ test("count helpers delegate to getMessages", async () => {
   assert.equal(await log.countUserAssistant("xyz"), 2);
   assert.equal(await log.countToolCalls("xyz"), 2);
 });
+

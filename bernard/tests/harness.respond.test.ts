@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, before } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 
@@ -12,13 +12,13 @@ const originalConsole = {
   error: console.error
 };
 
-before(() => {
+beforeAll(() => {
   console.info = () => {};
   console.warn = () => {};
   console.error = () => {};
 });
 
-after(() => {
+afterAll(() => {
   console.info = originalConsole.info;
   console.warn = originalConsole.warn;
   console.error = originalConsole.error;
@@ -179,4 +179,5 @@ test("ResponseHarness creates message when LLM omits one and no history exists",
   assert.ok(result.output.message);
   assert.equal((result.output.message as { _getType?: () => string })._getType?.(), "ai");
 });
+
 

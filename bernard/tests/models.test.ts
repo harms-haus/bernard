@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, afterEach, before } from "node:test";
+import { afterAll, afterEach, beforeAll, test } from "vitest";
 
 import type { ModelCategory, ModelCategorySettings } from "../lib/config/models";
 import {
@@ -44,13 +44,13 @@ const settingsWithModels = (overrides: ModelsOverride = {}) =>
     backups: {} as any
   }) as any;
 
-before(() => {
+beforeAll(() => {
   console.error = () => {};
   console.warn = () => {};
   console.info = () => {};
 });
 
-after(() => {
+afterAll(() => {
   console.error = originalConsole.error;
   console.warn = originalConsole.warn;
   console.info = originalConsole.info;
@@ -276,3 +276,4 @@ test(
     assert.equal(resolved.options?.maxTokens, 123);
   }
 );
+

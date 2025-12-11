@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   createMemorizeTool,
@@ -133,3 +133,4 @@ void test(
     assert.equal(verifyCalls.length, 1);
   }
 );
+

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { startOAuthLogin } from "@/lib/oauth";
+import { startOAuthLogin } from "@/lib/auth/oauth";
 
 export const runtime = "nodejs";
 

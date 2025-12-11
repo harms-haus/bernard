@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import test, { afterEach, beforeEach } from "node:test";
+import { afterEach, beforeEach, test } from "vitest";
 
 import { NextRequest } from "next/server";
 

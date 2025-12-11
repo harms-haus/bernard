@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, before } from "node:test";
+import { afterAll, beforeAll, test } from "vitest";
 
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
@@ -7,11 +7,11 @@ import { IntentHarness, type IntentTool } from "../agent/harness/intent/intent.h
 import type { HarnessContext, LLMCallConfig, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
 
 const originalConsoleInfo = console.info;
-before(() => {
+beforeAll(() => {
   console.info = () => {};
 });
 
-after(() => {
+afterAll(() => {
   console.info = originalConsoleInfo;
 });
 

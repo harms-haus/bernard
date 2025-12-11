@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { SessionStore } from "../lib/auth/sessionStore";
 import { FakeRedis } from "./fakeRedis";
@@ -111,3 +111,4 @@ test("exportAll returns all valid sessions and skips incomplete entries", async 
   assert.ok(ids.has(user3.id));
   assert.ok(!ids.has(incompleteId));
 });
+

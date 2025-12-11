@@ -54,12 +54,13 @@ export class TokenStore {
     for (const id of ids) {
       const data = await this.redis.hgetall(this.idKey(id));
       if (!data || !data["id"] || !data["token"] || !data["name"] || !data["createdAt"]) continue;
+      const lastUsedAt = data["lastUsedAt"];
       records.push({
         id,
         name: data["name"],
         status: (data["status"] as TokenStatus) ?? "active",
         createdAt: data["createdAt"],
-        lastUsedAt: data["lastUsedAt"] ?? undefined,
+        ...(lastUsedAt ? { lastUsedAt } : {}),
         token: data["token"]
       });
     }

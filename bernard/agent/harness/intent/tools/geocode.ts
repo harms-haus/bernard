@@ -56,11 +56,15 @@ type GeocodeErrorResult = {
 const loadConfig = async (): Promise<GeocodeConfig> => {
   const settings = await getSettings().catch(() => null);
   const svc = settings?.services.geocoding;
+  const userAgent = svc?.userAgent ?? process.env["NOMINATIM_USER_AGENT"];
+  const email = svc?.email ?? process.env["NOMINATIM_EMAIL"];
+  const referer = svc?.referer ?? process.env["NOMINATIM_REFERER"];
+
   return {
     apiUrl: svc?.url ?? process.env["NOMINATIM_URL"] ?? DEFAULT_GEOCODE_API_URL,
-    userAgent: svc?.userAgent ?? process.env["NOMINATIM_USER_AGENT"],
-    email: svc?.email ?? process.env["NOMINATIM_EMAIL"],
-    referer: svc?.referer ?? process.env["NOMINATIM_REFERER"]
+    ...(userAgent ? { userAgent } : {}),
+    ...(email ? { email } : {}),
+    ...(referer ? { referer } : {})
   };
 };
 
@@ -156,9 +160,12 @@ const summarizePlaces = (places: NominatimPlace[], limit: number): string =>
 
 const getToolRunContext = (runOpts?: unknown): ToolRunContext => {
   const configurable = (runOpts as { configurable?: ToolRunContext } | undefined)?.configurable;
+  const recordKeeper = configurable?.recordKeeper;
+  const turnId = configurable?.turnId;
+
   return {
-    recordKeeper: configurable?.recordKeeper,
-    turnId: configurable?.turnId
+    ...(recordKeeper ? { recordKeeper } : {}),
+    ...(turnId ? { turnId } : {})
   };
 };
 
@@ -185,7 +192,15 @@ const createGeocodeTool = (deps: GeocodeDeps = {}) => {
         return "Geocoding tool is not configured (missing NOMINATIM_USER_AGENT).";
       }
 
-      const url = buildGeocodeUrl({ query, limit, country, language }, config);
+      const url = buildGeocodeUrl(
+        {
+          query,
+          ...(limit !== undefined ? { limit } : {}),
+          ...(country ? { country } : {}),
+          ...(language ? { language } : {})
+        },
+        config
+      );
       if (config.email) url.searchParams.set("email", config.email);
 
       const startedAt = Date.now();

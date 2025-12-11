@@ -18,7 +18,7 @@ export function snapshotToolsForTrace(tools: unknown): Array<Record<string, unkn
     try {
       const converted = convertToOpenAITool(tool as ToolDefinition);
       if (converted) {
-        snapshots.push(converted as Record<string, unknown>);
+        snapshots.push(converted as unknown as Record<string, unknown>);
         continue;
       }
     } catch {
@@ -41,8 +41,8 @@ export function snapshotToolsForTrace(tools: unknown): Array<Record<string, unkn
       const parameters = safeJsonClone(parametersRaw);
 
       const fn: Record<string, unknown> = { name };
-      if (description) fn.description = description;
-      if (parameters !== undefined) fn.parameters = parameters;
+      if (description) fn["description"] = description;
+      if (parameters !== undefined) fn["parameters"] = parameters;
 
       snapshots.push({ type: "function", function: fn });
     }

@@ -104,7 +104,13 @@ export async function memorizeValue(input: MemorizeInput, deps: MemorizeDependen
     if (predecessorId) {
       await store.markSuccessor(predecessorId, memory.id);
     }
-    return { outcome: "updated", memory, predecessorId, decision, neighbors };
+    return {
+      outcome: "updated",
+      memory,
+      decision,
+      neighbors,
+      ...(predecessorId ? { predecessorId } : {})
+    };
   }
 
   const targetId = pickTargetId();

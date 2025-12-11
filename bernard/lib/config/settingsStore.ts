@@ -264,7 +264,7 @@ export function ensureDirectory(dir: string) {
 
 export class SettingsStore {
   private readonly namespace: string;
-  private readonly onChange?: (section: Section) => void;
+  private readonly onChange: ((section: Section) => void) | undefined;
 
   constructor(
     private readonly redis: Pick<Redis, "get" | "set"> = getRedis(),

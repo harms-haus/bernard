@@ -32,6 +32,7 @@ export function toToolCalls(raw: unknown): ToolCall[] {
       const id = (call as { id?: unknown }).id ?? "tool_call";
       const fn = (call as { function?: { name?: string; arguments?: unknown; args?: unknown; input?: unknown } }).function;
       const name = fn?.name ?? (call as { name?: string }).name ?? "tool_call";
+      const typeValue = (call as { type?: unknown }).type;
       const args =
         fn?.arguments ??
         fn?.args ??
@@ -43,11 +44,10 @@ export function toToolCalls(raw: unknown): ToolCall[] {
       return {
         id: String(id),
         name: String(name),
-        type: (call as { type?: unknown }).type ? String((call as { type?: unknown }).type) : undefined,
         arguments: args,
-        args,
-        input: args,
-        function: fn
+        ...(typeValue ? { type: String(typeValue) } : {}),
+        ...(args !== undefined ? { args, input: args } : {}),
+        ...(fn ? { function: fn } : {})
       } satisfies ToolCall;
     })
     .filter(Boolean);
@@ -116,41 +116,56 @@ export class ChatModelCaller implements LLMCaller {
     const latency = Date.now() - started;
     const usage = extractTokenUsage(message);
     const text = contentFromMessage(message as any) ?? "";
+    const usageDetails: LLMResponse["usage"] = {};
+    const inTokens = usage.prompt_tokens ?? usage.input_tokens;
+    const outTokens = usage.completion_tokens ?? usage.output_tokens;
+    const cacheRead = usage.cache_read_input_tokens;
+    const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_input_tokens;
+    if (inTokens !== undefined) usageDetails.in = inTokens;
+    if (outTokens !== undefined) usageDetails.out = outTokens;
+    if (cacheRead !== undefined) usageDetails.cacheRead = cacheRead;
+    if (cacheWrite !== undefined) usageDetails.cacheWrite = cacheWrite;
+    if (usage.cached !== undefined) usageDetails.cached = usage.cached;
+
     return {
       text,
       message: message as LLMResponse["message"],
       toolCalls: toToolCalls(message),
       raw: message,
-      usage: {
-        in: usage.prompt_tokens ?? usage.input_tokens,
-        out: usage.completion_tokens ?? usage.output_tokens,
-        cacheRead: usage.cache_read_input_tokens,
-        cacheWrite: usage.cache_creation_input_tokens ?? usage.cache_write_input_tokens,
-        cached: usage.cached
-      },
+      usage: usageDetails,
       trace: { model: this.modelName, latencyMs: latency, startedAt }
     };
   }
 
   private async recordIfNeeded(input: LLMCallConfig, response: LLMResponse, startedAt: string, latency: number) {
     const meta = input.meta;
-    const shouldRecord = meta?.recordKeeper && meta.conversationId && !meta?.deferRecord;
-    if (!shouldRecord) return;
+    const recordKeeper = meta?.recordKeeper;
+    const conversationId = meta?.conversationId;
+    const shouldRecord = recordKeeper && conversationId && !meta?.deferRecord;
+    if (!shouldRecord || !recordKeeper || !conversationId) return;
 
-    await meta.recordKeeper.recordLLMCall(meta.conversationId, {
+    const tokens = response.usage;
+    const requestId = meta.requestId;
+    const turnId = meta.turnId;
+    const stage = meta.traceName;
+    const recordPayload = {
       model: input.model ?? this.modelName,
       context: input.messages,
-      result: response.raw,
+      result: response.message,
       startedAt,
       latencyMs: latency,
       tools: snapshotToolsForTrace(input.tools),
-      tokens: response.usage,
-      requestId: meta.requestId,
-      turnId: meta.turnId,
-      stage: meta.traceName,
       contextLimit: 12,
-      contentPreviewChars: null
-    });
+      ...(tokens ? { tokens } : {}),
+      ...(requestId ? { requestId } : {}),
+      ...(turnId ? { turnId } : {}),
+      ...(stage ? { stage } : {})
+    };
+
+    await recordKeeper.recordLLMCall(
+      conversationId,
+      recordPayload
+    );
   }
 }
 
@@ -158,15 +173,21 @@ function buildChatClient(model: string, temperature: number, opts: CallerOpts = 
   const apiKey = resolveApiKey(undefined, opts.callOptions);
   const baseURL = resolveBaseUrl(undefined, opts.callOptions);
   const parsedModel = splitModelAndProvider(model);
-  const client = new ChatOpenAI({
+  const options: ConstructorParameters<typeof ChatOpenAI>[0] = {
     model: parsedModel.model,
-    apiKey,
     configuration: { baseURL },
     temperature: opts.callOptions?.temperature ?? temperature,
-    topP: opts.callOptions?.topP,
-    maxTokens: opts.callOptions?.maxTokens ?? opts.maxTokens,
-    ...(parsedModel.providerOnly ? { modelKwargs: { provider: { only: parsedModel.providerOnly } } } : {})
-  });
+    ...(parsedModel.providerOnly ? { modelKwargs: { provider: { only: parsedModel.providerOnly } } } : {}),
+    ...(apiKey ? { apiKey } : {})
+  };
+
+  const topP = opts.callOptions?.topP;
+  if (topP !== undefined) options.topP = topP;
+
+  const maxTokens = opts.callOptions?.maxTokens ?? opts.maxTokens;
+  if (maxTokens !== undefined) options.maxTokens = maxTokens;
+
+  const client = new ChatOpenAI(options);
   return client as unknown as ChatClient;
 }
 
@@ -200,14 +221,18 @@ export async function createOrchestrator(
     resolveModelFn("response", { override: config.responseModel })
   ]);
 
+  const intentCallOptions = intentResolved.options;
   const intentCaller = makeCallerFn(config.intentModel, 0, {
     maxTokens: 750,
-    callOptions: intentResolved.options
+    ...(intentCallOptions ? { callOptions: intentCallOptions } : {})
   }); // cap intent to ~750 out tokens
-  const responseCaller = makeCallerFn(config.responseModel, 0.5, {
-    maxTokens: opts.responseCallerOptions?.maxTokens,
-    callOptions: responseResolved.options
-  });
+
+  const responseCallOptions = responseResolved.options;
+  const responseCallerOpts: CallerOpts = {};
+  const responseMaxTokens = opts.responseCallerOptions?.maxTokens;
+  if (responseMaxTokens !== undefined) responseCallerOpts.maxTokens = responseMaxTokens;
+  if (responseCallOptions) responseCallerOpts.callOptions = responseCallOptions;
+  const responseCaller = makeCallerFn(config.responseModel, 0.5, responseCallerOpts);
 
   const intentHarness = new IntentHarness(intentCaller, intentTools, config.maxIntentIterations ?? 4);
   const memoryHarness = new MemoryHarness();

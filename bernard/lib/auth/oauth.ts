@@ -84,7 +84,16 @@ export const getProviderConfig = async (provider: OAuthProvider): Promise<Provid
         : settings?.oauth.default;
 
   if (fromSettings?.authUrl && fromSettings.tokenUrl && fromSettings.userInfoUrl && fromSettings.redirectUri) {
-    return fromSettings;
+    const { authUrl, tokenUrl, userInfoUrl, redirectUri, scope, clientId, clientSecret } = fromSettings;
+    return {
+      authUrl,
+      tokenUrl,
+      userInfoUrl,
+      redirectUri,
+      scope,
+      clientId,
+      ...(clientSecret ? { clientSecret } : {})
+    };
   }
   return fallbackProviderConfig(provider);
 };

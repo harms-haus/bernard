@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "vitest";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import {
@@ -54,7 +54,7 @@ const resetEnv = () => {
   Object.assign(process.env, originalEnv);
 };
 
-test.afterEach(() => {
+afterEach(() => {
   resetEnv();
   globalThis.fetch = originalFetch;
   setSettingsFetcher(getSettings);

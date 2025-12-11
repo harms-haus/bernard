@@ -148,7 +148,8 @@ export function splitModelAndProvider(modelId: string): { model: string; provide
     ?.split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return { model: model || modelId, providerOnly: providerOnly?.length ? providerOnly : undefined };
+  const base = { model: model || modelId };
+  return providerOnly?.length ? { ...base, providerOnly } : base;
 }
 
 /**
@@ -162,7 +163,17 @@ export async function resolveModel(
   const modelSettings = settings.models[category] as ModelCategorySettings | undefined;
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;
-  return { id, options: modelSettings?.options };
+  const rawOptions = modelSettings?.options;
+  const options: ModelCallOptions | undefined = rawOptions
+    ? {
+        ...(rawOptions.temperature !== undefined ? { temperature: rawOptions.temperature } : {}),
+        ...(rawOptions.topP !== undefined ? { topP: rawOptions.topP } : {}),
+        ...(rawOptions.maxTokens !== undefined ? { maxTokens: rawOptions.maxTokens } : {}),
+        ...(rawOptions.baseUrl ? { baseUrl: rawOptions.baseUrl } : {}),
+        ...(rawOptions.apiKey ? { apiKey: rawOptions.apiKey } : {})
+      }
+    : undefined;
+  return { id, ...(options ? { options } : {}) };
 }
 
 

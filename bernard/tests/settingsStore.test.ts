@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test, { afterEach, beforeEach } from "node:test";
+import { afterEach, beforeEach, test } from "vitest";
 
 import { z } from "zod";
 
@@ -268,3 +268,4 @@ test("SettingsStore write rejects invalid values", { timeout: TEST_TIMEOUT }, as
   const store = new SettingsStore(redis as any, { namespace: "bernard:invalid" });
   await assert.rejects(() => store.setModels({} as any));
 });
+

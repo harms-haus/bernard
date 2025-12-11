@@ -132,15 +132,16 @@ export class Orchestrator {
   }
 
   private buildBaseContext(conversation: ConversationThread, input: OrchestratorRunInput): HarnessContext {
-    return {
+    const base: HarnessContext = {
       conversation,
       config: this.config,
       conversationId: input.conversationId,
-      requestId: input.requestId,
-      turnId: input.turnId,
-      recordKeeper: this.recordKeeper ?? undefined,
       now: () => new Date()
     };
+    if (input.requestId) base.requestId = input.requestId;
+    if (input.turnId) base.turnId = input.turnId;
+    if (this.recordKeeper) base.recordKeeper = this.recordKeeper;
+    return base;
   }
 
   private runHarnesses(

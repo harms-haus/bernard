@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "vitest";
 
 import {
   getWeatherCurrentTool,
@@ -11,7 +11,7 @@ import { chooseUnits, parseTarget } from "../agent/harness/intent/tools/weather-
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;
 
-test.afterEach(() => {
+afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 

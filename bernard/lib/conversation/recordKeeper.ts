@@ -5,6 +5,7 @@ import type Redis from "ioredis";
 import type { ConversationSummaryService, SummaryResult } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
 import { messageRecordToOpenAI } from "./messages";
+import type { OpenAIMessage } from "./messages";
 import type {
   Conversation,
   ConversationStatus,
@@ -419,12 +420,12 @@ export class RecordKeeper {
       closeReason: reason,
       lastTouchedAt: closedAt
     };
-    if (summary?.summary) updates.summary = summary.summary;
-    if (summary?.tags) updates.tags = JSON.stringify(summary.tags);
-    if (summary?.flags) updates.flags = JSON.stringify(summary.flags);
-    if (summary?.keywords) updates.keywords = JSON.stringify(summary.keywords);
-    if (summary?.places) updates.placeTags = JSON.stringify(summary.places);
-    if (summary?.summaryError) updates.closeReason = `${reason}; summary_error:${summary.summaryError}`;
+    if (summary?.summary) updates["summary"] = summary.summary;
+    if (summary?.tags) updates["tags"] = JSON.stringify(summary.tags);
+    if (summary?.flags) updates["flags"] = JSON.stringify(summary.flags);
+    if (summary?.keywords) updates["keywords"] = JSON.stringify(summary.keywords);
+    if (summary?.places) updates["placeTags"] = JSON.stringify(summary.places);
+    if (summary?.summaryError) updates["closeReason"] = `${reason}; summary_error:${summary.summaryError}`;
 
     const multi = this.redis
       .multi()

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "vitest";
 import { HumanMessage } from "@langchain/core/messages";
 
 import { ConversationSummaryService } from "../lib/conversation/summary";
@@ -33,7 +33,7 @@ const makeMessages = (count: number): MessageRecord[] =>
     createdAt: new Date().toISOString()
   }));
 
-test.afterEach(() => {
+afterEach(() => {
   process.env.OPENROUTER_API_KEY = originalApiKey;
 });
 
@@ -161,3 +161,4 @@ void test(
     assert.match(prompt, /"nested": true/);
   }
 );
+

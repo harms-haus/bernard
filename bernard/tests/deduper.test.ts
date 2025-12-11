@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, beforeEach, test } from "vitest";
 
 import {
   buildNeighborsSummary,
@@ -52,13 +52,13 @@ const stubConsole = () => {
   return { warns, debugs };
 };
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetEnv();
   console.warn = originalWarn;
   console.debug = originalDebug;
 });
 
-test.afterEach(() => {
+afterEach(() => {
   resetEnv();
   console.warn = originalWarn;
   console.debug = originalDebug;
@@ -360,3 +360,4 @@ void test(
     assert.deepEqual(decision, { decision: "duplicate", targetId: "dup" });
   }
 );
+

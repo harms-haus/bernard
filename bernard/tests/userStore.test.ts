@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "vitest";
 
 import { UserStore } from "../lib/auth/userStore";
 import { FakeRedis } from "./fakeRedis";
@@ -28,7 +28,7 @@ function setNow(iso: string) {
   globalThis.Date = MockDate as DateConstructor;
 }
 
-test.afterEach(() => {
+afterEach(() => {
   globalThis.Date = OriginalDate;
 });
 
@@ -190,3 +190,4 @@ test("delete redacts display name, demotes admin, and marks deleted", { timeout:
   const refetched = await store.get("u1");
   assert.deepEqual(refetched, deleted);
 });
+

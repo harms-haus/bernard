@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import { test, vi } from "vitest";
 
 import {
   memorizeValue,
@@ -255,7 +255,7 @@ test("uses default timeout and logger when not overridden", { timeout: TEST_TIME
     refreshMemory: async () => null
   } as unknown as storeModule.MemoryStore;
 
-  mock.method(console, "warn", (msg: string) => warnings.push(String(msg)));
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation((msg: string) => warnings.push(String(msg)));
 
   try {
     const result = await memorizeValue(
@@ -266,6 +266,7 @@ test("uses default timeout and logger when not overridden", { timeout: TEST_TIME
     assert.equal(result.memory.id, "default-created");
     assert.ok(warnings.some((msg) => msg.includes("search boom")));
   } finally {
-    mock.restoreAll();
+    warnSpy.mockRestore();
   }
 });
+

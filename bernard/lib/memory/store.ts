@@ -17,7 +17,7 @@ export type MemoryRecord = {
   createdAt: string;
   refreshedAt: string;
   freshnessMaxDays: number;
-  successorId?: string;
+  successorId?: string | undefined;
 };
 
 export type MemorySearchHit = {
@@ -28,13 +28,9 @@ export type MemorySearchHit = {
 };
 
 type VectorStoreLike = {
-  addDocuments(documents: Document[], options?: { ids?: string[] }): Promise<void>;
-  similaritySearchWithScore(
-    query: string,
-    k?: number,
-    filter?: Record<string, unknown>
-  ): Promise<Array<[Document, number]>>;
-  delete(options: { ids: string[] }): Promise<void>;
+  addDocuments(documents: Document[], options?: unknown): Promise<void>;
+  similaritySearchWithScore(query: string, k?: number, filter?: unknown): Promise<Array<[Document, number]>>;
+  delete(options: unknown): Promise<void>;
 };
 
 const DEFAULT_INDEX_NAME = process.env["MEMORY_INDEX_NAME"] ?? "bernard_memories";
@@ -372,14 +368,17 @@ export async function getMemoryStore(config: EmbeddingConfig = {}, deps: MemoryS
   const indexName = memory?.indexName ?? DEFAULT_INDEX_NAME;
   const keyPrefix = memory?.keyPrefix ?? DEFAULT_KEY_PREFIX;
   const namespace = memory?.namespace ?? DEFAULT_NAMESPACE;
-  const vectorStore = (deps.vectorStoreFactory ?? getVectorStore)({
-    ...config,
-    apiKey: config.apiKey ?? memory?.embeddingApiKey,
-    baseUrl: config.baseUrl ?? memory?.embeddingBaseUrl,
-    model: config.model ?? memory?.embeddingModel,
+  const apiKey = config.apiKey ?? memory?.embeddingApiKey;
+  const baseUrl = config.baseUrl ?? memory?.embeddingBaseUrl;
+  const model = config.model ?? memory?.embeddingModel;
+  const vectorStoreConfig: EmbeddingConfig & { indexName?: string; keyPrefix?: string } = {
     indexName,
-    keyPrefix
-  });
+    keyPrefix,
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(model ? { model } : {})
+  };
+  const vectorStore = (deps.vectorStoreFactory ?? getVectorStore)(vectorStoreConfig);
   return new MemoryStore(deps.redis ?? getRedis(), vectorStore, namespace, keyPrefix);
 }
 
@@ -470,9 +469,12 @@ export function setEmbeddingModelFactory(factory: EmbeddingFactory) {
  * Reset cached clients and factories to defaults. Intended for tests.
  */
 export function resetMemoryStoreState() {
-  if (cachedVectorClient && typeof (cachedVectorClient as { quit?: () => Promise<void> }).quit === "function") {
-    // Intentionally fire and forget to avoid blocking callers; tests can await closeVectorClient for determinism.
-    (cachedVectorClient as { quit?: () => Promise<void> }).quit?.().catch(() => {});
+  if (cachedVectorClient) {
+    const maybeQuit = (cachedVectorClient as { quit?: () => Promise<unknown> }).quit;
+    if (typeof maybeQuit === "function") {
+      // Intentionally fire and forget to avoid blocking callers; tests can await closeVectorClient for determinism.
+      maybeQuit.call(cachedVectorClient).catch(() => {});
+    }
   }
   cachedVectorClient = null;
   cachedVectorStore = null;
@@ -493,8 +495,11 @@ export function resetMemoryStoreState() {
  * Explicitly close the cached vector client when present. Useful for tests.
  */
 export async function closeVectorClient(): Promise<void> {
-  if (cachedVectorClient && typeof (cachedVectorClient as { quit?: () => Promise<void> }).quit === "function") {
-    await (cachedVectorClient as { quit?: () => Promise<void> }).quit?.().catch(() => {});
+  if (cachedVectorClient) {
+    const maybeQuit = (cachedVectorClient as { quit?: () => Promise<unknown> }).quit;
+    if (typeof maybeQuit === "function") {
+      await maybeQuit.call(cachedVectorClient).catch(() => {});
+    }
   }
   cachedVectorClient = null;
 }

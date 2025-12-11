@@ -7,7 +7,10 @@ import { UserStore } from "../auth/userStore";
 import { SessionStore } from "../auth/sessionStore";
 import { getRedis } from "../infra/redis";
 
-type BackupPayload = {
+/**
+ * Serialized backup payload containing all persisted stores and metadata.
+ */
+export type BackupPayload = {
   createdAt: string;
   reason?: string;
   settings: Awaited<ReturnType<SettingsStore["getAll"]>>;
@@ -19,7 +22,10 @@ type BackupPayload = {
 let pendingTimer: NodeJS.Timeout | null = null;
 let pendingReason: string | undefined;
 
-async function collectBackup(reason?: string): Promise<BackupPayload> {
+/**
+ * Collects settings, tokens, users, and sessions into a single payload.
+ */
+export async function collectBackup(reason?: string): Promise<BackupPayload> {
   const redis = getRedis();
   const settingsStore = new SettingsStore(redis);
   const tokenStore = new TokenStore(redis);
@@ -33,17 +39,21 @@ async function collectBackup(reason?: string): Promise<BackupPayload> {
     sessionStore.exportAll(users.map((u) => u.id))
   ]);
 
-  return {
+  const payload: BackupPayload = {
     createdAt: new Date().toISOString(),
-    reason,
     settings,
     tokens,
     users,
     sessions
   };
+  if (reason !== undefined) payload.reason = reason;
+  return payload;
 }
 
-async function enforceRetention(dir: string, retentionDays: number, retentionCount: number) {
+/**
+ * Deletes backups exceeding age or count retention limits.
+ */
+export async function enforceRetention(dir: string, retentionDays: number, retentionCount: number) {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   const files = entries
     .filter((e) => e.isFile())
@@ -77,7 +87,10 @@ async function enforceRetention(dir: string, retentionDays: number, retentionCou
   await Promise.all(toDelete.map((file) => fs.unlink(file.path).catch(() => void 0)));
 }
 
-async function writeBackup(reason?: string) {
+/**
+ * Writes a backup file and enforces retention policies.
+ */
+export async function writeBackup(reason?: string) {
   const settingsStore = new SettingsStore(getRedis());
   const backupConfig = await settingsStore.getBackups();
   const payload = await collectBackup(reason);
@@ -90,15 +103,18 @@ async function writeBackup(reason?: string) {
   await enforceRetention(backupConfig.directory, backupConfig.retentionDays, backupConfig.retentionCount);
 }
 
+/**
+ * Schedules a debounced auto-backup using configured delay.
+ */
 export function scheduleAutoBackup(reason?: string) {
   pendingReason = reason ?? pendingReason;
-  if (pendingTimer) {
-    clearTimeout(pendingTimer);
-  }
   const settingsStore = new SettingsStore(getRedis());
   settingsStore
     .getBackups()
     .then((cfg) => {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+      }
       const delay = Math.max(cfg.debounceSeconds, 1) * 1000;
       pendingTimer = setTimeout(() => {
         pendingTimer = null;
@@ -109,5 +125,16 @@ export function scheduleAutoBackup(reason?: string) {
     .catch((err) => {
       console.error("Unable to schedule auto-backup", err);
     });
+}
+
+/**
+ * Resets in-flight backup scheduling state. Intended for tests and shutdown.
+ */
+export function resetAutoBackupState() {
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+  }
+  pendingTimer = null;
+  pendingReason = undefined;
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import test, { afterEach, mock } from "node:test";
+import { afterEach, test, vi } from "vitest";
 
 import { TokenStore, type TokenInfo, type TokenRecord } from "../lib/auth/tokenStore";
 import { FakeRedis } from "./fakeRedis";
@@ -13,7 +13,7 @@ function createStore(redis = new FakeRedis()) {
 
 function stubRandomBytes(values: Buffer[]) {
   let call = 0;
-  mock.method(crypto, "randomBytes", (size: number) => {
+  vi.spyOn(crypto, "randomBytes").mockImplementation((size: number) => {
     const next = values[call] ?? Buffer.alloc(size, call);
     call += 1;
     if (next.length === size) return next;
@@ -40,7 +40,7 @@ function idsSet() {
 }
 
 afterEach(() => {
-  mock.restoreAll();
+  vi.restoreAllMocks();
 });
 
 test("create stores token with mappings and prevents duplicates", { timeout: 2000 }, async () => {
