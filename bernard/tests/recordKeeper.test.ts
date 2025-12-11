@@ -14,7 +14,7 @@ const MET_NS = "bernard:rk:metrics";
  */
 function createKeeper(opts: Record<string, unknown> = {}) {
   const redis = new FakeRedis();
-  const keeper = new RecordKeeper(redis as any, opts);
+  const keeper = new RecordKeeper(redis as any, { queueDisabled: true, ...opts });
   return { redis, keeper };
 }
 

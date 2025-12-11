@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import type { BaseMessage } from "@langchain/core/messages";
 import type Redis from "ioredis";
 
+import type { Queue } from "bullmq";
+
 import type { ConversationSummaryService, SummaryResult } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
 import { messageRecordToOpenAI } from "./messages";
@@ -22,6 +24,9 @@ import type {
   Turn,
   TurnStatus
 } from "./types";
+import { createConversationQueue } from "../queue/client";
+import { CONVERSATION_TASKS, buildConversationJobId } from "../queue/types";
+import type { ConversationTaskName, ConversationTaskPayload } from "../queue/types";
 export type {
   Conversation,
   ConversationStatus,
@@ -44,11 +49,14 @@ type RecordKeeperOptions = {
   metricsNamespace?: string;
   idleMs?: number;
   summarizer?: ConversationSummaryService;
+  queue?: Queue<ConversationTaskPayload, unknown, ConversationTaskName>;
+  queueDisabled?: boolean;
 };
 
 const DEFAULT_NAMESPACE = "bernard:rk";
 const DEFAULT_METRICS_NAMESPACE = "bernard:rk:metrics";
 const DEFAULT_IDLE_MS = 10 * 60 * 1000; // 10 minutes
+const TASKS_DISABLED = process.env["CONVERSATION_TASKS_DISABLED"] === "true";
 
 function nowIso() {
   return new Date().toISOString();
@@ -74,6 +82,10 @@ function toNumber(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Facade for logging conversation state, requests, turns, and messages in Redis.
  */
@@ -82,6 +94,7 @@ export class RecordKeeper {
   private readonly metricsNamespace: string;
   private readonly idleMs: number;
   private readonly summarizer: ConversationSummaryService | undefined;
+  private readonly tasksDisabled: boolean;
   private readonly messageLog: MessageLog;
 
   constructor(
@@ -92,8 +105,12 @@ export class RecordKeeper {
     this.metricsNamespace = opts.metricsNamespace ?? DEFAULT_METRICS_NAMESPACE;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.summarizer = opts.summarizer;
+    this.tasksDisabled = opts.queueDisabled ?? TASKS_DISABLED;
     this.messageLog = new MessageLog(redis, (suffix: string) => this.key(suffix));
+    this.conversationQueue = opts.queue ?? null;
   }
+
+  private conversationQueue: Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null = null;
 
   /**
    * Start or reopen a conversation and record a new request.
@@ -411,21 +428,12 @@ export class RecordKeeper {
     const closedAt = nowIso();
     const now = Date.now();
 
-    const messages = await this.getMessages(conversationId);
-    const summary = this.summarizer ? await this.summarizer.summarize(conversationId, messages) : null;
-
     const updates: Record<string, string> = {
       status: "closed",
       closedAt,
       closeReason: reason,
       lastTouchedAt: closedAt
     };
-    if (summary?.summary) updates["summary"] = summary.summary;
-    if (summary?.tags) updates["tags"] = JSON.stringify(summary.tags);
-    if (summary?.flags) updates["flags"] = JSON.stringify(summary.flags);
-    if (summary?.keywords) updates["keywords"] = JSON.stringify(summary.keywords);
-    if (summary?.places) updates["placeTags"] = JSON.stringify(summary.places);
-    if (summary?.summaryError) updates["closeReason"] = `${reason}; summary_error:${summary.summaryError}`;
 
     const multi = this.redis
       .multi()
@@ -434,6 +442,77 @@ export class RecordKeeper {
       .zadd(this.key("convs:closed"), now, conversationId);
 
     await multi.exec();
+
+    const enqueued = await this.enqueueConversationTasks(conversationId);
+    if (!enqueued && this.summarizer) {
+      try {
+        const messages = await this.getMessages(conversationId);
+        const summary = await this.summarizer.summarize(conversationId, messages);
+        await this.updateConversationSummary(conversationId, summary);
+      } catch (err) {
+        await this.redis.hset(convKey, {
+          closeReason: `${reason}; summary_error:${formatError(err)}`
+        });
+      }
+    }
+  }
+
+  async updateConversationSummary(conversationId: string, summary: SummaryResult) {
+    const convKey = this.key(`conv:${conversationId}`);
+    const updates: Record<string, string> = {};
+    if (summary.summary) updates["summary"] = summary.summary;
+    if (summary.tags) updates["tags"] = JSON.stringify(summary.tags);
+    if (summary.keywords) updates["keywords"] = JSON.stringify(summary.keywords);
+    if (summary.places) updates["placeTags"] = JSON.stringify(summary.places);
+    if (summary.flags) updates["flags"] = JSON.stringify(summary.flags);
+    if (summary.summaryError) {
+      const existing = (await this.redis.hget(convKey, "closeReason")) ?? "";
+      const suffix = `summary_error:${summary.summaryError}`;
+      updates["closeReason"] = existing ? `${existing}; ${suffix}` : suffix;
+    }
+    if (Object.keys(updates).length === 0) return;
+    await this.redis.hset(convKey, updates);
+  }
+
+  async updateConversationFlags(conversationId: string, flags: SummaryFlags) {
+    const convKey = this.key(`conv:${conversationId}`);
+    const existingRaw = await this.redis.hget(convKey, "flags");
+    let existing: SummaryFlags = {};
+    try {
+      existing = existingRaw ? (JSON.parse(existingRaw) as SummaryFlags) : {};
+    } catch {
+      existing = {};
+    }
+    const next: SummaryFlags = { ...existing, ...flags };
+    await this.redis.hset(convKey, { flags: JSON.stringify(next) });
+  }
+
+  private async ensureConversationQueue(): Promise<Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null> {
+    if (this.tasksDisabled) return null;
+    if (this.conversationQueue) return this.conversationQueue;
+    try {
+      this.conversationQueue = createConversationQueue();
+      return this.conversationQueue;
+    } catch (err) {
+      console.warn(`[queue] failed to create conversation queue: ${formatError(err)}`);
+      return null;
+    }
+  }
+
+  private async enqueueConversationTasks(conversationId: string): Promise<boolean> {
+    const queue = await this.ensureConversationQueue();
+    if (!queue) return false;
+    try {
+      await Promise.all([
+        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
+        queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
+        queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
+      ]);
+      return true;
+    } catch (err) {
+      console.warn(`[queue] failed to enqueue conversation tasks: ${formatError(err)}`);
+      return false;
+    }
   }
 
   async closeIfIdle(now: number = Date.now()) {

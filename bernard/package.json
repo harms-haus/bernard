@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "tests": "vitest run",
-    "tests:coverage": "vitest run --coverage"
+    "tests:coverage": "vitest run --coverage",
+    "queues:worker": "tsx agent/queueWorker.ts"
   },
   "keywords": [
     "langgraph",
@@ -25,6 +26,7 @@
     "@langchain/core": "^1.1.4",
     "@langchain/langgraph": "^1.0.4",
     "@langchain/openai": "^1.1.3",
+    "bullmq": "^5.66.0",
     "ioredis": "^5.8.2",
     "jsonrepair": "^3.13.1",
     "next": "^16.0.7",
@@ -38,13 +40,13 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^2.1.4",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.16.0",
     "vite": "^6.0.11",
-    "vitest": "^2.1.4",
-    "@vitest/coverage-v8": "^2.1.4"
+    "vitest": "^2.1.4"
   }
 }
