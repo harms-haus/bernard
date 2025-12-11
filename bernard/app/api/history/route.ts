@@ -2,29 +2,14 @@ import type { NextRequest } from "next/server";
 
 import { getRedis } from "@/lib/redis";
 import { RecordKeeper } from "@/lib/recordKeeper";
-import { TokenStore } from "@/lib/tokenStore";
+import { validateAccessToken } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-function bearerToken(req: NextRequest) {
-  const header = req.headers.get("authorization");
-  if (!header) return null;
-  const [scheme, token] = header.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
-}
-
 export async function GET(req: NextRequest) {
-  const token = bearerToken(req);
-  if (!token) {
-    return new Response(JSON.stringify({ error: "Missing bearer token" }), { status: 401 });
-  }
-
-  const store = new TokenStore(getRedis());
-  const auth = await store.validate(token);
-  if (!auth) {
-    return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401 });
-  }
+  const auth = await validateAccessToken(req);
+  if ("error" in auth) return auth.error;
+  const token = auth.access.token;
 
   const keeper = new RecordKeeper(getRedis());
 
@@ -72,16 +57,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const token = bearerToken(req);
-  if (!token) {
-    return new Response(JSON.stringify({ error: "Missing bearer token" }), { status: 401 });
-  }
-
-  const store = new TokenStore(getRedis());
-  const auth = await store.validate(token);
-  if (!auth) {
-    return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401 });
-  }
+  const auth = await validateAccessToken(req);
+  if ("error" in auth) return auth.error;
+  const token = auth.access.token;
 
   let body: { conversationId?: string; token?: string } = {};
   try {

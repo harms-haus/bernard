@@ -1,4 +1,4 @@
-export const MAX_PARALLEL_TOOL_CALLS = 3;
+export const MAX_PARALLEL_TOOL_CALLS = 4;
 
 import type { ToolDefinition } from "@langchain/core/language_models/base";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
@@ -8,9 +8,6 @@ type ToolLikeForPrompt = { name: string; description?: string; schema?: unknown 
 
 export const intentSystemPrompt = [
   "You are Bernard's intent router. Your job is to pick the tool calls needed to complete the user's request.",
-  "Use the minimum number of tool calls needed to complete the user's request.",
-  "You may call multiple tools in a single message; these will execute in parallel. These must be UNIQUE or they will not be executed.",
-  "To finish calling tools, call the \"respond\" tool. This may be included in the same message as your final tool call."
 ].join("\n");
 
 export const intentHardStopSystemPrompt =
@@ -24,6 +21,7 @@ export function buildIntentSystemPrompt(
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const formatter = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
+    year: "numeric",
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -32,7 +30,7 @@ export function buildIntentSystemPrompt(
     timeZone,
     timeZoneName: "short"
   });
-  const currentDateTime = `Current date/time: ${formatter.format(now)} (${timeZone})`;
+  const currentDateTime = `Now: ${formatter.format(now)} (${timeZone})`;
 
   const sections: Array<string | null> = [
     currentDateTime,
@@ -47,30 +45,13 @@ export function buildIntentSystemPrompt(
 
 export function buildLangChainToolSystemPrompt(tools: ToolLikeForPrompt[]): string | null {
   if (!tools.length) return null;
-  const toolDefinitions: ToolDefinition[] = tools.map((tool) =>
-    convertToOpenAITool({
-      // The LangChain converter handles StructuredTool instances directly;
-      // for plain objects we provide name/description/schema.
-      name: tool.name,
-      description: tool.description ?? "",
-      schema:
-        tool.schema && typeof tool.schema === "object"
-          ? tool.schema
-          : { type: "object", properties: {}, additionalProperties: true }
-    } as Record<string, unknown>)
-  );
-
-  // Keep tool listing compact: name + short description only.
-  const toolList = toolDefinitions
-    .map((tool) => {
-      const name = tool.function?.name ?? "tool";
-      const desc = tool.function?.description ?? "";
-      return desc ? `${name}: ${desc}` : name;
-    })
-    .join("\n");
   return [
-    "You have access to the following tools. When you call a tool, return a single assistant message containing only tool_calls with the tool name and JSON arguments that satisfy the tool's JSON schema. Do not add conversational text.",
-    toolList
+    `You have access to tools. When you call a tool, return an assistant message containing up to ${MAX_PARALLEL_TOOL_CALLS} tool_calls with the tool names and JSON arguments that satisfy the tools' JSON schemas. 
+These tool calls will execute in parallel. Tool_calls must be UNIQUE or they will not be executed.
+To mark the end of tool calling because the task is complete or you have enough information, use the \"respond\" tool.
+If you need to call ${MAX_PARALLEL_TOOL_CALLS -1} or fewer final tools, you can ADD a \"respond\" tool call to the same message to finish calling tools after these tools complete.
+Example: {"role":"assistant","content":"","tool_calls":[{"type":"function","function":{"name":"geocode_search","arguments":"{\\"query\\":\\"Paris\\"}"}]} 
+Do not add conversational text`
   ]
     .filter(Boolean)
     .join("\n");

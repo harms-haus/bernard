@@ -68,6 +68,8 @@ export type ConversationListItem = {
   closedAt?: string;
   lastRequestAt?: string;
   messageCount: number;
+  userAssistantCount?: number;
+  maxTurnLatencyMs?: number;
   toolCallCount: number;
   requestCount?: number;
   tags: string[];
@@ -75,6 +77,8 @@ export type ConversationListItem = {
   source: string;
   tokenNames: string[];
   tokenIds: string[];
+  errorCount?: number;
+  hasErrors?: boolean;
 };
 
 export type ConversationDetail = ConversationListItem & {

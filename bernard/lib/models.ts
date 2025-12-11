@@ -75,4 +75,14 @@ export function resolveApiKey(apiKey?: string): string | undefined {
   return apiKey ?? process.env["OPENROUTER_API_KEY"];
 }
 
+export function splitModelAndProvider(modelId: string): { model: string; providerOnly?: string[] } {
+  const [rawModel, rawProvider] = modelId.split("|", 2);
+  const model = (rawModel ?? modelId).trim();
+  const providerOnly = rawProvider
+    ?.split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return { model: model || modelId, providerOnly: providerOnly?.length ? providerOnly : undefined };
+}
+
 

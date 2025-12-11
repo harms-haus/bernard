@@ -292,7 +292,7 @@ async function verifyRedisSearch(client: RedisClientType): Promise<{ ok: boolean
 export async function verifyMemoryConfiguration(
   config: EmbeddingConfig = {}
 ): Promise<{ ok: boolean; reason?: string }> {
-  const embeddingCheck = verifyEmbeddingConfig(config);
+  const embeddingCheck = await verifyEmbeddingConfig(config);
   if (!embeddingCheck.ok) return embeddingCheck;
 
   try {

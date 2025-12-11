@@ -288,6 +288,7 @@ void test("recordLLMCall stores context and output snapshots", async () => {
     result: resultMessage as any,
     startedAt: "2024-01-01T00:00:00.000Z",
     latencyMs: 12,
+    toolLatencyMs: 34,
     tokens: { in: 4, out: 2 }
   });
 
@@ -304,6 +305,8 @@ void test("recordLLMCall stores context and output snapshots", async () => {
   const toolCallContext = content.context?.find((entry) => entry.tool_calls?.length);
   assert.ok(toolCallContext?.tool_calls?.[0]?.function?.arguments);
   assert.ok(Array.isArray(content.result));
+  assert.equal((content as { toolLatencyMs?: number }).toolLatencyMs, 34);
+  assert.equal((log.metadata as { toolLatencyMs?: number }).toolLatencyMs, 34);
 });
 
 void test("appendMessages normalizes content and counts tool calls", async () => {

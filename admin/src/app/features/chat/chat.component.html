@@ -29,16 +29,16 @@
       <small class="muted">Defaults to the running Bernard instance (/v1/chat/completions).</small>
     </div>
     <div class="field">
-      <label for="token">Bearer token</label>
+      <label for="token">Bearer token (optional)</label>
       <input
         id="token"
         type="password"
         pInputText
-        placeholder="Paste a Bernard token"
+        placeholder="Paste a Bernard token or leave blank to use your session"
         autocomplete="off"
         [formControl]="form.controls.token"
       />
-      <small class="muted">Use a valid Bernard token; admin keys are not accepted.</small>
+      <small class="muted">When empty, the admin session cookie will be used.</small>
     </div>
   </div>
 

@@ -12,14 +12,24 @@ export type TraceEntry = {
   raw: unknown;
 };
 
+export type TraceTool = {
+  id: string;
+  name: string;
+  description?: string;
+  parameters?: unknown;
+  raw?: unknown;
+};
+
 export type LlmTrace = {
   type: 'llm_call';
   model?: string;
   at?: string;
   latencyMs?: number;
+  toolLatencyMs?: number;
   tokens?: Record<string, unknown>;
   context: TraceEntry[];
   result: TraceEntry[];
+  tools?: TraceTool[];
   raw: unknown;
 };
 

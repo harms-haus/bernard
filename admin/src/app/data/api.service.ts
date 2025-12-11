@@ -38,6 +38,7 @@ import {
  * - PUT    /api/services/:id                -> ServiceConfig (UpdateServiceRequest)
  * - GET    /api/admin/history               -> HistoryListResponse
  * - GET    /api/admin/history/:id           -> ConversationDetailResponse
+ * - PATCH  /api/admin/history/:id           -> { conversation: ConversationDetail } // body: { ttl: 0 }
  * - DELETE /api/admin/history/:id           -> { removed: boolean }
  * - GET    /api/auth/me                     -> { user: User | null }
  * - POST   /api/auth/logout                 -> 204
@@ -58,6 +59,7 @@ export interface ApiClient {
   updateService(id: string, body: UpdateServiceRequest): Observable<ServiceConfig>;
   listHistory(query?: HistoryQuery): Observable<HistoryListResponse>;
   getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
+  closeConversation(id: string): Observable<ConversationDetail>;
   deleteConversation(id: string): Observable<void>;
   listMemories(): Observable<Memory[]>;
   createMemory(body: CreateMemoryRequest): Observable<Memory>;
@@ -160,6 +162,12 @@ class HttpApiClient implements ApiClient {
       ...this.options(),
       params
     });
+  }
+
+  closeConversation(id: string) {
+    return this.http
+      .patch<{ conversation: ConversationDetail }>(`${this.baseUrl}/admin/history/${id}`, { ttl: 0 }, this.options())
+      .pipe(map((res) => res.conversation));
   }
 
   deleteConversation(id: string) {
@@ -573,6 +581,36 @@ class MockApiClient implements ApiClient {
     this.conversations = this.conversations.filter((conv) => conv.id !== id);
     delete this.messages[id];
     return of(void 0).pipe(delay(80));
+  }
+
+  closeConversation(id: string) {
+    const now = new Date().toISOString();
+    const existing = this.conversations.find((conv) => conv.id === id);
+    const closed: ConversationDetail = existing ?? {
+      id,
+      status: 'closed',
+      summary: 'Conversation not found',
+      startedAt: now,
+      lastTouchedAt: now,
+      messageCount: 0,
+      toolCallCount: 0,
+      tags: [],
+      source: 'unknown',
+      tokenNames: [],
+      tokenIds: []
+    };
+
+    this.conversations = this.conversations.map((conv) =>
+      conv.id === id
+        ? { ...conv, status: 'closed', closedAt: now, lastTouchedAt: now, closeReason: 'manual' }
+        : conv
+    );
+    if (!existing) {
+      this.conversations = [closed, ...this.conversations];
+    }
+
+    const updated = this.conversations.find((conv) => conv.id === id) as ConversationDetail;
+    return of(updated).pipe(delay(80));
   }
 
   listMemories() {

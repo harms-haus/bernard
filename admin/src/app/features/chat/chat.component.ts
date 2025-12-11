@@ -3,14 +3,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
+  DestroyRef,
   ElementRef,
   OnDestroy,
   ViewChild,
   computed,
-  effect,
   inject,
   signal
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
@@ -22,6 +23,8 @@ import 'deep-chat';
 
 type DeepChatRequestBody = {
   messages?: Array<{ text?: unknown; role?: unknown }>;
+  stream?: boolean;
+  stream_options?: { include_usage?: boolean };
 };
 
 type DeepChatResponse = { text?: string; role?: string; error?: string };
@@ -49,6 +52,7 @@ const MODEL_ID = 'bernard-v1';
 export class ChatComponent implements OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly primeng = inject(PrimeNGConfig);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly tokenStorageKey = 'bernard:chatToken';
   private readonly endpointStorageKey = 'bernard:chatEndpoint';
 
@@ -60,7 +64,7 @@ export class ChatComponent implements OnDestroy {
 
   protected readonly form = this.fb.nonNullable.group({
     endpoint: [this.defaultEndpoint(), Validators.required],
-    token: [this.defaultToken(), Validators.required]
+    token: [this.defaultToken()]
   });
 
   protected readonly endpointLabel = computed(() => (this.form.controls.endpoint.value ?? '').trim());
@@ -144,15 +148,18 @@ export class ChatComponent implements OnDestroy {
   constructor() {
     this.primeng.ripple = true;
 
-    effect(() => {
-      const value = this.form.controls.token.value?.trim() ?? '';
-      this.writeStored(this.tokenStorageKey, value);
-    });
+    const initialToken = this.form.controls.token.value?.trim() ?? '';
+    const initialEndpoint = this.form.controls.endpoint.value?.trim() ?? '';
+    this.writeStored(this.tokenStorageKey, initialToken);
+    this.writeStored(this.endpointStorageKey, initialEndpoint);
 
-    effect(() => {
-      const value = this.form.controls.endpoint.value?.trim() ?? '';
-      this.writeStored(this.endpointStorageKey, value);
-    });
+    this.form.controls.token.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value) => this.writeStored(this.tokenStorageKey, value?.trim() ?? ''));
+
+    this.form.controls.endpoint.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value) => this.writeStored(this.endpointStorageKey, value?.trim() ?? ''));
   }
 
   ngOnDestroy() {
@@ -176,14 +183,6 @@ export class ChatComponent implements OnDestroy {
       signals.onClose?.();
       return;
     }
-    if (!token) {
-      const message = 'Add a bearer token to chat with Bernard.';
-      this.error.set(message);
-      signals.onResponse?.({ error: message });
-      signals.onClose?.();
-      return;
-    }
-
     this.error.set(null);
 
     const controller = new AbortController();
@@ -198,15 +197,18 @@ export class ChatComponent implements OnDestroy {
     }
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          Authorization: `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify(this.buildRequestBody(body)),
-        signal: controller.signal
+        signal: controller.signal,
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -262,10 +264,13 @@ export class ChatComponent implements OnDestroy {
   private buildRequestBody(body: unknown) {
     const parsed = (body as DeepChatRequestBody) ?? {};
     const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
+    const stream = parsed.stream ?? true;
+    const streamOptions = parsed.stream_options;
 
     return {
       model: MODEL_ID,
-      stream: true,
+      stream,
+      ...(streamOptions ? { stream_options: streamOptions } : {}),
       messages: messages.map((message) => ({
         role: this.mapRole(message.role),
         content: typeof message.text === 'string' ? message.text : ''

@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 
 import { mapOpenAIToMessages, mapRecordsToMessages, type OpenAIMessage } from "../lib/agent";
 import type { MessageRecord } from "../lib/recordKeeper";
+import { hydrateMessagesWithHistory } from "../app/api/v1/_lib/openai";
 
 test("mapRecordsToMessages restores conversation history and drops traces", () => {
   const now = new Date("2025-01-01T00:00:00Z").toISOString();
@@ -109,6 +110,85 @@ test("mapOpenAIToMessages falls back to tool name when id missing", () => {
   const output = mapOpenAIToMessages(input);
   assert.equal(output.length, 1);
   assert.equal((output[0] as any).tool_call_id, "toolA");
+});
+
+test("mapRecordsToMessages can include llm_call traces when requested", () => {
+  const now = new Date("2025-01-02T00:00:00Z").toISOString();
+  const records: MessageRecord[] = [
+    {
+      id: "trace-llm",
+      role: "system",
+      name: "llm_call",
+      metadata: { traceType: "llm_call" },
+      content: { model: "x", context: [] },
+      createdAt: now
+    },
+    {
+      id: "user-1",
+      role: "user",
+      content: "hi",
+      createdAt: now
+    }
+  ];
+
+  const filtered = mapRecordsToMessages(records);
+  assert.equal(filtered.length, 1);
+  assert.equal((filtered[0] as { _getType?: () => string })._getType?.(), "human");
+
+  const withTraces = mapRecordsToMessages(records, { includeTraces: true });
+  assert.equal(withTraces.length, 2);
+  assert.equal((withTraces[0] as { _getType?: () => string })._getType?.(), "system");
+  assert.equal((withTraces[1] as { _getType?: () => string })._getType?.(), "human");
+});
+
+test("hydrateMessagesWithHistory preserves tool call before tool result at identical timestamps", async () => {
+  const createdAt = new Date("2025-01-03T00:00:00Z").toISOString();
+  const history: MessageRecord[] = [
+    {
+      id: "ai-1",
+      role: "assistant",
+      content: "calling lookup",
+      tool_calls: [{ id: "call-1", type: "function", function: { name: "lookup", arguments: "{}" } }],
+      createdAt
+    },
+    {
+      id: "tool-1",
+      role: "tool",
+      name: "lookup",
+      tool_call_id: "call-1",
+      content: "tool result",
+      createdAt
+    }
+  ];
+
+  const merged = await hydrateMessagesWithHistory({
+    keeper: { getMessages: async () => history } as any,
+    conversationId: "conv",
+    incoming: [new HumanMessage("follow up?")]
+  });
+
+  assert.equal(merged.length, 3);
+  assert.equal((merged[0] as { _getType?: () => string })._getType?.(), "ai");
+  assert.equal((merged[1] as { _getType?: () => string })._getType?.(), "tool");
+  assert.equal((merged[2] as { _getType?: () => string })._getType?.(), "human");
+});
+
+test("hydrateMessagesWithHistory falls back to sequence when timestamps are missing", async () => {
+  const history: MessageRecord[] = [
+    { id: "ai-1", role: "assistant", content: "call", createdAt: "invalid" },
+    { id: "tool-1", role: "tool", content: "result", tool_call_id: "call", createdAt: "invalid" }
+  ];
+
+  const merged = await hydrateMessagesWithHistory({
+    keeper: { getMessages: async () => history } as any,
+    conversationId: "conv",
+    incoming: [new HumanMessage("next?")]
+  });
+
+  assert.equal(merged.length, 3);
+  assert.equal((merged[0] as { _getType?: () => string })._getType?.(), "ai");
+  assert.equal((merged[1] as { _getType?: () => string })._getType?.(), "tool");
+  assert.equal((merged[2] as { _getType?: () => string })._getType?.(), "human");
 });
 
 

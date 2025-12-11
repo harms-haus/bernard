@@ -67,6 +67,7 @@ ensure_redis() {
     --name "${container_name}" \
     -p "${REDIS_PORT}:6379" \
     -v "${volume_name}:/data" \
+    -e REDIS_ARGS="--save 60 1 --appendonly yes" \
     "${redis_image}" >/dev/null
 
   REDIS_CONTAINER="${container_name}"

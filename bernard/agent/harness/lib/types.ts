@@ -23,6 +23,8 @@ export type LLMCallConfig = {
     turnId?: string;
     recordKeeper?: import("@/lib/recordKeeper").RecordKeeper;
     traceName?: string;
+    /** When true, the caller will handle recording the trace. */
+    deferRecord?: boolean;
   };
 };
 
@@ -32,7 +34,7 @@ export type LLMResponse = {
   toolCalls?: ToolCall[];
   raw?: unknown;
   usage?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
-  trace?: { model?: string; latencyMs?: number };
+  trace?: { model?: string; latencyMs?: number; startedAt?: string; toolLatencyMs?: number };
 };
 
 export interface LLMCaller {

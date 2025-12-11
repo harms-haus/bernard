@@ -3,6 +3,8 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type Redis from "ioredis";
 
 import type { ConversationSummaryService, SummaryResult } from "./conversationSummary";
+import type { OpenAIMessage } from "./messages";
+import { messageRecordToOpenAI } from "./messages";
 
 export type ConversationStatus = "open" | "closed";
 
@@ -46,9 +48,13 @@ export type Conversation = {
   keywords?: string[];
   closeReason?: string;
   messageCount?: number;
+  userAssistantCount?: number;
   toolCallCount?: number;
+  maxTurnLatencyMs?: number;
   requestCount?: number;
   lastRequestAt?: string;
+  errorCount?: number;
+  hasErrors?: boolean;
 };
 
 export type ConversationStats = {
@@ -169,9 +175,24 @@ function toNumber(value?: string): number | undefined {
 
 function countToolCallsInMessages(messages: MessageRecord[]): number {
   return messages.reduce((total, message) => {
-    const fromToolRole = message.role === "tool" ? 1 : 0;
-    const fromToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
-    return total + fromToolRole + fromToolCalls;
+    const fromToolCalls =
+      message.role === "assistant" && Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
+    const fromToolOutputs = message.role === "tool" ? 1 : 0;
+    return total + fromToolCalls + fromToolOutputs;
+  }, 0);
+}
+
+function isErrorRecord(message: MessageRecord): boolean {
+  const name = message.name ?? "";
+  const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType ?? "";
+  if (traceType === "error" || traceType === "orchestrator.error") return true;
+  if (name.endsWith(".error") || name === "orchestrator.error") return true;
+  return false;
+}
+
+function countUserAssistantMessages(messages: MessageRecord[]): number {
+  return messages.reduce((total, message) => {
+    return message.role === "user" || message.role === "assistant" ? total + 1 : total;
   }, 0);
 }
 
@@ -461,6 +482,8 @@ export class RecordKeeper {
     const convKey = this.key(`conv:${conversationId}`);
     const messageIncrement = serialized.length;
     const toolCallIncrement = countToolCallsInMessages(serialized);
+    const errorIncrement = serialized.filter((msg) => isErrorRecord(msg)).length;
+    const userAssistantIncrement = countUserAssistantMessages(serialized);
     const now = Date.now();
     const nowISO = nowIso();
     const multi = this.redis.multi();
@@ -469,7 +492,9 @@ export class RecordKeeper {
     });
     multi
       .hincrby(convKey, "messageCount", messageIncrement)
+      .hincrby(convKey, "userAssistantCount", userAssistantIncrement)
       .hincrby(convKey, "toolCallCount", toolCallIncrement)
+      .hincrby(convKey, "errorCount", errorIncrement)
       .hset(convKey, { lastTouchedAt: nowISO })
       .zadd(this.key("convs:active"), now, conversationId);
     await multi.exec();
@@ -540,15 +565,19 @@ export class RecordKeeper {
       result?: BaseMessage | MessageRecord | Array<BaseMessage | MessageRecord>;
       startedAt?: string;
       latencyMs?: number;
+      toolLatencyMs?: number;
       tokens?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
       requestId?: string;
       turnId?: string;
       stage?: string;
       contextLimit?: number;
       contentPreviewChars?: number;
+      tools?: unknown;
     }
   ) {
-    const previewLimit = Number.isFinite(details.contentPreviewChars) ? details.contentPreviewChars : null;
+    const previewLimit = Number.isFinite(details.contentPreviewChars)
+      ? Number(details.contentPreviewChars)
+      : null;
     const maxContext = details.contextLimit ?? 12;
 
     const trimSnapshot = (snap: ReturnType<typeof snapshotMessageForTrace>) => {
@@ -576,9 +605,11 @@ export class RecordKeeper {
     };
     if (resultSnapshots.length) traceContent["result"] = resultSnapshots;
     if (typeof details.latencyMs === "number") traceContent["latencyMs"] = details.latencyMs;
+    if (typeof details.toolLatencyMs === "number") traceContent["toolLatencyMs"] = details.toolLatencyMs;
     if (details.tokens) traceContent["tokens"] = details.tokens;
     if (details.requestId) traceContent["requestId"] = details.requestId;
     if (details.turnId) traceContent["turnId"] = details.turnId;
+    if (details.tools) traceContent["tools"] = details.tools;
 
     const message: MessageRecord = {
       id: uniqueId("msg"),
@@ -592,6 +623,7 @@ export class RecordKeeper {
         ...(details.stage ? { traceStage: details.stage } : {}),
         ...(details.tokens ? { tokens: details.tokens } : {}),
         ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {}),
+        ...(typeof details.toolLatencyMs === "number" ? { toolLatencyMs: details.toolLatencyMs } : {}),
         ...(details.requestId ? { requestId: details.requestId } : {}),
         ...(details.turnId ? { turnId: details.turnId } : {})
       }
@@ -868,11 +900,33 @@ export class RecordKeeper {
         conversation.toolCallCount = parsed;
       }
     }
+    if (data["userAssistantCount"]) {
+      const parsed = toNumber(data["userAssistantCount"]);
+      if (typeof parsed === "number") {
+        conversation.userAssistantCount = parsed;
+      }
+    }
+    if (data["maxTurnLatencyMs"]) {
+      const parsed = toNumber(data["maxTurnLatencyMs"]);
+      if (typeof parsed === "number") {
+        conversation.maxTurnLatencyMs = parsed;
+      }
+    }
     if (data["requestCount"]) {
       const parsed = toNumber(data["requestCount"]);
       if (typeof parsed === "number") {
         conversation.requestCount = parsed;
       }
+    }
+    if (data["errorCount"]) {
+      const parsed = toNumber(data["errorCount"]);
+      if (typeof parsed === "number") {
+        conversation.errorCount = parsed;
+        conversation.hasErrors = parsed > 0;
+      }
+    }
+    if (conversation.hasErrors === undefined && conversation.errorCount === undefined) {
+      conversation.hasErrors = false;
     }
     if (data["lastRequestAt"]) conversation.lastRequestAt = data["lastRequestAt"];
 
@@ -896,6 +950,40 @@ export class RecordKeeper {
         }
       })
       .filter((m): m is MessageRecord => m !== null);
+  }
+
+  private async getUserAssistantCount(conversationId: string): Promise<number> {
+    const listKey = this.key(`conv:${conversationId}:msgs`);
+    const raw = await this.redis.lrange(listKey, 0, -1);
+    const messages = raw
+      .map((item) => {
+        try {
+          return JSON.parse(item) as MessageRecord;
+        } catch {
+          return null;
+        }
+      })
+      .filter((m): m is MessageRecord => m !== null);
+    return countUserAssistantMessages(messages);
+  }
+
+  private async getMaxTurnLatency(conversationId: string): Promise<number | undefined> {
+    const turnIds = await this.redis.zrevrange(this.key(`conv:${conversationId}:turns`), 0, -1);
+    if (!turnIds.length) return undefined;
+    const multi = this.redis.multi();
+    for (const turnId of turnIds) {
+      multi.hget(this.key(`turn:${turnId}`), "latencyMs");
+    }
+    const results = await multi.exec();
+    if (!results) return undefined;
+    let max = -Infinity;
+    for (const [, value] of results) {
+      const parsed = typeof value === "string" ? Number(value) : NaN;
+      if (Number.isFinite(parsed)) {
+        max = Math.max(max, parsed);
+      }
+    }
+    return max === -Infinity ? undefined : max;
   }
 
   async listConversations(opts: { limit?: number; includeOpen?: boolean; includeClosed?: boolean } = {}): Promise<
@@ -959,21 +1047,30 @@ export class RecordKeeper {
   }
 
   private async conversationWithStats(conversation: Conversation): Promise<ConversationWithStats> {
-    const [messageCount, toolCallCount, requestCount, lastRequestAt] = await Promise.all([
+    const [messageCount, userAssistantCount, toolCallCount, requestCount, lastRequestAt, maxTurnLatencyMs] =
+      await Promise.all([
       typeof conversation.messageCount === "number" ? conversation.messageCount : this.getMessageCount(conversation.id),
+      typeof conversation.userAssistantCount === "number"
+        ? conversation.userAssistantCount
+        : this.getUserAssistantCount(conversation.id),
       typeof conversation.toolCallCount === "number" ? conversation.toolCallCount : this.countToolCalls(conversation.id),
       typeof conversation.requestCount === "number"
         ? conversation.requestCount
         : this.redis.zcard(this.key(`conv:${conversation.id}:requests`)),
-      conversation.lastRequestAt ?? this.getLastRequestAt(conversation.id)
+      conversation.lastRequestAt ?? this.getLastRequestAt(conversation.id),
+      typeof conversation.maxTurnLatencyMs === "number" ? conversation.maxTurnLatencyMs : this.getMaxTurnLatency(conversation.id)
     ]);
 
     return {
       ...conversation,
       messageCount,
+      userAssistantCount,
       toolCallCount,
+      ...(typeof maxTurnLatencyMs === "number" ? { maxTurnLatencyMs } : {}),
       ...(requestCount ? { requestCount } : {}),
-      ...(lastRequestAt ? { lastRequestAt } : {})
+      ...(lastRequestAt ? { lastRequestAt } : {}),
+      ...(typeof conversation.errorCount === "number" ? { errorCount: conversation.errorCount } : {}),
+      hasErrors: conversation.hasErrors ?? (conversation.errorCount ?? 0) > 0
     };
   }
 

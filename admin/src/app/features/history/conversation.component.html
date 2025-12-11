@@ -42,44 +42,77 @@
         <p class="muted">No messages yet.</p>
       } @else {
         <div class="thread">
-          @for (item of threadItems(); track item.id) {
-            <div class="thread-row">
-              @switch (item.kind) {
-                @case ('llm-call') {
-                  <app-llm-call [trace]="item.trace" [createdAt]="item.createdAt"></app-llm-call>
+          @for (turn of turns(); track turn.index) {
+            <div class="turn-block">
+              <div class="turn-separator" [attr.aria-label]="'Turn ' + turn.index">
+                <span class="turn-label">Turn {{ turn.index }}</span>
+                @if (turn.durationLabel) {
+                  <span class="turn-duration">• {{ turn.durationLabel }}</span>
                 }
-                @case ('error') {
-                  <app-system-message-bubble
-                    [text]="renderContent(item.message)"
-                    [footer]="messageFooter(item.message)"
-                  />
-                }
-                @case ('user') {
-                  <app-user-message-bubble
-                    [text]="renderContent(item.message)"
-                    [footer]="messageFooter(item.message)"
-                  />
-                }
-                @case ('assistant-text') {
-                  <app-assistant-message-bubble
-                    [text]="renderContent(item.message)"
-                    [footer]="messageFooter(item.message)"
-                  />
-                }
-                @case ('system') {
-                  <app-system-message-bubble
-                    [text]="renderContent(item.message)"
-                    [footer]="messageFooter(item.message)"
-                  />
-                }
-                @case ('tool-interaction') {
-                  <app-tool-call-bubble
-                    [call]="item.call"
-                    [name]="item.name || null"
-                    [content]="toolInteractionContent(item.response)"
-                    [footer]="toolInteractionFooter(item)"
-                  ></app-tool-call-bubble>
-                }
+              </div>
+              @for (item of turn.items; track item.id) {
+                <div class="thread-row">
+                  @switch (item.kind) {
+                    @case ('llm-call') {
+                      <app-llm-call [trace]="item.trace" [createdAt]="item.createdAt"></app-llm-call>
+                    }
+                    @case ('error') {
+                      <div class="error-separator" [class.expanded]="isErrorExpanded(item.id)">
+                        <button
+                          type="button"
+                          class="error-toggle"
+                          (click)="toggleError(item.id)"
+                          [attr.aria-expanded]="isErrorExpanded(item.id)"
+                          [attr.aria-controls]="'error-body-' + item.id"
+                        >
+                          <span class="pi pi-chevron-down chevron" [class.expanded]="isErrorExpanded(item.id)"></span>
+                          <span class="error-label">{{ item.message.name || 'Error' }}</span>
+                          <span class="error-preview">{{ errorPreview(item.message) }}</span>
+                          <span class="error-timestamp">{{ messageFooter(item.message) }}</span>
+                        </button>
+                        @if (isErrorExpanded(item.id)) {
+                          <div class="error-body" [id]="'error-body-' + item.id">
+                            <div class="error-text">{{ renderContent(item.message) }}</div>
+                            <div class="error-solutions">
+                              <span class="solutions-title">Possible fixes</span>
+                              <ul>
+                                @for (hint of errorSolutions(item.message); track hint) {
+                                  <li>{{ hint }}</li>
+                                }
+                              </ul>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    }
+                    @case ('user') {
+                      <app-user-message-bubble
+                        [text]="renderContent(item.message)"
+                        [footer]="messageFooter(item.message)"
+                      />
+                    }
+                    @case ('assistant-text') {
+                      <app-assistant-message-bubble
+                        [text]="renderContent(item.message)"
+                        [footer]="messageFooter(item.message)"
+                      />
+                    }
+                    @case ('system') {
+                      <app-system-message-bubble
+                        [text]="renderContent(item.message)"
+                        [footer]="messageFooter(item.message)"
+                      />
+                    }
+                    @case ('tool-interaction') {
+                      <app-tool-call-bubble
+                        [call]="item.call"
+                        [name]="item.name || null"
+                        [content]="toolInteractionContent(item.response)"
+                        [footer]="toolInteractionFooter(item)"
+                      ></app-tool-call-bubble>
+                    }
+                  }
+                </div>
               }
             </div>
           }

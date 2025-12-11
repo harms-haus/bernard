@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 
-import { resolveApiKey, resolveBaseUrl } from "@/lib/models";
+import { resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "@/lib/models";
 import { contentFromMessage, extractTokenUsage } from "@/lib/messages";
 import type { RecordKeeper } from "@/lib/recordKeeper";
 import { intentTools } from "../harness/intent/tools";
@@ -11,6 +11,7 @@ import { UtilityHarness } from "../harness/utility/utility.harness";
 import type { HarnessConfig, LLMCallConfig, LLMCaller, LLMResponse, ToolCall } from "../harness/lib/types";
 import { buildHarnessConfig, type OrchestratorConfigInput } from "./config";
 import { Orchestrator } from "./orchestrator";
+import { snapshotToolsForTrace } from "../harness/lib/toolSnapshot";
 
 function toToolCalls(raw: unknown): ToolCall[] {
   const toolCalls = (raw as { tool_calls?: unknown[] } | undefined)?.tool_calls;
@@ -54,6 +55,7 @@ class ChatModelCaller implements LLMCaller {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
     const started = Date.now();
+    const startedAt = new Date(started).toISOString();
     let message;
     try {
       message = await bound.invoke(input.messages, { signal: controller.signal });
@@ -80,17 +82,19 @@ class ChatModelCaller implements LLMCaller {
         cacheWrite: usage.cache_creation_input_tokens ?? usage.cache_write_input_tokens,
         cached: usage.cached
       },
-      trace: { model: this.modelName, latencyMs: latency }
+      trace: { model: this.modelName, latencyMs: latency, startedAt }
     };
 
     const meta = input.meta;
-    if (meta?.recordKeeper && meta.conversationId) {
+    const shouldRecord = meta?.recordKeeper && meta.conversationId && !meta?.deferRecord;
+    if (shouldRecord) {
       await meta.recordKeeper.recordLLMCall(meta.conversationId, {
         model: input.model ?? this.modelName,
         context: input.messages,
         result: message,
-        startedAt: new Date(started).toISOString(),
+        startedAt,
         latencyMs: latency,
+        tools: snapshotToolsForTrace(input.tools),
         tokens: response.usage,
         requestId: meta.requestId,
         turnId: meta.turnId,
@@ -107,12 +111,14 @@ class ChatModelCaller implements LLMCaller {
 function makeCaller(model: string, temperature: number, opts: CallerOpts = {}) {
   const apiKey = resolveApiKey();
   const baseURL = resolveBaseUrl();
+  const parsedModel = splitModelAndProvider(model);
   const client = new ChatOpenAI({
-    model,
+    model: parsedModel.model,
     apiKey,
     configuration: { baseURL },
     temperature,
-    maxTokens: opts.maxTokens
+    maxTokens: opts.maxTokens,
+    ...(parsedModel.providerOnly ? { modelKwargs: { provider: { only: parsedModel.providerOnly } } } : {})
   });
   return new ChatModelCaller(model, client);
 }

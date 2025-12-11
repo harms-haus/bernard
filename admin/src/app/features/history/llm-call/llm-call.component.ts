@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { ButtonModule } from 'primeng/button';
 
-import { ToolCall, TraceEntry, LlmTrace } from './llm-trace.types';
+import { ToolCall, TraceEntry, LlmTrace, TraceTool } from './llm-trace.types';
 import { AssistantMessageBubbleComponent } from '../../../components/message-bubbles/assistant-message-bubble.component';
 import { SystemMessageBubbleComponent } from '../../../components/message-bubbles/system-message-bubble.component';
 import { ToolCallBubbleComponent } from '../../../components/message-bubbles/tool-call-bubble.component';
@@ -17,6 +17,12 @@ type ToolInteractionEntry = {
 };
 
 type RenderEntry = ToolInteractionEntry | { kind: 'message'; entry: TraceEntry };
+type ToolView = {
+  id: string;
+  name: string;
+  call: ToolCall;
+  content: string | null;
+};
 
 @Component({
   selector: 'app-llm-call',
@@ -38,19 +44,25 @@ export class LlmCallComponent {
 
   protected readonly expanded = signal<boolean>(false);
   protected readonly contextExpanded = signal<boolean>(false);
+  protected readonly toolsExpanded = signal<boolean>(false);
   protected readonly resultCollapsed = signal<boolean>(false);
   protected readonly textOnly = signal<boolean>(false);
   protected readonly copied = signal<boolean>(false);
 
   protected readonly modelLabel = computed(() => this.trace().model ?? 'LLM call');
   protected readonly timestampValue = computed(() => this.trace().at ?? this.createdAt());
-  protected readonly latencyLabel = computed(() => this.latencyText(this.trace().latencyMs));
+  protected readonly latencyLabel = computed(() =>
+    this.combinedLatencyText(this.trace().latencyMs, this.trace().toolLatencyMs)
+  );
   protected readonly tokenSummaryLabel = computed(() => this.tokenSummary(this.trace().tokens));
   protected readonly contextEntryViews = computed(() =>
     this.buildEntryViews(this.trace().context ?? [])
   );
   protected readonly resultEntryViews = computed(() =>
     this.buildEntryViews(this.trace().result ?? [])
+  );
+  protected readonly toolEntryViews = computed<ToolView[]>(() =>
+    (this.trace().tools ?? []).map((tool, index) => this.toToolView(tool, index))
   );
   protected readonly toolName = (entry: TraceEntry | null, call: ToolCall | null): string | null => {
     const entryName = entry?.name;
@@ -75,6 +87,10 @@ export class LlmCallComponent {
 
   toggleContext() {
     this.contextExpanded.update((current) => !current);
+  }
+
+  toggleTools() {
+    this.toolsExpanded.update((current) => !current);
   }
 
   toggleResult() {
@@ -163,6 +179,86 @@ export class LlmCallComponent {
       return `${Math.round(latencyMs)}ms`;
     }
     return '—';
+  }
+
+  protected combinedLatencyText(llmLatencyMs: number | undefined, toolLatencyMs: number | undefined): string {
+    const llmText = this.latencyText(llmLatencyMs);
+    if (typeof toolLatencyMs === 'number' && Number.isFinite(toolLatencyMs)) {
+      const toolText = this.latencyText(toolLatencyMs);
+      return `call: ${llmText} + ${toolText}`;
+    }
+    return llmText;
+  }
+
+  private toToolView(tool: TraceTool, index: number): ToolView {
+    const call = this.toolCallFromTraceTool(tool, index);
+    const name = tool.name || call.name || call.function?.name || 'Tool';
+    return {
+      id: tool.id ?? `${name}:${index}`,
+      name,
+      call,
+      content: this.toolContent(tool)
+    };
+  }
+
+  private toolContent(tool: TraceTool): string | null {
+    const parts: string[] = [];
+    if (tool.description?.trim()) {
+      parts.push(tool.description.trim());
+    }
+    const args = this.toolArguments(tool);
+    if (args !== undefined && args !== null && args !== '') {
+      const rendered = typeof args === 'string' ? args : this.safeStringify(args);
+      if (rendered.trim()) {
+        parts.push(rendered);
+      }
+    }
+    if (!parts.length) return null;
+    return parts.join('\n\n');
+  }
+
+  private toolCallFromTraceTool(tool: TraceTool, fallbackIndex: number): ToolCall {
+    const args = this.toolArguments(tool);
+    const id = tool.id ?? `${tool.name ?? 'tool'}:${fallbackIndex}`;
+    const name = tool.name ?? 'tool';
+    const argPayload = args !== undefined ? args : tool.parameters ?? tool.raw;
+    return {
+      id,
+      type: 'function',
+      name,
+      arguments: argPayload,
+      args: argPayload,
+      function: {
+        name,
+        arguments: argPayload
+      }
+    };
+  }
+
+  private toolArguments(tool: TraceTool): unknown {
+    const raw = tool.raw;
+    const fn =
+      raw && this.isRecord(raw) && this.isRecord((raw as { function?: unknown }).function)
+        ? ((raw as { function?: Record<string, unknown> }).function ?? undefined)
+        : undefined;
+
+    const direct =
+      tool.parameters ??
+      (this.isRecord(raw) ? (raw as { parameters?: unknown }).parameters : undefined) ??
+      (this.isRecord(raw) ? (raw as { args?: unknown }).args : undefined) ??
+      (this.isRecord(raw) ? (raw as { input?: unknown }).input : undefined);
+
+    if (direct !== undefined) return direct;
+
+    return (
+      (fn as { parameters?: unknown })?.parameters ??
+      (fn as { args?: unknown })?.args ??
+      (fn as { input?: unknown })?.input
+    );
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
   }
 
   private numberOrNull(value: unknown): number | null {

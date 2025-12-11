@@ -15,7 +15,7 @@ import { SystemMessageBubbleComponent } from '../../components/message-bubbles/s
 import { ToolCallBubbleComponent } from '../../components/message-bubbles/tool-call-bubble.component';
 import { UserMessageBubbleComponent } from '../../components/message-bubbles/user-message-bubble.component';
 import { LlmCallComponent } from './llm-call/llm-call.component';
-import { LlmTrace, ToolCall, TraceEntry } from './llm-call/llm-trace.types';
+import { LlmTrace, ToolCall, TraceEntry, TraceTool } from './llm-call/llm-trace.types';
 
 type TraceEntryInput = {
   role?: unknown;
@@ -30,9 +30,13 @@ type LlmCallContent = {
   model?: unknown;
   at?: unknown;
   latencyMs?: unknown;
+  toolLatencyMs?: unknown;
   tokens?: unknown;
   context?: unknown;
   result?: unknown;
+  tools?: unknown;
+  availableTools?: unknown;
+  toolset?: unknown;
 };
 
 type ToolInteractionThreadItem = {
@@ -49,6 +53,13 @@ type ThreadItem =
   | { kind: 'error'; id: string; message: ConversationMessage }
   | { kind: 'user' | 'assistant-text' | 'system'; id: string; message: ConversationMessage }
   | ToolInteractionThreadItem;
+
+type TurnThread = {
+  index: number;
+  items: ThreadItem[];
+  durationMs: number | null;
+  durationLabel: string | null;
+};
 
 @Component({
   selector: 'app-conversation',
@@ -79,6 +90,7 @@ export class ConversationComponent {
   readonly conversation = signal<ConversationDetail | null>(null);
   readonly messages = signal<ConversationMessage[]>([]);
   readonly copyStatus = signal<'idle' | 'success' | 'error'>('idle');
+  readonly expandedErrors = signal<Set<string>>(new Set());
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -184,6 +196,43 @@ export class ConversationComponent {
 
     return items;
   });
+  readonly turns = computed<TurnThread[]>(() => {
+    const items = this.threadItems();
+    const turns: Array<{ index: number; items: ThreadItem[]; start?: number; end?: number }> = [];
+    let current: { index: number; items: ThreadItem[]; start?: number; end?: number } | null = null;
+
+    const beginTurn = () => {
+      const nextIndex = (turns[turns.length - 1]?.index ?? 0) + 1;
+      const turn = { index: nextIndex, items: [] as ThreadItem[] };
+      turns.push(turn);
+      current = turn;
+    };
+
+    items.forEach((item) => {
+      const isUserStart = item.kind === 'user';
+      if (isUserStart || !current) {
+        beginTurn();
+      }
+      if (!current) return;
+
+      current.items.push(item);
+      const timestamp = this.itemTimestamp(item);
+      if (timestamp !== null) {
+        current.start = current.start !== undefined ? Math.min(current.start, timestamp) : timestamp;
+        current.end = current.end !== undefined ? Math.max(current.end, timestamp) : timestamp;
+      }
+    });
+
+    return turns.map((turn) => {
+      const duration = turn.start !== undefined && turn.end !== undefined ? turn.end - turn.start : null;
+      return {
+        index: turn.index,
+        items: turn.items,
+        durationMs: duration,
+        durationLabel: this.formatDuration(duration)
+      };
+    });
+  });
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -262,6 +311,62 @@ export class ConversationComponent {
     return this.renderValue(message.content);
   }
 
+  errorPreview(message: ConversationMessage, max = 160): string {
+    const text = this.renderContent(message).replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text || 'Error';
+    return `${text.slice(0, max).trimEnd()}…`;
+  }
+
+  toggleError(id: string) {
+    this.expandedErrors.update((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  isErrorExpanded(id: string): boolean {
+    return this.expandedErrors().has(id);
+  }
+
+  errorSolutions(message: ConversationMessage): string[] {
+    const text = this.renderContent(message).toLowerCase();
+    const hints = new Set<string>();
+
+    const add = (hint: string) => {
+      if (hint.trim()) hints.add(hint.trim());
+    };
+
+    if (text.includes('timeout')) {
+      add('Check upstream services, network, and reduce context length if requests time out.');
+    }
+    if (text.includes('unauthorized') || text.includes('forbidden') || text.includes('401')) {
+      add('Verify bearer tokens/API keys and ensure the request token has access.');
+    }
+    if (text.includes('fetch failed') || text.includes('connect') || text.includes('enotfound') || text.includes('econnrefused')) {
+      add('Confirm the target endpoint is reachable and DNS/SSL are configured correctly.');
+    }
+    if (text.includes('intent halted')) {
+      add('Check for repeated tool calls or invalid arguments; fix and retry the turn.');
+    }
+    if (text.includes('tool') && text.includes('failed')) {
+      add('Inspect the tool invocation and credentials, then rerun after correcting inputs.');
+    }
+    if (text.includes('rate limit')) {
+      add('Wait briefly or reduce request rate/context size to avoid rate limits.');
+    }
+
+    if (!hints.size) {
+      add('Retry the turn after verifying upstream services, credentials, and tool configuration.');
+    }
+
+    return Array.from(hints);
+  }
+
   roleLabel(role: ConversationMessage['role']) {
     if (role === 'assistant') {
       return 'Assistant';
@@ -331,7 +436,13 @@ export class ConversationComponent {
     const model = typeof content.model === 'string' ? content.model : undefined;
     const at = typeof content.at === 'string' ? content.at : undefined;
     const latencyMs = typeof content.latencyMs === 'number' ? content.latencyMs : undefined;
+    const toolLatencyMs = typeof content.toolLatencyMs === 'number' ? content.toolLatencyMs : undefined;
     const tokens = this.isRecord(content.tokens) ? (content.tokens as Record<string, unknown>) : undefined;
+    const tools = this.parseTraceTools(
+      (content as { tools?: unknown }).tools ??
+        (content as { availableTools?: unknown }).availableTools ??
+        (content as { toolset?: unknown }).toolset
+    );
 
     const contextEntries = Array.isArray(content.context)
       ? content.context.map((entry, index) => toEntry(entry, index, 'context')).filter(Boolean)
@@ -345,10 +456,61 @@ export class ConversationComponent {
       model,
       at,
       latencyMs,
+      toolLatencyMs,
       tokens,
       context: contextEntries as TraceEntry[],
       result: resultEntries as TraceEntry[],
+      ...(tools.length ? { tools } : {}),
       raw: content
+    };
+  }
+
+  private parseTraceTools(value: unknown): TraceTool[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((tool, index) => this.toTraceTool(tool, index))
+      .filter((tool): tool is TraceTool => Boolean(tool));
+  }
+
+  private toTraceTool(tool: unknown, index: number): TraceTool | null {
+    if (!this.isRecord(tool)) return null;
+    const fn = this.isRecord((tool as { function?: unknown }).function)
+      ? ((tool as { function?: Record<string, unknown> }).function ?? undefined)
+      : undefined;
+
+    const nameValue =
+      (tool as { name?: unknown }).name ??
+      (fn as { name?: unknown })?.name ??
+      (tool as { id?: unknown }).id ??
+      (fn as { id?: unknown })?.id;
+    const name =
+      typeof nameValue === 'string' && nameValue.trim()
+        ? nameValue.trim()
+        : typeof nameValue === 'number'
+          ? String(nameValue)
+          : null;
+    if (!name) return null;
+
+    const descriptionValue =
+      (tool as { description?: unknown }).description ?? (fn as { description?: unknown })?.description;
+    const description = typeof descriptionValue === 'string' ? descriptionValue : undefined;
+
+    const parameters =
+      (tool as { parameters?: unknown }).parameters ??
+      (tool as { args?: unknown }).args ??
+      (tool as { input?: unknown }).input ??
+      (tool as { schema?: unknown }).schema ??
+      (fn as { parameters?: unknown })?.parameters ??
+      (fn as { args?: unknown })?.args ??
+      (fn as { input?: unknown })?.input ??
+      (fn as { schema?: unknown })?.schema;
+
+    return {
+      id: `${name}:${index}`,
+      name,
+      description,
+      parameters,
+      raw: tool
     };
   }
 
@@ -396,6 +558,53 @@ export class ConversationComponent {
       return raw;
     }
     return 'system';
+  }
+
+  private itemTimestamp(item: ThreadItem): number | null {
+    switch (item.kind) {
+      case 'llm-call':
+        return this.parseTimestamp(item.createdAt);
+      case 'error':
+      case 'user':
+      case 'assistant-text':
+      case 'system':
+        return this.parseTimestamp(item.message.createdAt);
+      case 'tool-interaction': {
+        const sourceTime = this.parseTimestamp(item.source.createdAt);
+        const responseTime = item.response ? this.parseTimestamp(item.response.createdAt) : null;
+        return responseTime ?? sourceTime;
+      }
+      default:
+        return null;
+    }
+  }
+
+  private parseTimestamp(value: string | null | undefined): number | null {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  }
+
+  private formatDuration(durationMs: number | null): string | null {
+    if (durationMs === null) return null;
+    if (durationMs < 1000) return `${durationMs}ms`;
+
+    const seconds = durationMs / 1000;
+    if (seconds < 60) {
+      return seconds >= 10 ? `${seconds.toFixed(1)}s` : `${seconds.toFixed(2)}s`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds - minutes * 60);
+    if (minutes < 60) {
+      return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes - hours * 60;
+    if (remainingMinutes === 0) return `${hours}h`;
+    return `${hours}h ${remainingMinutes}m`;
   }
 }
 

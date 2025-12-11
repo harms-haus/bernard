@@ -6,20 +6,18 @@ import {
   collectToolCalls,
   contentFromMessage,
   createScaffolding,
-  extractMessagesFromChunk,
   extractUsageFromMessages,
   findLastAssistantMessage,
   isBernardModel,
   mapChatMessages,
-  safeStringify,
-  summarizeToolOutputs,
+  hydrateMessagesWithHistory,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
 import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/agent";
 import { ChatOpenAI } from "@langchain/openai";
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "@/lib/models";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "@/lib/models";
 
 export const runtime = "nodejs";
 
@@ -101,21 +99,32 @@ export async function POST(req: NextRequest) {
   }
 
   const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: getPrimaryModel("response") });
-  const { keeper, conversationId, requestId, turnId, responseModelName, intentModelName } = scaffold;
+  const { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } = scaffold;
+
+  const mergedMessages = isNewConversation
+    ? inputMessages
+    : await hydrateMessagesWithHistory({
+        keeper,
+        conversationId,
+        incoming: inputMessages
+      });
 
   const apiKey = resolveApiKey();
   const baseURL = resolveBaseUrl();
 
+  const intentModel = splitModelAndProvider(intentModelName);
   const intentLLM = new ChatOpenAI({
-    model: intentModelName,
+    model: intentModel.model,
     apiKey,
     configuration: { baseURL },
-    temperature: 0
+    temperature: 0,
+    ...(intentModel.providerOnly ? { modelKwargs: { provider: { only: intentModel.providerOnly } } } : {})
   });
 
   const stop = Array.isArray(body.stop) ? body.stop : typeof body.stop === "string" ? [body.stop] : undefined;
+  const responseModel = splitModelAndProvider(responseModelName);
   const responseOptions: ConstructorParameters<typeof ChatOpenAI>[0] = {
-    model: responseModelName,
+    model: responseModel.model,
     apiKey,
     configuration: { baseURL }
   };
@@ -126,6 +135,7 @@ export async function POST(req: NextRequest) {
   if (typeof body.max_tokens === "number") responseOptions.maxTokens = body.max_tokens;
   if (stop) responseOptions.stop = stop;
   if (body.logit_bias) responseOptions.logitBias = body.logit_bias;
+  if (responseModel.providerOnly) responseOptions.modelKwargs = { provider: { only: responseModel.providerOnly } };
 
   const responseLLM = new ChatOpenAI(responseOptions);
 
@@ -145,10 +155,8 @@ export async function POST(req: NextRequest) {
 
   if (!shouldStream) {
     try {
-      const result = await graph.invoke({ messages: inputMessages });
-      const messages = result.messages ?? inputMessages;
-      const toolOutputs = summarizeToolOutputs(messages);
-      const toolCalls = collectToolCalls(messages);
+      const result = await graph.invoke({ messages: mergedMessages });
+      const messages = result.messages ?? mergedMessages;
       const assistantMessage = findLastAssistantMessage(messages);
       const content = contentFromMessage(assistantMessage) ?? "";
       const usageMeta = extractUsageFromMessages(messages);
@@ -178,9 +186,7 @@ export async function POST(req: NextRequest) {
             finish_reason: "stop",
             message: {
               role: "assistant",
-              content,
-              ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
-              ...(toolOutputs.length ? { tool_outputs: toolOutputs } : {})
+              content
             }
           }
         ],
@@ -197,15 +203,42 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let detailed;
+  try {
+    detailed = await graph.runWithDetails({ messages: mergedMessages });
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+    await keeper.completeRequest(requestId, latencyMs);
+    return new NextResponse(
+      JSON.stringify({ error: "Chat completion failed", reason: err instanceof Error ? err.message : String(err) }),
+      { status: 500 }
+    );
+  }
+
+  const responseMessages = [...detailed.transcript, detailed.response.message];
+  const usageMeta = extractUsageFromMessages(responseMessages);
+  const usage =
+    typeof usageMeta.prompt_tokens === "number" ||
+    typeof usageMeta.input_tokens === "number" ||
+    typeof usageMeta.completion_tokens === "number" ||
+    typeof usageMeta.output_tokens === "number"
+      ? {
+          prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
+          completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
+          total_tokens:
+            (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) +
+            (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
+        }
+      : undefined;
+
+  const toolChunks = buildToolChunks(detailed.transcript, detailed.historyLength);
+  const finalContent = contentFromMessage(detailed.response.message) ?? "";
+  const contentChunks = chunkContent(finalContent);
   const encoder = new TextEncoder();
-  const iterator = graph.stream({ messages: inputMessages });
+
   const stream = new ReadableStream({
     async start(controller) {
-      const sentToolCalls = new Set<string>();
-      let latestMessages: BaseMessage[] | null = null;
-      let streamedContent = "";
-      let usageChunk: Record<string, unknown> | null = null;
-
       const sendChunk = (payload: Record<string, unknown>) => {
         controller.enqueue(
           encoder.encode(
@@ -226,81 +259,28 @@ export async function POST(req: NextRequest) {
         });
       };
 
-      // initial assistant role
       sendDelta({ role: "assistant" });
 
       try {
-        for await (const chunk of iterator) {
-          const maybeMessages = extractMessagesFromChunk(chunk);
-          if (!maybeMessages) continue;
-          latestMessages = maybeMessages;
-
-          // tool calls
-          for (const message of maybeMessages) {
-            if ((message as { tool_calls?: unknown[] }).tool_calls) {
-              const tc = (message as { tool_calls?: unknown[] }).tool_calls;
-              if (Array.isArray(tc)) {
-                const newCalls = tc
-                  .map((call) => {
-                    const fn = (call as { function?: { name?: string; arguments?: unknown } }).function;
-                    const id = (call as { id?: string }).id ?? fn?.name ?? "tool_call";
-                    if (sentToolCalls.has(String(id))) return null;
-                    sentToolCalls.add(String(id));
-                    return {
-                      id: String(id),
-                      type: "function",
-                      function: {
-                        name: String(fn?.name ?? "tool_call"),
-                        arguments: safeStringify(fn?.arguments ?? "")
-                      }
-                    };
-                  })
-                  .filter(Boolean);
-                if (newCalls.length) {
-                  sendDelta({ tool_calls: newCalls as unknown[] });
-                }
-              }
-            }
-          }
-
-          // assistant content
-          const responseMessage = findLastAssistantMessage(maybeMessages);
-          const content = contentFromMessage(responseMessage);
-          if (content !== null) {
-            const incremental =
-              content.startsWith(streamedContent) && content.length >= streamedContent.length
-                ? content.slice(streamedContent.length)
-                : content;
-            if (incremental) {
-              streamedContent += incremental;
-              sendDelta({ content: incremental });
-            }
-          }
+        for (const chunk of toolChunks) {
+          if (!chunk.tool_calls.length && !chunk.tool_outputs.length) continue;
+          sendDelta(
+            {
+              ...(chunk.tool_calls.length ? { tool_calls: chunk.tool_calls } : {}),
+              ...(chunk.tool_outputs.length ? { tool_outputs: chunk.tool_outputs } : {})
+            },
+            null
+          );
         }
 
-        if (latestMessages) {
-          const usageMeta = extractUsageFromMessages(latestMessages);
-          if (
-            typeof usageMeta.prompt_tokens === "number" ||
-            typeof usageMeta.input_tokens === "number" ||
-            typeof usageMeta.completion_tokens === "number" ||
-            typeof usageMeta.output_tokens === "number"
-          ) {
-            usageChunk = {
-              usage: {
-                prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
-                completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
-                total_tokens:
-                  (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) +
-                  (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
-              }
-            };
-          }
+        for (const piece of contentChunks) {
+          if (!piece) continue;
+          sendDelta({ content: piece });
         }
 
         sendDelta({}, "stop");
-        if (includeUsage && usageChunk) {
-          sendChunk({ choices: [], ...usageChunk });
+        if (includeUsage && usage) {
+          sendChunk({ choices: [], usage });
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -328,5 +308,83 @@ export async function POST(req: NextRequest) {
       "Cache-Control": "no-cache, no-transform"
     }
   });
+}
+
+
+function chunkContent(content: string): string[] {
+  if (!content) return [];
+  const parts = content.split(/(\s+)/).filter((part) => part.length);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const part of parts) {
+    const next = current + part;
+    if (next.length > 32 && current) {
+      chunks.push(current);
+      current = part;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks.length ? chunks : [content];
+}
+
+function buildToolChunks(transcript: BaseMessage[], historyLength: number) {
+  const deltas = transcript.slice(historyLength);
+  const chunks: Array<{
+    tool_calls: Array<{
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }>;
+    tool_outputs: Array<{ id: string; content: string }>;
+  }> = [];
+
+  let pendingCalls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> | null =
+    null;
+  let outputs: Array<{ id: string; content: string }> = [];
+
+  const flush = () => {
+    if (pendingCalls || outputs.length) {
+      chunks.push({
+        tool_calls: pendingCalls ?? [],
+        tool_outputs: outputs
+      });
+    }
+    pendingCalls = null;
+    outputs = [];
+  };
+
+  for (const message of deltas) {
+    const calls = collectToolCalls([message]);
+    if (calls.length) {
+      flush();
+      pendingCalls = calls;
+      continue;
+    }
+
+    const type = (message as { _getType?: () => string })._getType?.();
+    if (type === "tool") {
+      const id =
+        (message as { tool_call_id?: string }).tool_call_id ??
+        (message as { name?: string }).name ??
+        "tool_call";
+      const content = contentFromMessage(message) ?? "";
+      outputs.push({ id: String(id), content });
+      continue;
+    }
+
+    if (pendingCalls || outputs.length) {
+      flush();
+    }
+  }
+
+  flush();
+  return chunks.filter((chunk) => chunk.tool_calls.length || chunk.tool_outputs.length);
 }
 

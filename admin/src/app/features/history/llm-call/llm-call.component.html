@@ -58,6 +58,36 @@
         <button
           type="button"
           class="section-header"
+          (click)="toggleTools()"
+          [attr.aria-expanded]="toolsExpanded()"
+          aria-controls="llm-tools"
+        >
+          <span class="section-title">Tools</span>
+          <span class="chevron">{{ toolsExpanded() ? '▴' : '▾' }}</span>
+        </button>
+        @if (toolsExpanded()) {
+          @if (!toolEntryViews().length) {
+            <p class="muted small">None</p>
+          } @else {
+            <div class="message-list" id="llm-tools">
+              @for (tool of toolEntryViews(); track tool.id) {
+                <app-tool-call-bubble
+                  [call]="tool.call"
+                  [name]="tool.name"
+                  [content]="tool.content"
+                  [textOnly]="textOnly()"
+                  [collapsed]="!expanded()"
+                ></app-tool-call-bubble>
+              }
+            </div>
+          }
+        }
+      </div>
+
+      <div class="section">
+        <button
+          type="button"
+          class="section-header"
           (click)="toggleContext()"
           [attr.aria-expanded]="contextExpanded()"
           aria-controls="llm-context"

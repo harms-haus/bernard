@@ -44,21 +44,32 @@ export function buildGraph(ctx: LegacyGraphContext, _deps: Record<string, unknow
   const responseModel = ctx.responseModel ?? ctx.model ?? getPrimaryModel("response");
   const intentModel = ctx.intentModel ?? getPrimaryModel("intent", { fallback: [responseModel] });
   const { orchestrator } = createOrchestrator(ctx.recordKeeper, { intentModel, responseModel });
-  const invoke = async (input: { messages: BaseMessage[] }) => {
+
+  const runWithDetails = async (input: { messages: BaseMessage[] }) => {
     const persistable = newInboundMessages(input.messages);
+    const historyLength = input.messages.filter((msg) => (msg as { _getType?: () => string })._getType?.() !== "system")
+      .length;
     const result = await orchestrator.run({
       conversationId: ctx.conversationId,
       incoming: input.messages,
       persistable,
       intentInput: {},
-      memoryInput: {}
+      memoryInput: {},
+      requestId: ctx.requestId,
+      turnId: ctx.turnId
     });
     const messages = [...input.messages, result.response.message];
-    return { messages };
+    return { ...result, messages, historyLength, transcript: result.intent.transcript };
+  };
+
+  const invoke = async (input: { messages: BaseMessage[] }) => {
+    const result = await runWithDetails(input);
+    return { messages: result.messages };
   };
 
   return {
     invoke,
+    runWithDetails,
     async *stream(input: { messages: BaseMessage[] }) {
       const res = await invoke(input);
       yield { messages: res.messages };

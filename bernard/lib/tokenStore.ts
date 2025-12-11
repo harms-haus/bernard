@@ -14,6 +14,7 @@ export type TokenInfo = {
 export type TokenRecord = TokenInfo & { token: string };
 
 const DEFAULT_NAMESPACE = "bernard:tokens";
+const TOKEN_PREFIX = "brnd-";
 
 export class TokenStore {
   private readonly namespace: string;
@@ -45,7 +46,7 @@ export class TokenStore {
     }
 
     const id = crypto.randomBytes(10).toString("hex");
-    const token = crypto.randomBytes(24).toString("hex");
+    const token = `${TOKEN_PREFIX}${crypto.randomBytes(24).toString("hex")}`;
     const createdAt = new Date().toISOString();
 
     await this.redis

@@ -2,7 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
 import { safeStringify } from "./messages";
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "./models";
 import type { MemoryRecord, MemorySearchHit } from "./memoryStore";
 
 type Decision = "new" | "update" | "duplicate";
@@ -57,17 +57,19 @@ export async function classifyMemory(
 ): Promise<DedupDecision> {
   if (!neighbors.length) return { decision: "new" };
 
-  const modelName = getPrimaryModel("utility");
+  const configuredModel = getPrimaryModel("utility");
+  const { model: modelName, providerOnly } = splitModelAndProvider(configuredModel);
   const apiKey = resolveApiKey();
   if (!apiKey) {
     return fallbackDecision(neighbors);
   }
   const baseURL = resolveBaseUrl();
   const model = new ChatOpenAI({
-    modelName,
+    model: modelName,
     apiKey,
     configuration: { baseURL },
-    temperature: 0
+    temperature: 0,
+    ...(providerOnly ? { modelKwargs: { provider: { only: providerOnly } } } : {})
   });
 
   const neighborSummary = buildNeighborsSummary(neighbors);

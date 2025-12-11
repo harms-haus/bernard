@@ -28,7 +28,7 @@ test(
 
       const created = await store.create("alpha");
       assert.match(created.id, /^[0-9a-f]{20}$/);
-      assert.match(created.token, /^[0-9a-f]{48}$/);
+      assert.match(created.token, /^brnd-[0-9a-f]{48}$/);
       assert.equal(created.name, "alpha");
       assert.equal(created.status, "active");
       assert.ok(!Number.isNaN(Date.parse(created.createdAt)));

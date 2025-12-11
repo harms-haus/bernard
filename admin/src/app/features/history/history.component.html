@@ -23,7 +23,7 @@
         <th>Summary</th>
         <th>Messages</th>
         <th>Tool calls</th>
-        <th>Last request</th>
+        <th>Max turn</th>
         <th></th>
       </tr>
     </ng-template>
@@ -35,7 +35,14 @@
         [class.active]="convo.status === 'open'"
       >
         <td>
-          <p-tag [value]="statusLabel(convo.status)" [severity]="convo.status === 'open' ? 'success' : 'secondary'"></p-tag>
+          <div class="status-cell">
+            <p-tag [value]="statusLabel(convo.status)" [severity]="convo.status === 'open' ? 'success' : 'secondary'"></p-tag>
+            @if (convo.status === 'closed' && hasErrors(convo)) {
+              <span class="status-error" title="Errors in conversation" aria-label="Conversation has errors">
+                <i class="pi pi-exclamation-triangle"></i>
+              </span>
+            }
+          </div>
         </td>
         <td>
           <div class="source">
@@ -48,18 +55,31 @@
         <td>
           <div class="summary">{{ convo.summary || 'No summary yet' }}</div>
         </td>
-        <td>{{ convo.messageCount }}</td>
+        <td>{{ messageCount(convo) }}</td>
         <td>{{ convo.toolCallCount }}</td>
-        <td>{{ (convo.lastRequestAt || convo.lastTouchedAt || convo.startedAt) | date: 'short' }}</td>
+        <td>{{ formatLatencyMs(convo.maxTurnLatencyMs) }}</td>
         <td class="actions">
           <p-menu #menu [model]="menuItems(convo)" [popup]="true" appendTo="body"></p-menu>
+          @if (convo.status === 'open') {
+            <button
+              pButton
+              type="button"
+              label="Close"
+              icon="pi pi-stop"
+              severity="warning"
+              (click)="closeConversation(convo)"
+              [loading]="closingId() === convo.id"
+              [disabled]="deletingId() === convo.id"
+              text
+            ></button>
+          }
           <button
             pButton
             type="button"
             icon="pi pi-ellipsis-v"
             aria-label="Conversation actions"
             (click)="menu.toggle($event)"
-            [disabled]="deletingId() === convo.id"
+            [disabled]="deletingId() === convo.id || closingId() === convo.id"
             text
           ></button>
         </td>

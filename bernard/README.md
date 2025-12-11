@@ -29,6 +29,8 @@ curl -X POST http://localhost:3000/api/tokens \
 - `PATCH /api/tokens/:id` to rename or toggle status (`active` | `disabled`).
 - `DELETE /api/tokens/:id` removes a token entirely.
 - Disabled tokens are rejected by `/api/v1/*` and `/api/history`.
+- Newly created tokens are prefixed with `brnd-`; existing tokens remain valid.
+- Authenticated admin sessions (`bernard_session` cookies) can also authenticate agent endpoints.
 
 ## Status (admin)
 

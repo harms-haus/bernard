@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 
 import type { MessageRecord } from "./recordKeeper";
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "./models";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "./models";
 
 export type SummaryFlags = { explicit?: boolean; forbidden?: boolean; summaryError?: boolean };
 
@@ -19,7 +19,8 @@ export class ConversationSummaryService {
   private readonly model: ChatOpenAI;
 
   constructor(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
-    const model = opts?.model ?? getPrimaryModel("aggregation");
+    const configuredModel = opts?.model ?? getPrimaryModel("aggregation");
+    const { model, providerOnly } = splitModelAndProvider(configuredModel);
     const apiKey = opts?.apiKey ?? resolveApiKey();
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is required for summarization");
 
@@ -27,7 +28,8 @@ export class ConversationSummaryService {
       model,
       apiKey,
       configuration: { baseURL: resolveBaseUrl(opts?.baseURL) },
-      temperature: 0
+      temperature: 0,
+      ...(providerOnly ? { modelKwargs: { provider: { only: providerOnly } } } : {})
     });
   }
 

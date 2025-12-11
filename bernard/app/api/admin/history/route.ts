@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth";
 import { RecordKeeper } from "@/lib/recordKeeper";
 import { getRedis } from "@/lib/redis";
 import { TokenStore } from "@/lib/tokenStore";
+import { SessionStore } from "@/lib/sessionStore";
+import { UserStore } from "@/lib/userStore";
 
 export const runtime = "nodejs";
 
@@ -27,6 +29,10 @@ type AdminConversation = {
   source: string;
   tokenNames: string[];
   tokenIds: string[];
+  errorCount?: number;
+  hasErrors?: boolean;
+  userAssistantCount?: number;
+  maxTurnLatencyMs?: number;
 };
 
 export async function GET(req: NextRequest) {
@@ -43,6 +49,8 @@ export async function GET(req: NextRequest) {
   const redis = getRedis();
   const keeper = new RecordKeeper(redis);
   const tokens = new TokenStore(redis);
+  const sessions = new SessionStore(redis);
+  const users = new UserStore(redis);
 
   try {
     await keeper.closeIfIdle();
@@ -54,6 +62,29 @@ export async function GET(req: NextRequest) {
 
     const tokenCache = new Map<string, { id: string; name: string }>();
 
+    const resolveToken = async (token: string) => {
+      if (tokenCache.has(token)) return tokenCache.get(token);
+
+      const resolvedToken = await tokens.resolve(token);
+      if (resolvedToken) {
+        const mapped = { id: resolvedToken.id, name: resolvedToken.name };
+        tokenCache.set(token, mapped);
+        return mapped;
+      }
+
+      const session = await sessions.get(token);
+      if (session) {
+        const user = await users.get(session.userId);
+        if (user && user.status === "active") {
+          const mapped = { id: user.id, name: user.displayName };
+          tokenCache.set(token, mapped);
+          return mapped;
+        }
+      }
+
+      return null;
+    };
+
     const items: AdminConversation[] = [];
     for (const conversation of conversations) {
       const tokenNames: string[] = [];
@@ -61,13 +92,7 @@ export async function GET(req: NextRequest) {
 
       const tokenSet = conversation.tokenSet ?? [];
       for (const token of tokenSet) {
-        if (!tokenCache.has(token)) {
-          const resolved = await tokens.resolve(token);
-          if (resolved) {
-            tokenCache.set(token, { id: resolved.id, name: resolved.name });
-          }
-        }
-        const resolved = tokenCache.get(token);
+        const resolved = await resolveToken(token);
         if (resolved) {
           tokenIds.push(resolved.id);
           if (!tokenNames.includes(resolved.name)) {
@@ -84,12 +109,16 @@ export async function GET(req: NextRequest) {
         startedAt: conversation.startedAt,
         lastTouchedAt: conversation.lastTouchedAt,
         lastRequestAt: conversation.lastRequestAt ?? conversation.lastTouchedAt,
-        messageCount: conversation.messageCount ?? 0,
+        messageCount: conversation.userAssistantCount ?? conversation.messageCount ?? 0,
+        userAssistantCount: conversation.userAssistantCount ?? conversation.messageCount ?? 0,
         toolCallCount: conversation.toolCallCount ?? 0,
         tags: conversation.tags ?? [],
         source,
         tokenNames,
-        tokenIds
+        tokenIds,
+        ...(conversation.errorCount !== undefined ? { errorCount: conversation.errorCount } : {}),
+        hasErrors: conversation.hasErrors ?? (conversation.errorCount ?? 0) > 0,
+        ...(conversation.maxTurnLatencyMs !== undefined ? { maxTurnLatencyMs: conversation.maxTurnLatencyMs } : {})
       };
 
       if (conversation.summary !== undefined) item.summary = conversation.summary;

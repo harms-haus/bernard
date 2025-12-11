@@ -1,6 +1,7 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
 import type { MessageRecord } from "./recordKeeper";
+import { jsonrepair } from "jsonrepair";
 
 type ToolCall = {
   id: string;
@@ -63,10 +64,43 @@ export function safeStringify(value: unknown): string {
 
 export function parseToolInput(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
+  const candidate = raw.trim();
+  if (!candidate) return raw;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(candidate);
   } catch {
-    return raw;
+    try {
+      const repaired = jsonrepair(candidate);
+      return JSON.parse(repaired);
+    } catch {
+      return raw;
+    }
+  }
+}
+
+export function parseToolInputWithDiagnostics(raw: unknown): {
+  value: unknown;
+  success: boolean;
+  repaired: boolean;
+  error?: string;
+} {
+  if (typeof raw !== "string") return { value: raw, success: true, repaired: false };
+  const candidate = raw.trim();
+  if (!candidate) return { value: raw, success: true, repaired: false };
+  try {
+    return { value: JSON.parse(candidate), success: true, repaired: false };
+  } catch (err) {
+    try {
+      const repaired = jsonrepair(candidate);
+      return { value: JSON.parse(repaired), success: true, repaired: true };
+    } catch (repairErr) {
+      return {
+        value: raw,
+        success: false,
+        repaired: false,
+        error: repairErr instanceof Error ? repairErr.message : String(repairErr)
+      };
+    }
   }
 }
 
@@ -175,8 +209,8 @@ function normalizeRecordContent(content: MessageRecord["content"]): MessageConte
   return "";
 }
 
-export function messageRecordToBaseMessage(record: MessageRecord): BaseMessage | null {
-  if (isTraceMessage(record)) return null;
+export function messageRecordToBaseMessage(record: MessageRecord, opts: { includeTraces?: boolean } = {}): BaseMessage | null {
+  if (!opts.includeTraces && isTraceMessage(record)) return null;
 
   const normalizedContent = normalizeRecordContent(record.content);
   const base = { content: normalizedContent, ...(record.name ? { name: record.name } : {}) } as {
@@ -210,9 +244,9 @@ export function messageRecordToBaseMessage(record: MessageRecord): BaseMessage |
   }
 }
 
-export function mapRecordsToMessages(records: MessageRecord[]): BaseMessage[] {
+export function mapRecordsToMessages(records: MessageRecord[], opts: { includeTraces?: boolean } = {}): BaseMessage[] {
   return records
-    .map((record) => messageRecordToBaseMessage(record))
+    .map((record) => messageRecordToBaseMessage(record, opts))
     .filter((msg): msg is BaseMessage => Boolean(msg));
 }
 

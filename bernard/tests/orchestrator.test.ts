@@ -136,4 +136,45 @@ test("Orchestrator removes blank/response tool messages before response prompt",
   assert.ok(!toolNames.includes("respond"));
 });
 
+test("Response harness falls back when model returns a blank message", async () => {
+  const forecast = new ToolMessage({
+    tool_call_id: "forecast_call",
+    name: "get_weather_forecast",
+    content: "Forecast: high 72F, low 55F with light winds."
+  });
+  const transcript = [...baseConversation, forecast];
+  const intentHarness = {
+    async run() {
+      return {
+        output: { transcript, toolCalls: [], done: true },
+        done: true
+      };
+    }
+  } as unknown as IntentHarness;
+
+  const responseCall = new FakeLLMCaller([
+    {
+      text: "",
+      message: new AIMessage({ content: "" })
+    }
+  ]);
+
+  const orchestrator = new Orchestrator(
+    null,
+    ctxBase.config,
+    intentHarness,
+    new MemoryHarness(),
+    new ResponseHarness(responseCall),
+    new UtilityHarness()
+  );
+
+  const result = await orchestrator.run({
+    conversationId: "conv-fallback",
+    incoming: baseConversation
+  });
+
+  assert.ok(result.response.text.trim().length > 0);
+  assert.ok(result.response.text.includes("Forecast"));
+});
+
 

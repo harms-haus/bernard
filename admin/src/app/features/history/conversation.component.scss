@@ -93,10 +93,132 @@
   gap: 0.75rem;
 }
 
+.turn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.turn-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+  text-align: center;
+}
+
+.turn-separator::before,
+.turn-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--surface-border, #334155);
+  max-width: 120px;
+}
+
+.turn-label {
+  white-space: nowrap;
+}
+
+.turn-duration {
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .thread-row {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+}
+
+.error-separator {
+  border: 1px solid var(--red-500, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.error-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--red-100, #fee2e2);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.error-toggle:focus-visible {
+  outline: 2px solid var(--red-400, #f87171);
+  outline-offset: 2px;
+}
+
+.chevron {
+  transition: transform 0.18s ease;
+  color: var(--red-100, #fee2e2);
+}
+
+.chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.error-label {
+  color: var(--red-100, #fee2e2);
+}
+
+.error-preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--red-50, #fff1f2);
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-timestamp {
+  color: var(--red-100, #fee2e2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.error-body {
+  border-top: 1px solid var(--red-400, #f87171);
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.16);
+  color: var(--red-50, #fff1f2);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.error-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-solutions {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.solutions-title {
+  font-weight: 700;
+  color: var(--red-50, #fff1f2);
+}
+
+.error-solutions ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--red-50, #fff1f2);
+  display: grid;
+  gap: 0.2rem;
 }
 
 .metadata {

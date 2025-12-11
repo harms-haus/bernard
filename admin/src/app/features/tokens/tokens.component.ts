@@ -42,6 +42,7 @@ export class TokensComponent {
   readonly loading = signal<boolean>(true);
   readonly saving = signal<boolean>(false);
   readonly showDialog = signal<boolean>(false);
+  readonly showSecretDialog = signal<boolean>(false);
   readonly tokens = signal<Token[]>([]);
   readonly error = signal<string | null>(null);
   readonly latestSecret = signal<{ name: string; token: string } | null>(null);
@@ -126,6 +127,7 @@ export class TokensComponent {
             this.tokens.set([...this.tokens(), token]);
             if (token.token) {
               this.latestSecret.set({ name: token.name, token: token.token });
+              this.showSecretDialog.set(true);
             }
           }
           this.showDialog.set(false);
@@ -181,5 +183,12 @@ export class TokensComponent {
       input.select();
       document.execCommand('copy');
     });
+  }
+
+  onSecretDialogVisibleChange(visible: boolean) {
+    this.showSecretDialog.set(visible);
+    if (!visible) {
+      this.latestSecret.set(null);
+    }
   }
 }

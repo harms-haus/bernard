@@ -11,28 +11,6 @@
     <p-message severity="error" [text]="error() ?? ''" styleClass="w-full"></p-message>
   }
 
-  @if (latestSecret()) {
-    <p-message severity="success" styleClass="w-full" aria-live="polite">
-      <ng-template pTemplate>
-        <p class="m-0 font-bold">Token created</p>
-        <p class="m-0 mb-2">
-          This is the only time the token for "{{ latestSecret()?.name }}" will be shown. Copy and store it securely.
-        </p>
-        <div class="flex align-items-center gap-2">
-          <input
-            #secretInput
-            class="w-full"
-            type="text"
-            [value]="latestSecret()?.token"
-            readonly
-            aria-label="New token value"
-          />
-          <button pButton type="button" icon="pi pi-copy" label="Copy" (click)="copyLatestSecret(secretInput)"></button>
-        </div>
-      </ng-template>
-    </p-message>
-  }
-
   <p-table [value]="tokens()" [loading]="loading()" responsiveLayout="stack">
     <ng-template pTemplate="header">
       <tr>
@@ -102,5 +80,43 @@
         <button pButton type="submit" [label]="dialogTitle()" [loading]="saving()"></button>
       </div>
     </form>
+  </p-dialog>
+
+  <p-dialog
+    header="Token created"
+    [visible]="showSecretDialog()"
+    (visibleChange)="onSecretDialogVisibleChange($event)"
+    [modal]="true"
+    [style]="{ width: '520px' }"
+  >
+    @if (latestSecret(); as secret) {
+      <div class="flex flex-column gap-3">
+        <p class="m-0">
+          Copy this token now. It will not be shown again. Store it securely to keep access limited.
+        </p>
+        <div class="flex flex-column gap-1">
+          <span class="label">Token value</span>
+          <div class="flex align-items-center gap-2">
+            <input
+              #secretInput
+              class="w-full"
+              type="text"
+              [value]="secret.token"
+              readonly
+              aria-label="New token value"
+            />
+            <button pButton type="button" icon="pi pi-copy" label="Copy" (click)="copyLatestSecret(secretInput)"></button>
+          </div>
+          <p-message
+            severity="warn"
+            [text]="'This token will not be shown again after you close this dialog.'"
+            styleClass="w-full"
+          ></p-message>
+        </div>
+      </div>
+    }
+    <ng-template pTemplate="footer">
+      <button pButton type="button" label="Close" (click)="onSecretDialogVisibleChange(false)"></button>
+    </ng-template>
   </p-dialog>
 </section>

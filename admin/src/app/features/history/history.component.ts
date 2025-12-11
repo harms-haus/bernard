@@ -35,6 +35,7 @@ export class HistoryComponent {
     closed: 0
   });
   readonly deletingId = signal<string | null>(null);
+  readonly closingId = signal<string | null>(null);
   readonly confirmVisible = signal<boolean>(false);
   readonly pendingConversation = signal<ConversationListItem | null>(null);
 
@@ -83,14 +84,60 @@ export class HistoryComponent {
     return status === 'open' ? 'Active' : 'Closed';
   }
 
+  hasErrors(conversation: ConversationListItem): boolean {
+    return conversation.hasErrors ?? ((conversation.errorCount ?? 0) > 0);
+  }
+
+  messageCount(conversation: ConversationListItem): number {
+    return conversation.userAssistantCount ?? conversation.messageCount ?? 0;
+  }
+
+  formatLatencyMs(value: number | undefined | null): string {
+    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value < 1000) return `${value} ms`;
+    const seconds = value / 1000;
+    if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 1 : 2)} s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds - minutes * 60);
+    return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+
   menuItems(conversation: ConversationListItem): MenuItem[] {
+    const disabled = this.deletingId() === conversation.id || this.closingId() === conversation.id;
     return [
       {
         label: 'Delete',
         icon: 'pi pi-trash',
+        disabled,
         command: () => this.promptDelete(conversation)
       }
     ];
+  }
+
+  closeConversation(conversation: ConversationListItem) {
+    if (this.closingId() === conversation.id) return;
+
+    this.closingId.set(conversation.id);
+    this.api
+      .closeConversation(conversation.id)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.closingId.set(null))
+      )
+      .subscribe({
+        next: (updated) => {
+          this.conversations.update((current) =>
+            current.map((item) => (item.id === conversation.id ? { ...item, ...updated, status: 'closed' } : item))
+          );
+          this.stats.update((current) => ({
+            total: current.total,
+            active: conversation.status === 'open' ? Math.max(0, current.active - 1) : current.active,
+            closed: conversation.status === 'open' ? current.closed + 1 : current.closed
+          }));
+          this.error.set(null);
+        },
+        error: () => this.error.set('Unable to close conversation')
+      });
   }
 
 

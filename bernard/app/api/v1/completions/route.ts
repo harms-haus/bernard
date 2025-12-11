@@ -10,12 +10,13 @@ import {
   findLastAssistantMessage,
   isBernardModel,
   mapCompletionPrompt,
+  hydrateMessagesWithHistory,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
 import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl } from "@/lib/models";
+import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "@/lib/models";
 
 export const runtime = "nodejs";
 
@@ -83,20 +84,30 @@ export async function POST(req: NextRequest) {
   }
 
   const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: getPrimaryModel("response") });
-  const { keeper, conversationId, requestId, turnId, responseModelName, intentModelName } = scaffold;
+  const { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } = scaffold;
+  const mergedMessages = isNewConversation
+    ? messages
+    : await hydrateMessagesWithHistory({
+        keeper,
+        conversationId,
+        incoming: messages
+      });
   const apiKey = resolveApiKey();
   const baseURL = resolveBaseUrl();
 
+  const intentModel = splitModelAndProvider(intentModelName);
   const intentLLM = new ChatOpenAI({
-    model: intentModelName,
+    model: intentModel.model,
     apiKey,
     configuration: { baseURL },
-    temperature: 0
+    temperature: 0,
+    ...(intentModel.providerOnly ? { modelKwargs: { provider: { only: intentModel.providerOnly } } } : {})
   });
 
   const stop = Array.isArray(body.stop) ? body.stop : typeof body.stop === "string" ? [body.stop] : undefined;
+  const responseModel = splitModelAndProvider(responseModelName);
   const responseOptions: ConstructorParameters<typeof ChatOpenAI>[0] = {
-    model: responseModelName,
+    model: responseModel.model,
     apiKey,
     configuration: { baseURL }
   };
@@ -107,6 +118,7 @@ export async function POST(req: NextRequest) {
   if (typeof body.max_tokens === "number") responseOptions.maxTokens = body.max_tokens;
   if (stop) responseOptions.stop = stop;
   if (body.logit_bias) responseOptions.logitBias = body.logit_bias;
+  if (responseModel.providerOnly) responseOptions.modelKwargs = { provider: { only: responseModel.providerOnly } };
 
   const responseLLM = new ChatOpenAI(responseOptions);
 
@@ -126,8 +138,8 @@ export async function POST(req: NextRequest) {
 
   if (!shouldStream) {
     try {
-      const result = await graph.invoke({ messages });
-      const allMessages = result.messages ?? messages;
+      const result = await graph.invoke({ messages: mergedMessages });
+      const allMessages = result.messages ?? mergedMessages;
       const assistant = findLastAssistantMessage(allMessages);
       const content = contentFromMessage(assistant) ?? "";
       const usageMeta = extractUsageFromMessages(allMessages);
@@ -173,7 +185,7 @@ export async function POST(req: NextRequest) {
   }
 
   const encoder = new TextEncoder();
-  const iterator = graph.stream({ messages });
+  const iterator = graph.stream({ messages: mergedMessages });
 
   const stream = new ReadableStream({
     async start(controller) {

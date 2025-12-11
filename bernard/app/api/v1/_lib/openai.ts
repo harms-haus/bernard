@@ -1,13 +1,14 @@
 import type { NextRequest } from "next/server";
 
 import { ConversationSummaryService } from "@/lib/conversationSummary";
-import { RecordKeeper } from "@/lib/recordKeeper";
-import { TokenStore } from "@/lib/tokenStore";
+import { RecordKeeper, type MessageRecord } from "@/lib/recordKeeper";
 import { getRedis } from "@/lib/redis";
 import { getPrimaryModel } from "@/lib/models";
 import type { BaseMessage } from "@langchain/core/messages";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
+import { messageRecordToBaseMessage } from "@/lib/messages";
+import { validateAccessToken } from "@/lib/auth";
 
 export const BERNARD_MODEL_ID = "bernard-v1";
 
@@ -29,26 +30,12 @@ export function listModels(): ModelInfo[] {
   ];
 }
 
-export function bearerToken(req: NextRequest) {
-  const header = req.headers.get("authorization");
-  if (!header) return null;
-  const [scheme, token] = header.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
-}
-
 export async function validateAuth(req: NextRequest) {
-  const token = bearerToken(req);
-  if (!token) {
-    return { error: new Response(JSON.stringify({ error: "Missing bearer token" }), { status: 401 }) };
+  const result = await validateAccessToken(req);
+  if ("error" in result) {
+    return result;
   }
-
-  const store = new TokenStore(getRedis());
-  const auth = await store.validate(token);
-  if (!auth) {
-    return { error: new Response(JSON.stringify({ error: "Invalid token" }), { status: 401 }) };
-  }
-  return { token };
+  return { token: result.access.token };
 }
 
 export type AgentScaffolding = {
@@ -58,6 +45,7 @@ export type AgentScaffolding = {
   turnId: string;
   responseModelName: string;
   intentModelName: string;
+  isNewConversation: boolean;
 };
 
 export async function createScaffolding(opts: {
@@ -78,10 +66,10 @@ export async function createScaffolding(opts: {
   const responseModelName = opts.responseModelOverride ?? getPrimaryModel("response");
   const intentModelName = getPrimaryModel("intent", { fallback: [responseModelName] });
 
-  const { requestId, conversationId } = await keeper.startRequest(opts.token, responseModelName, {});
+  const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {});
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
 
-  return { keeper, conversationId, requestId, turnId, responseModelName, intentModelName } satisfies AgentScaffolding;
+  return { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } satisfies AgentScaffolding;
 }
 
 export function isBernardModel(model?: string | null) {
@@ -211,6 +199,104 @@ export function summarizeToolOutputs(messages: BaseMessage[]) {
 
 export function isToolMessage(message: BaseMessage) {
   return (message as { _getType?: () => string })._getType?.() === "tool";
+}
+
+type TimelineEntry = {
+  message: BaseMessage;
+  ts: number;
+  roleRank: number;
+  seq: number;
+};
+
+function roleOrder(message: BaseMessage): number {
+  const type = (message as { _getType?: () => string })._getType?.();
+  switch (type) {
+    case "human":
+      return 0;
+    case "ai":
+      return 1;
+    case "tool":
+      return 2;
+    case "system":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function shouldIncludeHistoryRecord(record: MessageRecord): boolean {
+  if (record.role !== "system") return true;
+  const traceType = (record.metadata as { traceType?: string } | undefined)?.traceType ?? "";
+  if (traceType === "llm_call") return true;
+  if (traceType === "error" || traceType === "orchestrator.error") return true;
+  if (record.name === "llm_call") return true;
+  if (record.name === "orchestrator.error" || record.name?.endsWith(".error")) return true;
+  return false;
+}
+
+function toTimelineEntry(record: MessageRecord, index: number): TimelineEntry | null {
+  if (!shouldIncludeHistoryRecord(record)) return null;
+  const message = messageRecordToBaseMessage(record, { includeTraces: true });
+  if (!message) return null;
+  const ts = Date.parse(record.createdAt ?? "");
+  return {
+    message,
+    ts: Number.isFinite(ts) ? ts : Number.NaN,
+    roleRank: roleOrder(message),
+    seq: index
+  };
+}
+
+function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
+  const aHasTs = Number.isFinite(a.ts);
+  const bHasTs = Number.isFinite(b.ts);
+  if (aHasTs && bHasTs && a.ts !== b.ts) return a.ts - b.ts;
+  if (aHasTs && !bHasTs) return -1;
+  if (!aHasTs && bHasTs) return 1;
+  // When timestamps are equal or missing, preserve original sequence to avoid reordering turns.
+  if (!aHasTs && !bHasTs) return a.seq - b.seq;
+  if (a.roleRank !== b.roleRank) return a.roleRank - b.roleRank;
+  return a.seq - b.seq;
+}
+
+function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage[]): BaseMessage[] {
+  const historyEntries = history
+    .map((record, index) => toTimelineEntry(record, index))
+    .filter((entry): entry is TimelineEntry => Boolean(entry));
+
+  const hasFiniteHistoryTs = historyEntries.some((entry) => Number.isFinite(entry.ts));
+  const historyWithTs = hasFiniteHistoryTs
+    ? historyEntries
+    : historyEntries.map((entry, idx) => ({ ...entry, ts: idx }));
+
+  const latestTs = historyWithTs.reduce((max, entry) => {
+    return Number.isFinite(entry.ts) ? Math.max(max, entry.ts) : max;
+  }, Number.NEGATIVE_INFINITY);
+
+  const baseTs = Number.isFinite(latestTs) ? latestTs + 1 : historyWithTs.length;
+  const startSeq = historyEntries.length;
+
+  const incomingEntries: TimelineEntry[] = incoming.map((message, idx) => ({
+    message,
+    ts: baseTs + idx,
+    roleRank: roleOrder(message),
+    seq: startSeq + idx
+  }));
+
+  const combined = [...historyWithTs, ...incomingEntries];
+  combined.sort(compareEntries);
+
+  return combined.map((entry) => entry.message);
+}
+
+export async function hydrateMessagesWithHistory(opts: {
+  keeper: RecordKeeper;
+  conversationId: string;
+  incoming: BaseMessage[];
+}): Promise<BaseMessage[]> {
+  const history = await opts.keeper.getMessages(opts.conversationId);
+  if (!history.length) return opts.incoming;
+  return mergeHistoryWithIncoming(history, opts.incoming);
 }
 
 
