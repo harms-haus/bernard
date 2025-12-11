@@ -16,7 +16,7 @@ import {
 import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/models";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/config/models";
 
 export const runtime = "nodejs";
 

@@ -1,13 +1,13 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
-import { parseToolInputWithDiagnostics, safeStringify } from "@/lib/messages";
+import { parseToolInputWithDiagnostics, safeStringify } from "@/lib/conversation/messages";
 import {
   MAX_PARALLEL_TOOL_CALLS,
   buildIntentSystemPrompt
 } from "./prompts";
 import type { Harness, HarnessContext, HarnessResult, LLMCaller, ToolCall } from "../lib/types";
-import type { MessageRecord } from "@/lib/recordKeeper";
+import type { MessageRecord } from "@/lib/conversation/recordKeeper";
 
 const RESPOND_TOOL_NAME = "respond";
 const MAX_CORRECTION_ATTEMPTS = 2;

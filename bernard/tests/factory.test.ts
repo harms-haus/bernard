@@ -6,7 +6,7 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatModelCaller, createOrchestrator, makeCaller, toToolCalls } from "../agent/orchestrator/factory";
 import type { LLMCallConfig, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
 import type { OrchestratorConfigInput } from "../agent/orchestrator/config";
-import type { RecordKeeper } from "@/lib/recordKeeper";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 
 const originalConsole = { error: console.error, warn: console.warn, info: console.info };
 

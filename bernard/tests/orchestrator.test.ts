@@ -16,7 +16,7 @@ import type {
   LLMCallConfig,
   LLMResponse
 } from "../agent/harness/lib/types";
-import type { RecordKeeper } from "@/lib/recordKeeper";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 
 const originalConsoleInfo = console.info;
 

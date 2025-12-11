@@ -2,17 +2,17 @@ import type { BaseMessage } from "@langchain/core/messages";
 
 import { createOrchestrator } from "@/agent/orchestrator/factory";
 import { buildHarnessConfig } from "@/agent/orchestrator/config";
-import { getPrimaryModel } from "@/lib/models";
-import type { RecordKeeper } from "@/lib/recordKeeper";
+import { getPrimaryModel } from "@/lib/config/models";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 export {
   mapOpenAIToMessages,
   mapRecordsToMessages,
   mapOpenAIToMessages as mapOpenAIToMessagesFn,
   mapRecordsToMessages as mapRecordsToMessagesFn,
   extractTokenUsage
-} from "@/lib/messages";
-export type { OpenAIMessage } from "@/lib/messages";
-export { messageRecordToOpenAI } from "@/lib/messages";
+} from "@/lib/conversation/messages";
+export type { OpenAIMessage } from "@/lib/conversation/messages";
+export { messageRecordToOpenAI } from "@/lib/conversation/messages";
 
 export { createOrchestrator, buildHarnessConfig };
 export type { Orchestrator } from "@/agent/orchestrator/orchestrator";

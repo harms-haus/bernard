@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { getSettings } from "@/lib/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const DEFAULT_SEARCH_API_URL = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_RESULT_COUNT = 3;

@@ -1,9 +1,9 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { MemoryStore } from "@/lib/memoryStore";
-import { memorizeValue, type MemorizeInput } from "@/lib/memoryService";
-import { withTimeout } from "@/lib/timeouts";
+import { MemoryStore } from "@/lib/memory/store";
+import { memorizeValue, type MemorizeInput } from "@/lib/memory/service";
+import { withTimeout } from "@/lib/infra/timeouts";
 
 const BACKGROUND_TIMEOUT_MS = Number(process.env["MEMORIZE_BACKGROUND_TIMEOUT_MS"]) || 30_000;
 

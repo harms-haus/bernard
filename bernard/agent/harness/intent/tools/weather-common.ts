@@ -1,4 +1,4 @@
-import { getSettings } from "@/lib/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const DEFAULT_FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast";
 const DEFAULT_HISTORICAL_API_URL = "https://archive-api.open-meteo.com/v1/archive";

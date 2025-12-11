@@ -1,5 +1,5 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { getSettings } from "@/lib/settingsCache";
+import { getSettings } from "./settingsCache";
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;

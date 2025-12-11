@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
-import { mapRecordsToMessages } from "@/lib/messages";
-import { RecordKeeper as CoreRecordKeeper, type MessageRecord } from "@/lib/recordKeeper";
+import { mapRecordsToMessages } from "@/lib/conversation/messages";
+import { RecordKeeper as CoreRecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
 import type { ConversationThread } from "../harness/lib/types";
 import type { NormalizedConversation } from "./types";
 

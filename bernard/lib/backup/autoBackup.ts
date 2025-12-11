@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { SettingsStore } from "@/lib/settingsStore";
-import { TokenStore } from "@/lib/tokenStore";
-import { UserStore } from "@/lib/userStore";
-import { SessionStore } from "@/lib/sessionStore";
-import { getRedis } from "@/lib/redis";
+import { SettingsStore } from "../config/settingsStore";
+import { TokenStore } from "../auth/tokenStore";
+import { UserStore } from "../auth/userStore";
+import { SessionStore } from "../auth/sessionStore";
+import { getRedis } from "../infra/redis";
 
 type BackupPayload = {
   createdAt: string;

@@ -1,8 +1,7 @@
 import type { NextRequest } from "next/server";
 
-import { requireAdmin } from "@/lib/auth";
-import { getRedis } from "@/lib/redis";
-import { TokenStore, type TokenStatus } from "@/lib/tokenStore";
+import { requireAdmin, TokenStore, type TokenStatus } from "@/lib/auth";
+import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getSettings } from "@/lib/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 import {
   buildSearchUrl,
   formatResults,

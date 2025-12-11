@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
 import crypto from "node:crypto";
 
-import { buildSessionCookie, clearSessionCookie } from "@/lib/auth";
-import { getRedis } from "@/lib/redis";
-import { SessionStore } from "@/lib/sessionStore";
-import { UserStore } from "@/lib/userStore";
-import { getSettings } from "@/lib/settingsCache";
+import { buildSessionCookie, clearSessionCookie } from "./auth";
+import { getRedis } from "../infra/redis";
+import { SessionStore } from "./sessionStore";
+import { UserStore } from "./userStore";
+import { getSettings } from "../config/settingsCache";
 
 type OAuthProvider = "default" | "google" | "github";
 

@@ -1,4 +1,4 @@
-import { getPrimaryModel } from "@/lib/models";
+import { getPrimaryModel } from "@/lib/config/models";
 import type { HarnessConfig } from "../harness/lib/types";
 
 export type OrchestratorConfigInput = {

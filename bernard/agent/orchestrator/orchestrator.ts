@@ -7,8 +7,8 @@ import type { ResponseHarness, ResponseInput, ResponseOutput } from "../harness/
 import type { UtilityHarness } from "../harness/utility/utility.harness";
 import type { HarnessContext, HarnessResult, HarnessConfig, ConversationThread } from "../harness/lib/types";
 import { buildConversationThread } from "../record-keeper/record-keeper";
-import type { RecordKeeper } from "@/lib/recordKeeper";
-import { contentFromMessage } from "@/lib/messages";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { contentFromMessage } from "@/lib/conversation/messages";
 
 const RESPOND_TOOL_NAME = "respond";
 

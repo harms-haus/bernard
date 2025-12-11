@@ -1,10 +1,9 @@
 import type { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/auth";
-import { SettingsStore } from "@/lib/settingsStore";
-import { getRedis } from "@/lib/redis";
-import { scheduleAutoBackup } from "@/lib/autoBackup";
-import { clearSettingsCache } from "@/lib/settingsCache";
+import { scheduleAutoBackup } from "@/lib/backup/autoBackup";
+import { clearSettingsCache, SettingsStore } from "@/lib/config";
+import { getRedis } from "@/lib/infra/redis";
 
 export async function ensureAdmin(req: NextRequest): Promise<Response | null> {
   if (!(await requireAdmin(req))) {

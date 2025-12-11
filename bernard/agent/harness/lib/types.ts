@@ -21,7 +21,7 @@ export type LLMCallConfig = {
     conversationId?: string;
     requestId?: string;
     turnId?: string;
-    recordKeeper?: import("@/lib/recordKeeper").RecordKeeper;
+    recordKeeper?: import("@/lib/conversation/recordKeeper").RecordKeeper;
     traceName?: string;
     /** When true, the caller will handle recording the trace. */
     deferRecord?: boolean;
@@ -64,7 +64,7 @@ export type HarnessContext = {
   conversationId: string;
   requestId?: string;
   turnId?: string;
-  recordKeeper?: import("@/lib/recordKeeper").RecordKeeper;
+  recordKeeper?: import("@/lib/conversation/recordKeeper").RecordKeeper;
   now: () => Date;
 };
 

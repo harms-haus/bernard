@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 import type Redis from "ioredis";
 
-import { SessionStore } from "@/lib/sessionStore";
-import { UserStore, type UserRecord } from "@/lib/userStore";
-import { getRedis } from "@/lib/redis";
-import { TokenStore } from "@/lib/tokenStore";
+import { SessionStore } from "./sessionStore";
+import { UserStore, type UserRecord } from "./userStore";
+import { getRedis } from "../infra/redis";
+import { TokenStore } from "./tokenStore";
 
 export type AuthenticatedUser = {
   user: UserRecord;

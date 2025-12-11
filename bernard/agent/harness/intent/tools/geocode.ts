@@ -1,8 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { getSettings } from "@/lib/settingsCache";
-import type { RecordKeeper } from "@/lib/recordKeeper";
+import { getSettings } from "@/lib/config/settingsCache";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
 const MISSING_USER_AGENT_REASON =

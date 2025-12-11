@@ -5,7 +5,7 @@ import { buildResponseSystemPrompt } from "./prompts";
 import type { Harness, HarnessContext, HarnessResult, LLMCaller } from "../lib/types";
 import type { IntentOutput } from "../intent/intent.harness";
 import type { MemoryOutput } from "../memory/memory.harness";
-import { contentFromMessage, isToolMessage } from "@/lib/messages";
+import { contentFromMessage, isToolMessage } from "@/lib/conversation/messages";
 
 function truncate(text: string, max = 280) {
   if (text.length <= max) return text;

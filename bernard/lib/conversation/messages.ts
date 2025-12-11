@@ -1,7 +1,8 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
-import type { MessageRecord } from "./recordKeeper";
 import { jsonrepair } from "jsonrepair";
+
+import type { MessageRecord } from "./types";
 
 type ToolCall = {
   id: string;

@@ -1,4 +1,4 @@
-import { SettingsStore, type BernardSettings } from "@/lib/settingsStore";
+import { SettingsStore, type BernardSettings } from "./settingsStore";
 
 const CACHE_TTL_MS = 5_000;
 

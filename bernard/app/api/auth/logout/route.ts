@@ -1,8 +1,7 @@
 import type { NextRequest } from "next/server";
 
-import { clearSessionCookie, getAuthenticatedUser } from "@/lib/auth";
-import { SessionStore } from "@/lib/sessionStore";
-import { getRedis } from "@/lib/redis";
+import { clearSessionCookie, getAuthenticatedUser, SessionStore } from "@/lib/auth";
+import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";
 

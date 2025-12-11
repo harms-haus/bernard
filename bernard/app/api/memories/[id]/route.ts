@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/auth";
-import { getMemoryStore } from "@/lib/memoryStore";
+import { getMemoryStore } from "@/lib/memory/store";
 
 export const runtime = "nodejs";
 

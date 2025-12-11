@@ -1,11 +1,8 @@
 import type { NextRequest } from "next/server";
 
-import { requireAdmin } from "@/lib/auth";
-import { RecordKeeper, type MessageRecord } from "@/lib/recordKeeper";
-import { getRedis } from "@/lib/redis";
-import { TokenStore } from "@/lib/tokenStore";
-import { SessionStore } from "@/lib/sessionStore";
-import { UserStore } from "@/lib/userStore";
+import { requireAdmin, SessionStore, TokenStore, UserStore } from "@/lib/auth";
+import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
+import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";
 

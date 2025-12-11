@@ -1,5 +1,5 @@
-import { getSettings } from "@/lib/settingsCache";
-import type { ModelCategorySettings } from "@/lib/settingsStore";
+import { getSettings } from "./settingsCache";
+import type { ModelCategorySettings } from "./settingsStore";
 
 const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";

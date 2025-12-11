@@ -1,9 +1,9 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
-import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "./models";
-import { withTimeout } from "./timeouts";
-import type { MemoryRecord, MemorySearchHit } from "./memoryStore";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "../config/models";
+import { withTimeout } from "../infra/timeouts";
+import type { MemoryRecord, MemorySearchHit } from "./store";
 
 type Decision = "new" | "update" | "duplicate";
 
@@ -74,6 +74,9 @@ export function fallbackDecision(neighbors: MemorySearchHit[]): DedupDecision {
   return { decision: "new" };
 }
 
+/**
+ * Classify an incoming memory candidate against nearest neighbors with LLM assist.
+ */
 export async function classifyMemory(
   candidate: Pick<MemoryRecord, "label" | "content">,
   neighbors: MemorySearchHit[]

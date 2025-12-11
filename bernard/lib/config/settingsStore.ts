@@ -4,7 +4,7 @@ import path from "node:path";
 import type Redis from "ioredis";
 import { z } from "zod";
 
-import { getRedis } from "@/lib/redis";
+import { getRedis } from "../infra/redis";
 
 const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
 const SETTINGS_NAMESPACE = "bernard:settings";

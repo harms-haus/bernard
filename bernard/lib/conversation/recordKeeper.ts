@@ -2,141 +2,41 @@ import crypto from "node:crypto";
 import type { BaseMessage } from "@langchain/core/messages";
 import type Redis from "ioredis";
 
-import type { ConversationSummaryService, SummaryResult } from "./conversationSummary";
-import type { OpenAIMessage } from "./messages";
+import type { ConversationSummaryService, SummaryResult } from "./summary";
+import { MessageLog, snapshotMessageForTrace } from "./messageLog";
 import { messageRecordToOpenAI } from "./messages";
-
-export type ConversationStatus = "open" | "closed";
-
-export type ToolCallEntry = {
-  id?: string;
-  type?: string;
-  name?: string;
-  arguments?: unknown;
-  args?: unknown;
-  input?: unknown;
-  function?: { name?: string; arguments?: unknown; args?: unknown };
-  raw?: unknown;
-  raw_arguments?: unknown;
-  [key: string]: unknown;
-};
-
-export type MessageRecord = {
-  id: string;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | Record<string, unknown> | Array<Record<string, unknown>>;
-  name?: string;
-  tool_call_id?: string;
-  tool_calls?: ToolCallEntry[];
-  createdAt: string;
-  tokenDeltas?: { in?: number; out?: number };
-  metadata?: Record<string, unknown>;
-};
-
-export type Conversation = {
-  id: string;
-  status: ConversationStatus;
-  startedAt: string;
-  lastTouchedAt: string;
-  closedAt?: string;
-  summary?: string;
-  tags?: string[];
-  flags?: { explicit?: boolean; forbidden?: boolean; summaryError?: boolean | string };
-  modelSet?: string[];
-  tokenSet?: string[];
-  placeTags?: string[];
-  keywords?: string[];
-  closeReason?: string;
-  messageCount?: number;
-  userAssistantCount?: number;
-  toolCallCount?: number;
-  maxTurnLatencyMs?: number;
-  requestCount?: number;
-  lastRequestAt?: string;
-  errorCount?: number;
-  hasErrors?: boolean;
-};
-
-export type ConversationStats = {
-  messageCount: number;
-  toolCallCount: number;
-  requestCount?: number;
-  lastRequestAt?: string;
-};
-
-export type ConversationWithStats = Conversation & ConversationStats;
-
-export type Request = {
-  id: string;
-  conversationId: string;
-  token: string;
-  startedAt: string;
-  latencyMs?: number;
-  modelUsed?: string;
-  initialPlace?: string;
-  clientMeta?: Record<string, unknown>;
-};
-
-export type TurnStatus = "ok" | "error";
-
-export type Turn = {
-  id: string;
-  requestId: string;
-  conversationId: string;
-  token: string;
-  model: string;
-  startedAt: string;
-  latencyMs?: number;
-  tokensIn?: number;
-  tokensOut?: number;
-  toolCalls?: string;
-  status?: TurnStatus;
-  errorType?: string;
-};
-
-export type ToolResult = {
-  ok: boolean;
-  latencyMs: number;
-  errorType?: string;
-};
-
-export type OpenRouterResult = {
-  ok: boolean;
-  latencyMs: number;
-  errorType?: string;
-  tokensIn?: number;
-  tokensOut?: number;
-};
-
-export type RecordKeeperStatus = {
-  namespace: string;
-  metricsNamespace: string;
-  idleMs: number;
-  summarizerEnabled: boolean;
-  activeConversations: number;
-  closedConversations: number;
-  totalRequests: number;
-  totalTurns: number;
-  errorTurns: number;
-  tokensActive: number;
-  lastActivityAt?: string;
-};
-
-export type RecallQuery = {
-  conversationId?: string;
-  token?: string;
-  timeRange?: { since?: number; until?: number };
-  keywords?: string[];
-  place?: string;
-  limit?: number;
-  includeMessages?: boolean;
-  messageLimit?: number;
-};
-
-export type RecallConversation = {
-  conversation: Conversation;
-  messages?: MessageRecord[];
-};
+import type {
+  Conversation,
+  ConversationStatus,
+  ConversationStats,
+  ConversationWithStats,
+  MessageRecord,
+  OpenRouterResult,
+  RecallConversation,
+  RecallQuery,
+  RecordKeeperStatus,
+  Request,
+  ToolCallEntry,
+  ToolResult,
+  Turn,
+  TurnStatus
+} from "./types";
+export type {
+  Conversation,
+  ConversationStatus,
+  ConversationStats,
+  ConversationWithStats,
+  MessageRecord,
+  OpenRouterResult,
+  RecallConversation,
+  RecallQuery,
+  RecordKeeperStatus,
+  Request,
+  ToolCallEntry,
+  ToolResult,
+  Turn,
+  TurnStatus
+} from "./types";
 
 type RecordKeeperOptions = {
   namespace?: string;
@@ -173,29 +73,6 @@ function toNumber(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function countToolCallsInMessages(messages: MessageRecord[]): number {
-  return messages.reduce((total, message) => {
-    const fromToolCalls =
-      message.role === "assistant" && Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
-    const fromToolOutputs = message.role === "tool" ? 1 : 0;
-    return total + fromToolCalls + fromToolOutputs;
-  }, 0);
-}
-
-function isErrorRecord(message: MessageRecord): boolean {
-  const name = message.name ?? "";
-  const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType ?? "";
-  if (traceType === "error" || traceType === "orchestrator.error") return true;
-  if (name.endsWith(".error") || name === "orchestrator.error") return true;
-  return false;
-}
-
-function countUserAssistantMessages(messages: MessageRecord[]): number {
-  return messages.reduce((total, message) => {
-    return message.role === "user" || message.role === "assistant" ? total + 1 : total;
-  }, 0);
-}
-
 type MessageWithDetails = BaseMessage & {
   content?: unknown;
   tool_call_id?: string;
@@ -220,112 +97,15 @@ function normalizeMessageContent(content: unknown): MessageRecord["content"] {
   return "";
 }
 
-function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord {
-  return "role" in msg && "createdAt" in msg;
-}
-
-function mapMessageRole(type: string | undefined): MessageRecord["role"] {
-  if (type === "ai" || type === "assistant") return "assistant";
-  if (type === "human" || type === "user") return "user";
-  if (type === "system") return "system";
-  if (type === "tool") return "tool";
-  return "user";
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function contentToText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const flattened = content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part && typeof part === "object") {
-          const maybeText = (part as { text?: unknown }).text;
-          if (typeof maybeText === "string") return maybeText;
-          const maybeContent = (part as { content?: unknown }).content;
-          if (typeof maybeContent === "string") return maybeContent;
-        }
-        return safeStringify(part);
-      })
-      .filter(Boolean)
-      .join(" ");
-    return flattened;
-  }
-  if (content && typeof content === "object") {
-    const maybeText = (content as { text?: unknown }).text;
-    if (typeof maybeText === "string") return maybeText;
-    const maybeContent = (content as { content?: unknown }).content;
-    if (typeof maybeContent === "string") return maybeContent;
-    return safeStringify(content);
-  }
-  if (content === null || content === undefined) return "";
-  return safeStringify(content);
-}
-
-function toToolCallEntry(raw: unknown): ToolCallEntry {
-  if (!raw || typeof raw !== "object") {
-    const name = typeof raw === "string" ? raw : safeStringify(raw ?? "");
-    return { name };
-  }
-  const tool = raw as ToolCallEntry;
-  const normalized: ToolCallEntry = {};
-  if (tool.id) normalized.id = tool.id;
-  if (tool.type) normalized.type = tool.type;
-  if (tool.name) normalized.name = tool.name;
-  if (tool.arguments !== undefined) normalized.arguments = tool.arguments;
-  if (tool.args !== undefined) normalized.args = tool.args;
-  if (tool.input !== undefined) normalized.input = tool.input;
-  if (tool.function && typeof tool.function === "object") {
-    normalized.function = {};
-    if (tool.function.name) normalized.function.name = tool.function.name;
-    if (tool.function.arguments !== undefined) normalized.function.arguments = tool.function.arguments;
-    if (tool.function.args !== undefined) normalized.function.args = tool.function.args;
-  }
-  const rawArgs = (tool as { raw?: unknown }).raw ?? (tool as { raw_arguments?: unknown }).raw_arguments;
-  if (rawArgs !== undefined) normalized.raw = rawArgs;
-  return normalized;
-}
-
-function snapshotMessageForTrace(message: BaseMessage | MessageRecord) {
-  const isRecord = isMessageRecord(message);
-  const baseType =
-    (message as { _getType?: () => string })._getType?.() ??
-    (message as { getType?: () => string }).getType?.();
-  const role = isRecord ? message.role : mapMessageRole(baseType);
-  const name = (message as { name?: string }).name;
-  const tool_call_id = (message as { tool_call_id?: string }).tool_call_id;
-  const toolCallsRaw =
-    (message as { tool_calls?: ToolCallEntry[] }).tool_calls ??
-    (message as { additional_kwargs?: { tool_calls?: ToolCallEntry[] } }).additional_kwargs?.tool_calls ??
-    [];
-
-  const tool_calls =
-    Array.isArray(toolCallsRaw) && toolCallsRaw.length ? toolCallsRaw.map((call) => toToolCallEntry(call)) : undefined;
-
-  const contentValue = isRecord ? message.content : (message as { content?: unknown }).content;
-  const content = contentToText(contentValue);
-
-  return {
-    role,
-    ...(name ? { name } : {}),
-    ...(tool_call_id ? { tool_call_id } : {}),
-    content,
-    ...(tool_calls ? { tool_calls } : {})
-  };
-}
-
+/**
+ * Facade for logging conversation state, requests, turns, and messages in Redis.
+ */
 export class RecordKeeper {
   private readonly namespace: string;
   private readonly metricsNamespace: string;
   private readonly idleMs: number;
   private readonly summarizer: ConversationSummaryService | undefined;
+  private readonly messageLog: MessageLog;
 
   constructor(
     private readonly redis: Redis,
@@ -335,8 +115,12 @@ export class RecordKeeper {
     this.metricsNamespace = opts.metricsNamespace ?? DEFAULT_METRICS_NAMESPACE;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.summarizer = opts.summarizer;
+    this.messageLog = new MessageLog(redis, (suffix: string) => this.key(suffix));
   }
 
+  /**
+   * Start or reopen a conversation and record a new request.
+   */
   async startRequest(
     token: string,
     model: string,
@@ -413,10 +197,16 @@ export class RecordKeeper {
     return { requestId, conversationId: finalConversationId, isNewConversation: shouldCreateConversation };
   }
 
+  /**
+   * Record request completion latency.
+   */
   async completeRequest(requestId: string, latencyMs: number) {
     await this.redis.hset(this.key(`req:${requestId}`), { latencyMs });
   }
 
+  /**
+   * Start a turn within a request, tracking model and token metadata.
+   */
   async startTurn(
     requestId: string,
     conversationId: string,
@@ -450,6 +240,9 @@ export class RecordKeeper {
     return turnId;
   }
 
+  /**
+   * Mark a turn complete with latency, token usage, and optional error type.
+   */
   async endTurn(
     turnId: string,
     opts: { status: TurnStatus; tokensIn?: number; tokensOut?: number; latencyMs: number; errorType?: string }
@@ -475,29 +268,13 @@ export class RecordKeeper {
     }
   }
 
+  /**
+   * Persist messages for a conversation and update counters.
+   */
   async appendMessages(conversationId: string, messages: Array<BaseMessage | MessageRecord>) {
     if (!messages.length) return;
-    const serialized = messages.map((msg) => this.serializeMessage(msg));
-    const listKey = this.key(`conv:${conversationId}:msgs`);
     const convKey = this.key(`conv:${conversationId}`);
-    const messageIncrement = serialized.length;
-    const toolCallIncrement = countToolCallsInMessages(serialized);
-    const errorIncrement = serialized.filter((msg) => isErrorRecord(msg)).length;
-    const userAssistantIncrement = countUserAssistantMessages(serialized);
-    const now = Date.now();
-    const nowISO = nowIso();
-    const multi = this.redis.multi();
-    serialized.forEach((item) => {
-      multi.rpush(listKey, JSON.stringify(item));
-    });
-    multi
-      .hincrby(convKey, "messageCount", messageIncrement)
-      .hincrby(convKey, "userAssistantCount", userAssistantIncrement)
-      .hincrby(convKey, "toolCallCount", toolCallIncrement)
-      .hincrby(convKey, "errorCount", errorIncrement)
-      .hset(convKey, { lastTouchedAt: nowISO })
-      .zadd(this.key("convs:active"), now, conversationId);
-    await multi.exec();
+    await this.messageLog.append(conversationId, messages, convKey);
   }
 
   async recordToolResult(turnId: string, toolName: string, result: ToolResult) {
@@ -934,37 +711,11 @@ export class RecordKeeper {
   }
 
   async getMessages(conversationId: string, limit?: number): Promise<MessageRecord[]> {
-    const listKey = this.key(`conv:${conversationId}:msgs`);
-    let raw: string[];
-    if (typeof limit === "number") {
-      raw = await this.redis.lrange(listKey, -limit, -1);
-    } else {
-      raw = await this.redis.lrange(listKey, 0, -1);
-    }
-    return raw
-      .map((item) => {
-        try {
-          return JSON.parse(item) as MessageRecord;
-        } catch {
-          return null;
-        }
-      })
-      .filter((m): m is MessageRecord => m !== null);
+    return this.messageLog.getMessages(conversationId, limit);
   }
 
   private async getUserAssistantCount(conversationId: string): Promise<number> {
-    const listKey = this.key(`conv:${conversationId}:msgs`);
-    const raw = await this.redis.lrange(listKey, 0, -1);
-    const messages = raw
-      .map((item) => {
-        try {
-          return JSON.parse(item) as MessageRecord;
-        } catch {
-          return null;
-        }
-      })
-      .filter((m): m is MessageRecord => m !== null);
-    return countUserAssistantMessages(messages);
+    return this.messageLog.countUserAssistant(conversationId);
   }
 
   private async getMaxTurnLatency(conversationId: string): Promise<number | undefined> {
@@ -1093,8 +844,7 @@ export class RecordKeeper {
   }
 
   private async countToolCalls(conversationId: string): Promise<number> {
-    const messages = await this.getMessages(conversationId);
-    return countToolCallsInMessages(messages);
+    return this.messageLog.countToolCalls(conversationId);
   }
 
   private async findActiveConversationForToken(token: string, now: number): Promise<string | null> {
@@ -1121,44 +871,6 @@ export class RecordKeeper {
 
   private metricsKey(suffix: string) {
     return `${this.metricsNamespace}:${suffix}`;
-  }
-
-  private serializeMessage(msg: BaseMessage | MessageRecord): MessageRecord {
-    if (isMessageRecord(msg)) {
-      return msg;
-    }
-
-    const base = msg as MessageWithDetails;
-    const role = mapMessageRole(base._getType?.());
-    const content = normalizeMessageContent(base.content);
-    const toolCallId = base.tool_call_id ?? base.name;
-    const toolCalls = base.tool_calls;
-    const metadata = base.response_metadata;
-    const tokenUsage = base.usage_metadata;
-
-    let tokenDeltas: { in?: number; out?: number } | undefined;
-    if (tokenUsage && (tokenUsage.input_tokens || tokenUsage.output_tokens)) {
-      tokenDeltas = {};
-      if (typeof tokenUsage.input_tokens === "number") tokenDeltas.in = tokenUsage.input_tokens;
-      if (typeof tokenUsage.output_tokens === "number") tokenDeltas.out = tokenUsage.output_tokens;
-      if (!tokenDeltas.in && !tokenDeltas.out) {
-        tokenDeltas = undefined;
-      }
-    }
-
-    const message: MessageRecord = {
-      id: uniqueId("msg"),
-      role,
-      content,
-      createdAt: nowIso()
-    };
-    if (base.name) message.name = base.name;
-    if (toolCallId) message.tool_call_id = toolCallId;
-    if (toolCalls) message.tool_calls = toolCalls;
-    if (tokenDeltas) message.tokenDeltas = tokenDeltas;
-    if (metadata) message.metadata = metadata;
-
-    return message;
   }
 
   private async mergeSetField(convKey: string, field: string, values: string[]) {

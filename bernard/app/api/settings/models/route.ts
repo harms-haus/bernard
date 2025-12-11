@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { ensureAdmin, settingsStore } from "@/app/api/settings/_common";
-import { ModelsSettingsSchema } from "@/lib/settingsStore";
+import { ModelsSettingsSchema } from "@/lib/config/settingsStore";
 
 export const runtime = "nodejs";
 

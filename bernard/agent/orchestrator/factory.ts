@@ -1,8 +1,14 @@
 import { ChatOpenAI } from "@langchain/openai";
 
-import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider, type ModelCallOptions } from "@/lib/models";
-import { contentFromMessage, extractTokenUsage } from "@/lib/messages";
-import type { RecordKeeper } from "@/lib/recordKeeper";
+import {
+  resolveApiKey,
+  resolveBaseUrl,
+  resolveModel,
+  splitModelAndProvider,
+  type ModelCallOptions
+} from "@/lib/config/models";
+import { contentFromMessage, extractTokenUsage } from "@/lib/conversation/messages";
+import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { intentTools } from "../harness/intent/tools";
 import { IntentHarness } from "../harness/intent/intent.harness";
 import { MemoryHarness } from "../harness/memory/memory.harness";

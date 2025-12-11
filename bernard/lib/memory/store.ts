@@ -2,12 +2,12 @@ import crypto from "node:crypto";
 
 import { RedisVectorStore } from "@langchain/community/vectorstores/redis";
 import { Document } from "@langchain/core/documents";
-import { getEmbeddingModel, type EmbeddingConfig, verifyEmbeddingConfig } from "./embeddings";
-import { getRedis } from "./redis";
-import { withTimeout } from "./timeouts";
+import { getEmbeddingModel, type EmbeddingConfig, verifyEmbeddingConfig } from "../config/embeddings";
+import { getRedis } from "../infra/redis";
+import { withTimeout } from "../infra/timeouts";
 import type Redis from "ioredis";
 import { createClient, type RedisClientType } from "redis";
-import { getSettings } from "./settingsCache";
+import { getSettings } from "../config/settingsCache";
 
 export type MemoryRecord = {
   id: string;
@@ -108,6 +108,9 @@ async function getVectorStore(
   return store;
 }
 
+/**
+ * Redis-backed memory store with vector search for semantic similarity.
+ */
 export class MemoryStore {
   constructor(
     private readonly redis: Redis = getRedis(),

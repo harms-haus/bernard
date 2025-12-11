@@ -1,14 +1,15 @@
 import type { NextRequest } from "next/server";
 
-import { ConversationSummaryService } from "@/lib/conversationSummary";
-import { RecordKeeper, type MessageRecord } from "@/lib/recordKeeper";
-import { getRedis } from "@/lib/redis";
-import { getPrimaryModel } from "@/lib/models";
 import type { BaseMessage } from "@langchain/core/messages";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
-import { messageRecordToBaseMessage } from "@/lib/messages";
+
 import { validateAccessToken } from "@/lib/auth";
+import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
+import { ConversationSummaryService } from "@/lib/conversation/summary";
+import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
+import { getPrimaryModel } from "@/lib/config/models";
+import { getRedis } from "@/lib/infra/redis";
+import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 
 export const BERNARD_MODEL_ID = "bernard-v1";
 

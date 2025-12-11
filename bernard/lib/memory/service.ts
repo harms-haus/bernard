@@ -1,6 +1,6 @@
-import { classifyMemory, fallbackDecision, type DedupDecision } from "./memoryDeduper";
-import { getMemoryStore, type MemoryRecord, type MemorySearchHit } from "./memoryStore";
-import { withTimeout } from "./timeouts";
+import { classifyMemory, fallbackDecision, type DedupDecision } from "./deduper";
+import { getMemoryStore, type MemoryRecord, type MemorySearchHit } from "./store";
+import { withTimeout } from "../infra/timeouts";
 
 export type MemorizeInput = {
   label: string;
@@ -31,6 +31,9 @@ function normalizeInput(input: MemorizeInput): MemorizeInput {
   };
 }
 
+/**
+ * Upsert a memory record with similarity search + deduplication guard rails.
+ */
 export async function memorizeValue(
   input: MemorizeInput,
   deps: { store?: Awaited<ReturnType<typeof getMemoryStore>> } = {}
