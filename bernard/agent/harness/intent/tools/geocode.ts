@@ -1,16 +1,28 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-const GEOCODE_API_URL =
-  process.env["NOMINATIM_URL"] ?? "https://nominatim.openstreetmap.org/search";
-const GEOCODE_USER_AGENT = process.env["NOMINATIM_USER_AGENT"];
-const GEOCODE_EMAIL = process.env["NOMINATIM_EMAIL"];
-const GEOCODE_REFERER = process.env["NOMINATIM_REFERER"];
+import { getSettings } from "@/lib/settingsCache";
 
-const verifyGeocodeConfigured = () => ({
-  ok: Boolean(GEOCODE_USER_AGENT),
-  reason: "Missing NOMINATIM_USER_AGENT (required by Nominatim usage policy)."
-});
+const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
+
+const loadConfig = async () => {
+  const settings = await getSettings().catch(() => null);
+  const svc = settings?.services.geocoding;
+  return {
+    apiUrl: svc?.url ?? process.env["NOMINATIM_URL"] ?? DEFAULT_GEOCODE_API_URL,
+    userAgent: svc?.userAgent ?? process.env["NOMINATIM_USER_AGENT"],
+    email: svc?.email ?? process.env["NOMINATIM_EMAIL"],
+    referer: svc?.referer ?? process.env["NOMINATIM_REFERER"]
+  };
+};
+
+const verifyGeocodeConfigured = async () => {
+  const config = await loadConfig();
+  return {
+    ok: Boolean(config.userAgent),
+    reason: "Missing NOMINATIM_USER_AGENT (required by Nominatim usage policy)."
+  };
+};
 
 async function safeJson(res: Response): Promise<unknown> {
   try {
@@ -68,11 +80,12 @@ function formatCoordinate(value?: string): string {
 
 const geocodeToolImpl = tool(
   async ({ query, limit, country, language }) => {
-    if (!GEOCODE_USER_AGENT) {
+    const { apiUrl, userAgent, email, referer } = await loadConfig();
+    if (!userAgent) {
       return "Geocoding tool is not configured (missing NOMINATIM_USER_AGENT).";
     }
 
-    const url = new URL(GEOCODE_API_URL);
+    const url = new URL(apiUrl);
     url.searchParams.set("q", query);
     url.searchParams.set("format", "jsonv2");
     url.searchParams.set("limit", String(limit ?? 3));
@@ -82,12 +95,12 @@ const geocodeToolImpl = tool(
     url.searchParams.set("extratags", "0");
     if (country) url.searchParams.set("countrycodes", country.toLowerCase());
     if (language) url.searchParams.set("accept-language", language);
-    if (GEOCODE_EMAIL) url.searchParams.set("email", GEOCODE_EMAIL);
+    if (email) url.searchParams.set("email", email);
 
     const res = await fetch(url, {
       headers: {
-        "User-Agent": GEOCODE_USER_AGENT,
-        ...(GEOCODE_REFERER ? { Referer: GEOCODE_REFERER } : {})
+        "User-Agent": userAgent,
+        ...(referer ? { Referer: referer } : {})
       }
     });
 

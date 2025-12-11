@@ -1,9 +1,26 @@
-export const FORECAST_API_URL =
-  process.env["OPEN_METEO_FORECAST_URL"] ?? "https://api.open-meteo.com/v1/forecast";
-export const HISTORICAL_API_URL =
-  process.env["OPEN_METEO_HISTORICAL_URL"] ?? "https://archive-api.open-meteo.com/v1/archive";
+import { getSettings } from "@/lib/settingsCache";
+
+const DEFAULT_FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast";
+const DEFAULT_HISTORICAL_API_URL = "https://archive-api.open-meteo.com/v1/archive";
 
 export const DEFAULT_WEATHER_TIMEOUT_MS = 12_000;
+
+export async function getForecastApiUrl(): Promise<string> {
+  const settings = await getSettings().catch(() => null);
+  return settings?.services.weather?.forecastUrl ?? process.env["OPEN_METEO_FORECAST_URL"] ?? DEFAULT_FORECAST_API_URL;
+}
+
+export async function getHistoricalApiUrl(): Promise<string> {
+  const settings = await getSettings().catch(() => null);
+  return settings?.services.weather?.historicalUrl ?? process.env["OPEN_METEO_HISTORICAL_URL"] ?? DEFAULT_HISTORICAL_API_URL;
+}
+
+export async function getWeatherTimeoutMs(): Promise<number> {
+  const settings = await getSettings().catch(() => null);
+  const fromSettings = settings?.services.weather?.timeoutMs;
+  if (typeof fromSettings === "number" && fromSettings > 0) return fromSettings;
+  return DEFAULT_WEATHER_TIMEOUT_MS;
+}
 
 export type UnitChoice = {
   temperatureUnit: "celsius" | "fahrenheit";

@@ -18,19 +18,24 @@ export type SummaryResult = {
 export class ConversationSummaryService {
   private readonly model: ChatOpenAI;
 
-  constructor(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
-    const configuredModel = opts?.model ?? getPrimaryModel("aggregation");
+  private constructor(model: ChatOpenAI) {
+    this.model = model;
+  }
+
+  static async create(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
+    const configuredModel = opts?.model ?? (await getPrimaryModel("aggregation"));
     const { model, providerOnly } = splitModelAndProvider(configuredModel);
     const apiKey = opts?.apiKey ?? resolveApiKey();
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is required for summarization");
 
-    this.model = new ChatOpenAI({
+    const llm = new ChatOpenAI({
       model,
       apiKey,
       configuration: { baseURL: resolveBaseUrl(opts?.baseURL) },
       temperature: 0,
       ...(providerOnly ? { modelKwargs: { provider: { only: providerOnly } } } : {})
     });
+    return new ConversationSummaryService(llm);
   }
 
   async summarize(conversationId: string, messages: MessageRecord[]): Promise<SummaryResult> {

@@ -7,6 +7,7 @@ import { getRedis } from "./redis";
 import { withTimeout } from "./timeouts";
 import type Redis from "ioredis";
 import { createClient, type RedisClientType } from "redis";
+import { getSettings } from "./settingsCache";
 
 export type MemoryRecord = {
   id: string;
@@ -75,6 +76,7 @@ function formatError(err: unknown): string {
 
 let cachedVectorClient: RedisClientType | null = null;
 let cachedVectorStore: VectorStoreLike | null = null;
+let cachedVectorStoreConfig: { indexName: string; keyPrefix: string } | null = null;
 
 async function getVectorClient(): Promise<RedisClientType> {
   if (cachedVectorClient) return cachedVectorClient;
@@ -85,16 +87,24 @@ async function getVectorClient(): Promise<RedisClientType> {
   return client;
 }
 
-async function getVectorStore(config: EmbeddingConfig = {}): Promise<VectorStoreLike> {
-  if (cachedVectorStore) return cachedVectorStore;
-  const embeddings = getEmbeddingModel(config);
+async function getVectorStore(
+  config: EmbeddingConfig & { indexName?: string; keyPrefix?: string } = {}
+): Promise<VectorStoreLike> {
+  const indexName = config.indexName ?? DEFAULT_INDEX_NAME;
+  const keyPrefix = config.keyPrefix ?? DEFAULT_KEY_PREFIX;
+  if (cachedVectorStore && cachedVectorStoreConfig?.indexName === indexName && cachedVectorStoreConfig?.keyPrefix === keyPrefix) {
+    return cachedVectorStore;
+  }
+
+  const embeddings = await getEmbeddingModel(config);
   const redisClient = await getVectorClient();
   const store = new RedisVectorStore(embeddings, {
     redisClient,
-    indexName: DEFAULT_INDEX_NAME,
-    keyPrefix: DEFAULT_KEY_PREFIX
+    indexName,
+    keyPrefix
   });
   cachedVectorStore = store;
+  cachedVectorStoreConfig = { indexName, keyPrefix };
   return store;
 }
 
@@ -296,8 +306,20 @@ export class MemoryStore {
 }
 
 export async function getMemoryStore(config: EmbeddingConfig = {}): Promise<MemoryStore> {
-  const vectorStore = getVectorStore(config);
-  return new MemoryStore(getRedis(), vectorStore);
+  const settings = await getSettings().catch(() => null);
+  const memory = settings?.services.memory;
+  const indexName = memory?.indexName ?? DEFAULT_INDEX_NAME;
+  const keyPrefix = memory?.keyPrefix ?? DEFAULT_KEY_PREFIX;
+  const namespace = memory?.namespace ?? DEFAULT_NAMESPACE;
+  const vectorStore = getVectorStore({
+    ...config,
+    apiKey: config.apiKey ?? memory?.embeddingApiKey,
+    baseUrl: config.baseUrl ?? memory?.embeddingBaseUrl,
+    model: config.model ?? memory?.embeddingModel,
+    indexName,
+    keyPrefix
+  });
+  return new MemoryStore(getRedis(), vectorStore, namespace, keyPrefix);
 }
 
 async function verifyRedisSearch(client: RedisClientType): Promise<{ ok: boolean; reason?: string }> {

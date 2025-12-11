@@ -10,10 +10,10 @@ export type OrchestratorConfigInput = {
   responseCallerOptions?: { maxTokens?: number };
 };
 
-export function buildHarnessConfig(overrides: OrchestratorConfigInput = {}): HarnessConfig {
-  const responseModel = overrides.responseModel ?? getPrimaryModel("response");
-  const intentModel = overrides.intentModel ?? getPrimaryModel("intent", { fallback: [responseModel] });
-  const memoryModel = overrides.memoryModel ?? getPrimaryModel("utility", { fallback: [responseModel] });
+export async function buildHarnessConfig(overrides: OrchestratorConfigInput = {}): Promise<HarnessConfig> {
+  const responseModel = overrides.responseModel ?? (await getPrimaryModel("response"));
+  const intentModel = overrides.intentModel ?? (await getPrimaryModel("intent", { fallback: [responseModel] }));
+  const memoryModel = overrides.memoryModel ?? (await getPrimaryModel("memory", { fallback: [responseModel] }));
 
   return {
     intentModel,

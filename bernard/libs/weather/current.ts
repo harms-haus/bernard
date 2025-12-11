@@ -2,14 +2,14 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import {
-  DEFAULT_WEATHER_TIMEOUT_MS,
-  FORECAST_API_URL,
   buildWeatherUrl,
   chooseUnits,
   fetchWeatherJson,
   formatNumber,
   formatPrecip,
   formatWeatherCode,
+  getForecastApiUrl,
+  getWeatherTimeoutMs,
   maybeNumber
 } from "./common";
 
@@ -32,11 +32,13 @@ const CURRENT_FIELDS =
 export const getWeatherCurrentTool = tool(
   async ({ lat, lon, units, country }) => {
     const unitChoice = chooseUnits(units, country, lat, lon);
-    const url = buildWeatherUrl(FORECAST_API_URL, lat, lon, unitChoice);
+    const baseUrl = await getForecastApiUrl();
+    const url = buildWeatherUrl(baseUrl, lat, lon, unitChoice);
     url.searchParams.set("forecast_days", "1");
     url.searchParams.set("current", CURRENT_FIELDS);
 
-    const result = await fetchWeatherJson<CurrentResponse>(url, DEFAULT_WEATHER_TIMEOUT_MS);
+    const timeoutMs = await getWeatherTimeoutMs();
+    const result = await fetchWeatherJson<CurrentResponse>(url, timeoutMs);
     if (!result.ok) return result.error;
 
     const data = result.data;

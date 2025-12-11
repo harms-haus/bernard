@@ -5,6 +5,7 @@ import { buildSessionCookie, clearSessionCookie } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { SessionStore } from "@/lib/sessionStore";
 import { UserStore } from "@/lib/userStore";
+import { getSettings } from "@/lib/settingsCache";
 
 type OAuthProvider = "default" | "google" | "github";
 
@@ -37,7 +38,7 @@ const scopedEnv = (provider: OAuthProvider, key: string, fallback?: string) => {
   return process.env[scopedKey] ?? fallback;
 };
 
-export const getProviderConfig = (provider: OAuthProvider): ProviderConfig => {
+const fallbackProviderConfig = (provider: OAuthProvider): ProviderConfig => {
   const scopeFallback =
     provider === "google" ? "openid profile email" : provider === "github" ? "read:user user:email" : "openid profile";
 
@@ -69,10 +70,25 @@ export const getProviderConfig = (provider: OAuthProvider): ProviderConfig => {
   };
 };
 
+export const getProviderConfig = async (provider: OAuthProvider): Promise<ProviderConfig> => {
+  const settings = await getSettings().catch(() => null);
+  const fromSettings =
+    provider === "google"
+      ? settings?.oauth.google
+      : provider === "github"
+        ? settings?.oauth.github
+        : settings?.oauth.default;
+
+  if (fromSettings?.authUrl && fromSettings.tokenUrl && fromSettings.userInfoUrl && fromSettings.redirectUri) {
+    return fromSettings;
+  }
+  return fallbackProviderConfig(provider);
+};
+
 const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}:${provider}:${state}`;
 
 export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
-  const { authUrl, clientId, redirectUri, scope } = getProviderConfig(provider);
+  const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
   const state = base64UrlEncode(crypto.randomBytes(24));
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createChallenge(codeVerifier);
@@ -184,7 +200,7 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
     }
     await deleteState(provider, state);
 
-    const config = getProviderConfig(provider);
+    const config = await getProviderConfig(provider);
     const token = await exchangeCode(provider, config, code, storedState.codeVerifier);
     if (!token.access_token) {
       return new Response(JSON.stringify({ error: "No access token returned" }), { status: 400 });

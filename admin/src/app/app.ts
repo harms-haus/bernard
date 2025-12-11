@@ -48,6 +48,7 @@ export class App {
   readonly items = signal<MenuItem[]>([
     { label: 'Dashboard', icon: 'pi pi-home', routerLink: '/dashboard', routerLinkActiveOptions: { exact: true } },
     { label: 'Access Tokens', icon: 'pi pi-key', routerLink: '/tokens' },
+    { label: 'Models', icon: 'pi pi-sliders-h', routerLink: '/models' },
     { label: 'Services', icon: 'pi pi-server', routerLink: '/services' },
     { label: 'Memories', icon: 'pi pi-database', routerLink: '/memories' },
     { label: 'History', icon: 'pi pi-history', routerLink: '/history' },

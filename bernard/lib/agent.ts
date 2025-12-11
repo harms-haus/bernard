@@ -40,10 +40,10 @@ function newInboundMessages(messages: BaseMessage[]): BaseMessage[] {
   return messages.slice(lastAssistantIndex + 1);
 }
 
-export function buildGraph(ctx: LegacyGraphContext, _deps: Record<string, unknown> = {}) {
-  const responseModel = ctx.responseModel ?? ctx.model ?? getPrimaryModel("response");
-  const intentModel = ctx.intentModel ?? getPrimaryModel("intent", { fallback: [responseModel] });
-  const { orchestrator } = createOrchestrator(ctx.recordKeeper, { intentModel, responseModel });
+export async function buildGraph(ctx: LegacyGraphContext, _deps: Record<string, unknown> = {}) {
+  const responseModel = ctx.responseModel ?? ctx.model ?? (await getPrimaryModel("response"));
+  const intentModel = ctx.intentModel ?? (await getPrimaryModel("intent", { fallback: [responseModel] }));
+  const { orchestrator } = await createOrchestrator(ctx.recordKeeper, { intentModel, responseModel });
 
   const runWithDetails = async (input: { messages: BaseMessage[] }) => {
     const persistable = newInboundMessages(input.messages);

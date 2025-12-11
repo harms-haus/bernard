@@ -17,7 +17,7 @@ import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/agent";
 import { ChatOpenAI } from "@langchain/openai";
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "@/lib/models";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/models";
 
 export const runtime = "nodejs";
 
@@ -98,8 +98,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: getPrimaryModel("response") });
-  const { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } = scaffold;
+  const responseModelConfig = await resolveModel("response");
+  const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
+
+  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
+  const {
+    keeper,
+    conversationId,
+    requestId,
+    turnId,
+    responseModelName: scaffoldResponseModel,
+    intentModelName: scaffoldIntentModel,
+    isNewConversation
+  } = scaffold;
+  const responseModelName = scaffoldResponseModel ?? responseModelConfig.id;
+  const intentModelName = scaffoldIntentModel ?? intentModelConfig.id;
 
   const mergedMessages = isNewConversation
     ? inputMessages
@@ -109,37 +122,43 @@ export async function POST(req: NextRequest) {
         incoming: inputMessages
       });
 
-  const apiKey = resolveApiKey();
-  const baseURL = resolveBaseUrl();
-
   const intentModel = splitModelAndProvider(intentModelName);
+  const intentApiKey =
+    resolveApiKey(undefined, intentModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
+  const intentBaseURL = resolveBaseUrl(undefined, intentModelConfig.options);
   const intentLLM = new ChatOpenAI({
     model: intentModel.model,
-    apiKey,
-    configuration: { baseURL },
-    temperature: 0,
+    apiKey: intentApiKey,
+    configuration: { baseURL: intentBaseURL },
+    temperature: intentModelConfig.options?.temperature ?? 0,
     ...(intentModel.providerOnly ? { modelKwargs: { provider: { only: intentModel.providerOnly } } } : {})
   });
 
   const stop = Array.isArray(body.stop) ? body.stop : typeof body.stop === "string" ? [body.stop] : undefined;
   const responseModel = splitModelAndProvider(responseModelName);
+  const responseApiKey = resolveApiKey(undefined, responseModelConfig.options);
+  const responseBaseURL = resolveBaseUrl(undefined, responseModelConfig.options);
   const responseOptions: ConstructorParameters<typeof ChatOpenAI>[0] = {
     model: responseModel.model,
-    apiKey,
-    configuration: { baseURL }
+    apiKey: responseApiKey,
+    configuration: { baseURL: responseBaseURL }
   };
+  const configuredResponseOptions = responseModelConfig.options ?? {};
   if (typeof body.temperature === "number") responseOptions.temperature = body.temperature;
+  else if (typeof configuredResponseOptions.temperature === "number") responseOptions.temperature = configuredResponseOptions.temperature;
   if (typeof body.top_p === "number") responseOptions.topP = body.top_p;
+  else if (typeof configuredResponseOptions.topP === "number") responseOptions.topP = configuredResponseOptions.topP;
   if (typeof body.frequency_penalty === "number") responseOptions.frequencyPenalty = body.frequency_penalty;
   if (typeof body.presence_penalty === "number") responseOptions.presencePenalty = body.presence_penalty;
   if (typeof body.max_tokens === "number") responseOptions.maxTokens = body.max_tokens;
+  else if (typeof configuredResponseOptions.maxTokens === "number") responseOptions.maxTokens = configuredResponseOptions.maxTokens;
   if (stop) responseOptions.stop = stop;
   if (body.logit_bias) responseOptions.logitBias = body.logit_bias;
   if (responseModel.providerOnly) responseOptions.modelKwargs = { provider: { only: responseModel.providerOnly } };
 
   const responseLLM = new ChatOpenAI(responseOptions);
 
-  const graph = buildGraph(
+  const graph = await buildGraph(
     {
       recordKeeper: keeper,
       turnId,

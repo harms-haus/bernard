@@ -1,7 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "./models";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "./models";
 import { withTimeout } from "./timeouts";
 import type { MemoryRecord, MemorySearchHit } from "./memoryStore";
 
@@ -70,13 +70,13 @@ export async function classifyMemory(
 ): Promise<DedupDecision> {
   if (!neighbors.length) return { decision: "new" };
 
-  const configuredModel = getPrimaryModel("utility");
-  const { model: modelName, providerOnly } = splitModelAndProvider(configuredModel);
-  const apiKey = resolveApiKey();
+  const resolvedModel = await resolveModel("utility");
+  const { model: modelName, providerOnly } = splitModelAndProvider(resolvedModel.id);
+  const apiKey = resolveApiKey(undefined, resolvedModel.options);
   if (!apiKey) {
     return fallbackDecision(neighbors);
   }
-  const baseURL = resolveBaseUrl();
+  const baseURL = resolveBaseUrl(undefined, resolvedModel.options);
   const model = new ChatOpenAI({
     model: modelName,
     apiKey,

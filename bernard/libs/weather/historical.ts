@@ -2,13 +2,13 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import {
-  DEFAULT_WEATHER_TIMEOUT_MS,
-  HISTORICAL_API_URL,
   buildWeatherUrl,
   chooseUnits,
   fetchWeatherJson,
   formatDailySummary,
   formatHourlySummary,
+  getHistoricalApiUrl,
+  getWeatherTimeoutMs,
   nearestIndex,
   parseTarget
 } from "./common";
@@ -42,13 +42,15 @@ export const getWeatherHistoricalTool = tool(
     const parsed = parseTarget(targetDate, new Date().toISOString().slice(0, 10));
     if (!parsed) return "Could not understand the requested historical date/time.";
 
-    const url = buildWeatherUrl(HISTORICAL_API_URL, lat, lon, unitChoice);
+    const baseUrl = await getHistoricalApiUrl();
+    const url = buildWeatherUrl(baseUrl, lat, lon, unitChoice);
     url.searchParams.set("start_date", parsed.date);
     url.searchParams.set("end_date", parsed.date);
     url.searchParams.set("daily", DAILY_FIELDS.join(","));
     if (parsed.time) url.searchParams.set("hourly", HOURLY_FIELDS.join(","));
 
-    const result = await fetchWeatherJson<HistoricalResponse>(url, DEFAULT_WEATHER_TIMEOUT_MS);
+    const timeoutMs = await getWeatherTimeoutMs();
+    const result = await fetchWeatherJson<HistoricalResponse>(url, timeoutMs);
     if (!result.ok) return result.error;
 
     const data = result.data;

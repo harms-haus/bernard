@@ -28,6 +28,24 @@ export class SessionStore {
     return `${this.namespace}:user:${userId}:sessions`;
   }
 
+  async exportAll(userIds: string[]): Promise<SessionRecord[]> {
+    const records: SessionRecord[] = [];
+    for (const userId of userIds) {
+      const sessionIds = await this.redis.smembers(this.userSessionsKey(userId));
+      for (const id of sessionIds) {
+        const data = await this.redis.hgetall(this.sessionKey(id));
+        if (!data || !data["id"] || !data["userId"] || !data["expiresAt"]) continue;
+        records.push({
+          id: data["id"],
+          userId: data["userId"],
+          createdAt: data["createdAt"] ?? "",
+          expiresAt: data["expiresAt"]
+        });
+      }
+    }
+    return records;
+  }
+
   async create(userId: string): Promise<SessionRecord> {
     const id = crypto.randomBytes(18).toString("hex");
     const createdAt = new Date().toISOString();

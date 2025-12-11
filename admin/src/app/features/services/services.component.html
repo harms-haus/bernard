@@ -1,10 +1,13 @@
-<section class="services">
+<section class="services" [formGroup]="form">
   <div class="section-header">
     <div>
       <h1>Services</h1>
-      <p class="muted">Manage API keys and provider options.</p>
+      <p class="muted">Configure providers, OAuth clients, and backups.</p>
     </div>
-    <button pButton type="button" icon="pi pi-refresh" label="Reload" (click)="load()" [disabled]="loading()" severity="secondary"></button>
+    <div class="actions">
+      <button pButton type="button" icon="pi pi-refresh" label="Reload" (click)="load()" [disabled]="loading()" severity="secondary"></button>
+      <button pButton type="button" icon="pi pi-save" label="Save" [loading]="saving()" [disabled]="loading()" (click)="save()"></button>
+    </div>
   </div>
 
   @if (error()) {
@@ -12,31 +15,51 @@
   }
 
   @if (loading()) {
-    <p class="muted">Loading services…</p>
+    <p class="muted">Loading service settings…</p>
   } @else {
-    <div class="cards">
-      @for (service of services(); track service.id) {
-        <p-card [header]="service.name" [subheader]="service.description">
-          <form class="form" [formGroup]="formFor(service)">
-            <label class="field">
-              <span class="label">API key</span>
-              <input pInputText type="password" formControlName="apiKey" placeholder="sk-****" />
-            </label>
+    <div class="layout">
+      <aside class="nav">
+        <p-listbox
+          [options]="navItems"
+          optionLabel="label"
+          optionValue="value"
+          [(ngModel)]="active"
+          [ngModelOptions]="{ standalone: true }">
+        </p-listbox>
+      </aside>
 
-            @for (key of optionKeys(service); track key) {
-              <label class="field">
-                <span class="label">{{ key }}</span>
-                <input pInputText type="text" [formControlName]="key" />
-              </label>
-            }
-
-            <div class="actions">
-              <span class="muted small">Last updated {{ service.updatedAt ? (service.updatedAt | date: 'short') : 'n/a' }}</span>
-              <button pButton type="button" label="Save" [loading]="savingId() === service.id" (click)="save(service)"></button>
-            </div>
-          </form>
-        </p-card>
-      }
+      <div class="content">
+        @if (active === 'oauth') {
+          <p-card header="OAuth Providers" subheader="Configure Google and GitHub">
+            <app-services-oauth-section [googleGroup]="oauthGoogleGroup" [githubGroup]="oauthGithubGroup"></app-services-oauth-section>
+          </p-card>
+        }
+        @if (active === 'memory') {
+          <p-card header="Memory" subheader="Embedding and vector store settings">
+            <app-services-memory-section [group]="memoryGroup"></app-services-memory-section>
+          </p-card>
+        }
+        @if (active === 'search') {
+          <p-card header="Search" subheader="Web search provider (Brave or compatible)">
+            <app-services-search-section [group]="searchGroup"></app-services-search-section>
+          </p-card>
+        }
+        @if (active === 'geocoding') {
+          <p-card header="Geocoding" subheader="OpenStreetMap Nominatim">
+            <app-services-geocoding-section [group]="geocodingGroup"></app-services-geocoding-section>
+          </p-card>
+        }
+        @if (active === 'weather') {
+          <p-card header="Weather" subheader="Weather API settings">
+            <app-services-weather-section [group]="weatherGroup" [units]="units"></app-services-weather-section>
+          </p-card>
+        }
+        @if (active === 'backups') {
+          <p-card header="Backups" subheader="Auto-backup after settings changes">
+            <app-services-backups-section [group]="backupsGroup"></app-services-backups-section>
+          </p-card>
+        }
+      </div>
     </div>
   }
 </section>

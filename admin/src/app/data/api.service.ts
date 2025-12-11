@@ -4,25 +4,30 @@ import { delay, map, Observable, of } from 'rxjs';
 
 import { environment } from '../config/environment';
 import {
+  AdminSettings,
   BernardStatus,
   ConversationDetail,
   ConversationDetailResponse,
   ConversationListItem,
   ConversationMessage,
+  CreateMemoryRequest,
   CreateTokenRequest,
   CreateUserRequest,
   HistoryQuery,
   HistoryListResponse,
+  Memory,
+  ModelsSettings,
+  OAuthSettings,
   RecordKeeperStatus,
   ServiceConfig,
+  ServicesSettings,
   Token,
-  Memory,
-  CreateMemoryRequest,
   UpdateMemoryRequest,
   UpdateServiceRequest,
   UpdateTokenRequest,
   UpdateUserRequest,
-  User
+  User,
+  BackupSettings
 } from './models';
 
 /**
@@ -66,6 +71,15 @@ export interface ApiClient {
   updateMemory(id: string, body: UpdateMemoryRequest): Observable<Memory>;
   refreshMemory(id: string): Observable<Memory>;
   deleteMemory(id: string): Observable<void>;
+  getSettings(): Observable<AdminSettings>;
+  getModelsSettings(): Observable<ModelsSettings>;
+  updateModelsSettings(body: ModelsSettings): Observable<ModelsSettings>;
+  getServicesSettings(): Observable<ServicesSettings>;
+  updateServicesSettings(body: ServicesSettings): Observable<ServicesSettings>;
+  getOAuthSettings(): Observable<OAuthSettings>;
+  updateOAuthSettings(body: OAuthSettings): Observable<OAuthSettings>;
+  getBackupSettings(): Observable<BackupSettings>;
+  updateBackupSettings(body: BackupSettings): Observable<BackupSettings>;
   getMe(): Observable<User | null>;
   listUsers(): Observable<User[]>;
   createUser(body: CreateUserRequest): Observable<User>;
@@ -200,6 +214,42 @@ class HttpApiClient implements ApiClient {
 
   deleteMemory(id: string) {
     return this.http.delete<void>(`${this.baseUrl}/memories/${id}`, this.options());
+  }
+
+  getSettings() {
+    return this.http.get<AdminSettings>(`${this.baseUrl}/settings`, this.options());
+  }
+
+  getModelsSettings() {
+    return this.http.get<ModelsSettings>(`${this.baseUrl}/settings/models`, this.options());
+  }
+
+  updateModelsSettings(body: ModelsSettings) {
+    return this.http.put<ModelsSettings>(`${this.baseUrl}/settings/models`, body, this.options());
+  }
+
+  getServicesSettings() {
+    return this.http.get<ServicesSettings>(`${this.baseUrl}/settings/services`, this.options());
+  }
+
+  updateServicesSettings(body: ServicesSettings) {
+    return this.http.put<ServicesSettings>(`${this.baseUrl}/settings/services`, body, this.options());
+  }
+
+  getOAuthSettings() {
+    return this.http.get<OAuthSettings>(`${this.baseUrl}/settings/oauth`, this.options());
+  }
+
+  updateOAuthSettings(body: OAuthSettings) {
+    return this.http.put<OAuthSettings>(`${this.baseUrl}/settings/oauth`, body, this.options());
+  }
+
+  getBackupSettings() {
+    return this.http.get<BackupSettings>(`${this.baseUrl}/settings/backups`, this.options());
+  }
+
+  updateBackupSettings(body: BackupSettings) {
+    return this.http.put<BackupSettings>(`${this.baseUrl}/settings/backups`, body, this.options());
   }
 
   getMe() {
@@ -455,6 +505,66 @@ class MockApiClient implements ApiClient {
     ]
   };
 
+  private settings: AdminSettings = {
+    models: {
+      response: { primary: 'gpt-4o-mini', fallbacks: ['gpt-4o'], options: { temperature: 0.5 } },
+      intent: { primary: 'gpt-4o-mini', fallbacks: ['gpt-4o'], options: { temperature: 0 } },
+      memory: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } },
+      utility: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } },
+      aggregation: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } }
+    },
+    services: {
+      memory: {
+        embeddingModel: 'text-embedding-3-small',
+        embeddingBaseUrl: 'https://api.openai.com/v1',
+        embeddingApiKey: 'sk-****',
+        indexName: 'bernard_memories',
+        keyPrefix: 'bernard:memories',
+        namespace: 'bernard:memories'
+      },
+      search: { apiKey: 'brv-****', apiUrl: 'https://api.search.brave.com/res/v1/web/search' },
+      weather: {
+        apiKey: 'openweather-api-key',
+        apiUrl: 'https://api.openweathermap.org/data/2.5/weather',
+        forecastUrl: 'https://api.open-meteo.com/v1/forecast',
+        historicalUrl: 'https://archive-api.open-meteo.com/v1/archive',
+        units: 'imperial'
+      },
+      geocoding: {
+        url: 'https://nominatim.openstreetmap.org/search',
+        userAgent: 'bernard-admin (+https://example.com)',
+        email: 'ops@example.com',
+        referer: 'https://example.com'
+      }
+    },
+    oauth: {
+      google: {
+        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
+        redirectUri: 'http://localhost:3000/api/auth/google/callback',
+        scope: 'openid profile email',
+        clientId: 'google-client-id',
+        clientSecret: 'google-client-secret'
+      },
+      github: {
+        authUrl: 'https://github.com/login/oauth/authorize',
+        tokenUrl: 'https://github.com/login/oauth/access_token',
+        userInfoUrl: 'https://api.github.com/user',
+        redirectUri: 'http://localhost:3000/api/auth/github/callback',
+        scope: 'read:user user:email',
+        clientId: 'github-client-id',
+        clientSecret: 'github-client-secret'
+      }
+    },
+    backups: {
+      debounceSeconds: 60,
+      directory: './backups',
+      retentionDays: 14,
+      retentionCount: 20
+    }
+  };
+
   getStatus() {
     return of(this.status).pipe(delay(120));
   }
@@ -655,6 +765,46 @@ class MockApiClient implements ApiClient {
   deleteMemory(id: string) {
     this.memories = this.memories.filter((m) => m.id !== id);
     return of(void 0).pipe(delay(40));
+  }
+
+  getSettings() {
+    return of(this.settings).pipe(delay(60));
+  }
+
+  getModelsSettings() {
+    return of(this.settings.models).pipe(delay(60));
+  }
+
+  updateModelsSettings(body: ModelsSettings) {
+    this.settings = { ...this.settings, models: body };
+    return of(body).pipe(delay(60));
+  }
+
+  getServicesSettings() {
+    return of(this.settings.services).pipe(delay(60));
+  }
+
+  updateServicesSettings(body: ServicesSettings) {
+    this.settings = { ...this.settings, services: body };
+    return of(body).pipe(delay(60));
+  }
+
+  getOAuthSettings() {
+    return of(this.settings.oauth).pipe(delay(60));
+  }
+
+  updateOAuthSettings(body: OAuthSettings) {
+    this.settings = { ...this.settings, oauth: body };
+    return of(body).pipe(delay(60));
+  }
+
+  getBackupSettings() {
+    return of(this.settings.backups).pipe(delay(60));
+  }
+
+  updateBackupSettings(body: BackupSettings) {
+    this.settings = { ...this.settings, backups: body };
+    return of(body).pipe(delay(60));
   }
 
   getMe() {

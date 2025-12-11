@@ -1,6 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
+import { getSettings } from "@/lib/settingsCache";
+
 const DEFAULT_SEARCH_API_URL = "https://api.search.brave.com/res/v1/web/search";
 const PLACEHOLDER_API_KEYS = new Set(["brave-api-key", "changeme"]);
 
@@ -8,8 +10,10 @@ type SearchConfigResult =
   | { ok: true; apiKey: string; apiUrl: string }
   | { ok: false; reason: string };
 
-function resolveSearchConfig(): SearchConfigResult {
-  const rawKey = process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"];
+async function resolveSearchConfig(): Promise<SearchConfigResult> {
+  const settings = await getSettings().catch(() => null);
+  const svc = settings?.services.search;
+  const rawKey = svc?.apiKey ?? process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"];
   const apiKey = rawKey?.trim();
   if (!apiKey) {
     return { ok: false, reason: "Missing SEARCH_API_KEY or BRAVE_API_KEY." };
@@ -18,7 +22,7 @@ function resolveSearchConfig(): SearchConfigResult {
     return { ok: false, reason: "Replace SEARCH_API_KEY/BRAVE_API_KEY with a real token." };
   }
 
-  const rawUrlEnv = process.env["SEARCH_API_URL"];
+  const rawUrlEnv = svc?.apiUrl ?? process.env["SEARCH_API_URL"];
   const rawUrl = (rawUrlEnv ?? DEFAULT_SEARCH_API_URL).trim();
   if (!rawUrl) {
     return { ok: false, reason: "SEARCH_API_URL is empty or missing." };
@@ -32,8 +36,8 @@ function resolveSearchConfig(): SearchConfigResult {
   }
 }
 
-const verifySearchConfigured = () => {
-  const config = resolveSearchConfig();
+const verifySearchConfigured = async () => {
+  const config = await resolveSearchConfig();
   return config.ok ? { ok: true } : { ok: false, reason: config.reason };
 };
 
@@ -47,7 +51,7 @@ async function safeJson(res: Response): Promise<unknown> {
 
 const webSearchToolImpl = tool(
   async ({ query, count }) => {
-    const config = resolveSearchConfig();
+    const config = await resolveSearchConfig();
     if (!config.ok) {
       return `Search tool is not configured (${config.reason})`;
     }

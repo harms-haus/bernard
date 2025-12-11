@@ -1,4 +1,5 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
+import { getSettings } from "@/lib/settingsCache";
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;
@@ -29,16 +30,23 @@ function logModelConfig(source: "probe" | "runtime", baseUrl: string | undefined
   console.info(`${EMBEDDING_LOG_PREFIX} ${source} resolved base=${base} model=${model}`);
 }
 
+async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<{ apiKey?: string; baseUrl?: string; model: string }> {
+  const settings = await getSettings().catch(() => null);
+  const service = settings?.services.memory;
+  const apiKey = config.apiKey ?? service?.embeddingApiKey ?? process.env["EMBEDDING_API_KEY"];
+  const baseUrl = config.baseUrl ?? service?.embeddingBaseUrl ?? process.env["EMBEDDING_BASE_URL"];
+  const model = config.model ?? service?.embeddingModel ?? process.env["EMBEDDING_MODEL"] ?? DEFAULT_EMBEDDING_MODEL;
+  return { apiKey: apiKey ?? "", baseUrl, model };
+}
+
 async function runEmbeddingProbe(config: EmbeddingConfig): Promise<VerifyResult> {
-  const apiKey = config.apiKey ?? process.env["EMBEDDING_API_KEY"];
-  if (!apiKey) {
+  const resolved = await resolveEmbeddingConfig(config);
+  if (!resolved.apiKey) {
     return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
   }
 
-  const baseUrl = config.baseUrl ?? process.env["EMBEDDING_BASE_URL"];
-  const url = embeddingUrl(baseUrl);
-  const model = config.model ?? process.env["EMBEDDING_MODEL"] ?? DEFAULT_EMBEDDING_MODEL;
-  logModelConfig("probe", baseUrl, model);
+  const url = embeddingUrl(resolved.baseUrl);
+  logModelConfig("probe", resolved.baseUrl, resolved.model);
 
   const controller = new AbortController();
   const timer = setTimeout(
@@ -51,9 +59,9 @@ async function runEmbeddingProbe(config: EmbeddingConfig): Promise<VerifyResult>
       method: "POST",
       headers: {
         "content-type": "application/json",
-        Authorization: `Bearer ${apiKey}`
+        Authorization: `Bearer ${resolved.apiKey}`
       },
-      body: JSON.stringify({ input: "ping", model }),
+      body: JSON.stringify({ input: "ping", model: resolved.model }),
       signal: controller.signal
     });
 
@@ -76,8 +84,8 @@ async function runEmbeddingProbe(config: EmbeddingConfig): Promise<VerifyResult>
 }
 
 export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promise<VerifyResult> {
-  const apiKey = config.apiKey ?? process.env["EMBEDDING_API_KEY"];
-  if (!apiKey) {
+  const resolved = await resolveEmbeddingConfig(config);
+  if (!resolved.apiKey) {
     return { ok: false, reason: "Missing EMBEDDING_API_KEY for embeddings." };
   }
 
@@ -100,20 +108,18 @@ export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promi
   return inflightEmbeddingCheck;
 }
 
-export function getEmbeddingModel(config: EmbeddingConfig = {}): OpenAIEmbeddings {
-  const apiKey = config.apiKey ?? process.env["EMBEDDING_API_KEY"];
-  if (!apiKey) {
+export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<OpenAIEmbeddings> {
+  const resolved = await resolveEmbeddingConfig(config);
+  if (!resolved.apiKey) {
     throw new Error("EMBEDDING_API_KEY is required for embeddings.");
   }
 
-  const baseURL = config.baseUrl ?? process.env["EMBEDDING_BASE_URL"];
-  const modelName = config.model ?? process.env["EMBEDDING_MODEL"] ?? DEFAULT_EMBEDDING_MODEL;
-  logModelConfig("runtime", baseURL, modelName);
+  logModelConfig("runtime", resolved.baseUrl, resolved.model);
 
   return new OpenAIEmbeddings({
-    apiKey,
-    modelName,
-    configuration: baseURL ? { baseURL } : undefined
+    apiKey: resolved.apiKey,
+    modelName: resolved.model,
+    configuration: resolved.baseUrl ? { baseURL: resolved.baseUrl } : undefined
   });
 }
 

@@ -57,6 +57,95 @@ export interface ServiceConfig {
 
 export type UpdateServiceRequest = Partial<Pick<ServiceConfig, 'apiKey' | 'options'>>;
 
+export type ModelCallOptions = {
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  baseUrl?: string;
+  apiKey?: string;
+};
+
+export type ModelCategorySettings = {
+  primary: string;
+  fallbacks: string[];
+  options?: ModelCallOptions;
+};
+
+export type ModelsSettings = {
+  response: ModelCategorySettings;
+  intent: ModelCategorySettings;
+  memory: ModelCategorySettings;
+  utility: ModelCategorySettings;
+  aggregation?: ModelCategorySettings;
+};
+
+export type MemoryServiceSettings = {
+  embeddingModel?: string;
+  embeddingBaseUrl?: string;
+  embeddingApiKey?: string;
+  indexName?: string;
+  keyPrefix?: string;
+  namespace?: string;
+};
+
+export type SearchServiceSettings = {
+  apiKey?: string;
+  apiUrl?: string;
+};
+
+export type WeatherServiceSettings = {
+  apiKey?: string;
+  apiUrl?: string;
+  forecastUrl?: string;
+  historicalUrl?: string;
+  units?: 'metric' | 'imperial';
+  timeoutMs?: number;
+};
+
+export type GeocodingServiceSettings = {
+  url?: string;
+  userAgent?: string;
+  email?: string;
+  referer?: string;
+};
+
+export type ServicesSettings = {
+  memory: MemoryServiceSettings;
+  search: SearchServiceSettings;
+  weather: WeatherServiceSettings;
+  geocoding: GeocodingServiceSettings;
+};
+
+export type OAuthClientSettings = {
+  authUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  redirectUri: string;
+  scope: string;
+  clientId: string;
+  clientSecret?: string;
+};
+
+export type OAuthSettings = {
+  google: OAuthClientSettings;
+  github: OAuthClientSettings;
+  default?: OAuthClientSettings;
+};
+
+export type BackupSettings = {
+  debounceSeconds: number;
+  directory: string;
+  retentionDays: number;
+  retentionCount: number;
+};
+
+export type AdminSettings = {
+  models: ModelsSettings;
+  services: ServicesSettings;
+  oauth: OAuthSettings;
+  backups: BackupSettings;
+};
+
 export type ConversationStatus = 'open' | 'closed';
 
 export type ConversationListItem = {

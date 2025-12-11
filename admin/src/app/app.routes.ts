@@ -24,6 +24,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/memories/memories.component').then((m) => m.MemoriesComponent)
   },
   {
+    path: 'models',
+    canMatch: [adminGuard],
+    loadComponent: () => import('./features/models/models.component').then((m) => m.ModelsComponent)
+  },
+  {
     path: 'services',
     canMatch: [adminGuard],
     loadComponent: () => import('./features/services/services.component').then((m) => m.ServicesComponent)

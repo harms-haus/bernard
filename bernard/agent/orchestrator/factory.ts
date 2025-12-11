@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 
-import { resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "@/lib/models";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider, type ModelCallOptions } from "@/lib/models";
 import { contentFromMessage, extractTokenUsage } from "@/lib/messages";
 import type { RecordKeeper } from "@/lib/recordKeeper";
 import { intentTools } from "../harness/intent/tools";
@@ -44,6 +44,7 @@ function toToolCalls(raw: unknown): ToolCall[] {
 
 type CallerOpts = {
   maxTokens?: number;
+  callOptions?: ModelCallOptions;
 };
 
 class ChatModelCaller implements LLMCaller {
@@ -109,27 +110,39 @@ class ChatModelCaller implements LLMCaller {
 }
 
 function makeCaller(model: string, temperature: number, opts: CallerOpts = {}) {
-  const apiKey = resolveApiKey();
-  const baseURL = resolveBaseUrl();
+  const apiKey = resolveApiKey(undefined, opts.callOptions);
+  const baseURL = resolveBaseUrl(undefined, opts.callOptions);
   const parsedModel = splitModelAndProvider(model);
   const client = new ChatOpenAI({
     model: parsedModel.model,
     apiKey,
     configuration: { baseURL },
-    temperature,
-    maxTokens: opts.maxTokens,
+    temperature: opts.callOptions?.temperature ?? temperature,
+    topP: opts.callOptions?.topP,
+    maxTokens: opts.callOptions?.maxTokens ?? opts.maxTokens,
     ...(parsedModel.providerOnly ? { modelKwargs: { provider: { only: parsedModel.providerOnly } } } : {})
   });
   return new ChatModelCaller(model, client);
 }
 
-export function createOrchestrator(
+export async function createOrchestrator(
   recordKeeper: RecordKeeper | null,
   opts: OrchestratorConfigInput = {}
-): { orchestrator: Orchestrator; config: HarnessConfig } {
-  const config = buildHarnessConfig(opts);
-  const intentCaller = makeCaller(config.intentModel, 0, { maxTokens: 750 }); // cap intent to ~750 out tokens
-  const responseCaller = makeCaller(config.responseModel, 0.5, opts.responseCallerOptions);
+): Promise<{ orchestrator: Orchestrator; config: HarnessConfig }> {
+  const config = await buildHarnessConfig(opts);
+  const [intentResolved, responseResolved] = await Promise.all([
+    resolveModel("intent", { override: config.intentModel }),
+    resolveModel("response", { override: config.responseModel })
+  ]);
+
+  const intentCaller = makeCaller(config.intentModel, 0, {
+    maxTokens: 750,
+    callOptions: intentResolved.options
+  }); // cap intent to ~750 out tokens
+  const responseCaller = makeCaller(config.responseModel, 0.5, {
+    maxTokens: opts.responseCallerOptions?.maxTokens,
+    callOptions: responseResolved.options
+  });
 
   const intentHarness = new IntentHarness(intentCaller, intentTools, config.maxIntentIterations ?? 4);
   const memoryHarness = new MemoryHarness();

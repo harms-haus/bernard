@@ -39,6 +39,24 @@ export class TokenStore {
     return `${this.namespace}:ids`;
   }
 
+  async exportAll(): Promise<TokenRecord[]> {
+    const ids = await this.redis.smembers(this.idsSet());
+    const records: TokenRecord[] = [];
+    for (const id of ids) {
+      const data = await this.redis.hgetall(this.idKey(id));
+      if (!data || !data["id"] || !data["token"] || !data["name"] || !data["createdAt"]) continue;
+      records.push({
+        id,
+        name: data["name"],
+        status: (data["status"] as TokenStatus) ?? "active",
+        createdAt: data["createdAt"],
+        lastUsedAt: data["lastUsedAt"] ?? undefined,
+        token: data["token"]
+      });
+    }
+    return records;
+  }
+
   async create(name: string): Promise<TokenRecord> {
     const existingId = await this.redis.get(this.nameKey(name));
     if (existingId) {

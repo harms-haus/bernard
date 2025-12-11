@@ -56,15 +56,15 @@ export async function createScaffolding(opts: {
   const redis = getRedis();
   let summarizer: ConversationSummaryService | undefined;
   try {
-    summarizer = new ConversationSummaryService();
+    summarizer = await ConversationSummaryService.create();
   } catch {
     // summarizer is optional
   }
   const keeper = new RecordKeeper(redis, summarizer ? { summarizer } : {});
   await keeper.closeIfIdle();
 
-  const responseModelName = opts.responseModelOverride ?? getPrimaryModel("response");
-  const intentModelName = getPrimaryModel("intent", { fallback: [responseModelName] });
+  const responseModelName = opts.responseModelOverride ?? (await getPrimaryModel("response"));
+  const intentModelName = await getPrimaryModel("intent", { fallback: [responseModelName] });
 
   const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {});
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);

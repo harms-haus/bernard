@@ -2,6 +2,12 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.0.2.
 
+## Configuration
+
+- Runtime settings (models, search/weather/geocoding, OAuth clients, memory embeddings) are stored in Redis and editable from the Admin UI via the **Models** and **Services** pages.
+- `.env` is only needed for startup credentials (e.g., `REDIS_URL`, `ADMIN_API_KEY`) plus auto-backup tuning (`BACKUP_DEBOUNCE_SECONDS`, `BACKUP_DIR`, `BACKUP_RETENTION_DAYS`, `BACKUP_RETENTION_COUNT`).
+- Optional bootstrap values (model lists, API keys, URLs) in `.env` are read once and copied into Redis settings when missing; prefer using the UI for ongoing changes.
+
 ## Development server
 
 To start a local development server, run:
