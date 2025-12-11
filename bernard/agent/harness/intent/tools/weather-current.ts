@@ -11,7 +11,7 @@ import {
   getForecastApiUrl,
   getWeatherTimeoutMs,
   maybeNumber
-} from "./common";
+} from "./weather-common";
 
 type CurrentResponse = {
   current?: {
@@ -67,9 +67,7 @@ export const getWeatherCurrentTool = tool(
       lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
       lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
       units: z.enum(["metric", "imperial"]).optional().describe("Force metric or imperial units."),
-      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
+      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units."),
     })
   }
 );
-
-

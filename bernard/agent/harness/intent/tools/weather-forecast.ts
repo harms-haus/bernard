@@ -11,8 +11,8 @@ import {
   getWeatherTimeoutMs,
   nearestIndex,
   parseTarget
-} from "./common";
-import type { DailyWeather, HourlyWeather } from "./common";
+} from "./weather-common";
+import type { DailyWeather, HourlyWeather } from "./weather-common";
 
 type ForecastResponse = {
   daily?: DailyWeather;
@@ -95,9 +95,7 @@ export const getWeatherForecastTool = tool(
         .optional()
         .describe("Date/datetime (example 'YYYY-MM-DDTHH:mmZ', 'YYYY-MM-DD')."),
       units: z.enum(["metric", "imperial"]).optional(),
-      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units.")
+      country: z.string().length(2).optional().describe("ISO 3166-1 alpha-2 code to help infer units."),
     })
   }
 );
-
-

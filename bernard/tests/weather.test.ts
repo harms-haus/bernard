@@ -5,8 +5,8 @@ import {
   getWeatherCurrentTool,
   getWeatherForecastTool,
   getWeatherHistoricalTool
-} from "../libs/weather";
-import { chooseUnits, parseTarget } from "../libs/weather/common";
+} from "../agent/harness/intent/tools";
+import { chooseUnits, parseTarget } from "../agent/harness/intent/tools/weather-common";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;

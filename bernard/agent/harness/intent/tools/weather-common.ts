@@ -282,5 +282,3 @@ export function buildWeatherUrl(
   applyUnitParams(url, units);
   return url;
 }
-
-
