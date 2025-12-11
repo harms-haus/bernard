@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
-import { requireAdmin, SessionStore, TokenStore, UserStore } from "@/lib/auth";
+import { requireAdminRequest } from "@/app/api/_lib/admin";
+import { SessionStore, TokenStore, UserStore } from "@/lib/auth";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { getRedis } from "@/lib/infra/redis";
 
@@ -33,9 +34,8 @@ type AdminConversation = {
 };
 
 export async function GET(req: NextRequest) {
-  if (!(await requireAdmin(req))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const auth = await requireAdminRequest(req, { route: "/api/admin/history" });
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const limitParam = searchParams.get("limit");
@@ -133,9 +133,17 @@ export async function GET(req: NextRequest) {
     const activeCount = items.filter((item) => item.status === "open").length;
     const closedCount = items.filter((item) => item.status === "closed").length;
 
+    auth.reqLog.success(200, {
+      action: "admin.history.list",
+      adminId: auth.admin.user.id,
+      total: items.length,
+      activeCount,
+      closedCount
+    });
+
     return Response.json({ items, total: items.length, activeCount, closedCount });
   } catch (err) {
-    console.error("Failed to list admin history", err);
+    auth.reqLog.failure(500, err, { action: "admin.history.list" });
     return new Response(JSON.stringify({ error: "Unable to list history" }), { status: 500 });
   }
 }

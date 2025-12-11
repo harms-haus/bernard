@@ -24,9 +24,10 @@ import type {
   Turn,
   TurnStatus
 } from "./types";
-import { createConversationQueue } from "../queue/client";
+import { conversationQueueName, createConversationQueue } from "../queue/client";
 import { CONVERSATION_TASKS, buildConversationJobId } from "../queue/types";
 import type { ConversationTaskName, ConversationTaskPayload } from "../queue/types";
+import { childLogger, logger, toErrorObject } from "../logging";
 export type {
   Conversation,
   ConversationStatus,
@@ -96,6 +97,7 @@ export class RecordKeeper {
   private readonly summarizer: ConversationSummaryService | undefined;
   private readonly tasksDisabled: boolean;
   private readonly messageLog: MessageLog;
+  private readonly log = childLogger({ component: "record_keeper" }, logger);
 
   constructor(
     private readonly redis: Redis,
@@ -492,9 +494,10 @@ export class RecordKeeper {
     if (this.conversationQueue) return this.conversationQueue;
     try {
       this.conversationQueue = createConversationQueue();
+      this.log.info({ event: "queue.ensure", queue: conversationQueueName });
       return this.conversationQueue;
     } catch (err) {
-      console.warn(`[queue] failed to create conversation queue: ${formatError(err)}`);
+      this.log.warn({ event: "queue.ensure.failed", err: toErrorObject(err) });
       return null;
     }
   }
@@ -503,14 +506,19 @@ export class RecordKeeper {
     const queue = await this.ensureConversationQueue();
     if (!queue) return false;
     try {
-      await Promise.all([
+      const jobs = await Promise.all([
         queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
         queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
         queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
       ]);
+      this.log.info({
+        event: "queue.enqueue",
+        conversationId,
+        jobs: jobs.map((job) => ({ id: job.id, name: job.name }))
+      });
       return true;
     } catch (err) {
-      console.warn(`[queue] failed to enqueue conversation tasks: ${formatError(err)}`);
+      this.log.warn({ event: "queue.enqueue.failed", conversationId, err: toErrorObject(err) });
       return false;
     }
   }
@@ -522,7 +530,7 @@ export class RecordKeeper {
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length > 0) {
       // Log failures for monitoring
-      console.error(`Failed to close ${failures.length} conversations`);
+      this.log.warn({ event: "conversations.close.idle_failed", failures: failures.length });
     }
   }
 

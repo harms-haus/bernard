@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import type { Logger } from "pino";
 
 import {
   resolveApiKey,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/config/models";
 import { contentFromMessage, extractTokenUsage } from "@/lib/conversation/messages";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { childLogger, logger, startTimer, toErrorObject, withRequestContext } from "@/lib/logging";
 import { intentTools } from "../harness/intent/tools";
 import { IntentHarness } from "../harness/intent/intent.harness";
 import { MemoryHarness } from "../harness/memory/memory.harness";
@@ -67,22 +69,62 @@ type ChatClient = {
  * LLM caller that wraps ChatOpenAI with timeouts, tracing, and persistence.
  */
 export class ChatModelCaller implements LLMCaller {
+  private readonly log: Logger;
+
   constructor(
     private readonly modelName: string,
     private readonly client: ChatClient,
-    private readonly timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS
-  ) {}
+    private readonly timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
+    loggerInstance: Logger = childLogger({ component: "llm", model: modelName }, logger)
+  ) {
+    this.log = loggerInstance;
+  }
 
   async call(input: LLMCallConfig): Promise<LLMResponse> {
+    const { logger: callLogger, requestId } = withRequestContext(
+      this.log,
+      {
+        conversationId: input.meta?.conversationId,
+        turnId: input.meta?.turnId,
+        stage: input.meta?.traceName
+      },
+      input.meta?.requestId
+    );
+    const elapsed = startTimer();
     const boundClient = this.bindClient(input);
     const startedAt = new Date().toISOString();
     const started = Date.parse(startedAt);
     const { controller, timer } = this.createAbortController();
+    callLogger.info({
+      event: "llm.call.start",
+      model: input.model ?? this.modelName,
+      tools: input.tools?.length ?? 0,
+      messages: input.messages.length,
+      stream: Boolean(input.stream),
+      requestId
+    });
     try {
       const message = await this.invokeWithTimeout(boundClient, input, controller);
       const response = this.buildResponse(message, started, startedAt);
-      await this.recordIfNeeded(input, response, startedAt, Date.now() - started);
+      const durationMs = elapsed();
+      await this.recordIfNeeded(input, response, startedAt, durationMs);
+      callLogger.info({
+        event: "llm.call.success",
+        model: input.model ?? this.modelName,
+        durationMs,
+        tokens: response.usage,
+        toolCalls: response.toolCalls?.length ?? 0
+      });
       return response;
+    } catch (err) {
+      const durationMs = elapsed();
+      callLogger.error({
+        event: "llm.call.error",
+        model: input.model ?? this.modelName,
+        durationMs,
+        err: toErrorObject(err)
+      });
+      throw err;
     } finally {
       clearTimeout(timer);
     }

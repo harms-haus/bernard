@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
-import { requireAdmin, SessionStore, TokenStore, UserStore } from "@/lib/auth";
+import { requireAdminRequest } from "@/app/api/_lib/admin";
+import { SessionStore, TokenStore, UserStore } from "@/lib/auth";
 import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
 import { getRedis } from "@/lib/infra/redis";
 
@@ -108,9 +109,8 @@ async function buildAdminConversation(
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  if (!(await requireAdmin(req))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const auth = await requireAdminRequest(req, { route: "/api/admin/history/[id]" });
+  if ("error" in auth) return auth.error;
 
   const { id } = await params;
   const { searchParams } = new URL(req.url);
@@ -127,19 +127,26 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const payload = await buildAdminConversation(keeper, tokens, sessions, users, id, limit);
     if (!payload) {
+      auth.reqLog.failure(404, "conversation_not_found", { action: "admin.history.detail", conversationId: id });
       return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
     }
+    auth.reqLog.success(200, {
+      action: "admin.history.detail",
+      adminId: auth.admin.user.id,
+      conversationId: id,
+      includeMessages: Boolean(limit),
+      messageLimit: limit ?? null
+    });
     return Response.json(payload);
   } catch (err) {
-    console.error(`Failed to load conversation ${id}`, err);
+    auth.reqLog.failure(500, err, { action: "admin.history.detail", conversationId: id });
     return new Response(JSON.stringify({ error: "Unable to load conversation" }), { status: 500 });
   }
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  if (!(await requireAdmin(req))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const auth = await requireAdminRequest(req, { route: "/api/admin/history/[id]" });
+  if ("error" in auth) return auth.error;
 
   const { id } = await params;
   const { searchParams } = new URL(req.url);
@@ -170,19 +177,25 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     await keeper.closeConversation(id, reason);
     const payload = await buildAdminConversation(keeper, tokens, sessions, users, id, limit);
     if (!payload) {
+      auth.reqLog.failure(404, "conversation_not_found", { action: "admin.history.close", conversationId: id });
       return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
     }
+    auth.reqLog.success(200, {
+      action: "admin.history.close",
+      adminId: auth.admin.user.id,
+      conversationId: id,
+      reason
+    });
     return Response.json(payload);
   } catch (err) {
-    console.error(`Failed to close conversation ${id}`, err);
+    auth.reqLog.failure(500, err, { action: "admin.history.close", conversationId: id });
     return new Response(JSON.stringify({ error: "Unable to close conversation" }), { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  if (!(await requireAdmin(req))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const auth = await requireAdminRequest(req, { route: "/api/admin/history/[id]" });
+  if ("error" in auth) return auth.error;
 
   const { id } = await params;
   const redis = getRedis();
@@ -191,11 +204,17 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
     const removed = await keeper.deleteConversation(id);
     if (!removed) {
+      auth.reqLog.failure(404, "conversation_not_found", { action: "admin.history.delete", conversationId: id });
       return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
     }
+    auth.reqLog.success(200, {
+      action: "admin.history.delete",
+      adminId: auth.admin.user.id,
+      conversationId: id
+    });
     return Response.json({ removed: true });
   } catch (err) {
-    console.error(`Failed to delete conversation ${id}`, err);
+    auth.reqLog.failure(500, err, { action: "admin.history.delete", conversationId: id });
     return new Response(JSON.stringify({ error: "Unable to delete conversation" }), { status: 500 });
   }
 }

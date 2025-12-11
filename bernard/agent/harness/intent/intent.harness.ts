@@ -1,6 +1,8 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
+import type { Logger } from "pino";
+
 import { parseToolInputWithDiagnostics, safeStringify } from "@/lib/conversation/messages";
 import {
   MAX_PARALLEL_TOOL_CALLS,
@@ -8,6 +10,7 @@ import {
 } from "./prompts";
 import type { Harness, HarnessContext, HarnessResult, LLMCaller, ToolCall } from "../lib/types";
 import type { MessageRecord } from "@/lib/conversation/recordKeeper";
+import { childLogger, logger, startTimer, toErrorObject } from "@/lib/logging";
 
 const RESPOND_TOOL_NAME = "respond";
 const MAX_CORRECTION_ATTEMPTS = 2;
@@ -225,6 +228,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   private toolsReady?: Promise<void>;
   private readonly llm: LLMCaller;
   private readonly maxIterations: number;
+  private readonly log = childLogger({ component: "intent_harness" }, logger);
 
   /**
    * Create a new intent harness.
@@ -441,11 +445,22 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     runnableCalls: ParsedCall[],
     toolMap: Map<string, IntentTool>,
     ctx: HarnessContext,
-    state: RunState
+    state: RunState,
+    log: Logger
   ) {
     const callFailures: ToolFailure[] = [];
     let toolLatencyMsTotal = 0;
     for (const { call, args, key } of runnableCalls) {
+      const callLogger = childLogger(
+        {
+          tool: call.name,
+          conversationId: ctx.conversationId,
+          requestId: ctx.requestId,
+          turnId: ctx.turnId,
+          stage: "intent"
+        },
+        log
+      );
       const tool = toolMap.get(call.name);
       if (!tool) {
         const reason = `Tool ${call.name} unavailable`;
@@ -486,6 +501,12 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
           };
           state.transcript.push(failureMessage);
           callFailures.push({ call, reason });
+          callLogger.warn({
+            event: "tool.error",
+            reason,
+            durationMs: elapsed,
+            argKeys: Object.keys(args ?? {})
+          });
         } else {
           if (ctx.recordKeeper && ctx.turnId) {
             await ctx.recordKeeper.recordToolResult(ctx.turnId, call.name, { ok: true, latencyMs: elapsed });
@@ -499,6 +520,12 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
           state.successfulToolRuns += 1;
           state.pendingFailureKeys.delete(key);
           state.transcript.push(message);
+          callLogger.info({
+            event: "tool.success",
+            durationMs: elapsed,
+            argKeys: Object.keys(args ?? {}),
+            responseType: typeof result
+          });
         }
       } catch (err) {
         const elapsed = Date.now() - start;
@@ -525,6 +552,11 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         };
         state.transcript.push(failureMessage);
         callFailures.push({ call, reason });
+        callLogger.error({
+          event: "tool.exception",
+          durationMs: elapsed,
+          err: toErrorObject(err)
+        });
       }
     }
     return { callFailures, toolLatencyMsTotal };
@@ -613,7 +645,8 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     res: Awaited<ReturnType<LLMCaller["call"]>>,
     ctx: HarnessContext,
     context: BaseMessage[],
-    toolLatencyMsTotal: number
+    toolLatencyMsTotal: number,
+    log: Logger
   ) {
     if (ctx.recordKeeper) {
       const traceDetails = {
@@ -648,7 +681,11 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     const llmLatency = res.trace?.latencyMs;
     if (llmLatency !== undefined || toolLatencyMsTotal) {
       const llmLabel = typeof llmLatency === "number" ? llmLatency : "n/a";
-      console.info(`[intent] llm_latency_ms=${llmLabel} tool_latency_ms=${toolLatencyMsTotal}`);
+      log.debug({
+        event: "intent.llm.trace",
+        llmLatencyMs: llmLabel,
+        toolLatencyMs: toolLatencyMsTotal
+      });
     }
   }
 
@@ -657,6 +694,17 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
    */
   async run(input: IntentInput, ctx: HarnessContext): Promise<HarnessResult<IntentOutput>> {
     await this.ensureToolsReady();
+    const runLogger = childLogger(
+      {
+        conversationId: ctx.conversationId,
+        requestId: ctx.requestId,
+        turnId: ctx.turnId,
+        stage: "intent",
+        component: "intent_harness"
+      },
+      this.log
+    );
+    const elapsed = startTimer();
 
     const state: RunState = {
       transcript: [...ctx.conversation.turns],
@@ -669,70 +717,90 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     let lastToolCalls: ToolCall[] = [];
     const toolMap = new Map(this.toolsForLLM.map((tool) => [tool.name, tool]));
 
-    for (let i = 0; i < (ctx.config.maxIntentIterations ?? this.maxIterations); i++) {
-      const context = this.buildRequestContext(input, ctx, state.transcript);
-      const res = await this.llm.call({
-        model: ctx.config.intentModel,
-        messages: context,
-        tools: this.toolsForLLM,
-        stream: false,
-        meta: {
-          conversationId: ctx.conversationId,
-          traceName: "intent",
-          ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
-          ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
-          ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
-          deferRecord: true
-        }
+    const finish = (result: HarnessResult<IntentOutput>) => {
+      runLogger.info({
+        event: "intent.run.success",
+        durationMs: elapsed(),
+        toolCalls: result.output.toolCalls?.length ?? 0,
+        successfulToolRuns: state.successfulToolRuns,
+        corrections: state.correctionAttempts
       });
+      return result;
+    };
 
-      let toolLatencyMsTotal = 0;
+    try {
+      for (let i = 0; i < (ctx.config.maxIntentIterations ?? this.maxIterations); i++) {
+        const context = this.buildRequestContext(input, ctx, state.transcript);
+        const res = await this.llm.call({
+          model: ctx.config.intentModel,
+          messages: context,
+          tools: this.toolsForLLM,
+          stream: false,
+          meta: {
+            conversationId: ctx.conversationId,
+            traceName: "intent",
+            ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+            ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
+            ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
+            deferRecord: true
+          }
+        });
 
-      try {
-        lastToolCalls = res.toolCalls ?? [];
-        const hasTools = lastToolCalls.length > 0;
+        let toolLatencyMsTotal = 0;
 
-        if (hasTools) {
-          state.transcript.push(res.message);
-        } else {
-          return { output: { transcript: state.transcript, toolCalls: [], done: true }, done: true };
+        try {
+          lastToolCalls = res.toolCalls ?? [];
+          const hasTools = lastToolCalls.length > 0;
+
+          if (hasTools) {
+            state.transcript.push(res.message);
+          } else {
+            return finish({ output: { transcript: state.transcript, toolCalls: [], done: true }, done: true });
+          }
+
+          const parsedResult = this.parseToolCalls(lastToolCalls, state.transcript);
+          const parsedCalls = this.enforceParallelLimit(parsedResult.parsedCalls, state.transcript, parsedResult.callFailures);
+
+          const repeatCheck = this.handleRepeatTracking(parsedCalls, state, state.successfulToolRuns, state.transcript, context);
+          if (repeatCheck.done) {
+            return finish(repeatCheck.output as HarnessResult<IntentOutput>);
+          }
+
+          lastToolCalls = parsedCalls.map((entry) => entry.call);
+
+          const parseRepair = this.handleParseFailures(parsedCalls, parsedResult.parseDiagnostics, state, state.transcript);
+          if (parseRepair.shouldRepair) {
+            continue;
+          }
+
+          const runnableCalls = parsedCalls.filter((entry) => entry.call.name !== RESPOND_TOOL_NAME);
+          const respondCalls = parsedCalls.filter((entry) => entry.call.name === RESPOND_TOOL_NAME);
+
+          const execution = await this.executeRunnableCalls(runnableCalls, toolMap, ctx, state, runLogger);
+          toolLatencyMsTotal += execution.toolLatencyMsTotal;
+          const combinedFailures = [...parsedResult.callFailures, ...execution.callFailures];
+
+          const respondResult = this.handleRespondCalls(respondCalls, runnableCalls, combinedFailures, state);
+          if (respondResult.done) {
+            return finish({ output: respondResult.output as IntentOutput, done: true });
+          }
+        } finally {
+          if (res.trace) {
+            res.trace.toolLatencyMs = toolLatencyMsTotal;
+          }
+          await this.recordTrace(res, ctx, context, toolLatencyMsTotal, runLogger);
         }
-
-        const parsedResult = this.parseToolCalls(lastToolCalls, state.transcript);
-        const parsedCalls = this.enforceParallelLimit(parsedResult.parsedCalls, state.transcript, parsedResult.callFailures);
-
-        const repeatCheck = this.handleRepeatTracking(parsedCalls, state, state.successfulToolRuns, state.transcript, context);
-        if (repeatCheck.done) {
-          return repeatCheck.output as HarnessResult<IntentOutput>;
-        }
-
-        lastToolCalls = parsedCalls.map((entry) => entry.call);
-
-        const parseRepair = this.handleParseFailures(parsedCalls, parsedResult.parseDiagnostics, state, state.transcript);
-        if (parseRepair.shouldRepair) {
-          continue;
-        }
-
-        const runnableCalls = parsedCalls.filter((entry) => entry.call.name !== RESPOND_TOOL_NAME);
-        const respondCalls = parsedCalls.filter((entry) => entry.call.name === RESPOND_TOOL_NAME);
-
-        const execution = await this.executeRunnableCalls(runnableCalls, toolMap, ctx, state);
-        toolLatencyMsTotal += execution.toolLatencyMsTotal;
-        const combinedFailures = [...parsedResult.callFailures, ...execution.callFailures];
-
-        const respondResult = this.handleRespondCalls(respondCalls, runnableCalls, combinedFailures, state);
-        if (respondResult.done) {
-          return { output: respondResult.output as IntentOutput, done: true };
-        }
-      } finally {
-        if (res.trace) {
-          res.trace.toolLatencyMs = toolLatencyMsTotal;
-        }
-        await this.recordTrace(res, ctx, context, toolLatencyMsTotal);
       }
-    }
 
-    return { output: { transcript: state.transcript, toolCalls: lastToolCalls, done: true }, done: true };
+      return finish({ output: { transcript: state.transcript, toolCalls: lastToolCalls, done: true }, done: true });
+    } catch (err) {
+      runLogger.error({
+        event: "intent.run.error",
+        durationMs: elapsed(),
+        err: toErrorObject(err)
+      });
+      throw err;
+    }
   }
 }
 

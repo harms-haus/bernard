@@ -6,6 +6,7 @@ import type { Harness, HarnessContext, HarnessResult, LLMCaller } from "../lib/t
 import type { IntentOutput } from "../intent/intent.harness";
 import type { MemoryOutput } from "../memory/memory.harness";
 import { contentFromMessage, isToolMessage } from "@/lib/conversation/messages";
+import { childLogger, logger, startTimer, toErrorObject } from "@/lib/logging";
 
 function truncate(text: string, max = 280) {
   if (text.length <= max) return text;
@@ -49,18 +50,44 @@ export type ResponseOutput = {
 };
 
 export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
+  private readonly log = childLogger({ component: "response_harness" }, logger);
+
   constructor(private readonly llm: LLMCaller) {}
 
   async run(input: ResponseInput, ctx: HarnessContext): Promise<HarnessResult<ResponseOutput>> {
+    const runLogger = childLogger(
+      {
+        conversationId: ctx.conversationId,
+        requestId: ctx.requestId,
+        turnId: ctx.turnId,
+        stage: "response"
+      },
+      this.log
+    );
+    const elapsed = startTimer();
     const messages = this.buildMessages(input, ctx);
-    const res = await this.llm.call({
-      model: ctx.config.responseModel,
-      messages,
-      meta: this.buildMeta(ctx)
-    });
+    try {
+      const res = await this.llm.call({
+        model: ctx.config.responseModel,
+        messages,
+        meta: this.buildMeta(ctx)
+      });
 
-    const ensured = this.ensureResponse(res, ctx.conversation.turns);
-    return { output: ensured, done: true };
+      const ensured = this.ensureResponse(res, ctx.conversation.turns);
+      runLogger.info({
+        event: "response.run.success",
+        durationMs: elapsed(),
+        textLength: ensured.text.length
+      });
+      return { output: ensured, done: true };
+    } catch (err) {
+      runLogger.error({
+        event: "response.run.error",
+        durationMs: elapsed(),
+        err: toErrorObject(err)
+      });
+      throw err;
+    }
   }
 
   private buildMessages(input: ResponseInput, ctx: HarnessContext): BaseMessage[] {

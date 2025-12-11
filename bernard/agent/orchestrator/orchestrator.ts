@@ -9,6 +9,7 @@ import type { HarnessContext, HarnessResult, HarnessConfig, ConversationThread }
 import { buildConversationThread } from "../record-keeper/record-keeper";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { contentFromMessage } from "@/lib/conversation/messages";
+import { childLogger, logger, startTimer, toErrorObject } from "@/lib/logging";
 
 const RESPOND_TOOL_NAME = "respond";
 
@@ -67,6 +68,8 @@ export type OrchestratorResult = {
 };
 
 export class Orchestrator {
+  private readonly log = childLogger({ component: "orchestrator" }, logger);
+
   constructor(
     private readonly recordKeeper: RecordKeeper | null,
     private readonly config: HarnessConfig,
@@ -81,6 +84,21 @@ export class Orchestrator {
    * conversation deltas and bubbling errors after logging.
    */
   async run(input: OrchestratorRunInput): Promise<OrchestratorResult> {
+    const runLogger = childLogger(
+      {
+        conversationId: input.conversationId,
+        requestId: input.requestId,
+        turnId: input.turnId,
+        component: "orchestrator"
+      },
+      this.log
+    );
+    const elapsed = startTimer();
+    runLogger.info({
+      event: "orchestrator.run.start",
+      incomingMessages: input.incoming.length,
+      persistable: input.persistable?.length ?? 0
+    });
     const { persistable, conversation: initialConversation } = this.buildInitialConversation(input);
     let conversation = initialConversation;
 
@@ -101,12 +119,24 @@ export class Orchestrator {
 
       await this.persistResponseMessage(input, responseRes);
 
+      runLogger.info({
+        event: "orchestrator.run.success",
+        durationMs: elapsed(),
+        responseTokens: responseRes.output.message ? contentFromMessage(responseRes.output.message)?.length ?? 0 : 0,
+        intentTurns: intentRes.output.transcript.length,
+        responsePreview: responseRes.output?.text?.slice(0, 160)
+      });
       return {
         intent: intentRes.output,
         memories: memoryRes.output,
         response: responseRes.output
       };
     } catch (err) {
+      runLogger.error({
+        event: "orchestrator.run.error",
+        durationMs: elapsed(),
+        err: toErrorObject(err)
+      });
       await this.handleError(input, err);
       throw err;
     }

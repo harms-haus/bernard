@@ -21,6 +21,7 @@ import {
   parseJsonBody,
   rejectUnsupportedKeys
 } from "@/app/api/v1/_lib/openai/request";
+import { buildRequestLogger } from "@/app/api/_lib/logging";
 import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import { resolveModel } from "@/lib/config/models";
@@ -49,14 +50,22 @@ export type CompletionBody = {
 const UNSUPPORTED: Array<keyof CompletionBody> = ["n", "echo", "best_of", "user"];
 
 export async function POST(req: NextRequest) {
+  const reqLog = buildRequestLogger(req, { route: "/api/v1/completions" });
   const auth = await validateAuth(req);
-  if ("error" in auth) return auth.error;
+  if ("error" in auth) {
+    reqLog.failure(auth.error.status ?? 401, "auth_failed");
+    return auth.error;
+  }
 
   const parsed = await parseJsonBody<CompletionBody>(req);
-  if ("error" in parsed) return parsed.error;
+  if ("error" in parsed) {
+    reqLog.failure(parsed.error.status ?? 400, "invalid_body");
+    return parsed.error;
+  }
   const body = parsed.ok;
 
   if (!body?.prompt || typeof body.prompt !== "string") {
+    reqLog.failure(400, "missing_prompt");
     return new NextResponse(JSON.stringify({ error: "`prompt` is required" }), { status: 400 });
   }
 
@@ -264,6 +273,14 @@ function streamCompletion(opts: {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
         await finalizeTurn({ keeper, turnId, requestId, start, status: "ok" });
+        reqLog.success(200, {
+          action: "completion.stream",
+          conversationId,
+          requestId,
+          turnId,
+          stream: shouldStream,
+          newConversation: isNewConversation
+        });
       } catch (err) {
         await finalizeTurn({
           keeper,
@@ -272,6 +289,12 @@ function streamCompletion(opts: {
           start,
           status: "error",
           errorType: err instanceof Error ? err.name : "error"
+        });
+        reqLog.failure(500, err, {
+          action: "completion.stream",
+          conversationId,
+          requestId,
+          turnId
         });
         sendChunk([{ index: 0, text: "", finish_reason: "stop" }]);
         controller.enqueue(
