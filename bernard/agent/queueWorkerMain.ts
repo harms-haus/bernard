@@ -68,8 +68,24 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     log.info({ event: "queue.worker.shutdown", signal, uptimeMs: started() });
-    await Promise.allSettled([worker.close(), events.close()]);
-    process.exit(0);
+    const results = await Promise.allSettled([worker.close(), events.close()]);
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length > 0) {
+      failures.forEach((failure, index) => {
+        log.error({
+          event: "queue.worker.cleanup_failed",
+          signal,
+          cleanupStep: index === 0 ? "worker.close" : "events.close",
+void main().catch((err) => {
+  baseLog.error({ event: "queue.worker.fatal", err: toErrorObject(err) });
+  process.exit(1);
+});
+        });
+      });
+      process.exit(1);
+    } else {
+      process.exit(0);
+    }
   };
 
   process.on("SIGINT", () => void shutdown("SIGINT"));

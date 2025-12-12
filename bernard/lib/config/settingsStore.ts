@@ -183,7 +183,7 @@ export function defaultServices(): ServicesSettings {
       namespace: process.env["MEMORY_NAMESPACE"]
     },
     search: {
-      apiKey: process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"],
+      apiKey: process.env["SEARCH_API_KEY"],
       apiUrl: process.env["SEARCH_API_URL"]
     },
     weather: {
