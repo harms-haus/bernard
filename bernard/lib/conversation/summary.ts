@@ -1,7 +1,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 
-import { getPrimaryModel, resolveApiKey, resolveBaseUrl, splitModelAndProvider } from "../config/models";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "../config/models";
 import type { MessageRecord } from "./types";
 
 /**
@@ -40,15 +40,23 @@ export class ConversationSummaryService {
    * Create a service using configured OpenRouter/OpenAI settings.
    */
   static async create(opts?: { model?: string; apiKey?: string; baseURL?: string }) {
-    const configuredModel = opts?.model ?? (await getPrimaryModel("aggregation"));
-    const { model, providerOnly } = splitModelAndProvider(configuredModel);
-    const apiKey = opts?.apiKey ?? resolveApiKey();
-    if (!apiKey) throw new Error("OPENROUTER_API_KEY is required for summarization");
+    const resolvedModel = await resolveModel("utility", opts?.model ? { override: opts.model } : {});
+    const { model, providerOnly } = splitModelAndProvider(resolvedModel.id);
+    const mergedOptions = resolvedModel.options ?? {};
+    const apiKey = resolveApiKey(opts?.apiKey, {
+      ...mergedOptions,
+      ...(opts?.apiKey ? { apiKey: opts.apiKey } : {})
+    });
+    const baseURL = resolveBaseUrl(opts?.baseURL, {
+      ...mergedOptions,
+      ...(opts?.baseURL ? { baseUrl: opts.baseURL } : {})
+    });
+    if (!apiKey) throw new Error("API key is required for summarization");
 
     const llm = new ChatOpenAI({
       model,
       apiKey,
-      configuration: { baseURL: resolveBaseUrl(opts?.baseURL) },
+      configuration: { baseURL },
       temperature: 0,
       ...(providerOnly ? { modelKwargs: { provider: { only: providerOnly } } } : {})
     });

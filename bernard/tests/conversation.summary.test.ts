@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { afterAll, afterEach, beforeAll, test } from "vitest";
 import { HumanMessage } from "@langchain/core/messages";
 
 import { ConversationSummaryService } from "../lib/conversation/summary";
 import type { MessageRecord } from "../lib/conversation/types";
+import { defaultBackups, defaultModels, defaultOauth, defaultServices } from "../lib/config/settingsStore";
+import { resetSettingsFetcher, setSettingsFetcher } from "../lib/config/models";
 
 const TEST_TIMEOUT = 2_000;
 const originalApiKey = process.env.OPENROUTER_API_KEY;
+
+const fakeSettings = {
+  models: defaultModels(),
+  services: defaultServices(),
+  oauth: defaultOauth(),
+  backups: defaultBackups()
+};
 
 class FakeModel {
   calls: Array<{ messages: unknown[] }> = [];
@@ -33,8 +42,16 @@ const makeMessages = (count: number): MessageRecord[] =>
     createdAt: new Date().toISOString()
   }));
 
+beforeAll(() => {
+  setSettingsFetcher(async () => fakeSettings);
+});
+
 afterEach(() => {
   process.env.OPENROUTER_API_KEY = originalApiKey;
+});
+
+afterAll(() => {
+  resetSettingsFetcher();
 });
 
 void test(
@@ -44,7 +61,7 @@ void test(
     delete process.env.OPENROUTER_API_KEY;
     await assert.rejects(
       () => ConversationSummaryService.create({ model: "test-model" }),
-      /OPENROUTER_API_KEY/
+      /API key is required/i
     );
   }
 );

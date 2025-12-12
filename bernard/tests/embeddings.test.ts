@@ -66,12 +66,32 @@ afterEach(() => {
 });
 
 void test(
-  "verifyEmbeddingConfig returns failure when api key is missing",
+  "verifyEmbeddingConfig returns failure when api key and base url are missing",
   { timeout: TEST_TIMEOUT },
   async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("unexpected fetch");
+    }) as any;
     const result = await verifyEmbeddingConfig();
     assert.equal(result.ok, false);
-    assert.match(result.reason ?? "", /EMBEDDING_API_KEY/);
+    assert.match(result.reason ?? "", /EMBEDDING_API_KEY or EMBEDDING_BASE_URL/);
+  }
+);
+
+void test(
+  "verifyEmbeddingConfig allows base url without api key",
+  { timeout: TEST_TIMEOUT },
+  async () => {
+    process.env["EMBEDDING_BASE_URL"] = "http://localhost:11434/v1";
+    process.env["EMBEDDING_MODEL"] = "local-embedder";
+    setSettingsFetcher(async () => null as any);
+
+    const calls = mockFetchResponses([new Response("{}", { status: 200 })]);
+
+    const result = await verifyEmbeddingConfig();
+    assert.equal(result.ok, true);
+    const headers = calls[0]?.init?.headers as Record<string, string> | undefined;
+    assert.equal(headers?.Authorization, undefined);
   }
 );
 
@@ -202,11 +222,34 @@ void test(
 );
 
 void test(
-  "getEmbeddingModel throws when api key is missing",
+  "getEmbeddingModel throws when neither api key nor base url is provided",
   { timeout: TEST_TIMEOUT },
   async () => {
     setSettingsFetcher(async () => null as any);
-    await assert.rejects(() => getEmbeddingModel(), /EMBEDDING_API_KEY is required/);
+    await assert.rejects(() => getEmbeddingModel(), /EMBEDDING_API_KEY or EMBEDDING_BASE_URL/);
+  }
+);
+
+void test(
+  "getEmbeddingModel allows missing api key when base url is set",
+  { timeout: TEST_TIMEOUT },
+  async () => {
+    process.env["EMBEDDING_BASE_URL"] = "http://localhost:11434/v1";
+    process.env["EMBEDDING_MODEL"] = "local-embedder";
+    setSettingsFetcher(async () => null as any);
+
+    const factoryCalls: Array<ConstructorParameters<typeof OpenAIEmbeddings>[0]> = [];
+    setEmbeddingsFactory((options) => {
+      factoryCalls.push(options);
+      return { fake: true } as unknown as OpenAIEmbeddings;
+    });
+
+    const model = await getEmbeddingModel();
+    assert.equal((model as any).fake, true);
+    assert.equal(factoryCalls.length, 1);
+    assert.equal((factoryCalls[0] as any).apiKey, undefined);
+    assert.equal((factoryCalls[0] as any).modelName, "local-embedder");
+    assert.equal((factoryCalls[0] as any).configuration?.baseURL, "http://localhost:11434/v1");
   }
 );
 

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import pino, { stdTimeFunctions, type Logger, type LoggerOptions, type TransportSingleOptions } from "pino";
 
 export type LogContext = {
@@ -30,6 +31,14 @@ export const redactionPaths = [
   "*.token",
   "*.authorization"
 ];
+
+const bundlerOverrides = globalThis as unknown as { __bundlerPathsOverrides?: Record<string, string> };
+const threadStreamWorkerPath = path.join(process.cwd(), "node_modules/thread-stream/lib/worker.js");
+
+// Turbopack can rewrite __dirname inside CJS deps (like thread-stream) to /ROOT,
+// which breaks the worker path. Override the worker location to the real file.
+bundlerOverrides.__bundlerPathsOverrides ??= {};
+bundlerOverrides.__bundlerPathsOverrides["thread-stream-worker"] ??= threadStreamWorkerPath;
 
 function parseJsonOption(raw: string | undefined): Record<string, unknown> | undefined {
   if (!raw) return undefined;

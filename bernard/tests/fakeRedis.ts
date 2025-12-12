@@ -39,8 +39,8 @@ class FakeMulti {
     return this;
   }
 
-  sadd(key: string, member: string): this {
-    this.actions.push(() => this.redis.sadd(key, member));
+  sadd(key: string, ...members: string[]): this {
+    this.actions.push(() => this.redis.sadd(key, ...members));
     return this;
   }
 
@@ -122,10 +122,10 @@ export class FakeRedis {
     return Promise.resolve(removed);
   }
 
-  sadd(key: string, member: string): Promise<number> {
+  sadd(key: string, ...members: string[]): Promise<number> {
     const set = this.sets.get(key) ?? new Set<string>();
     const sizeBefore = set.size;
-    set.add(member);
+    members.forEach((member) => set.add(member));
     this.sets.set(key, set);
     return Promise.resolve(set.size - sizeBefore);
   }
