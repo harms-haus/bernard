@@ -12,21 +12,48 @@
     <div class="title" [pTooltip]="idTooltip()" tooltipPosition="bottom">
       <h1>{{ conversation()?.source || 'Conversation' }}</h1>
     </div>
-    <div class="topbar-meta">
-      <span class="last-request">
-        @if (lastRequestAt(); as lastRequest) {
-          {{ lastRequest | date: 'short' }}
-        } @else {
-          &mdash;
-        }
-      </span>
-      <span
-        class="status-dot"
-        [class.active]="isActive()"
-        role="status"
-        [attr.aria-label]="isActive() ? 'Conversation is active' : 'Conversation is closed'"
-      ></span>
-    </div>
+     <div class="topbar-meta">
+       <span class="last-request">
+         @if (lastRequestAt(); as lastRequest) {
+           {{ lastRequest | date: 'short' }}
+         } @else {
+           &mdash;
+         }
+       </span>
+       <span
+         class="status-dot"
+         [class.active]="isActive()"
+         role="status"
+         [attr.aria-label]="isActive() ? 'Conversation is active' : 'Conversation is closed'"
+       ></span>
+       <div class="indexing-status">
+         <p-tag 
+           [value]="indexingStatusLabel()" 
+           [severity]="indexingStatusSeverity()" 
+           [icon]="indexingStatusIcon()"
+         ></p-tag>
+         @if (conversation()?.indexingError) {
+           <i class="pi pi-info-circle error-tooltip" 
+              pTooltip="{{ conversation()?.indexingError }}" 
+              tooltipPosition="top"
+           ></i>
+         }
+         @if (canRetryIndexing() || canCancelIndexing()) {
+           <button 
+             pButton 
+             type="button"
+             [icon]="canRetryIndexing() ? 'pi pi-play' : 'pi pi-stop'"
+             [label]="canRetryIndexing() ? 'Queue for Indexing' : 'Cancel Indexing'"
+             [severity]="canRetryIndexing() ? 'success' : 'warning'"
+             (click)="canRetryIndexing() ? retryIndexing() : cancelIndexing()"
+             [loading]="indexingActionInProgress() !== 'none'"
+             [disabled]="indexingActionInProgress() !== 'none'"
+             size="small"
+             text
+           ></button>
+         }
+       </div>
+     </div>
   </div>
 
   @if (error()) {

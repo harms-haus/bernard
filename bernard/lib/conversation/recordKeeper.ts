@@ -10,6 +10,7 @@ import { messageRecordToOpenAI } from "./messages";
 import type { OpenAIMessage } from "./messages";
 import type {
   Conversation,
+  ConversationIndexingStatus,
   ConversationStatus,
   ConversationStats,
   ConversationWithStats,
@@ -30,6 +31,7 @@ import type { ConversationTaskName, ConversationTaskPayload } from "../queue/typ
 import { childLogger, logger, toErrorObject } from "../logging";
 export type {
   Conversation,
+  ConversationIndexingStatus,
   ConversationStatus,
   ConversationStats,
   ConversationWithStats,
@@ -446,15 +448,19 @@ export class RecordKeeper {
     await multi.exec();
 
     const enqueued = await this.enqueueConversationTasks(conversationId);
-    if (!enqueued && this.summarizer) {
+    if (enqueued) {
+      await this.updateIndexingStatus(conversationId, "queued", undefined, 1);
+    } else if (this.summarizer) {
       try {
         const messages = await this.getMessages(conversationId);
         const summary = await this.summarizer.summarize(conversationId, messages);
         await this.updateConversationSummary(conversationId, summary);
+        await this.updateIndexingStatus(conversationId, "indexed");
       } catch (err) {
         await this.redis.hset(convKey, {
           closeReason: `${reason}; summary_error:${formatError(err)}`
         });
+        await this.updateIndexingStatus(conversationId, "failed", formatError(err), 1);
       }
     }
   }
@@ -489,6 +495,23 @@ export class RecordKeeper {
     await this.redis.hset(convKey, { flags: JSON.stringify(next) });
   }
 
+  async updateIndexingStatus(
+    conversationId: string,
+    status: ConversationIndexingStatus,
+    error?: string,
+    attempts?: number
+  ) {
+    const convKey = this.key(`conv:${conversationId}`);
+    const updates: Record<string, string> = { indexingStatus: status };
+    if (error !== undefined) {
+      updates.indexingError = error;
+    }
+    if (attempts !== undefined) {
+      updates.indexingAttempts = String(attempts);
+    }
+    await this.redis.hset(convKey, updates);
+  }
+
   private async ensureConversationQueue(): Promise<Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null> {
     if (this.tasksDisabled) return null;
     if (this.conversationQueue) return this.conversationQueue;
@@ -499,6 +522,76 @@ export class RecordKeeper {
     } catch (err) {
       this.log.warn({ event: "queue.ensure.failed", err: toErrorObject(err) });
       return null;
+    }
+  }
+
+  async retryIndexing(conversationId: string): Promise<boolean> {
+    const queue = await this.ensureConversationQueue();
+    if (!queue) return false;
+
+    try {
+      const existingConversation = await this.getConversation(conversationId);
+      const currentAttempts = existingConversation?.indexingAttempts ?? 0;
+      const nextAttempts = currentAttempts + 1;
+
+      // Remove any existing jobs for this conversation
+      const jobIds = [
+        buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
+        buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
+        buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
+      ];
+
+      await queue.removeJobs(...jobIds);
+
+      // Enqueue new jobs
+      const jobs = await Promise.all([
+        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
+        queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
+        queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
+      ]);
+
+      await this.updateIndexingStatus(conversationId, "queued", undefined, nextAttempts);
+
+      this.log.info({
+        event: "indexing.retry",
+        conversationId,
+        attempts: nextAttempts,
+        jobs: jobs.map((job) => ({ id: job.id, name: job.name }))
+      });
+
+      return true;
+    } catch (err) {
+      this.log.warn({ event: "indexing.retry.failed", conversationId, err: toErrorObject(err) });
+      await this.updateIndexingStatus(conversationId, "failed", formatError(err));
+      return false;
+    }
+  }
+
+  async cancelIndexing(conversationId: string): Promise<boolean> {
+    const queue = await this.ensureConversationQueue();
+    if (!queue) return false;
+
+    try {
+      // Remove all jobs for this conversation
+      const jobIds = [
+        buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
+        buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
+        buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
+      ];
+
+      const removedJobs = await queue.removeJobs(...jobIds);
+      await this.updateIndexingStatus(conversationId, "none");
+
+      this.log.info({
+        event: "indexing.cancel",
+        conversationId,
+        removedJobs: removedJobs.length
+      });
+
+      return true;
+    } catch (err) {
+      this.log.warn({ event: "indexing.cancel.failed", conversationId, err: toErrorObject(err) });
+      return false;
     }
   }
 
@@ -758,6 +851,20 @@ export class RecordKeeper {
       conversation.hasErrors = false;
     }
     if (data["lastRequestAt"]) conversation.lastRequestAt = data["lastRequestAt"];
+
+    // Indexing status fields
+    if (data["indexingStatus"]) {
+      conversation.indexingStatus = data["indexingStatus"] as ConversationIndexingStatus;
+    }
+    if (data["indexingError"]) {
+      conversation.indexingError = data["indexingError"];
+    }
+    if (data["indexingAttempts"]) {
+      const parsedAttempts = toNumber(data["indexingAttempts"]);
+      if (typeof parsedAttempts === "number") {
+        conversation.indexingAttempts = parsedAttempts;
+      }
+    }
 
     return conversation;
   }

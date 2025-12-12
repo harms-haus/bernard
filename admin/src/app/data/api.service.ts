@@ -27,7 +27,8 @@ import {
   UpdateTokenRequest,
   UpdateUserRequest,
   User,
-  BackupSettings
+  BackupSettings,
+  ConversationIndexingStatus
 } from './models';
 
 /**
@@ -66,6 +67,9 @@ export interface ApiClient {
   getConversation(id: string, messageLimit?: number): Observable<ConversationDetailResponse>;
   closeConversation(id: string): Observable<ConversationDetail>;
   deleteConversation(id: string): Observable<void>;
+  getIndexingStatus(id: string): Observable<{ indexingStatus: ConversationIndexingStatus; indexingError?: string; indexingAttempts?: number }>;
+  retryIndexing(id: string): Observable<{ success: boolean; indexingStatus: ConversationIndexingStatus; message: string }>;
+  cancelIndexing(id: string): Observable<{ success: boolean; indexingStatus: ConversationIndexingStatus; message: string }>;
   listMemories(): Observable<Memory[]>;
   createMemory(body: CreateMemoryRequest): Observable<Memory>;
   updateMemory(id: string, body: UpdateMemoryRequest): Observable<Memory>;
@@ -188,6 +192,29 @@ class HttpApiClient implements ApiClient {
     return this.http
       .delete<{ removed: boolean }>(`${this.baseUrl}/admin/history/${id}`, this.options())
       .pipe(map(() => void 0));
+  }
+
+  getIndexingStatus(id: string) {
+    return this.http.get<{ indexingStatus: ConversationIndexingStatus; indexingError?: string; indexingAttempts?: number }>(
+      `${this.baseUrl}/conversations/${id}/indexing-status`, 
+      this.options()
+    );
+  }
+
+  retryIndexing(id: string) {
+    return this.http.post<{ success: boolean; indexingStatus: ConversationIndexingStatus; message: string }>(
+      `${this.baseUrl}/conversations/${id}/retry-indexing`, 
+      {}, 
+      this.options()
+    );
+  }
+
+  cancelIndexing(id: string) {
+    return this.http.post<{ success: boolean; indexingStatus: ConversationIndexingStatus; message: string }>(
+      `${this.baseUrl}/conversations/${id}/cancel-indexing`, 
+      {}, 
+      this.options()
+    );
   }
 
   listMemories() {
@@ -691,6 +718,95 @@ class MockApiClient implements ApiClient {
     this.conversations = this.conversations.filter((conv) => conv.id !== id);
     delete this.messages[id];
     return of(void 0).pipe(delay(80));
+  }
+
+  getIndexingStatus(id: string) {
+    const conversation = this.conversations.find((conv) => conv.id === id);
+    if (!conversation) {
+      return of({ 
+        indexingStatus: 'none' as ConversationIndexingStatus,
+        indexingError: 'Conversation not found',
+        indexingAttempts: 0 
+      }).pipe(delay(40));
+    }
+    return of({ 
+      indexingStatus: (conversation.indexingStatus ?? 'none') as ConversationIndexingStatus,
+      indexingError: conversation.indexingError,
+      indexingAttempts: conversation.indexingAttempts ?? 0 
+    }).pipe(delay(40));
+  }
+
+  retryIndexing(id: string) {
+    const conversation = this.conversations.find((conv) => conv.id === id);
+    if (!conversation) {
+      return of({ 
+        success: false,
+        indexingStatus: 'none' as ConversationIndexingStatus,
+        message: 'Conversation not found' 
+      }).pipe(delay(60));
+    }
+    
+    const currentStatus = conversation.indexingStatus ?? 'none';
+    if (currentStatus === 'queued' || currentStatus === 'indexing') {
+      return of({ 
+        success: false,
+        indexingStatus: currentStatus as ConversationIndexingStatus,
+        message: `Cannot retry indexing while already ${currentStatus}` 
+      }).pipe(delay(60));
+    }
+    
+    this.conversations = this.conversations.map((conv) =>
+      conv.id === id 
+        ? { 
+            ...conv, 
+            indexingStatus: 'queued' as ConversationIndexingStatus,
+            indexingAttempts: (conv.indexingAttempts ?? 0) + 1,
+            indexingError: undefined 
+          } 
+        : conv
+    );
+    
+    return of({ 
+      success: true,
+      indexingStatus: 'queued' as ConversationIndexingStatus,
+      message: 'Indexing tasks queued successfully' 
+    }).pipe(delay(80));
+  }
+
+  cancelIndexing(id: string) {
+    const conversation = this.conversations.find((conv) => conv.id === id);
+    if (!conversation) {
+      return of({ 
+        success: false,
+        indexingStatus: 'none' as ConversationIndexingStatus,
+        message: 'Conversation not found' 
+      }).pipe(delay(60));
+    }
+    
+    const currentStatus = conversation.indexingStatus ?? 'none';
+    if (currentStatus === 'indexed' || currentStatus === 'failed') {
+      return of({ 
+        success: false,
+        indexingStatus: currentStatus as ConversationIndexingStatus,
+        message: `Cannot cancel indexing in current state: ${currentStatus}` 
+      }).pipe(delay(60));
+    }
+    
+    this.conversations = this.conversations.map((conv) =>
+      conv.id === id 
+        ? { 
+            ...conv, 
+            indexingStatus: 'none' as ConversationIndexingStatus,
+            indexingError: undefined 
+          } 
+        : conv
+    );
+    
+    return of({ 
+      success: true,
+      indexingStatus: 'none' as ConversationIndexingStatus,
+      message: 'Indexing tasks canceled successfully' 
+    }).pipe(delay(80));
   }
 
   closeConversation(id: string) {

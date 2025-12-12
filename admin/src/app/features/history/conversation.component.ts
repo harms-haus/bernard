@@ -9,7 +9,7 @@ import { TooltipModule } from 'primeng/tooltip';
 import { finalize } from 'rxjs';
 
 import { API_CLIENT, ApiClient } from '../../data/api.service';
-import { ConversationDetail, ConversationMessage } from '../../data/models';
+import { ConversationDetail, ConversationMessage, ConversationIndexingStatus } from '../../data/models';
 import { AssistantMessageBubbleComponent } from '../../components/message-bubbles/assistant-message-bubble.component';
 import { SystemMessageBubbleComponent } from '../../components/message-bubbles/system-message-bubble.component';
 import { ToolCallBubbleComponent } from '../../components/message-bubbles/tool-call-bubble.component';
@@ -91,6 +91,7 @@ export class ConversationComponent {
   readonly messages = signal<ConversationMessage[]>([]);
   readonly copyStatus = signal<'idle' | 'success' | 'error'>('idle');
   readonly expandedErrors = signal<Set<string>>(new Set());
+  readonly indexingActionInProgress = signal<'retry' | 'cancel' | 'none'>('none');
 
   readonly isActive = computed(() => this.conversation()?.status === 'open');
   readonly lastRequestAt = computed(() => {
@@ -120,6 +121,49 @@ export class ConversationComponent {
     if (this.copyStatus() === 'success') return 'Copied conversation to clipboard';
     if (this.copyStatus() === 'error') return 'Unable to copy conversation';
     return '';
+  });
+
+  readonly indexingStatus = computed(() => this.conversation()?.indexingStatus ?? 'none');
+  readonly indexingStatusLabel = computed(() => {
+    const status = this.indexingStatus();
+    switch (status) {
+      case 'none': return 'Not indexed';
+      case 'queued': return 'Queued';
+      case 'indexing': return 'Indexing';
+      case 'indexed': return 'Indexed';
+      case 'failed': return 'Failed';
+      default: return 'Unknown';
+    }
+  });
+  readonly indexingStatusSeverity = computed(() => {
+    const status = this.indexingStatus();
+    switch (status) {
+      case 'none': return 'secondary';
+      case 'queued': return 'info';
+      case 'indexing': return 'warning';
+      case 'indexed': return 'success';
+      case 'failed': return 'danger';
+      default: return 'secondary';
+    }
+  });
+  readonly indexingStatusIcon = computed(() => {
+    const status = this.indexingStatus();
+    switch (status) {
+      case 'none': return 'pi pi-circle';
+      case 'queued': return 'pi pi-clock';
+      case 'indexing': return 'pi pi-spin pi-spinner';
+      case 'indexed': return 'pi pi-check-circle';
+      case 'failed': return 'pi pi-exclamation-circle';
+      default: return 'pi pi-question-circle';
+    }
+  });
+  readonly canRetryIndexing = computed(() => {
+    const status = this.indexingStatus();
+    return status === 'none' || status === 'failed';
+  });
+  readonly canCancelIndexing = computed(() => {
+    const status = this.indexingStatus();
+    return status === 'queued' || status === 'indexing';
   });
   readonly threadItems = computed<ThreadItem[]>(() => {
     const list = this.messages();
@@ -378,6 +422,61 @@ export class ConversationComponent {
       return 'System';
     }
     return 'User';
+  }
+
+  retryIndexing() {
+    const conversation = this.conversation();
+    if (!conversation || this.indexingActionInProgress() !== 'none') return;
+
+    this.indexingActionInProgress.set('retry');
+    this.api
+      .retryIndexing(conversation.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          if (result.success) {
+            this.conversation.update((conv) =>
+              conv ? { 
+                ...conv, 
+                indexingStatus: result.indexingStatus,
+                indexingAttempts: (conv.indexingAttempts ?? 0) + 1,
+                indexingError: undefined 
+              } : null
+            );
+          } else {
+            this.error.set(result.message || 'Unable to retry indexing');
+          }
+        },
+        error: () => this.error.set('Unable to retry indexing'),
+        complete: () => this.indexingActionInProgress.set('none')
+      });
+  }
+
+  cancelIndexing() {
+    const conversation = this.conversation();
+    if (!conversation || this.indexingActionInProgress() !== 'none') return;
+
+    this.indexingActionInProgress.set('cancel');
+    this.api
+      .cancelIndexing(conversation.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          if (result.success) {
+            this.conversation.update((conv) =>
+              conv ? { 
+                ...conv, 
+                indexingStatus: result.indexingStatus,
+                indexingError: undefined 
+              } : null
+            );
+          } else {
+            this.error.set(result.message || 'Unable to cancel indexing');
+          }
+        },
+        error: () => this.error.set('Unable to cancel indexing'),
+        complete: () => this.indexingActionInProgress.set('none')
+      });
   }
 
   private load(id: string, withLoader: boolean) {

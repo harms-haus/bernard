@@ -1,4 +1,5 @@
 export type ConversationStatus = "open" | "closed";
+export type ConversationIndexingStatus = "none" | "queued" | "indexing" | "indexed" | "failed";
 
 export type ToolCallEntry = {
   id?: string;
@@ -47,6 +48,9 @@ export type Conversation = {
   lastRequestAt?: string;
   errorCount?: number;
   hasErrors?: boolean;
+  indexingStatus?: ConversationIndexingStatus;
+  indexingError?: string;
+  indexingAttempts?: number;
 };
 
 export type ConversationStats = {

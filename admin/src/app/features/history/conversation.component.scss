@@ -52,8 +52,22 @@
 }
 
 .status-dot.active {
-  background: var(--green-400, #34d399);
-  border-color: var(--green-500, #10b981);
+  background: var(--green-400, #4ade80);
+}
+
+.indexing-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--surface-border);
+
+  .error-tooltip {
+    color: var(--red-500);
+    cursor: help;
+    font-size: 0.9rem;
+  }
 }
 
 .messages {

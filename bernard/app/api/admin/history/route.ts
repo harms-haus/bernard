@@ -126,6 +126,9 @@ export async function GET(req: NextRequest) {
       if (conversation.keywords !== undefined) item.keywords = conversation.keywords;
       if (conversation.closeReason !== undefined) item.closeReason = conversation.closeReason;
       if (conversation.requestCount !== undefined) item.requestCount = conversation.requestCount;
+      if (conversation.indexingStatus !== undefined) item.indexingStatus = conversation.indexingStatus;
+      if (conversation.indexingError !== undefined) item.indexingError = conversation.indexingError;
+      if (conversation.indexingAttempts !== undefined) item.indexingAttempts = conversation.indexingAttempts;
 
       items.push(item);
     }

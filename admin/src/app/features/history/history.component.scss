@@ -66,3 +66,22 @@
   gap: 0.5rem;
   margin-top: 1rem;
 }
+
+.indexing-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+  justify-content: flex-end;
+
+  .error-tooltip {
+    color: var(--red-500);
+    cursor: help;
+    font-size: 0.8rem;
+  }
+
+  button {
+    margin-left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+  }
+}

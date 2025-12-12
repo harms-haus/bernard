@@ -1,7 +1,7 @@
 import { RedisVectorStore } from "@langchain/community/vectorstores/redis";
 import { Document } from "@langchain/core/documents";
 import type { Job } from "bullmq";
-import Redis from "ioredis";
+import type Redis from "ioredis";
 import { createClient, type RedisClientType } from "redis";
 
 import { getEmbeddingModel } from "../config/embeddings";
@@ -158,15 +158,28 @@ function detectFlags(messages: MessageRecord[]): SummaryFlags {
 async function runIndexTask(
   conversationId: string,
   messages: MessageRecord[],
-  deps: { indexer: ConversationIndexer; logger?: TaskLogger }
+  deps: { indexer: ConversationIndexer; logger?: TaskLogger; recordKeeper?: RecordKeeper }
 ): Promise<ConversationTaskResult> {
-  const filtered = filterMessages(messages).slice(-messageLimit);
-  const entries = filtered.map(toEntry);
-  const chunks = chunkMessages(entries);
-  if (!chunks.length) return { ok: true, meta: { chunks: 0 } };
-  const result = await deps.indexer.indexConversation(conversationId, chunks);
-  log(deps.logger, "conversation.indexed", { conversationId, ...result });
-  return { ok: true, meta: { ...result } };
+  try {
+    const filtered = filterMessages(messages).slice(-messageLimit);
+    const entries = filtered.map(toEntry);
+    const chunks = chunkMessages(entries);
+    if (!chunks.length) return { ok: true, meta: { chunks: 0 } };
+    const result = await deps.indexer.indexConversation(conversationId, chunks);
+    log(deps.logger, "conversation.indexed", { conversationId, ...result });
+    return { ok: true, meta: { ...result } };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log(deps.logger, "conversation.indexing.failed", { conversationId, error: errorMessage });
+    if (deps.recordKeeper) {
+      try {
+        await deps.recordKeeper.updateIndexingStatus(conversationId, "failed", errorMessage);
+      } catch (statusErr) {
+        log(deps.logger, "conversation.indexing.status_update_failed", { conversationId, error: String(statusErr) });
+      }
+    }
+    return { ok: false, reason: "indexing_failed", meta: { error: errorMessage } };
+  }
 }
 
 async function runSummaryTask(
@@ -228,7 +241,7 @@ export function buildConversationTaskProcessor(deps: ConversationTaskDeps = {}) 
 
     switch (job.name) {
       case CONVERSATION_TASKS.index:
-        return runIndexTask(conversationId, messages, { indexer, logger: deps.logger });
+        return runIndexTask(conversationId, messages, { indexer, logger: deps.logger, recordKeeper });
       case CONVERSATION_TASKS.summary:
         return runSummaryTask(conversationId, messages, {
           summarizer: await summarizer(),

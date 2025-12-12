@@ -147,6 +147,7 @@ export type AdminSettings = {
 };
 
 export type ConversationStatus = 'open' | 'closed';
+export type ConversationIndexingStatus = 'none' | 'queued' | 'indexing' | 'indexed' | 'failed';
 
 export type ConversationListItem = {
   id: string;
@@ -168,6 +169,9 @@ export type ConversationListItem = {
   tokenIds: string[];
   errorCount?: number;
   hasErrors?: boolean;
+  indexingStatus?: ConversationIndexingStatus;
+  indexingError?: string;
+  indexingAttempts?: number;
 };
 
 export type ConversationDetail = ConversationListItem & {
