@@ -122,7 +122,7 @@ export class RecordKeeper {
   async startRequest(
     token: string,
     model: string,
-    opts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string } = {}
+    opts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string; userId?: string } = {}
   ): Promise<{ requestId: string; conversationId: string; isNewConversation: boolean }> {
     const now = Date.now();
     const nowISO = nowIso();
@@ -151,6 +151,7 @@ export class RecordKeeper {
         modelSet: JSON.stringify([model]),
         tokenSet: JSON.stringify([token]),
         placeTags: opts.place ? JSON.stringify([opts.place]) : "",
+        userId: opts.userId ?? "",
         messageCount: 0,
         toolCallCount: 0,
         requestCount: 1,
@@ -177,6 +178,7 @@ export class RecordKeeper {
         startedAt: nowISO,
         modelUsed: model,
         initialPlace: opts.place ?? "",
+        userId: opts.userId ?? "",
         clientMeta: opts.clientMeta ? JSON.stringify(opts.clientMeta) : ""
       })
       .zadd(this.key("convs:active"), now, finalConversationId)

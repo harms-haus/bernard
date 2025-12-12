@@ -224,7 +224,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   private readonly tools: IntentTool[];
   private toolsForLLM: IntentTool[] = [];
   private disabledTools: DisabledTool[] = [];
-  private availableTools: IntentTool[] = [];
+  private _availableTools: IntentTool[] = [];
   private toolsReady?: Promise<void>;
   private readonly llm: LLMCaller;
   private readonly maxIterations: number;

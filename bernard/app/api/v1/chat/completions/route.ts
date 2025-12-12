@@ -40,11 +40,11 @@ type ChatCompletionBody = {
   max_tokens?: number;
   stop?: string | string[] | null;
   logit_bias?: Record<string, number>;
+  user?: string;
   // unsupported but may appear; reject when present
   n?: number;
   tools?: unknown;
   response_format?: unknown;
-  user?: unknown;
   prediction?: unknown;
   service_tier?: unknown;
   store?: unknown;
@@ -55,7 +55,6 @@ const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
   "n",
   "tools",
   "response_format",
-  "user",
   "prediction",
   "service_tier",
   "store",
@@ -101,7 +100,11 @@ export async function POST(req: NextRequest) {
   const responseModelConfig = await resolveModel("response");
   const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
 
-  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
+  const scaffold = await createScaffolding({ 
+    token: auth.token, 
+    responseModelOverride: responseModelConfig.id,
+    userId: body.user
+  });
   const {
     keeper,
     conversationId,

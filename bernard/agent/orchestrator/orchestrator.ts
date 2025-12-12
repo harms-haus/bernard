@@ -113,7 +113,12 @@ export class Orchestrator {
 
       const responseCtx = this.buildResponseContext(conversation, ctx);
       const responseRes = await this.respond.run(
-        { intent: intentRes.output, memories: memoryRes.output } satisfies ResponseInput,
+        {
+          intent: intentRes.output,
+          memories: memoryRes.output,
+          availableTools: this.intent.availableTools,
+          disabledTools: this.intent.disabledTools
+        } satisfies ResponseInput,
         responseCtx
       );
 

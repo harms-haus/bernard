@@ -26,7 +26,7 @@ export function listModels(): ModelInfo[] {
       id: BERNARD_MODEL_ID,
       object: "model",
       created: Math.floor(Date.now() / 1000),
-      owned_by: "bernard"
+      owned_by: "bernard-v1"
     }
   ];
 }
@@ -53,6 +53,7 @@ export async function createScaffolding(opts: {
   token: string;
   responseModelOverride?: string;
   conversationId?: string;
+  userId?: string;
 }) {
   const redis = getRedis();
   let summarizer: ConversationSummaryService | undefined;
@@ -67,7 +68,10 @@ export async function createScaffolding(opts: {
   const responseModelName = opts.responseModelOverride ?? (await getPrimaryModel("response"));
   const intentModelName = await getPrimaryModel("intent", { fallback: [responseModelName] });
 
-  const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {});
+  const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {
+    conversationId: opts.conversationId,
+    userId: opts.userId
+  });
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
 
   return { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } satisfies AgentScaffolding;

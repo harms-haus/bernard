@@ -102,8 +102,8 @@ const mkMessage = (role: Role, content: unknown = "") =>
 test("listModels returns bernard model", () => {
   const models = openai.listModels();
   assert.equal(models.length, 1);
-  assert.equal(models[0].id, openai.BERNARD_MODEL_ID);
-  assert.equal(models[0].owned_by, "bernard");
+  assert.equal(models[0]?.id, openai.BERNARD_MODEL_ID);
+  assert.equal(models[0]?.owned_by, "bernard-v1");
 });
 
 test("validateAuth passes through error or token", async () => {

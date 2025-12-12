@@ -40,14 +40,14 @@ export type CompletionBody = {
   stop?: string | string[] | null;
   stream?: boolean;
   stream_options?: { include_usage?: boolean };
+  user?: string;
   // unsupported params
   n?: number;
   echo?: boolean;
   best_of?: number;
-  user?: unknown;
 };
 
-const UNSUPPORTED: Array<keyof CompletionBody> = ["n", "echo", "best_of", "user"];
+const UNSUPPORTED: Array<keyof CompletionBody> = ["n", "echo", "best_of"];
 
 export async function POST(req: NextRequest) {
   const reqLog = buildRequestLogger(req, { route: "/api/v1/completions" });
@@ -96,7 +96,11 @@ export async function POST(req: NextRequest) {
   const responseModelConfig = await resolveModel("response");
   const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
 
-  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
+  const scaffold = await createScaffolding({ 
+    token: auth.token, 
+    responseModelOverride: responseModelConfig.id,
+    userId: body.user
+  });
   const {
     keeper,
     conversationId,

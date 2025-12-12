@@ -89,7 +89,7 @@ ensure_redis
 export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
 echo "Starting bernard dev server on port ${BERNARD_PORT}..."
-npm run dev --prefix "${ROOT_DIR}/bernard" -- --port "${BERNARD_PORT}" &
+npm run dev --prefix "${ROOT_DIR}/bernard" -- --port "${BERNARD_PORT}" --hostname 0.0.0.0 &
 BERNARD_PID=$!
 
 echo "Starting conversation task worker..."

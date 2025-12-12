@@ -42,6 +42,8 @@ function buildBlankResponseFallback(turns: BaseMessage[]): string {
 export type ResponseInput = {
   intent: IntentOutput;
   memories: MemoryOutput;
+  availableTools?: Array<{ name: string; description?: string }>;
+  disabledTools?: Array<{ name: string; reason?: string }>;
 };
 
 export type ResponseOutput = {
@@ -91,7 +93,9 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
   }
 
   private buildMessages(input: ResponseInput, ctx: HarnessContext): BaseMessage[] {
-    const systemPrompt = new SystemMessage(buildResponseSystemPrompt(ctx.now()));
+    const systemPrompt = new SystemMessage(
+      buildResponseSystemPrompt(ctx.now(), input.availableTools, input.disabledTools)
+    );
     const messages = [systemPrompt, ...ctx.conversation.turns];
     if (input.memories?.memories?.length) {
       messages.push(
