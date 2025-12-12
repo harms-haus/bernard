@@ -425,9 +425,21 @@ export class RecordKeeper {
   async closeConversation(conversationId: string, reason: string = "idle") {
     const convKey = this.key(`conv:${conversationId}`);
     const convo = await this.redis.hgetall(convKey);
-    if (!convo || Object.keys(convo).length === 0) return;
+    if (!convo || Object.keys(convo).length === 0) {
+      this.log.debug({ event: "close.conversation.not_found", conversationId });
+      return;
+    }
     const status = convo["status"];
-    if (status === "closed") return;
+    if (status === "closed") {
+      this.log.debug({ event: "close.conversation.already_closed", conversationId });
+      return;
+    }
+
+    this.log.info({
+      event: "close.conversation.start",
+      conversationId,
+      reason
+    });
 
     const closedAt = nowIso();
     const now = Date.now();
@@ -447,21 +459,50 @@ export class RecordKeeper {
 
     await multi.exec();
 
+    this.log.info({
+      event: "close.conversation.updated_metadata",
+      conversationId
+    });
+
     const enqueued = await this.enqueueConversationTasks(conversationId);
     if (enqueued) {
       await this.updateIndexingStatus(conversationId, "queued", undefined, 1);
+      this.log.info({
+        event: "close.conversation.tasks_enqueued",
+        conversationId,
+        status: "queued"
+      });
     } else if (this.summarizer) {
+      this.log.info({
+        event: "close.conversation.fallback_summary",
+        conversationId
+      });
       try {
         const messages = await this.getMessages(conversationId);
         const summary = await this.summarizer.summarize(conversationId, messages);
         await this.updateConversationSummary(conversationId, summary);
         await this.updateIndexingStatus(conversationId, "indexed");
+        this.log.info({
+          event: "close.conversation.summary_completed",
+          conversationId
+        });
       } catch (err) {
         await this.redis.hset(convKey, {
           closeReason: `${reason}; summary_error:${formatError(err)}`
         });
         await this.updateIndexingStatus(conversationId, "failed", formatError(err), 1);
+        this.log.warn({
+          event: "close.conversation.summary_failed",
+          conversationId,
+          error: formatError(err)
+        });
       }
+    } else {
+      this.log.info({
+        event: "close.conversation.no_tasks",
+        conversationId,
+        reason: "queue_disabled_or_no_summarizer"
+      });
     }
   }
 
@@ -534,20 +575,50 @@ export class RecordKeeper {
       const currentAttempts = existingConversation?.indexingAttempts ?? 0;
       const nextAttempts = currentAttempts + 1;
 
-      // Remove any existing jobs for this conversation
+      this.log.info({
+        event: "indexing.retry.start",
+        conversationId,
+        currentAttempts,
+        nextAttempts
+      });
+
+      // Remove any existing jobs for this conversation individually
       const jobIds = [
         buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
         buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
         buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
       ];
 
-      await queue.removeJobs(...jobIds);
+      // Remove jobs individually using getJob and remove
+      const removeResults = await Promise.all(
+        jobIds.map(async (jobId) => {
+          try {
+            const job = await queue.getJob(jobId);
+            if (job) {
+              this.log.debug({ event: "indexing.job.found", conversationId, jobId, jobName: job.name });
+              await job.remove();
+              return { jobId, success: true };
+            } else {
+              this.log.debug({ event: "indexing.job.not_found", conversationId, jobId });
+              return { jobId, success: false, reason: "not_found" };
+            }
+          } catch (removeErr) {
+            // Ignore errors if job doesn't exist
+            this.log.debug({ event: "indexing.job.remove.failed", conversationId, jobId, err: toErrorObject(removeErr) });
+            return { jobId, success: false, reason: "error", error: toErrorObject(removeErr) };
+          }
+        })
+      );
 
-      // Enqueue new jobs
+      this.log.info({
+        event: "indexing.jobs.removed",
+        conversationId,
+        results: removeResults
+      });
+
+      // Only enqueue the index task for retry - remove other conversation processes
       const jobs = await Promise.all([
-        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
-        queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
-        queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
+        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) })
       ]);
 
       await this.updateIndexingStatus(conversationId, "queued", undefined, nextAttempts);
@@ -556,7 +627,8 @@ export class RecordKeeper {
         event: "indexing.retry",
         conversationId,
         attempts: nextAttempts,
-        jobs: jobs.map((job) => ({ id: job.id, name: job.name }))
+        jobs: jobs.map((job) => ({ id: job.id, name: job.name })),
+        note: "Only index task queued for retry - other processes removed"
       });
 
       return true;
@@ -572,20 +644,49 @@ export class RecordKeeper {
     if (!queue) return false;
 
     try {
-      // Remove all jobs for this conversation
+      // Remove all jobs for this conversation individually
       const jobIds = [
         buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
         buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
         buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
       ];
 
-      const removedJobs = await queue.removeJobs(...jobIds);
+      // Remove jobs individually using getJob and remove
+      const removeResults = await Promise.all(
+        jobIds.map(async (jobId) => {
+          try {
+            const job = await queue.getJob(jobId);
+            if (job) {
+              this.log.debug({ event: "indexing.job.found", conversationId, jobId, jobName: job.name });
+              await job.remove();
+              return 1;
+            } else {
+              this.log.debug({ event: "indexing.job.not_found", conversationId, jobId });
+              return 0;
+            }
+          } catch (removeErr) {
+            // Ignore errors if job doesn't exist
+            this.log.debug({ event: "indexing.job.remove.failed", conversationId, jobId, err: toErrorObject(removeErr) });
+            return 0;
+          }
+        })
+      );
+
+      const removedCount = removeResults.reduce((sum, count) => sum + count, 0);
+
+      this.log.info({
+        event: "indexing.jobs.removed",
+        conversationId,
+        removedCount,
+        totalJobs: jobIds.length
+      });
+
       await this.updateIndexingStatus(conversationId, "none");
 
       this.log.info({
         event: "indexing.cancel",
         conversationId,
-        removedJobs: removedJobs.length
+        removedJobs: removedCount
       });
 
       return true;
@@ -599,11 +700,17 @@ export class RecordKeeper {
     const queue = await this.ensureConversationQueue();
     if (!queue) return false;
     try {
+      this.log.info({
+        event: "queue.enqueue.start",
+        conversationId
+      });
+      
       const jobs = await Promise.all([
         queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
         queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
         queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
       ]);
+      
       this.log.info({
         event: "queue.enqueue",
         conversationId,

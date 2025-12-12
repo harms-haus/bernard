@@ -8,12 +8,12 @@ export const runtime = "nodejs";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAdminRequest(req, { route: "/api/conversations/[id]/retry-indexing" });
   if ("error" in auth) return auth.error;
 
-  const conversationId = params.id;
+  const { id: conversationId } = await params;
   const redis = getRedis();
   const keeper = new RecordKeeper(redis);
 
