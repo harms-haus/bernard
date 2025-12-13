@@ -5,6 +5,9 @@ import { webSearchTool } from "./web-search";
 import { getWeatherCurrentTool } from "./weather-current";
 import { getWeatherForecastTool } from "./weather-forecast";
 import { getWeatherHistoricalTool } from "./weather-historical";
+import { createListHAServicesToolInstance } from "./ha-list-services";
+import { createExecuteServicesToolInstance } from "./ha-execute-services";
+import type { HomeAssistantContextManager } from "./ha-context";
 
 type LangChainTool = {
   name?: string;
@@ -40,14 +43,23 @@ function adaptToIntentTool(tool: unknown): IntentTool {
   };
 }
 
-export const intentTools: IntentTool[] = [
-  webSearchTool,
-  geocodeSearchTool,
-  memorizeTool,
-  getWeatherCurrentTool,
-  getWeatherForecastTool,
-  getWeatherHistoricalTool
-].map((tool) => adaptToIntentTool(tool));
+export function getIntentTools(haContextManager?: HomeAssistantContextManager): IntentTool[] {
+  const baseTools = [
+    webSearchTool,
+    geocodeSearchTool,
+    memorizeTool,
+    getWeatherCurrentTool,
+    getWeatherForecastTool,
+    getWeatherHistoricalTool
+  ];
+
+  const haTools = haContextManager ? [
+    createListHAServicesToolInstance(haContextManager),
+    createExecuteServicesToolInstance(haContextManager)
+  ] : [];
+
+  return [...baseTools, ...haTools].map((tool) => adaptToIntentTool(tool));
+}
 
 export {
   geocodeSearchTool,
@@ -55,7 +67,9 @@ export {
   webSearchTool,
   getWeatherCurrentTool,
   getWeatherForecastTool,
-  getWeatherHistoricalTool
+  getWeatherHistoricalTool,
+  createListHAServicesToolInstance,
+  createExecuteServicesToolInstance
 };
 
 

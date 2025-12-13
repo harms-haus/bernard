@@ -10,6 +10,7 @@ import { buildConversationThread } from "../record-keeper/record-keeper";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { contentFromMessage } from "@/lib/conversation/messages";
 import { childLogger, logger, startTimer, toErrorObject } from "@/lib/logging";
+import { HomeAssistantContextManager } from "../harness/intent/tools/ha-context";
 
 const RESPOND_TOOL_NAME = "respond";
 
@@ -99,25 +100,70 @@ export class Orchestrator {
       incomingMessages: input.incoming.length,
       persistable: input.persistable?.length ?? 0
     });
+
+    const scopedContextManager = new HomeAssistantContextManager();
+    try {
+      scopedContextManager.updateFromMessages(input.incoming);
+    } catch (err) {
+      runLogger.error({
+        event: "haContextManager.updateFromMessages.error",
+        err: toErrorObject(err),
+        conversationId: input.conversationId
+      });
+      throw err;
+    }
+
+    // DEBUG: Log recordKeeper context
+    runLogger.debug({
+      event: "orchestrator.record_keeper_context",
+      hasRecordKeeper: !!this.recordKeeper,
+      conversationId: input.conversationId,
+      requestId: input.requestId,
+      turnId: input.turnId
+    });
+
     const { persistable, conversation: initialConversation } = this.buildInitialConversation(input);
     let conversation = initialConversation;
 
     await this.persistInitialMessages(input, persistable);
 
     let ctx = this.buildBaseContext(conversation, input);
-
+    const ctxWithHA = { ...ctx, haContextManager: scopedContextManager };
+    
+    // Create tools with the scoped context manager
+    const { getIntentTools } = await import("../harness/intent/tools");
+    const intentTools = getIntentTools(scopedContextManager);
+    
+    // Create a new intent harness with the scoped tools
+    const { IntentHarness } = await import("../harness/intent/intent.harness");
+    const intentHarnessWithHA = new IntentHarness(this.intent.llm, intentTools, this.intent.maxIterations);
+    
     try {
-      const [intentRes, memoryRes] = await this.runHarnesses(ctx, input);
+      const [intentRes, memoryRes] = await Promise.all([
+        intentHarnessWithHA.run(input.intentInput ?? {}, ctxWithHA),
+        this.memory.run(input.memoryInput ?? {}, ctxWithHA)
+      ]);
 
-      ({ conversation, ctx } = await this.applyIntentDelta(conversation, ctx, intentRes, input));
+      ({ conversation, ctx } = await this.applyIntentDelta(conversation, ctxWithHA, intentRes, input));
 
       const responseCtx = this.buildResponseContext(conversation, ctx);
+      
+      // Get disabled tools safely - works with both real and mock harnesses
+      let disabledTools = [];
+      if (this.intent.ensureToolsReady) {
+        await this.intent.ensureToolsReady();
+        disabledTools = this.intent.disabledTools || [];
+      } else {
+        // For mocks, use the property directly if available
+        disabledTools = this.intent.disabledTools || [];
+      }
+      
       const responseRes = await this.respond.run(
         {
           intent: intentRes.output,
           memories: memoryRes.output,
           availableTools: this.intent.availableTools,
-          disabledTools: this.intent.disabledTools
+          disabledTools: disabledTools.map(dt => dt.reason ? ({ name: dt.name, reason: dt.reason }) : ({ name: dt.name }))
         } satisfies ResponseInput,
         responseCtx
       );

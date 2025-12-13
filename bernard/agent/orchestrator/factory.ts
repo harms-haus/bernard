@@ -11,7 +11,8 @@ import {
 import { contentFromMessage, extractTokenUsage } from "@/lib/conversation/messages";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { childLogger, logger, startTimer, toErrorObject, withRequestContext } from "@/lib/logging";
-import { intentTools } from "../harness/intent/tools";
+import { getIntentTools } from "../harness/intent/tools";
+import { HomeAssistantContextManager } from "../harness/intent/tools/ha-context";
 import { IntentHarness } from "../harness/intent/intent.harness";
 import { MemoryHarness } from "../harness/memory/memory.harness";
 import { ResponseHarness } from "../harness/respond/respond.harness";
@@ -276,12 +277,16 @@ export async function createOrchestrator(
   if (responseCallOptions) responseCallerOpts.callOptions = responseCallOptions;
   const responseCaller = makeCallerFn(config.responseModel, 0.5, responseCallerOpts);
 
-  const intentHarness = new IntentHarness(intentCaller, intentTools, config.maxIntentIterations ?? 4);
+  const intentHarness = new IntentHarness(intentCaller, getIntentTools(undefined), config.maxIntentIterations ?? 4);
   const memoryHarness = new MemoryHarness();
   const responseHarness = new ResponseHarness(responseCaller);
   const utilityHarness = new UtilityHarness();
 
   const orchestrator = new Orchestrator(recordKeeper, config, intentHarness, memoryHarness, responseHarness, utilityHarness);
+  
+  // DEBUG: Log recordKeeper being passed to orchestrator
+  console.log(`[FACTORY DEBUG] Creating orchestrator with recordKeeper: ${!!recordKeeper}`);
+  
   return { orchestrator, config };
 }
 

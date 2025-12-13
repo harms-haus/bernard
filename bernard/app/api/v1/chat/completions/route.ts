@@ -25,6 +25,7 @@ import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/agent";
 import { resolveModel } from "@/lib/config/models";
+import { HomeAssistantContextManager } from "@/agent/harness/intent/tools/ha-context";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,6 @@ type ChatCompletionBody = {
 
 const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
   "n",
-  "tools",
   "response_format",
   "prediction",
   "service_tier",
@@ -128,6 +128,9 @@ export async function POST(req: NextRequest) {
   const intentLLM = buildIntentLLM(intentModelConfig, responseModelConfig);
   const responseLLM = buildResponseLLM(responseModelConfig, { ...body, stop: normalizeStop(body.stop) });
 
+  const haContextManager = new HomeAssistantContextManager();
+  haContextManager.updateFromMessages(mergedMessages);
+
   const graph = await buildGraph(
     {
       recordKeeper: keeper,
@@ -137,13 +140,14 @@ export async function POST(req: NextRequest) {
       token: auth.token,
       model: responseModelName,
       responseModel: responseModelName,
-      intentModel: intentModelName
+      intentModel: intentModelName,
+      haContextManager
     },
     { responseModel: responseLLM, intentModel: intentLLM }
   );
 
   if (!shouldStream) {
-    return runChatCompletionOnce({ graph, mergedMessages, keeper, turnId, requestId, start });
+    return runChatCompletionOnce({ graph, mergedMessages, keeper, turnId, requestId, start, haContextManager });
   }
 
   return streamChatCompletion({
@@ -153,7 +157,8 @@ export async function POST(req: NextRequest) {
     keeper,
     turnId,
     requestId,
-    start
+    start,
+    haContextManager
   });
 }
 
@@ -161,6 +166,32 @@ type AgentGraph = Awaited<ReturnType<typeof buildGraph>>;
 
 function usageFromMessages(messages: BaseMessage[]) {
   return buildUsage(extractUsageFromMessages(messages));
+}
+
+/**
+ * Build Home Assistant service calls for response
+ */
+function buildHAServiceCallsForResponse(haContextManager: HomeAssistantContextManager): Array<{
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}> {
+  const serviceCalls = haContextManager.getRecordedServiceCalls();
+  
+  if (serviceCalls.length === 0) {
+    return [];
+  }
+  
+  return serviceCalls.map((call, index) => ({
+    id: `ha_service_call_${index}`,
+    type: "function",
+    function: {
+      name: "execute_services",
+      arguments: JSON.stringify({
+        list: [call]
+      })
+    }
+  }));
 }
 
 /**
@@ -173,8 +204,9 @@ async function runChatCompletionOnce(opts: {
   turnId: string;
   requestId: string;
   start: number;
+  haContextManager: HomeAssistantContextManager;
 }) {
-  const { graph, mergedMessages, keeper, turnId, requestId, start } = opts;
+  const { graph, mergedMessages, keeper, turnId, requestId, start, haContextManager } = opts;
   try {
     const result = await graph.invoke({ messages: mergedMessages });
     const messages = result.messages ?? mergedMessages;
@@ -183,6 +215,8 @@ async function runChatCompletionOnce(opts: {
     const usage = usageFromMessages(messages);
 
     await finalizeTurn({ keeper, turnId, requestId, start, status: "ok" });
+
+    const haServiceCalls = buildHAServiceCallsForResponse(haContextManager);
 
     return NextResponse.json({
       id: requestId,
@@ -195,7 +229,8 @@ async function runChatCompletionOnce(opts: {
           finish_reason: "stop",
           message: {
             role: "assistant",
-            content
+            content,
+            ...(haServiceCalls.length ? { tool_calls: haServiceCalls } : {})
           }
         }
       ],
@@ -228,8 +263,9 @@ async function streamChatCompletion(opts: {
   turnId: string;
   requestId: string;
   start: number;
+  haContextManager: HomeAssistantContextManager;
 }) {
-  const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start } = opts;
+  const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start, haContextManager } = opts;
   let detailed;
   try {
     detailed = await graph.runWithDetails({ messages: mergedMessages });
@@ -280,6 +316,17 @@ async function streamChatCompletion(opts: {
       sendDelta({ role: "assistant" });
 
       try {
+        // Send Home Assistant service calls first if any
+        const haServiceCalls = buildHAServiceCallsForResponse(haContextManager);
+        if (haServiceCalls.length) {
+          sendDelta(
+            {
+              tool_calls: haServiceCalls
+            },
+            null
+          );
+        }
+
         for (const chunk of toolChunks) {
           if (!chunk.tool_calls.length && !chunk.tool_outputs.length) continue;
           sendDelta(

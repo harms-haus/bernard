@@ -65,6 +65,7 @@ export type HarnessContext = {
   requestId?: string;
   turnId?: string;
   recordKeeper?: import("@/lib/conversation/recordKeeper").RecordKeeper;
+  haContextManager?: import("../intent/tools/ha-context").HomeAssistantContextManager;
   now: () => Date;
 };
 
@@ -90,5 +91,3 @@ export type HarnessError = {
 export interface Harness<TIn, TOut> {
   run(input: TIn, ctx: HarnessContext): Promise<HarnessResult<TOut>>;
 }
-
-

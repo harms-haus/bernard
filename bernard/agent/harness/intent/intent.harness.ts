@@ -223,11 +223,20 @@ type RunState = {
 export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   private readonly tools: IntentTool[];
   private toolsForLLM: IntentTool[] = [];
-  private disabledTools: DisabledTool[] = [];
+  private _disabledTools: DisabledTool[] = [];
   private _availableTools: IntentTool[] = [];
+  
+  // Public accessors for orchestrator
+  get availableTools(): IntentTool[] {
+    return this._availableTools;
+  }
+  
+  get disabledTools(): DisabledTool[] {
+    return this._disabledTools;
+  }
   private toolsReady?: Promise<void>;
-  private readonly llm: LLMCaller;
-  private readonly maxIterations: number;
+  public readonly llm: LLMCaller;
+  public readonly maxIterations: number;
   private readonly log = childLogger({ component: "intent_harness" }, logger);
 
   /**
@@ -245,7 +254,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   /**
    * Validate tool configuration and prepare tool lists for the model.
    */
-  private async ensureToolsReady() {
+  public async ensureToolsReady() {
     if (this.toolsReady) return this.toolsReady;
     this.toolsReady = (async () => {
       const available: IntentTool[] = [];
@@ -265,8 +274,8 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         }
         available.push(tool);
       }
-      this.availableTools = available;
-      this.disabledTools = disabled;
+      this._availableTools = available;
+      this._disabledTools = disabled;
       this.toolsForLLM = [...available, buildRespondTool()];
     })();
     return this.toolsReady;
@@ -455,8 +464,8 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         {
           tool: call.name,
           conversationId: ctx.conversationId,
-          requestId: ctx.requestId,
-          turnId: ctx.turnId,
+          ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+          ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
           stage: "intent"
         },
         log
@@ -475,19 +484,58 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         continue;
       }
       const start = Date.now();
+      
+      // DEBUG: Log tool recording attempt
+      callLogger.debug({
+        event: "tool.recording_attempt",
+        toolName: call.name,
+        hasRecordKeeper: !!ctx.recordKeeper,
+        hasTurnId: !!ctx.turnId,
+        conversationId: ctx.conversationId,
+        requestId: ctx.requestId,
+        turnId: ctx.turnId
+      });
+      
       try {
         const result = await runWithTimeout(() => tool.invoke(args), TOOL_TIMEOUT_MS, `Tool ${call.name}`);
         const elapsed = Date.now() - start;
         toolLatencyMsTotal += elapsed;
         if (isToolErrorResult(result)) {
           const reason = typeof result.message === "string" ? result.message : safeStringify(result);
+          
+          // DEBUG: Log tool error recording attempt
+          callLogger.debug({
+            event: "tool.error_recording_attempt",
+            toolName: call.name,
+            hasRecordKeeper: !!ctx.recordKeeper,
+            hasTurnId: !!ctx.turnId,
+            reason: reason.substring(0, 100)
+          });
+          
           if (ctx.recordKeeper && ctx.turnId) {
             await ctx.recordKeeper.recordToolResult(ctx.turnId, call.name, {
               ok: false,
               latencyMs: elapsed,
               errorType: result.errorType ?? "error"
             });
+            
+            // DEBUG: Log successful tool error recording
+            callLogger.debug({
+              event: "tool.error_recording_success",
+              toolName: call.name,
+              latencyMs: elapsed,
+              errorType: result.errorType ?? "error"
+            });
+          } else {
+            // DEBUG: Log missing context for tool error recording
+            callLogger.warn({
+              event: "tool.error_recording_skipped",
+              toolName: call.name,
+              missingRecordKeeper: !ctx.recordKeeper,
+              missingTurnId: !ctx.turnId
+            });
           }
+          
           state.pendingFailureKeys.add(key);
           const failureMessage = new ToolMessage({
             tool_call_id: call.id,
@@ -508,9 +556,33 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
             argKeys: Object.keys(args ?? {})
           });
         } else {
+          // DEBUG: Log tool success recording attempt
+          callLogger.debug({
+            event: "tool.success_recording_attempt",
+            toolName: call.name,
+            hasRecordKeeper: !!ctx.recordKeeper,
+            hasTurnId: !!ctx.turnId
+          });
+          
           if (ctx.recordKeeper && ctx.turnId) {
             await ctx.recordKeeper.recordToolResult(ctx.turnId, call.name, { ok: true, latencyMs: elapsed });
+            
+            // DEBUG: Log successful tool success recording
+            callLogger.debug({
+              event: "tool.success_recording_success",
+              toolName: call.name,
+              latencyMs: elapsed
+            });
+          } else {
+            // DEBUG: Log missing context for tool success recording
+            callLogger.warn({
+              event: "tool.success_recording_skipped",
+              toolName: call.name,
+              missingRecordKeeper: !ctx.recordKeeper,
+              missingTurnId: !ctx.turnId
+            });
           }
+          
           const message = toToolMessage(call, result);
           (message as { response_metadata?: Record<string, unknown> }).response_metadata = {
             ...(message as { response_metadata?: Record<string, unknown> }).response_metadata,
@@ -530,6 +602,16 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
       } catch (err) {
         const elapsed = Date.now() - start;
         toolLatencyMsTotal += elapsed;
+        
+        // DEBUG: Log tool exception recording attempt
+        callLogger.debug({
+          event: "tool.exception_recording_attempt",
+          toolName: call.name,
+          hasRecordKeeper: !!ctx.recordKeeper,
+          hasTurnId: !!ctx.turnId,
+          errorMessage: (err instanceof Error ? err.message : String(err)).substring(0, 100)
+        });
+        
         if (ctx.recordKeeper && ctx.turnId) {
           const errorType = err instanceof Error ? err.name : "error";
           await ctx.recordKeeper.recordToolResult(ctx.turnId, call.name, {
@@ -537,7 +619,24 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
             latencyMs: elapsed,
             errorType
           });
+          
+          // DEBUG: Log successful tool exception recording
+          callLogger.debug({
+            event: "tool.exception_recording_success",
+            toolName: call.name,
+            latencyMs: elapsed,
+            errorType
+          });
+        } else {
+          // DEBUG: Log missing context for tool exception recording
+          callLogger.warn({
+            event: "tool.exception_recording_skipped",
+            toolName: call.name,
+            missingRecordKeeper: !ctx.recordKeeper,
+            missingTurnId: !ctx.turnId
+          });
         }
+        
         const reason = `Tool ${call.name} failed: ${err instanceof Error ? err.message : String(err)}`;
         state.pendingFailureKeys.add(key);
         const failureMessage = new ToolMessage({
@@ -697,8 +796,8 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     const runLogger = childLogger(
       {
         conversationId: ctx.conversationId,
-        requestId: ctx.requestId,
-        turnId: ctx.turnId,
+        requestId: ctx.requestId ?? undefined,
+        turnId: ctx.turnId ?? undefined,
         stage: "intent",
         component: "intent_harness"
       },
@@ -731,6 +830,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     try {
       for (let i = 0; i < (ctx.config.maxIntentIterations ?? this.maxIterations); i++) {
         const context = this.buildRequestContext(input, ctx, state.transcript);
+        
         const res = await this.llm.call({
           model: ctx.config.intentModel,
           messages: context,
@@ -741,8 +841,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
             traceName: "intent",
             ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
             ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
-            ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
-            deferRecord: true
+            ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {})
           }
         });
 
