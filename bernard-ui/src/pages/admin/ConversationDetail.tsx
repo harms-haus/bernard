@@ -1,0 +1,505 @@
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
+import { 
+  ArrowLeft, 
+  Eye, 
+  Trash2, 
+  Play, 
+  StopCircle, 
+  RefreshCw,
+  Calendar,
+  User,
+  Clock,
+  MessageCircle,
+  Database,
+  Settings,
+  AlertCircle
+} from 'lucide-react';
+import { adminApiClient } from '../../services/adminApi';
+import type { ConversationDetail, ConversationMessage } from '../../services/adminApi';
+
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString();
+};
+
+const formatDuration = (start: string, end: string) => {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  const diffMs = endMs - startMs;
+  
+  if (diffMs < 1000) return `${diffMs}ms`;
+  if (diffMs < 60000) return `${Math.round(diffMs / 1000)}s`;
+  const minutes = Math.floor(diffMs / 60000);
+  const seconds = Math.round((diffMs % 60000) / 1000);
+  return `${minutes}m ${seconds}s`;
+};
+
+export default function ConversationDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [loading, setLoading] = useState(false);
+  const [conversation, setConversation] = useState<ConversationDetail | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
+  const [showDebug, setShowDebug] = useState(true);
+
+  useEffect(() => {
+    if (id) {
+      loadConversation();
+    }
+  }, [id]);
+
+  const loadConversation = async () => {
+    if (!id) return;
+    
+    setLoading(true);
+    try {
+      const response = await adminApiClient.getConversation(id, 100);
+      setConversation(response.conversation);
+      setMessages(response.messages);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+      alert('Failed to load conversation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!id) return;
+    
+    if (!confirm('Delete this conversation? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingId(id);
+    try {
+      await adminApiClient.deleteConversation(id);
+      alert('Conversation deleted successfully');
+      // Navigate back to history
+      window.history.back();
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      alert('Failed to delete conversation');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleCloseConversation = async () => {
+    if (!id) return;
+    
+    try {
+      await adminApiClient.closeConversation(id);
+      setConversation(prev => prev ? { ...prev, status: 'closed' as const, closedAt: new Date().toISOString() } : null);
+      alert('Conversation closed successfully');
+    } catch (error) {
+      console.error('Failed to close conversation:', error);
+      alert('Failed to close conversation');
+    }
+  };
+
+  const handleRetryIndexing = async () => {
+    if (!id || indexingAction) return;
+
+    setIndexingAction({ conversationId: id, action: 'retry' });
+    try {
+      const result = await adminApiClient.retryIndexing(id);
+      if (result.success) {
+        setConversation(prev => prev ? { 
+          ...prev, 
+          indexingStatus: result.indexingStatus, 
+          indexingAttempts: (prev.indexingAttempts || 0) + 1, 
+          indexingError: undefined 
+        } : null);
+        alert('Indexing queued successfully');
+      } else {
+        alert(result.message || 'Unable to retry indexing');
+      }
+    } catch (error) {
+      console.error('Failed to retry indexing:', error);
+      alert('Failed to retry indexing');
+    } finally {
+      setIndexingAction(null);
+    }
+  };
+
+  const handleCancelIndexing = async () => {
+    if (!id || indexingAction) return;
+
+    setIndexingAction({ conversationId: id, action: 'cancel' });
+    try {
+      const result = await adminApiClient.cancelIndexing(id);
+      if (result.success) {
+        setConversation(prev => prev ? { 
+          ...prev, 
+          indexingStatus: result.indexingStatus, 
+          indexingError: undefined 
+        } : null);
+        alert('Indexing cancelled successfully');
+      } else {
+        alert(result.message || 'Unable to cancel indexing');
+      }
+    } catch (error) {
+      console.error('Failed to cancel indexing:', error);
+      alert('Failed to cancel indexing');
+    } finally {
+      setIndexingAction(null);
+    }
+  };
+
+  const canRetryIndexing = (): boolean => {
+    if (!conversation) return false;
+    const status = conversation.indexingStatus || 'none';
+    return status === 'none' || status === 'failed';
+  };
+
+  const canCancelIndexing = (): boolean => {
+    if (!conversation) return false;
+    const status = conversation.indexingStatus || 'none';
+    return status === 'queued' || status === 'indexing';
+  };
+
+  const getIndexingStatusInfo = (status?: string) => {
+    switch (status) {
+      case 'none':
+        return { label: 'Not indexed', color: 'secondary' as const };
+      case 'queued':
+        return { label: 'Queued', color: 'info' as const };
+      case 'indexing':
+        return { label: 'Indexing', color: 'warning' as const };
+      case 'indexed':
+        return { label: 'Indexed', color: 'success' as const };
+      case 'failed':
+        return { label: 'Failed', color: 'destructive' as const };
+      default:
+        return { label: 'Unknown', color: 'secondary' as const };
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (!conversation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Conversation Not Found</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              The conversation you're looking for doesn't exist or has been deleted.
+            </p>
+            <Button>
+              <Link to="/admin/history" className="flex items-center">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to History
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Link to="/admin/history">
+            <Button variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to History
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Conversation Details</h1>
+            <p className="text-gray-600 dark:text-gray-300">ID: {conversation.id}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button onClick={loadConversation} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Button 
+            variant={showDebug ? "default" : "outline"}
+            onClick={() => setShowDebug(!showDebug)}
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            {showDebug ? 'Hide' : 'Show'} Debug Info
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chat Messages */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversation</CardTitle>
+              <CardDescription>
+                Historical chat messages in chronological order
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4 max-h-96 overflow-y-auto p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${
+                      message.role === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        message.role === 'user'
+                          ? 'bg-blue-500 text-white'
+                          : message.role === 'assistant'
+                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
+                          : message.role === 'tool'
+                          ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {message.role.toUpperCase()} • {formatDateTime(message.createdAt)}
+                      </div>
+                      {message.role === 'tool' ? (
+                        <div>
+                          <div className="font-semibold mb-1">
+                            Tool Call: {typeof message.content === 'object' && message.content && 'name' in message.content
+                              ? (message.content as any).name
+                              : 'Unknown'}
+                          </div>
+                          <pre className="text-sm whitespace-pre-wrap">
+                            {typeof message.content === 'object' && message.content
+                              ? JSON.stringify(message.content, null, 2)
+                              : message.content}
+                          </pre>
+                        </div>
+                      ) : (
+                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {messages.length === 0 && (
+                  <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                    No messages in this conversation.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Debug Information */}
+        <div className={showDebug ? 'block' : 'hidden lg:block'}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Debug Information</CardTitle>
+              <CardDescription>
+                Conversation metadata and system information
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Status</span>
+                  <Badge variant={
+                    conversation.status === 'open' ? 'default' : 'secondary'
+                  }>
+                    {conversation.status === 'open' ? 'Active' : 'Closed'}
+                  </Badge>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Started</span>
+                    <p className="font-medium">{formatDateTime(conversation.startedAt)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Last Updated</span>
+                    <p className="font-medium">{formatDateTime(conversation.lastTouchedAt)}</p>
+                  </div>
+                  {conversation.closedAt && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500 dark:text-gray-400">Closed</span>
+                      <p className="font-medium">{formatDateTime(conversation.closedAt)}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Messages</span>
+                    <p className="font-medium">{conversation.messageCount}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Tool Calls</span>
+                    <p className="font-medium">{conversation.toolCallCount}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Indexing Status */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Indexing Status</span>
+                  <Badge variant={
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'success' ? 'default' :
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'warning' ? 'secondary' :
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'destructive' ? 'destructive' : 'secondary'
+                  }>
+                    {getIndexingStatusInfo(conversation.indexingStatus).label}
+                  </Badge>
+                </div>
+                
+                {conversation.indexingAttempts && (
+                  <div className="text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Attempts</span>
+                    <p className="font-medium">{conversation.indexingAttempts}</p>
+                  </div>
+                )}
+                
+                {conversation.indexingError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                    <div className="flex items-center space-x-2">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      <span className="text-sm font-medium text-red-700 dark:text-red-300">Indexing Error</span>
+                    </div>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">{conversation.indexingError}</p>
+                  </div>
+                )}
+                
+                <div className="flex space-x-2">
+                  {canRetryIndexing() && (
+                    <Button 
+                      size="sm"
+                      onClick={handleRetryIndexing}
+                      disabled={indexingAction !== null}
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      Queue Indexing
+                    </Button>
+                  )}
+                  
+                  {canCancelIndexing() && (
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelIndexing}
+                      disabled={indexingAction !== null}
+                    >
+                      <StopCircle className="mr-2 h-4 w-4" />
+                      Cancel Indexing
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Source and Tokens */}
+              <div className="space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Source</span>
+                  <p className="font-medium">{conversation.source}</p>
+                </div>
+                
+                <div>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tokens</span>
+                  <div className="mt-2 space-y-1">
+                    {conversation.tokenNames?.map((tokenName, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded">
+                        <span className="text-sm">{tokenName}</span>
+                        <Badge variant="outline">Active</Badge>
+                      </div>
+                    ))}
+                    {conversation.tokenNames?.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No tokens</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Models and Tags */}
+              <div className="space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Models Used</span>
+                  <div className="mt-2 space-y-1">
+                    {conversation.modelSet?.map((model, index) => (
+                      <Badge key={index} variant="secondary" className="mr-2">
+                        {model}
+                      </Badge>
+                    ))}
+                    {conversation.modelSet?.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No models</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tags</span>
+                  <div className="mt-2 space-y-1">
+                    {conversation.tags?.map((tag, index) => (
+                      <Badge key={index} variant="outline" className="mr-2">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {conversation.tags?.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No tags</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-3">
+                <Button 
+                  className="w-full"
+                  onClick={() => window.open(`/admin/history/${conversation.id}`, '_blank')}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Open in New Tab
+                </Button>
+                
+                {conversation.status === 'open' && (
+                  <Button 
+                    className="w-full"
+                    variant="outline"
+                    onClick={handleCloseConversation}
+                  >
+                    <StopCircle className="mr-2 h-4 w-4" />
+                    Close Conversation
+                  </Button>
+                )}
+                
+                <Button 
+                  className="w-full"
+                  variant="destructive"
+                  onClick={handleDeleteConversation}
+                  disabled={deletingId === conversation.id}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {deletingId === conversation.id ? 'Deleting...' : 'Delete Conversation'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

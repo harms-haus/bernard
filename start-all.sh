@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BERNARD_PORT="${BERNARD_PORT:-3000}"
-ADMIN_PORT="${ADMIN_PORT:-4200}"
+UI_PORT="${UI_PORT:-4200}"
 REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 export NG_CLI_ANALYTICS="${NG_CLI_ANALYTICS:-false}"
@@ -16,7 +16,7 @@ cleanup() {
   fi
   cleaned=1
   echo "Stopping services..."
-  for pid in "${BERNARD_PID:-}" "${ADMIN_PID:-}" "${WORKER_PID:-}"; do
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       kill "${pid}" 2>/dev/null || true
       wait "${pid}" 2>/dev/null || true
@@ -96,12 +96,12 @@ echo "Starting conversation task worker..."
 npm run queues:worker --prefix "${ROOT_DIR}/bernard" &
 WORKER_PID=$!
 
-echo "Starting admin panel on port ${ADMIN_PORT}..."
-npm start --prefix "${ROOT_DIR}/admin" -- --port "${ADMIN_PORT}" &
-ADMIN_PID=$!
+echo "Starting bernard-ui on port ${UI_PORT}..."
+npm run dev --prefix "${ROOT_DIR}/bernard-ui" &
+UI_PID=$!
 
 status=0
-wait -n "${BERNARD_PID}" "${ADMIN_PID}" "${WORKER_PID}" || status=$?
+wait -n "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" || status=$?
 cleanup
 exit "${status}"
 
