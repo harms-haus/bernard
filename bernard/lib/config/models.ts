@@ -1,5 +1,5 @@
 import { getSettings } from "./settingsCache";
-import type { BernardSettings, ModelCategorySettings } from "./settingsStore";
+import type { BernardSettings, ModelCategorySettings, Provider } from "./settingsStore";
 
 const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -25,20 +25,10 @@ export function resetSettingsFetcher() {
 
 export type ModelCategory = "response" | "intent" | "aggregation" | "utility" | "memory";
 
-const CATEGORY_ENV: Record<ModelCategory, string> = {
-  response: "RESPONSE_MODELS",
-  intent: "INTENT_MODELS",
-  aggregation: "AGGREGATION_MODELS",
-  utility: "UTILITY_MODELS",
-  memory: "MEMORY_MODELS"
-};
-
 export type ModelCallOptions = {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
-  baseUrl?: string;
-  apiKey?: string;
 };
 
 export type ResolvedModel = {
@@ -74,15 +64,12 @@ export function normalizeList(raw?: string | string[] | null): string[] {
 }
 
 /**
- * Resolve a model list for a category from settings, falling back to env vars.
+ * Resolve a model list for a category from settings.
  */
 export function listFromSettings(category: ModelCategory, settings?: ModelCategorySettings): string[] {
   if (!settings) return [];
-  const models = [settings.primary, ...(settings.fallbacks ?? [])].map((m) => m.trim()).filter(Boolean);
-  if (models.length) return models;
-  const envKey = CATEGORY_ENV[category];
-  const envModels = normalizeList(process.env[envKey]);
-  return envModels.length ? envModels : [];
+  const models = [settings.primary].map((m) => m.trim()).filter(Boolean);
+  return models;
 }
 
 /**
@@ -98,14 +85,6 @@ export async function getModelList(
   const settings = await fetchSettings();
   const fromSettings = listFromSettings(category, settings.models[category] as ModelCategorySettings | undefined);
   if (fromSettings.length) return fromSettings;
-
-  if (category === "aggregation") {
-    const summaryFallback = normalizeList(process.env["SUMMARY_MODEL"]);
-    if (summaryFallback.length) return summaryFallback;
-  }
-
-  const legacy = normalizeList(process.env["OPENROUTER_MODEL"]);
-  if (legacy.length) return legacy;
 
   const fallback = normalizeList(opts.fallback);
   if (fallback.length) return fallback;
@@ -128,14 +107,14 @@ export async function getPrimaryModel(
  * Resolve the base URL, preferring call options over explicit and env defaults.
  */
 export function resolveBaseUrl(baseURL?: string, options?: ModelCallOptions): string {
-  return options?.baseUrl ?? baseURL ?? process.env["OPENROUTER_BASE_URL"] ?? DEFAULT_BASE_URL;
+  return options?.baseUrl ?? baseURL ?? DEFAULT_BASE_URL;
 }
 
 /**
  * Resolve the API key, preferring call options over explicit and env defaults.
  */
 export function resolveApiKey(apiKey?: string, options?: ModelCallOptions): string | undefined {
-  return options?.apiKey ?? apiKey ?? process.env["OPENROUTER_API_KEY"];
+  return options?.apiKey ?? apiKey;
 }
 
 /**
@@ -163,16 +142,31 @@ export async function resolveModel(
   const modelSettings = settings.models[category] as ModelCategorySettings | undefined;
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;
+
+  // Get provider information
+  const providerId = modelSettings?.providerId;
+  let baseUrl: string | undefined;
+  let apiKey: string | undefined;
+
+  if (providerId) {
+    const provider = settings.models.providers?.find(p => p.id === providerId);
+    if (provider) {
+      baseUrl = provider.baseUrl;
+      apiKey = provider.apiKey;
+    }
+  }
+
   const rawOptions = modelSettings?.options;
   const options: ModelCallOptions | undefined = rawOptions
     ? {
         ...(rawOptions.temperature !== undefined ? { temperature: rawOptions.temperature } : {}),
         ...(rawOptions.topP !== undefined ? { topP: rawOptions.topP } : {}),
         ...(rawOptions.maxTokens !== undefined ? { maxTokens: rawOptions.maxTokens } : {}),
-        ...(rawOptions.baseUrl ? { baseUrl: rawOptions.baseUrl } : {}),
-        ...(rawOptions.apiKey ? { apiKey: rawOptions.apiKey } : {})
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(apiKey ? { apiKey } : {})
       }
     : undefined;
+
   return { id, ...(options ? { options } : {}) };
 }
 

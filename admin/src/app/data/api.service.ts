@@ -28,7 +28,9 @@ import {
   UpdateUserRequest,
   User,
   BackupSettings,
-  ConversationIndexingStatus
+  ConversationIndexingStatus,
+  ModelInfo,
+  ProviderType
 } from './models';
 
 /**
@@ -84,6 +86,13 @@ export interface ApiClient {
   updateOAuthSettings(body: OAuthSettings): Observable<OAuthSettings>;
   getBackupSettings(): Observable<BackupSettings>;
   updateBackupSettings(body: BackupSettings): Observable<BackupSettings>;
+  listProviders(): Observable<ProviderType[]>;
+  createProvider(body: Omit<ProviderType, 'id' | 'createdAt' | 'updatedAt'>): Observable<ProviderType>;
+  getProvider(id: string): Observable<ProviderType>;
+  updateProvider(id: string, body: Partial<Omit<ProviderType, 'id' | 'createdAt'>>): Observable<ProviderType>;
+  deleteProvider(id: string): Observable<void>;
+  testProvider(id: string): Observable<{ status: 'working' | 'failed'; error?: string; modelCount?: number; testedAt: string }>;
+  getProviderModels(id: string): Observable<ModelInfo[]>;
   getMe(): Observable<User | null>;
   listUsers(): Observable<User[]>;
   createUser(body: CreateUserRequest): Observable<User>;
@@ -105,6 +114,8 @@ export const provideApiClient = (): Provider => ({
     return new HttpApiClient(http, environment.apiBaseUrl);
   }
 });
+
+export type { ProviderType };
 
 class HttpApiClient implements ApiClient {
   constructor(
@@ -253,6 +264,38 @@ class HttpApiClient implements ApiClient {
 
   updateModelsSettings(body: ModelsSettings) {
     return this.http.put<ModelsSettings>(`${this.baseUrl}/settings/models`, body, this.options());
+  }
+
+  listProviders() {
+    return this.http.get<ProviderType[]>(`${this.baseUrl}/providers`, this.options());
+  }
+
+  createProvider(body: Omit<ProviderType, 'id' | 'createdAt' | 'updatedAt'>) {
+    return this.http.post<ProviderType>(`${this.baseUrl}/providers`, body, this.options());
+  }
+
+  getProvider(id: string) {
+    return this.http.get<ProviderType>(`${this.baseUrl}/providers/${id}`, this.options());
+  }
+
+  updateProvider(id: string, body: Partial<Omit<ProviderType, 'id' | 'createdAt'>>) {
+    return this.http.put<ProviderType>(`${this.baseUrl}/providers/${id}`, body, this.options());
+  }
+
+  deleteProvider(id: string) {
+    return this.http.delete<void>(`${this.baseUrl}/providers/${id}`, this.options());
+  }
+
+  testProvider(id: string) {
+    return this.http.post<{ status: 'working' | 'failed'; error?: string; modelCount?: number; testedAt: string }>(
+      `${this.baseUrl}/providers/${id}/test`,
+      {},
+      this.options()
+    );
+  }
+
+  getProviderModels(id: string) {
+    return this.http.get<ModelInfo[]>(`${this.baseUrl}/providers/${id}/models`, this.options());
   }
 
   getServicesSettings() {
@@ -534,11 +577,12 @@ class MockApiClient implements ApiClient {
 
   private settings: AdminSettings = {
     models: {
-      response: { primary: 'gpt-4o-mini', fallbacks: ['gpt-4o'], options: { temperature: 0.5 } },
-      intent: { primary: 'gpt-4o-mini', fallbacks: ['gpt-4o'], options: { temperature: 0 } },
-      memory: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } },
-      utility: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } },
-      aggregation: { primary: 'gpt-4o-mini', fallbacks: [], options: { temperature: 0 } }
+      providers: [],
+      response: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0.5 } },
+      intent: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
+      memory: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
+      utility: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
+      aggregation: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } }
     },
     services: {
       memory: {
@@ -894,6 +938,95 @@ class MockApiClient implements ApiClient {
   updateModelsSettings(body: ModelsSettings) {
     this.settings = { ...this.settings, models: body };
     return of(body).pipe(delay(60));
+  }
+
+  listProviders() {
+    return of(this.settings.models.providers ?? []).pipe(delay(60));
+  }
+
+  createProvider(body: Omit<ProviderType, 'id' | 'createdAt' | 'updatedAt'>) {
+    const provider: ProviderType = {
+      ...body,
+      id: this.createId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.settings = {
+      ...this.settings,
+      models: {
+        ...this.settings.models,
+        providers: [...(this.settings.models.providers ?? []), provider]
+      }
+    };
+    return of(provider).pipe(delay(60));
+  }
+
+   getProvider(id: string) {
+     const provider = this.settings.models.providers?.find(p => p.id === id);
+     if (!provider) {
+       return throwError(() => new Error(`Provider ${id} not found`)).pipe(delay(40));
+     }
+     return of(provider).pipe(delay(60));
+   }
+
+  updateProvider(id: string, body: Partial<Omit<ProviderType, 'id' | 'createdAt'>>) {
+    const exists = this.settings.models.providers?.some(p => p.id === id);
+    if (!exists) {
+      return throwError(() => new Error(`Provider ${id} not found`)).pipe(delay(40));
+    }
+    const providers = this.settings.models.providers?.map(p =>
+      p.id === id ? { ...p, ...body, updatedAt: new Date().toISOString() } : p
+    ) ?? [];
+    this.settings = {
+      ...this.settings,
+      models: {
+        ...this.settings.models,
+        providers
+      }
+    };
+    const updated = this.settings.models.providers?.find(p => p.id === id);
+    return of(updated!).pipe(delay(60));
+  }
+
+  deleteProvider(id: string) {
+    const providers = this.settings.models.providers?.filter(p => p.id !== id) ?? [];
+    this.settings = {
+      ...this.settings,
+      models: {
+        ...this.settings.models,
+        providers
+      }
+    };
+    return of(void 0).pipe(delay(60));
+  }
+
+  testProvider(id: string) {
+    const provider = this.settings.models.providers?.find(p => p.id === id);
+    if (!provider) {
+      return of({ status: 'failed' as const, error: 'Provider not found', testedAt: new Date().toISOString() }).pipe(delay(40));
+    }
+    const result = Math.random() > 0.3 ? 'working' : 'failed';
+    const response = {
+      status: result as 'working' | 'failed',
+      error: result === 'failed' ? 'Connection failed' : undefined,
+      modelCount: result === 'working' ? 10 : undefined,
+      testedAt: new Date().toISOString()
+    };
+    return of(response).pipe(delay(120));
+  }
+
+  getProviderModels(id: string) {
+    const provider = this.settings.models.providers?.find(p => p.id === id);
+    if (!provider) {
+      return of([]).pipe(delay(40));
+    }
+    const models = [
+      { id: 'gpt-4o-mini', object: 'model' as const, created: Math.floor(Date.now() / 1000), owned_by: 'openai' },
+      { id: 'gpt-4o', object: 'model' as const, created: Math.floor(Date.now() / 1000), owned_by: 'openai' },
+      { id: 'claude-3-sonnet', object: 'model' as const, created: Math.floor(Date.now() / 1000), owned_by: 'anthropic' },
+      { id: 'llama-3.1-70b', object: 'model' as const, created: Math.floor(Date.now() / 1000), owned_by: 'meta' }
+    ];
+    return of(models).pipe(delay(120));
   }
 
   getServicesSettings() {

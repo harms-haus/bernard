@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import type Redis from "ioredis";
 import { z } from "zod";
@@ -9,21 +9,32 @@ import { getRedis } from "../infra/redis";
 const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
 const SETTINGS_NAMESPACE = "bernard:settings";
 
+export const ProviderSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  baseUrl: z.string().url(),
+  apiKey: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  lastTestedAt: z.string().optional(),
+  testStatus: z.enum(["untested", "working", "failed"]).optional(),
+  testError: z.string().optional()
+});
+
 export const ModelCategorySchema = z.object({
   primary: z.string().min(1),
-  fallbacks: z.array(z.string().min(1)).default([]),
+  providerId: z.string().min(1),
   options: z
     .object({
       temperature: z.number().min(0).max(2).optional(),
       topP: z.number().min(0).max(1).optional(),
-      maxTokens: z.number().int().positive().optional(),
-      baseUrl: z.string().url().optional(),
-      apiKey: z.string().optional()
+      maxTokens: z.number().int().positive().optional()
     })
     .optional()
 });
 
 export const ModelsSettingsSchema = z.object({
+  providers: z.array(ProviderSchema).default([]),
   response: ModelCategorySchema,
   intent: ModelCategorySchema,
   memory: ModelCategorySchema,
@@ -91,6 +102,7 @@ export const BackupSettingsSchema = z.object({
   retentionCount: z.number().int().positive()
 });
 
+export type Provider = z.infer<typeof ProviderSchema>;
 export type ModelCategorySettings = z.infer<typeof ModelCategorySchema>;
 export type ModelsSettings = z.infer<typeof ModelsSettingsSchema>;
 export type ServicesSettings = z.infer<typeof ServicesSettingsSchema>;
@@ -147,26 +159,59 @@ export function normalizeList(raw?: string | string[] | null): string[] {
 }
 
 /**
- * Builds a model category from env vars (preferred) with optional fallback lists.
- */
-export function defaultModelCategory(envKey: string, fallback?: string[]): ModelCategorySettings {
-  const configured = normalizeList(process.env[envKey]);
-  const legacy = normalizeList(process.env["OPENROUTER_MODEL"]);
-  const primary = configured[0] ?? fallback?.[0] ?? legacy[0] ?? DEFAULT_MODEL;
-  const fallbacks = configured.slice(1) ?? fallback ?? legacy.slice(1) ?? [];
-  return { primary, fallbacks };
-}
-
-/**
  * Default model selections for each category, cascading from response models.
  */
 export function defaultModels(): ModelsSettings {
-  const response = defaultModelCategory("RESPONSE_MODELS");
-  const intent = defaultModelCategory("INTENT_MODELS", [response.primary]);
-  const memory = defaultModelCategory("MEMORY_MODELS", [response.primary]);
-  const utility = defaultModelCategory("UTILITY_MODELS", [response.primary]);
-  const aggregation = defaultModelCategory("AGGREGATION_MODELS", [response.primary]);
-  return { response, intent, memory, utility, aggregation };
+  const defaultProvider: Provider = {
+    id: "default-provider",
+    name: "Default Provider",
+    baseUrl: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1",
+    apiKey: process.env["OPENROUTER_API_KEY"] ?? "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastTestedAt: undefined,
+    testStatus: undefined,
+    testError: undefined
+  };
+
+  const response: ModelCategorySettings = {
+    primary: process.env["RESPONSE_MODELS"]?.split(",")[0]?.trim() ?? DEFAULT_MODEL,
+    providerId: defaultProvider.id,
+    options: { temperature: 0.5 }
+  };
+
+  const intent: ModelCategorySettings = {
+    primary: process.env["INTENT_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
+    providerId: defaultProvider.id,
+    options: { temperature: 0 }
+  };
+
+  const memory: ModelCategorySettings = {
+    primary: process.env["MEMORY_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
+    providerId: defaultProvider.id,
+    options: { temperature: 0 }
+  };
+
+  const utility: ModelCategorySettings = {
+    primary: process.env["UTILITY_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
+    providerId: defaultProvider.id,
+    options: { temperature: 0 }
+  };
+
+  const aggregation: ModelCategorySettings = {
+    primary: process.env["AGGREGATION_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
+    providerId: defaultProvider.id,
+    options: { temperature: 0 }
+  };
+
+  return {
+    providers: [defaultProvider],
+    response,
+    intent,
+    memory,
+    utility,
+    aggregation
+  };
 }
 
 /**
@@ -299,6 +344,109 @@ export class SettingsStore {
 
   async setModels(models: ModelsSettings): Promise<ModelsSettings> {
     return this.writeSection("models", ModelsSettingsSchema, models);
+  }
+
+  async getProviders(): Promise<Provider[]> {
+    const models = await this.getModels();
+    return models.providers ?? [];
+  }
+
+  async setProviders(providers: Provider[]): Promise<Provider[]> {
+    const models = await this.getModels();
+    const updatedModels = { ...models, providers };
+    await this.setModels(updatedModels);
+    return providers;
+  }
+
+  async addProvider(provider: Omit<Provider, "id" | "createdAt" | "updatedAt">): Promise<Provider> {
+    const providers = await this.getProviders();
+    const newProvider: Provider = {
+      ...provider,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedProviders = [...providers, newProvider];
+    await this.setProviders(updatedProviders);
+    return newProvider;
+  }
+
+  async updateProvider(id: string, updates: Partial<Omit<Provider, "id" | "createdAt">>): Promise<Provider | null> {
+    const providers = await this.getProviders();
+    const index = providers.findIndex(p => p.id === id);
+    if (index === -1) return null;
+
+    const updatedProvider = {
+      ...providers[index],
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    providers[index] = updatedProvider;
+    await this.setProviders(providers);
+    return updatedProvider;
+  }
+
+  async deleteProvider(id: string): Promise<boolean> {
+    const providers = await this.getProviders();
+    const filteredProviders = providers.filter(p => p.id !== id);
+    if (filteredProviders.length === providers.length) return false;
+
+    await this.setProviders(filteredProviders);
+
+    // Update any model categories that reference this provider
+    const models = await this.getModels();
+    const updatedModels = { ...models };
+    const categories: Array<keyof Omit<ModelsSettings, "providers">> = ["response", "intent", "memory", "utility", "aggregation"];
+
+    for (const category of categories) {
+      if (updatedModels[category] && updatedModels[category]!.providerId === id) {
+        // Set to first available provider or clear if none
+        updatedModels[category] = {
+          ...updatedModels[category]!,
+          providerId: filteredProviders[0]?.id ?? ""
+        };
+      }
+    }
+
+    await this.setModels(updatedModels);
+    return true;
+  }
+
+  async testProviderConnection(provider: Provider): Promise<{ status: "working" | "failed"; error?: string; modelCount?: number }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${provider.baseUrl}/models`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${provider.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      if (!data.data || !Array.isArray(data.data)) {
+        throw new Error("Invalid models response format");
+      }
+
+      return {
+        status: "working",
+        modelCount: data.data.length
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
   }
 
   async getServices(): Promise<ServicesSettings> {

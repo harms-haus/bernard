@@ -1,5 +1,24 @@
 export type HealthStatus = 'online' | 'degraded' | 'offline';
 
+export type ModelInfo = {
+  id: string;
+  object: 'model';
+  created: number;
+  owned_by: string;
+};
+
+export type ProviderType = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  createdAt: string;
+  updatedAt: string;
+  lastTestedAt?: string;
+  testStatus?: 'untested' | 'working' | 'failed';
+  testError?: string;
+};
+
 export interface RecordKeeperStatus {
   namespace: string;
   metricsNamespace: string;
@@ -61,17 +80,16 @@ export type ModelCallOptions = {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
-  baseUrl?: string;
-  apiKey?: string;
 };
 
 export type ModelCategorySettings = {
   primary: string;
-  fallbacks: string[];
+  providerId: string;
   options?: ModelCallOptions;
 };
 
 export type ModelsSettings = {
+  providers: ProviderType[];
   response: ModelCategorySettings;
   intent: ModelCategorySettings;
   memory: ModelCategorySettings;

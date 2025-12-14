@@ -77,29 +77,17 @@ Bernard uses the following priority order for web search configuration:
 
 ## Model Configuration
 
-### Model Provider Configuration
+### Model Configuration
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `OPENROUTER_API_KEY` | OpenRouter API key | `sk-your-openrouter-key` |
-| `OPENROUTER_BASE_URL` | OpenRouter API base URL | `https://openrouter.ai/api/v1` |
+⚠️ **Deprecation Notice**: Models are now primarily configured through the admin UI instead of environment variables. Configure providers and models in the Models section of the admin interface.
 
-### Model Selection
+**Migration Guide**:
+1. Navigate to the Admin UI Models section
+2. Configure your models through the web interface
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `RESPONSE_MODELS` | Comma-separated response models | `gpt-4o-mini,gpt-3.5-turbo` |
-| `INTENT_MODELS` | Comma-separated intent models | `gpt-4o-mini` |
-| `AGGREGATION_MODELS` | Comma-separated aggregation models | `gpt-4o-mini` |
-| `UTILITY_MODELS` | Comma-separated utility models | `kwaipilot/kat-code-pro:free` |
+**Legacy Support**: Environment variables are still supported for CLI/legacy use cases only. See the reference table below for available variables.
 
-### Embedding Configuration
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `EMBEDDING_API_KEY` | Embedding API key | `openai-api-key` |
-| `EMBEDDING_BASE_URL` | Embedding API base URL | `https://api.openai.com/v1` |
-| `EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
+📖 [Admin UI Models Documentation](#) (link to be added)
 
 ## External Service Configuration
 
@@ -329,10 +317,10 @@ node -e "
 | `BACKUP_DIR` | Backup | ❌ | Backup directory |
 | `BACKUP_RETENTION_COUNT` | Backup | ❌ | Backup retention count |
 | `BACKUP_RETENTION_DAYS` | Backup | ❌ | Backup retention days |
-| `EMBEDDING_API_KEY` | Models | ❌ | Embedding API key |
-| `EMBEDDING_BASE_URL` | Models | ❌ | Embedding API base URL |
-| `EMBEDDING_MODEL` | Models | ❌ | Embedding model name |
-| `INTENT_MODELS` | Models | ❌ | Intent model list |
+
+
+
+
 | `MEMORY_INDEX_NAME` | Memory | ❌ | Memory index name |
 | `MEMORY_KEY_PREFIX` | Memory | ❌ | Memory key prefix |
 | `MEMORY_NAMESPACE` | Memory | ❌ | Memory namespace |
@@ -363,17 +351,17 @@ node -e "
 | `OAUTH_USERINFO_URL` | OAuth | ❌ | OAuth userinfo URL |
 | `OPEN_METEO_FORECAST_URL` | Weather | ❌ | Open-Meteo forecast URL |
 | `OPEN_METEO_HISTORICAL_URL` | Weather | ❌ | Open-Meteo historical URL |
-| `OPENROUTER_API_KEY` | Models | ❌ | OpenRouter API key |
-| `OPENROUTER_BASE_URL` | Models | ❌ | OpenRouter API base URL |
+
+
 | `REDIS_URL` | Core | ✅ | Redis connection URL |
-| `RESPONSE_MODELS` | Models | ❌ | Response model list |
+
 | `RK_NAMESPACE` | Core | ❌ | Redis namespace |
 | `SEARXNG_API_KEY` | Search | ❌ | SearXNG API key |
 | `SEARXNG_API_URL` | Search | ❌ | SearXNG instance URL |
 | `SEARXNG_TIMEOUT_MS` | Search | ❌ | SearXNG timeout |
 | `SEARXNG_USER_AGENT` | Search | ❌ | SearXNG user agent |
 | `SESSION_TTL_SECONDS` | Session | ❌ | Session TTL |
-| `UTILITY_MODELS` | Models | ❌ | Utility model list |
+
 | `WEATHER_API_KEY` | Weather | ❌ | Weather API key |
 | `WEATHER_API_URL` | Weather | ❌ | Weather API URL |
 
