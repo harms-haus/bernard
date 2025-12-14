@@ -121,7 +121,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       dispatch({ type: 'SET_LOADING', payload: { loading: true } });
       const user = await apiClient.getCurrentUser();
-      dispatch({ type: 'LOGIN_SUCCESS', payload: { user: user || null } });
+      if (user) {
+        dispatch({ type: 'LOGIN_SUCCESS', payload: { user } });
+      } else {
+        dispatch({ type: 'LOGOUT' });
+      }
     } catch (error) {
       dispatch({ type: 'LOGOUT' });
     } finally {

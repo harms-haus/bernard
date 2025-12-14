@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
+import { useDarkMode } from '../hooks/useDarkMode';
 import { adminApiClient } from '../services/adminApi';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -33,8 +34,8 @@ const Dashboard = () => <div>Dashboard</div>;
 export function AdminLayout() {
   const location = useLocation();
   const { isAdmin, isAdminLoading, user } = useAdminAuth();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -86,7 +87,7 @@ export function AdminLayout() {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+    <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
         {/* Sidebar */}
         <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${
@@ -170,10 +171,10 @@ export function AdminLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setDarkMode(!darkMode)}
-                  aria-label="Toggle dark mode"
+                  onClick={toggleDarkMode}
+                  aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
                 >
-                  {darkMode ? (
+                  {isDarkMode ? (
                     <Sun className="h-5 w-5 text-yellow-500" />
                   ) : (
                     <Moon className="h-5 w-5 text-gray-600" />

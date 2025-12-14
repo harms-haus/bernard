@@ -12,28 +12,22 @@ type DarkModeProviderProps = {
 };
 
 export function DarkModeProvider({ children }: DarkModeProviderProps) {
-  const [isDarkMode, setIsDarkMode] = useState<boolean | undefined>(undefined);
-
-  useEffect(() => {
-    // Read localStorage and system preference on client mount
-    const systemPrefersDark =
-      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        : false;
-
-    try {
-      const savedPreference = localStorage.getItem('darkMode');
-      if (savedPreference !== null) {
-        setIsDarkMode(savedPreference === 'true');
-      } else {
-        // Default to system preference if no saved preference
-        setIsDarkMode(systemPrefersDark);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    // Check localStorage for saved preference
+    if (typeof window !== 'undefined') {
+      try {
+        const savedPreference = localStorage.getItem('darkMode');
+        if (savedPreference !== null) {
+          return savedPreference === 'true';
+        }
+      } catch (error) {
+        // localStorage access failed, fall through to system preference
       }
-    } catch (error) {
-      // Fallback to system preference if localStorage is unavailable
-      setIsDarkMode(systemPrefersDark);
+      // Default to system preference if no saved preference
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-  }, []);
+    return false;
+  });
 
   useEffect(() => {
     // Apply dark mode class to document (client-only)
@@ -43,11 +37,13 @@ export function DarkModeProvider({ children }: DarkModeProviderProps) {
       } else {
         document.documentElement.classList.remove('dark');
       }
-    }
-    
-    // Save preference to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('darkMode', isDarkMode?.toString() ?? 'true');
+
+      // Save preference to localStorage
+      try {
+        localStorage.setItem('darkMode', isDarkMode.toString());
+      } catch (error) {
+        console.warn('Failed to save dark mode preference to localStorage:', error);
+      }
     }
   }, [isDarkMode]);
 
@@ -60,7 +56,7 @@ export function DarkModeProvider({ children }: DarkModeProviderProps) {
     toggleDarkMode
   };
 
-  return React.createElement(DarkModeContext.Provider, { value: value as DarkModeContextType }, children);
+  return React.createElement(DarkModeContext.Provider, { value }, children);
 }
 
 export function useDarkMode() {

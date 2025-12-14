@@ -7,10 +7,10 @@ interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
 const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
   ({ className, variant = 'default', ...props }, ref) => {
     const variantClasses = {
-      default: 'bg-primary text-primary-foreground hover:bg-primary/80',
-      secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-      destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/80',
-      outline: 'text-foreground border border-input hover:bg-accent hover:text-accent-foreground'
+      default: 'bg-primary text-primary-foreground hover:bg-primary/80 dark:bg-primary/90 dark:text-primary-foreground',
+      secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:bg-secondary/80 dark:text-secondary-foreground',
+      destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/80 dark:bg-destructive/90 dark:text-destructive-foreground',
+      outline: 'text-foreground border border-input hover:bg-accent hover:text-accent-foreground dark:text-foreground/90 dark:border-input/70 dark:hover:bg-accent/80 dark:hover:text-accent-foreground'
     };
 
     return (
