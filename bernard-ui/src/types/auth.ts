@@ -26,6 +26,8 @@ export interface LoginResponse {
   accessToken: string;
 }
 
+export type OAuthProvider = 'github' | 'google';
+
 export interface GenerateAccessTokenResponse {
   token: string;
   expiresAt: string;

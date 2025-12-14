@@ -103,7 +103,14 @@ export class FakeRedis {
     );
   }
 
-  set(key: string, value: string): Promise<"OK"> {
+  set(key: string, value: string): Promise<"OK">;
+  set(key: string, value: string, mode: string, duration: number): Promise<"OK">;
+  set(key: string, value: string, _mode?: string, _duration?: number): Promise<"OK"> {
+    this.strings.set(key, value);
+    return Promise.resolve("OK");
+  }
+
+  setex(key: string, _ttl: number, value: string): Promise<"OK"> {
     this.strings.set(key, value);
     return Promise.resolve("OK");
   }

@@ -112,6 +112,16 @@ class ApiClient {
     });
   }
 
+  async githubLogin(): Promise<void> {
+    // Use direct navigation to bypass React Router
+    window.open('/api/auth/github/login', '_self');
+  }
+
+  async googleLogin(): Promise<void> {
+    // Use direct navigation to bypass React Router
+    window.open('/api/auth/google/login', '_self');
+  }
+
   async logout(): Promise<void> {
     return this.request<void>('/auth/logout', {
       method: 'POST'

@@ -73,10 +73,36 @@ const isAdminBearer = (req: NextRequest) => {
  * Accepts an optional Redis client to aid testing or dependency injection.
  */
 export async function getAuthenticatedUser(req: NextRequest, redis?: Redis): Promise<AuthenticatedUser | null> {
+  console.log('🔍 Auth: getAuthenticatedUser called');
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!sessionCookie) return null;
+  console.log('🔍 Auth: Session cookie:', sessionCookie ? 'present' : 'missing');
+  
+  if (!sessionCookie) {
+    console.log('🔍 Auth: No session cookie, checking for admin API key');
+    // Check if this is an admin request with ADMIN_API_KEY
+    if (isAdminBearer(req)) {
+      console.log('✅ Auth: Admin API key detected');
+      const now = new Date().toISOString();
+      return {
+        user: {
+          id: "admin-token",
+          displayName: "Admin Token",
+          isAdmin: true,
+          status: "active",
+          createdAt: now,
+          updatedAt: now
+        },
+        sessionId: null
+      };
+    }
+    return null;
+  }
+  
   const stores = buildStores(redis);
-  return resolveSession(sessionCookie, stores);
+  console.log('🔍 Auth: Resolving session with Redis');
+  const result = await resolveSession(sessionCookie, stores);
+  console.log('🔍 Auth: Session resolution result:', result ? 'success' : 'failed');
+  return result;
 }
 
 /**
@@ -129,6 +155,70 @@ export function clearSessionCookie() {
   const parts = [`${SESSION_COOKIE}=`, "Path=/", "Max-Age=0", "HttpOnly", "SameSite=Lax"];
   if (secure) parts.push("Secure");
   return parts.join("; ");
+}
+
+/**
+ * Validate and sanitize a redirect URL to prevent open-redirect vulnerabilities.
+ * Allows relative paths (starting with "/") or absolute URLs with allowed hostnames.
+ * Returns "/" as fallback for invalid redirects.
+ */
+export function validateRedirectUrl(redirect: string): string {
+  // Default to "/" if no redirect provided
+  if (!redirect || typeof redirect !== "string") {
+    return "/";
+  }
+
+  // Check for control characters (including null bytes, newlines, etc.)
+  if (/[\x00-\x1F\x7F]/.test(redirect)) {
+    console.warn("Redirect validation failed: contains control characters");
+    return "/";
+  }
+
+  // Allow relative paths (must start with "/")
+  if (redirect.startsWith("/")) {
+    // Ensure it doesn't start with "//" (protocol-relative URLs)
+    if (redirect.startsWith("//")) {
+      console.warn("Redirect validation failed: protocol-relative URL not allowed");
+      return "/";
+    }
+    return redirect;
+  }
+
+  // For absolute URLs, parse and validate hostname
+  try {
+    const url = new URL(redirect);
+
+    // Only allow http and https protocols
+    if (!["http:", "https:"].includes(url.protocol)) {
+      console.warn(`Redirect validation failed: invalid protocol ${url.protocol}`);
+      return "/";
+    }
+
+    // Get allowed hosts from environment
+    const allowedHostsEnv = process.env["ALLOWED_REDIRECT_HOSTS"];
+    if (!allowedHostsEnv) {
+      console.warn("Redirect validation failed: ALLOWED_REDIRECT_HOSTS not configured");
+      return "/";
+    }
+
+    // Parse comma-separated hosts, trim whitespace, and convert to lowercase
+    const allowedHosts = allowedHostsEnv
+      .split(",")
+      .map(host => host.trim().toLowerCase())
+      .filter(host => host.length > 0);
+
+    // Check if the URL hostname matches any allowed host (case-insensitive)
+    const redirectHost = url.hostname.toLowerCase();
+    if (!allowedHosts.includes(redirectHost)) {
+      console.warn(`Redirect validation failed: hostname ${redirectHost} not in allowed hosts [${allowedHosts.join(", ")}]`);
+      return "/";
+    }
+
+    return redirect;
+  } catch (error) {
+    console.warn("Redirect validation failed: invalid URL format", error);
+    return "/";
+  }
 }
 
 /**

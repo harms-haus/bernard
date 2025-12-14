@@ -6,6 +6,8 @@ import { AuthState, AuthAction, LoginCredentials, LoginResponse } from '../types
 type AuthContextType = {
   state: AuthState;
   login: (credentials: LoginCredentials) => Promise<void>;
+  githubLogin: () => Promise<void>;
+  googleLogin: () => Promise<void>;
   logout: () => Promise<void>;
   getCurrentUser: () => Promise<void>;
   updateProfile: (data: { displayName?: string; email?: string }) => Promise<User>;
@@ -83,6 +85,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const githubLogin = async () => {
+    try {
+      dispatch({ type: 'LOGIN_START' });
+      await apiClient.githubLogin();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'GitHub login failed';
+      dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
+      throw error;
+    }
+  };
+
+  const googleLogin = async () => {
+    try {
+      dispatch({ type: 'LOGIN_START' });
+      await apiClient.googleLogin();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Google login failed';
+      dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       await apiClient.logout();
@@ -129,6 +153,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value = {
     state,
     login,
+    githubLogin,
+    googleLogin,
     logout,
     getCurrentUser,
     updateProfile,

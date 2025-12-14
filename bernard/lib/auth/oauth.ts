@@ -8,8 +8,7 @@ import { UserStore } from "./userStore";
 import { getSettings } from "../config/settingsCache";
 
 type OAuthProvider = "default" | "google" | "github";
-
-export type ProviderConfig = {
+	export type ProviderConfig = {
   authUrl: string;
   tokenUrl: string;
   userInfoUrl: string;
@@ -70,10 +69,6 @@ const fallbackProviderConfig = (provider: OAuthProvider): ProviderConfig => {
   };
 };
 
-/**
- * Resolve a provider configuration from cached settings when available, falling
- * back to environment variables. Throws when required fields are missing.
- */
 export const getProviderConfig = async (provider: OAuthProvider): Promise<ProviderConfig> => {
   const settings = await getSettings().catch(() => null);
   const fromSettings =
@@ -100,12 +95,9 @@ export const getProviderConfig = async (provider: OAuthProvider): Promise<Provid
 
 const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}:${provider}:${state}`;
 
-/**
- * Begin an OAuth login by issuing a PKCE challenge, persisting state in Redis,
- * and redirecting the caller to the provider authorization endpoint.
- */
 export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
   const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
+  console.log(`OAuth start: redirectUri=${redirectUri}`);
   const state = base64UrlEncode(crypto.randomBytes(24));
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createChallenge(codeVerifier);
@@ -202,10 +194,6 @@ const fetchUserInfo = async (provider: OAuthProvider, userInfoUrl: string, acces
   return { id, displayName };
 };
 
-/**
- * Handle an OAuth callback by validating state, exchanging the authorization
- * code for a token, fetching user info, and creating a session cookie.
- */
 export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
@@ -220,19 +208,15 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
       return new Response(JSON.stringify({ error: "Unknown or expired state" }), { status: 400 });
     }
     await deleteState(provider, state);
-
     const config = await getProviderConfig(provider);
     const token = await exchangeCode(provider, config, code, storedState.codeVerifier);
     if (!token.access_token) {
       return new Response(JSON.stringify({ error: "No access token returned" }), { status: 400 });
     }
-
     const { id, displayName } = await fetchUserInfo(provider, config.userInfoUrl, token.access_token);
-
     const redis = getRedis();
     const userStore = new UserStore(redis);
     const sessionStore = new SessionStore(redis);
-
     const user = await userStore.upsertOAuthUser(id, displayName);
     if (user.status !== "active") {
       return new Response(JSON.stringify({ error: "Account is disabled or deleted" }), {
@@ -259,4 +243,3 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
     });
   }
 }
-

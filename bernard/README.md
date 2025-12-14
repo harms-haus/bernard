@@ -11,12 +11,9 @@ Agent-style OpenAI/OpenRouter-compatible endpoint with scripted tools (web searc
    - **Web Search Configuration** (choose one):
      - *SearXNG (recommended, privacy-focused):* `SEARXNG_API_URL` (e.g., `https://searxng.example.com/search`)
      - *Brave Search (legacy):* `SEARCH_API_KEY` and `SEARCH_API_URL`
-   - **Web Search Configuration** (choose one):
-     - *SearXNG (recommended, privacy-focused):* `SEARXNG_API_URL` (e.g., `https://searxng.example.com/search`)
-     - *Brave Search (legacy):* `SEARCH_API_KEY` and `SEARCH_API_URL`
-     - *Brave Search (legacy):* `SEARCH_API_KEY` and `SEARCH_API_URL`
    - `WEATHER_API_KEY` (OpenWeather)
    - `ADMIN_API_KEY` (used to create/list/delete tokens)
+   - `ALLOWED_REDIRECT_HOSTS` (comma-separated list of allowed hostnames for OAuth redirects; relative paths starting with "/" are always allowed)
    - `RK_NAMESPACE` (optional; defaults to `bernard:rk` for the ledger)
 2. Install deps: `npm install`
 3. Run dev server: `npm run dev`
