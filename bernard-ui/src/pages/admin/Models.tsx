@@ -222,78 +222,80 @@ export default function Models() {
           <CardDescription>Manage AI service providers</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {providers.map(provider => (
-              <div key={provider.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold">{provider.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{provider.baseUrl}</p>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <Badge variant={isProviderWorking(provider.id) ? "default" : "secondary"}>
-                        {isProviderWorking(provider.id) ? (
-                          <>
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Working
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="mr-1 h-3 w-3" />
-                            Not tested
-                          </>
-                        )}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleTestProvider(provider.id)}
-                        disabled={testingProvider === provider.id}
-                      >
-                        <TestTube className="mr-2 h-4 w-4" />
-                        {testingProvider === provider.id ? 'Testing...' : 'Test Provider'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => loadProviderModels(provider.id)}
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Load Models
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteProvider(provider.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API URL</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API Key</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Number of Models</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providers.map(provider => {
+                  const models = getModelsForProvider(provider.id);
+                  const isWorking = isProviderWorking(provider.id);
+                  
+                  return (
+                    <tr key={provider.id} className="border-b border-gray-200 dark:border-gray-700">
+                      <td className="py-4 px-4">
+                        <div className="font-semibold">{provider.name}</div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="text-sm">{provider.baseUrl}</div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="text-sm text-gray-500 dark:text-gray-400">••••••••</div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <Badge variant={models.length > 0 ? "default" : "secondary"}>
+                          {models.length > 0 ? `${models.length} models` : "not loaded"}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleTestProvider(provider.id)}
+                            disabled={testingProvider === provider.id}
+                            title="Test Provider"
+                          >
+                            <TestTube className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => loadProviderModels(provider.id)}
+                            title="Load Models"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteProvider(provider.id)}
+                            title="Delete Provider"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 
-                {/* Models list */}
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Available Models</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {getModelsForProvider(provider.id).map(model => (
-                      <div key={model.id} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded">
-                        <span className="text-sm">{model.id}</span>
-                        <Badge variant="outline">{model.owned_by}</Badge>
-                      </div>
-                    ))}
-                    {getModelsForProvider(provider.id).length === 0 && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No models loaded. Click "Load Models" to fetch.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {providers.length === 0 && (
-              <p className="text-gray-500 dark:text-gray-400">No providers configured. Add your first provider to get started.</p>
-            )}
+                {providers.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                      No providers configured. Add your first provider to get started.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>

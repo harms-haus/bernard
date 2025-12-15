@@ -265,9 +265,11 @@ export default function Users() {
                     <td className="py-3 px-4 text-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" aria-label="User actions">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleEditUser(user)}>

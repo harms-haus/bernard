@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { Button } from './ui/button';
@@ -24,6 +24,7 @@ const navigation = [
 
 export function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAdmin, isAdminLoading } = useAdminAuth();
   const { isDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -118,7 +119,7 @@ export function AdminLayout() {
             <div className="border-t border-border p-4 space-y-3">
               {/* Main chat link moved to just above the user badge */}
               <Button variant="outline" className="w-full justify-start" onClick={() => {
-                window.location.href = '/chat';
+                navigate('/chat');
                 setSidebarOpen(false);
               }}>
                 <Home className="mr-2 h-4 w-4" />
