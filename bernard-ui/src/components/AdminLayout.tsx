@@ -48,8 +48,8 @@ export function AdminLayout() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Checking admin privileges...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-sm text-muted-foreground">Checking admin privileges...</p>
         </div>
       </div>
     );
@@ -57,13 +57,13 @@ export function AdminLayout() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Access Denied</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600 mb-4">
+            <p className="text-muted-foreground mb-4">
               You don't have admin privileges to access this area.
             </p>
             <div className="flex gap-2">
@@ -85,22 +85,37 @@ export function AdminLayout() {
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
-      <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
+      <div className="flex h-screen bg-background">
         {/* Sidebar */}
         <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 lg:static lg:inset-0`}>
-          <div className="flex flex-col h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Admin Panel</h1>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </Button>
+          <div className="flex flex-col h-full bg-card border-r border-border">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h1 className="text-xl font-semibold text-foreground">Admin Panel</h1>
+              <div className="flex items-center space-x-2">
+                {/* Dark mode toggle moved to the right side of the nav panel */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleDarkMode}
+                  aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {isDarkMode ? (
+                    <Sun className="h-5 w-5 text-yellow-500" />
+                  ) : (
+                    <Moon className="h-5 w-5 text-foreground" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
             
             <nav className="flex-1 overflow-y-auto py-4">
@@ -114,8 +129,8 @@ export function AdminLayout() {
                       to={item.href}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
                         isActive
-                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                       }`}
                       onClick={() => setSidebarOpen(false)}
                     >
@@ -127,10 +142,68 @@ export function AdminLayout() {
               </div>
             </nav>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-                <span>Version 1.0.0</span>
-                <Badge variant="secondary">Admin</Badge>
+            <div className="border-t border-border p-4 space-y-3">
+              {/* Main chat link moved to just above the user badge */}
+              <Button variant="outline" className="w-full justify-start" onClick={() => {
+                window.location.href = '/';
+                setSidebarOpen(false);
+              }}>
+                <Home className="mr-2 h-4 w-4" />
+                Main Chat
+              </Button>
+
+              {/* User badge moved to bottom of nav panel */}
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="w-full justify-start"
+                >
+                  <UserIcon className="mr-2 h-5 w-5" />
+                  <div className="flex-1 text-left">
+                    <div className="text-sm font-medium text-foreground">
+                      {user?.displayName || user?.id || 'Admin'}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {user?.id}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Badge variant="secondary">Admin</Badge>
+                    <ChevronDown className="h-4 w-4 text-foreground" />
+                  </div>
+                </Button>
+
+                {userMenuOpen && (
+                  <div className="absolute left-0 right-0 mt-2 bg-card rounded-md shadow-lg border border-border py-1 z-50">
+                    <div className="px-4 py-2 border-b border-border">
+                      <p className="text-sm font-semibold text-foreground">
+                        {user?.displayName || user?.id}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {user?.id}
+                      </p>
+                    </div>
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          window.location.href = '/profile';
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        Profile
+                      </button>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <LogOut className="inline mr-2 h-4 w-4" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -138,108 +211,8 @@ export function AdminLayout() {
 
         {/* Main content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
-          <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden mr-2"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Bernard Admin
-                </h2>
-              </div>
-
-              <div className="flex items-center space-x-4">
-                {/* Main chat link */}
-                <Button variant="outline">
-                  <Link to="/" className="flex items-center">
-                    <Home className="mr-2 h-4 w-4" />
-                    Main Chat
-                  </Link>
-                </Button>
-
-                {/* Dark mode toggle */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleDarkMode}
-                  aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                >
-                  {isDarkMode ? (
-                    <Sun className="h-5 w-5 text-yellow-500" />
-                  ) : (
-                    <Moon className="h-5 w-5 text-gray-600" />
-                  )}
-                </Button>
-
-                {/* User menu */}
-                <div className="relative">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center space-x-2"
-                  >
-                    <UserIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
-                      {user?.displayName || user?.id || 'Admin'}
-                    </span>
-                    <Badge variant="secondary" className="hidden sm:inline">
-                      Admin
-                    </Badge>
-                    <ChevronDown className="h-4 w-4 text-gray-500" />
-                  </Button>
-
-                  {userMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-                      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {user?.displayName || user?.id}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {user?.id}
-                        </p>
-                      </div>
-                      <div className="py-1">
-                        <button
-                          onClick={() => {
-                            window.location.href = '/profile';
-                            setUserMenuOpen(false);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        >
-                          Profile
-                        </button>
-                        <button
-                          onClick={handleLogout}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        >
-                          <LogOut className="inline mr-2 h-4 w-4" />
-                          Logout
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* Overlay for mobile */}
-          {sidebarOpen && (
-            <div
-              className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-
           {/* Page content */}
-          <main className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
+          <main className="flex-1 overflow-y-auto p-6 bg-background">
             <Outlet />
           </main>
         </div>

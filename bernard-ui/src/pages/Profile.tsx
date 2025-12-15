@@ -53,7 +53,7 @@ export function Profile() {
       <div className="container mx-auto px-4 py-6">
         <Card>
           <CardContent className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </CardContent>
         </Card>
       </div>
@@ -85,7 +85,7 @@ export function Profile() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             {state.error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded">
                 {state.error}
               </div>
             )}
@@ -125,7 +125,7 @@ export function Profile() {
                 className="max-w-md"
                 disabled
               />
-              <p className="text-sm text-gray-500">Email cannot be changed</p>
+              <p className="text-sm text-muted-foreground">Email cannot be changed</p>
             </div>
 
             <div className="space-y-2">

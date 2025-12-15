@@ -15,7 +15,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       outline: 'border border-input hover:bg-accent hover:text-accent-foreground dark:border-input/70 dark:hover:bg-accent/80 dark:hover:text-accent-foreground',
       secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:bg-secondary/80 dark:text-secondary-foreground dark:hover:bg-secondary/70',
       ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/80 dark:hover:text-accent-foreground',
-      link: 'underline-offset-4 hover:underline text-primary dark:text-primary/90'
+      link: 'underline-offset-4 hover:underline text-primary dark:text-primary-foreground'
     };
 
     const sizeClasses = {
