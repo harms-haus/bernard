@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Copy, Plus, RefreshCw, Trash2, Key, Check } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { Copy, Plus, RefreshCw, Trash2, Key, Check, MoreVertical } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TokenWithSecret extends apiClient.Token {
@@ -110,7 +110,11 @@ export function Keys() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString(),
+      time: date.toLocaleTimeString()
+    };
   };
 
   return (
@@ -147,79 +151,92 @@ export function Keys() {
               No tokens yet. Create your first token to get started.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Last Used</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((token) => (
-                  <TableRow key={token.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center space-x-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>
-                            {token.name.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Name</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Created</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Last Used</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</TableHead>
+                    <TableHead className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tokens.map((token) => (
+                    <TableRow key={token.id} className="border-b border-gray-100 dark:border-gray-800">
+                      <TableCell className="font-medium py-3 px-4">
                         <div>
                           <div>{token.name}</div>
-                          <div className="text-xs text-gray-500 font-mono">{token.id.slice(0, 8)}...</div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(token.createdAt)}</TableCell>
-                    <TableCell>
-                      {token.lastUsedAt ? formatDate(token.lastUsedAt) : 'Never'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={token.status === 'active' ? 'default' : 'secondary'}>
-                        {token.status === 'active' ? 'Active' : 'Disabled'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleStatus(token)}
-                      >
-                        {token.status === 'active' ? 'Disable' : 'Enable'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(token.id, token.id)}
-                        disabled={copiedTokenId === token.id}
-                      >
-                        {copiedTokenId === token.id ? (
-                          <>
-                            <Check className="h-4 w-4 mr-2" />
-                            Copied
-                          </>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                            {formatDate(token.createdAt).date}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {formatDate(token.createdAt).time}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        {token.lastUsedAt ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {formatDate(token.lastUsedAt).date}
+                            </span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                              {formatDate(token.lastUsedAt).time}
+                            </span>
+                          </div>
                         ) : (
-                          <>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy ID
-                          </>
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Never</span>
                         )}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteToken(token)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <Badge variant={token.status === 'active' ? 'default' : 'secondary'}>
+                          {token.status === 'active' ? 'Active' : 'Disabled'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-center">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" aria-label="Token actions">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleToggleStatus(token)}>
+                              {token.status === 'active' ? 'Disable' : 'Enable'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => copyToClipboard(token.id, token.id)}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copy ID
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteToken(token)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  
+                  {tokens.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                        No tokens found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

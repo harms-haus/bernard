@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import {
@@ -212,47 +213,47 @@ export default function History() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full table-auto">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="w-12 py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">ID</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">User</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Indexing</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Messages</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12 py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">ID</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">User</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Date</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Indexing</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Messages</TableHead>
+                  <TableHead className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {conversations.map((conversation) => {
                   const indexingInfo = getIndexingStatusInfo(conversation.indexingStatus);
                   return (
-                    <tr key={conversation.id} className="border-b border-gray-100 dark:border-gray-800">
-                      <td className="py-3 px-4">
+                    <TableRow key={conversation.id} className="border-b border-gray-100 dark:border-gray-800">
+                      <TableCell className="py-3 px-4">
                         <Link to={`/admin/history/${conversation.id}`}>
                           <Button variant="ghost" size="sm">
                             <Eye className="h-4 w-4" />
                           </Button>
                         </Link>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <div className="flex items-center space-x-2">
                           <span className="font-mono text-sm text-gray-600 dark:text-gray-300">
                             {conversation.id.substring(0, 8)}...
                           </span>
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-400" />
                           <span className="text-sm text-gray-600 dark:text-gray-300">
                             {conversation.tokenNames?.[0] || 'Unknown'}
                           </span>
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <div className="flex flex-col">
                           <span className="text-sm text-gray-600 dark:text-gray-300">
                             {new Date(conversation.startedAt).toLocaleDateString()}
@@ -261,15 +262,15 @@ export default function History() {
                             {new Date(conversation.startedAt).toLocaleTimeString()}
                           </span>
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <Badge variant={
                           conversation.status === 'open' ? 'default' : 'secondary'
                         }>
                           {conversation.status === 'open' ? 'Active' : 'Closed'}
                         </Badge>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <Badge variant={
                           indexingInfo.color === 'success' ? 'default' :
                           indexingInfo.color === 'warning' ? 'secondary' :
@@ -282,13 +283,13 @@ export default function History() {
                             Error: {conversation.indexingError}
                           </p>
                         )}
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
                         <span className="text-sm text-gray-600 dark:text-gray-300">
                           {conversation.messageCount}
                         </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-center">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -324,20 +325,20 @@ export default function History() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
                 
                 {conversations.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
                       No conversations found.
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

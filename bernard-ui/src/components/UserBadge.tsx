@@ -39,17 +39,9 @@ export function UserBadge() {
               <div className="text-sm font-medium text-foreground">
                 {state.user.displayName || 'User'}
               </div>
-              <div className="text-xs text-muted-foreground">
-                {state.user.id}
-              </div>
             </div>
             <div className="flex items-center space-x-1">
-              {state.user.isAdmin && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-                  Admin
-                </span>
-              )}
-              <ChevronDown className="h-4 w-4 text-foreground" />
+              <ChevronDown className="h-4 w-4 text-foreground rotate-180" />
             </div>
           </div>
         </button>
