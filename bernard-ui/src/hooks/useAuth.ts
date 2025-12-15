@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, ReactNode } from 'react';
 import { apiClient } from '../services/api';
-import { User, UserStatus } from '../types/auth';
+import { User } from '../types/auth';
 import { AuthState, AuthAction, LoginCredentials, LoginResponse } from '../types/auth';
 
 type AuthContextType = {
@@ -73,7 +73,7 @@ const initialState: AuthState = {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  const login = async (credentials: LoginCredentials) => {
+  const login = useCallback(async (credentials: LoginCredentials) => {
     try {
       dispatch({ type: 'LOGIN_START' });
       const response: LoginResponse = await apiClient.login(credentials);
@@ -83,9 +83,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
       throw error;
     }
-  };
+  }, []);
 
-  const githubLogin = async () => {
+  const githubLogin = useCallback(async () => {
     try {
       dispatch({ type: 'LOGIN_START' });
       await apiClient.githubLogin();
@@ -94,9 +94,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
       throw error;
     }
-  };
+  }, []);
 
-  const googleLogin = async () => {
+  const googleLogin = useCallback(async () => {
     try {
       dispatch({ type: 'LOGIN_START' });
       await apiClient.googleLogin();
@@ -105,9 +105,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
       throw error;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await apiClient.logout();
       dispatch({ type: 'LOGOUT' });
@@ -115,9 +115,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Even if logout fails, clear local state
       dispatch({ type: 'LOGOUT' });
     }
-  };
+  }, []);
 
-  const getCurrentUser = async () => {
+  const getCurrentUser = useCallback(async () => {
     try {
       dispatch({ type: 'SET_LOADING', payload: { loading: true } });
       const user = await apiClient.getCurrentUser();
@@ -131,9 +131,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: { loading: false } });
     }
-  };
+  }, []);
 
-  const updateProfile = async (data: { displayName?: string; email?: string }) => {
+  const updateProfile = useCallback(async (data: { displayName?: string; email?: string }) => {
     try {
       const updatedUser = await apiClient.updateProfile(data);
       dispatch({ type: 'LOGIN_SUCCESS', payload: { user: updatedUser } });
@@ -143,27 +143,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
       throw error;
     }
-  };
+  }, []);
 
-  const clearError = () => {
+  const clearError = useCallback(() => {
     dispatch({ type: 'CLEAR_ERROR' });
-  };
+  }, []);
 
   // Initialize auth state on mount
   useEffect(() => {
     getCurrentUser();
-  }, []);
+  }, [getCurrentUser]);
 
-  const value = {
-    state,
-    login,
-    githubLogin,
-    googleLogin,
-    logout,
-    getCurrentUser,
-    updateProfile,
-    clearError
-  };
+  const value = useMemo(
+    () => ({
+      state,
+      login,
+      githubLogin,
+      googleLogin,
+      logout,
+      getCurrentUser,
+      updateProfile,
+      clearError
+    }),
+    [state, login, githubLogin, googleLogin, logout, getCurrentUser, updateProfile, clearError]
+  );
 
   return React.createElement(AuthContext.Provider, { value }, children);
 }

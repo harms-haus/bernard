@@ -16,9 +16,15 @@ export function Login() {
     }
   };
 
-  // If user is already logged in, redirect
+  // If user is already logged in, redirect.
+  // Do this in an effect to avoid navigation during render.
+  React.useEffect(() => {
+    if (state.user) {
+      navigate(from, { replace: true });
+    }
+  }, [state.user, navigate, from]);
+
   if (state.user) {
-    navigate(from, { replace: true });
     return null;
   }
 

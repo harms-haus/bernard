@@ -32,6 +32,29 @@ ping_redis() {
   printf "PING\r\n" | nc -w1 "${REDIS_HOST}" "${REDIS_PORT}" 2>/dev/null | grep -q "+PONG"
 }
 
+get_port_pid() {
+  local port="$1"
+  # Try lsof first, then netstat as fallback
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -ti ":${port}" 2>/dev/null || true
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tlnp 2>/dev/null | grep ":${port} " | awk '{print $7}' | cut -d'/' -f1 || true
+  else
+    echo "Warning: Neither lsof nor netstat available to check port ${port}" >&2
+  fi
+}
+
+kill_port_processes() {
+  local port="$1"
+  local pids
+  pids="$(get_port_pid "${port}")"
+  if [[ -n "${pids}" ]]; then
+    echo "Killing existing processes on port ${port}..."
+    echo "${pids}" | xargs kill -9 2>/dev/null || true
+    sleep 1  # Give processes time to terminate
+  fi
+}
+
 ensure_redis() {
   echo "Ensuring redis on ${REDIS_HOST}:${REDIS_PORT}..."
   if ping_redis; then
@@ -89,6 +112,7 @@ ensure_redis
 export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
 echo "Starting bernard dev server on port ${BERNARD_PORT}..."
+kill_port_processes "${BERNARD_PORT}"
 npm run dev --prefix "${ROOT_DIR}/bernard" -- --port "${BERNARD_PORT}" --hostname 0.0.0.0 &
 BERNARD_PID=$!
 
@@ -97,6 +121,7 @@ npm run queues:worker --prefix "${ROOT_DIR}/bernard" &
 WORKER_PID=$!
 
 echo "Starting bernard-ui on port ${UI_PORT}..."
+kill_port_processes "${UI_PORT}"
 npm run dev --prefix "${ROOT_DIR}/bernard-ui" &
 UI_PID=$!
 

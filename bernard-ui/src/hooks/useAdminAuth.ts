@@ -17,7 +17,7 @@ export function useAdminAuth() {
     };
 
     checkAdmin();
-  }, [getCurrentUser]);
+  }, []);
 
   useEffect(() => {
     setIsAdmin(!!state.user?.isAdmin);

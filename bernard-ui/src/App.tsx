@@ -10,49 +10,17 @@ import { DarkModeToggle } from './components/DarkModeToggle'
 import { AuthProvider } from './hooks/useAuth'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminLayout } from './components/AdminLayout'
-import { useAdminAuth } from './hooks/useAdminAuth'
 import { DarkModeProvider } from './hooks/useDarkMode'
+import Dashboard from './pages/admin/Dashboard'
+import History from './pages/admin/History'
+import Models from './pages/admin/Models'
+import Users from './pages/admin/Users'
+import ConversationDetail from './pages/admin/ConversationDetail'
 
 // Admin protected route component
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAdmin, isAdminLoading } = useAdminAuth();
-  
-  if (isAdminLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Checking admin privileges...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md max-w-md w-full">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Access Denied</h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            You don't have admin privileges to access this area.
-          </p>
-          <div className="flex gap-3">
-            <Link to="/">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                Back to Home
-              </button>
-            </Link>
-            <Link to="/profile">
-              <button className="px-4 py-2 bg-gray-200 text-gray-900 rounded-md hover:bg-gray-300 transition-colors">
-                Profile
-              </button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // AdminLayout will handle the useAdminAuth check
+  // We don't need to call it here to avoid duplicate getCurrentUser calls
   return <>{children}</>;
 }
 
@@ -154,7 +122,7 @@ function App() {
                 
                 {/* Admin routes */}
                 <Route
-                  path="/admin/*"
+                  path="/admin"
                   element={
                     <ProtectedRoute>
                       <AdminProtectedRoute>
@@ -162,7 +130,13 @@ function App() {
                       </AdminProtectedRoute>
                     </ProtectedRoute>
                   }
-                />
+                >
+                  <Route index element={<Dashboard />} />
+                  <Route path="models" element={<Models />} />
+                  <Route path="history" element={<History />} />
+                  <Route path="history/:id" element={<ConversationDetail />} />
+                  <Route path="users" element={<Users />} />
+                </Route>
               </Routes>
             </main>
           </div>

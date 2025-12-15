@@ -11,16 +11,6 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
   const { state } = useAuth();
   const location = useLocation();
 
-  // If user is not logged in, redirect to login page with the current location
-  if (!state.user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  // If admin access is required but user is not admin, redirect to home
-  if (requireAdmin && !state.user.isAdmin) {
-    return <Navigate to="/" replace />;
-  }
-
   // If user is loading, show a loading state
   if (state.loading) {
     return (
@@ -31,6 +21,16 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
         </div>
       </div>
     );
+  }
+
+  // If user is not logged in, redirect to login page with the current location
+  if (!state.user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If admin access is required but user is not admin, redirect to home
+  if (requireAdmin && !state.user.isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

@@ -65,6 +65,9 @@ export interface APIError extends Error {
 
 class ApiClient {
   private readonly baseUrl: string;
+  private currentUserInFlight: Promise<User | null> | null = null;
+  private currentUserCache: { user: User | null; cachedAtMs: number } | null =
+    null;
 
   constructor(baseUrl: string = '/api') {
     this.baseUrl = baseUrl;
@@ -129,8 +132,32 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<User | null> {
-    const response = await this.request<{ user: User | null }>('/auth/me');
-    return response.user;
+    // Deduplicate /auth/me to avoid runaway request storms.
+    // This also smooths over StrictMode double-invokes in dev.
+    const now = Date.now();
+    const cacheTtlMs = 2000;
+
+    if (
+      this.currentUserCache &&
+      now - this.currentUserCache.cachedAtMs < cacheTtlMs
+    ) {
+      return this.currentUserCache.user;
+    }
+
+    if (this.currentUserInFlight) {
+      return this.currentUserInFlight;
+    }
+
+    this.currentUserInFlight = this.request<{ user: User | null }>('/auth/me')
+      .then((response) => {
+        this.currentUserCache = { user: response.user, cachedAtMs: Date.now() };
+        return response.user;
+      })
+      .finally(() => {
+        this.currentUserInFlight = null;
+      });
+
+    return this.currentUserInFlight;
   }
 
   async generateAccessToken(): Promise<GenerateAccessTokenResponse> {

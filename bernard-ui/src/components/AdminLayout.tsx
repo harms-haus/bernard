@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { adminApiClient } from '../services/adminApi';
@@ -10,7 +10,7 @@ import {
   LayoutDashboard,
   Settings,
   MessagesSquare,
-  Users,
+  Users as UsersIcon,
   LogOut,
   Menu,
   X,
@@ -25,11 +25,8 @@ const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Models', href: '/admin/models', icon: Settings },
   { name: 'History', href: '/admin/history', icon: MessagesSquare },
-  { name: 'Users', href: '/admin/users', icon: Users },
+  { name: 'Users', href: '/admin/users', icon: UsersIcon },
 ];
-
-// Admin pages are rendered via Routes component
-const Dashboard = () => <div>Dashboard</div>;
 
 export function AdminLayout() {
   const location = useLocation();
@@ -205,7 +202,7 @@ export function AdminLayout() {
                           {user?.displayName || user?.id}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {user?.email || user?.id}
+                          {user?.id}
                         </p>
                       </div>
                       <div className="py-1">
@@ -243,7 +240,7 @@ export function AdminLayout() {
 
           {/* Page content */}
           <main className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
-            <Dashboard />
+            <Outlet />
           </main>
         </div>
       </div>
