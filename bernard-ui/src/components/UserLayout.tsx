@@ -5,15 +5,12 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import { UserBadge } from './UserBadge';
 import { DarkModeToggle } from './DarkModeToggle';
 import {
-  Home,
   MessagesSquare,
   Key,
   Info,
   Menu,
   X,
-  Shield,
-  User as UserIcon,
-  ChevronDown
+  Shield
 } from 'lucide-react';
 
 const navigation = [
@@ -25,9 +22,8 @@ const navigation = [
 export function UserLayout() {
   const location = useLocation();
   const { state } = useAuth();
-  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { isDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
@@ -91,61 +87,7 @@ export function UserLayout() {
               )}
 
               {/* User badge at bottom of nav panel */}
-              <div className="relative">
-                <button
-                  className="w-full text-left"
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                >
-                  <div className="flex items-center px-2 py-2 text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200">
-                    <UserIcon className="mr-3 h-5 w-5" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-foreground">
-                        {state.user?.displayName || 'User'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {state.user?.id}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      {state.user?.isAdmin && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-                          Admin
-                        </span>
-                      )}
-                      <ChevronDown className="h-4 w-4 text-foreground" />
-                    </div>
-                  </div>
-                </button>
-
-                {userMenuOpen && (
-                  <div className="absolute left-0 right-0 mt-2 bg-card rounded-md shadow-lg border border-border py-1 z-50">
-                    <div className="px-4 py-2 border-b border-border">
-                      <p className="text-sm font-semibold text-foreground">
-                        {state.user?.displayName || 'User'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {state.user?.id}
-                      </p>
-                    </div>
-                    <div className="py-1">
-                      <Link
-                        to="/profile"
-                        className="block px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                        onClick={() => setUserMenuOpen(false)}
-                      >
-                        Profile
-                      </Link>
-                      <Link
-                        to="/login"
-                        className="block px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                        onClick={() => setUserMenuOpen(false)}
-                      >
-                        Sign out
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <UserBadge />
             </div>
           </div>
         </div>

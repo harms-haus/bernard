@@ -4,17 +4,24 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
-import { 
-  Plus, 
-  Save, 
-  Trash2, 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import {
+  Plus,
+  Save,
+  Trash2,
   UserPlus,
   UserCheck,
   UserX,
   Edit,
   Shield,
   Mail,
-  Calendar
+  MoreVertical,
+  Key
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { User, UserStatus } from '../../types/auth';
@@ -149,22 +156,7 @@ export default function Users() {
     }
   };
 
-  const getStatusBadgeVariant = (status: UserStatus) => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'disabled':
-        return 'warning';
-      case 'deleted':
-        return 'destructive';
-      default:
-        return 'secondary';
-    }
-  };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
 
   if (loading) {
     return (
@@ -191,46 +183,6 @@ export default function Users() {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Users</p>
-                <p className="text-2xl font-bold">{users.length}</p>
-              </div>
-              <UserPlus className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {users.filter(u => u.status === 'active').length}
-                </p>
-              </div>
-              <UserCheck className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Admins</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {users.filter(u => u.isAdmin).length}
-                </p>
-              </div>
-              <Shield className="h-8 w-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Users Table */}
       <Card>
@@ -249,7 +201,7 @@ export default function Users() {
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Created</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Last Login</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -264,12 +216,6 @@ export default function Users() {
                         </div>
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">{user.displayName}</p>
-                          {user.isAdmin && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-                              <Shield className="mr-1 h-3 w-3" />
-                              Admin
-                            </span>
-                          )}
                         </div>
                       </div>
                     </td>
@@ -293,65 +239,68 @@ export default function Users() {
                       </Badge>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
+                      <div className="flex flex-col">
                         <span className="text-sm text-gray-600 dark:text-gray-300">
-                          {formatDate(user.createdAt)}
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(user.createdAt).toLocaleTimeString()}
                         </span>
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-sm text-gray-600 dark:text-gray-300">
-                        {user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'}
-                      </span>
+                      {user.lastLoginAt ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                            {new Date(user.lastLoginAt).toLocaleDateString()}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {new Date(user.lastLoginAt).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Never</span>
+                      )}
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditUser(user)}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </Button>
-                        
-                        <Button
-                          variant={user.status === 'active' ? 'outline' : 'default'}
-                          size="sm"
-                          onClick={() => handleToggleStatus(user)}
-                        >
-                          {user.status === 'active' ? (
-                            <>
-                              <UserX className="mr-2 h-4 w-4" />
-                              Disable
-                            </>
-                          ) : (
-                            <>
-                              <UserCheck className="mr-2 h-4 w-4" />
-                              Enable
-                            </>
-                          )}
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleResetPassword(user.id)}
-                        >
-                          Reset Password
-                        </Button>
-                        
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteUser(user.id)}
-                          disabled={deletingId === user.id}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {deletingId === user.id ? 'Deleting...' : 'Delete'}
-                        </Button>
-                      </div>
+                    <td className="py-3 px-4 text-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleResetPassword(user.id)}>
+                            <Key className="mr-2 h-4 w-4" />
+                            Reset Password
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                            {user.status === 'active' ? (
+                              <>
+                                <UserX className="mr-2 h-4 w-4" />
+                                Disable
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="mr-2 h-4 w-4" />
+                                Enable
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteUser(user.id)}
+                            disabled={deletingId === user.id}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {deletingId === user.id ? 'Deleting...' : 'Delete'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}

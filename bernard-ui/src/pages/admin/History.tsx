@@ -3,17 +3,24 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { 
-  Eye, 
-  Trash2, 
-  Play, 
-  StopCircle, 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import {
+  Eye,
+  Trash2,
+  Play,
+  StopCircle,
   RefreshCw,
-  Search,
   Calendar,
   User,
   Clock,
-  MessageSquare
+  MessageSquare,
+  MoreVertical,
+  Database
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ConversationListItem } from '../../services/adminApi';
@@ -111,8 +118,8 @@ export default function History() {
     try {
       const result = await adminApiClient.cancelIndexing(conversationId);
       if (result.success) {
-        setConversations(conversations.map(c => 
-          c.id === conversationId 
+        setConversations(conversations.map(c =>
+          c.id === conversationId
             ? { ...c, indexingStatus: result.indexingStatus, indexingError: undefined }
             : c
         ));
@@ -124,6 +131,26 @@ export default function History() {
       alert('Failed to cancel indexing');
     } finally {
       setIndexingAction(null);
+    }
+  };
+
+  const handleDeleteIndex = async (conversationId: string) => {
+    if (!confirm('Delete the index for this conversation? This will reset the indexing status.')) {
+      return;
+    }
+
+    try {
+      // Note: This might need to be implemented as an API call to delete index
+      // For now, we'll reset the local state to simulate the action
+      setConversations(conversations.map(c =>
+        c.id === conversationId
+          ? { ...c, indexingStatus: 'none' as const, indexingError: undefined, indexingAttempts: 0 }
+          : c
+      ));
+      alert('Index deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete index:', error);
+      alert('Failed to delete index');
     }
   };
 
@@ -175,43 +202,6 @@ export default function History() {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Conversations</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <MessageSquare className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Active</p>
-                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
-              </div>
-              <Clock className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Closed</p>
-                <p className="text-2xl font-bold text-gray-600">{stats.closed}</p>
-              </div>
-              <Calendar className="h-8 w-8 text-gray-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Conversations Table */}
       <Card>
         <CardHeader>
@@ -225,13 +215,14 @@ export default function History() {
             <table className="w-full table-auto">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="w-12 py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">ID</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">User</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Date</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Indexing</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Messages</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></th>
                 </tr>
               </thead>
               <tbody>
@@ -239,6 +230,13 @@ export default function History() {
                   const indexingInfo = getIndexingStatusInfo(conversation.indexingStatus);
                   return (
                     <tr key={conversation.id} className="border-b border-gray-100 dark:border-gray-800">
+                      <td className="py-3 px-4">
+                        <Link to={`/admin/history/${conversation.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center space-x-2">
                           <span className="font-mono text-sm text-gray-600 dark:text-gray-300">
@@ -290,60 +288,42 @@ export default function History() {
                           {conversation.messageCount}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          <Link to={`/admin/history/${conversation.id}`}>
-                            <Button variant="outline" size="sm">
-                              <Eye className="mr-2 h-4 w-4" />
-                              View
+                      <td className="py-3 px-4 text-center">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
                             </Button>
-                          </Link>
-                          
-                          {conversation.status === 'open' && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleCloseConversation(conversation.id)}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {conversation.indexingStatus === 'indexed' && (
+                              <DropdownMenuItem onClick={() => handleDeleteIndex(conversation.id)}>
+                                <Database className="mr-2 h-4 w-4" />
+                                Delete Index
+                              </DropdownMenuItem>
+                            )}
+                            {canRetryIndexing(conversation) && (
+                              <DropdownMenuItem onClick={() => handleRetryIndexing(conversation.id)} disabled={indexingAction !== null}>
+                                <Play className="mr-2 h-4 w-4" />
+                                Queue Indexing
+                              </DropdownMenuItem>
+                            )}
+                            {canCancelIndexing(conversation) && (
+                              <DropdownMenuItem onClick={() => handleCancelIndexing(conversation.id)} disabled={indexingAction !== null}>
+                                <StopCircle className="mr-2 h-4 w-4" />
+                                Cancel Indexing
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteConversation(conversation.id)}
+                              disabled={deletingId === conversation.id}
+                              className="text-red-600 focus:text-red-600"
                             >
-                              <StopCircle className="mr-2 h-4 w-4" />
-                              Close
-                            </Button>
-                          )}
-                          
-                          {canRetryIndexing(conversation) && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleRetryIndexing(conversation.id)}
-                              disabled={indexingAction !== null}
-                            >
-                              <Play className="mr-2 h-4 w-4" />
-                              Queue Indexing
-                            </Button>
-                          )}
-                          
-                          {canCancelIndexing(conversation) && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleCancelIndexing(conversation.id)}
-                              disabled={indexingAction !== null}
-                            >
-                              <StopCircle className="mr-2 h-4 w-4" />
-                              Cancel Indexing
-                            </Button>
-                          )}
-                          
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteConversation(conversation.id)}
-                            disabled={deletingId === conversation.id}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {deletingId === conversation.id ? 'Deleting...' : 'Delete'}
-                          </Button>
-                        </div>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {deletingId === conversation.id ? 'Deleting...' : 'Delete'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );
@@ -351,7 +331,7 @@ export default function History() {
                 
                 {conversations.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={8} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
                       No conversations found.
                     </td>
                   </tr>

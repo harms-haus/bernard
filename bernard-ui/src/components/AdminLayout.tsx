@@ -2,22 +2,18 @@ import { useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
-import { adminApiClient } from '../services/adminApi';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
 import {
   LayoutDashboard,
   Settings,
   MessagesSquare,
   Users as UsersIcon,
-  LogOut,
   X,
-  Home,
-  User as UserIcon,
-  ChevronDown
+  Home
 } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
+import { UserBadge } from './UserBadge';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -28,19 +24,9 @@ const navigation = [
 
 export function AdminLayout() {
   const location = useLocation();
-  const { isAdmin, isAdminLoading, user } = useAdminAuth();
+  const { isAdmin, isAdminLoading } = useAdminAuth();
   const { isDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-
-  const handleLogout = async () => {
-    try {
-      await adminApiClient.logout();
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  };
 
   if (isAdminLoading) {
     return (
@@ -132,66 +118,15 @@ export function AdminLayout() {
             <div className="border-t border-border p-4 space-y-3">
               {/* Main chat link moved to just above the user badge */}
               <Button variant="outline" className="w-full justify-start" onClick={() => {
-                window.location.href = '/';
+                window.location.href = '/chat';
                 setSidebarOpen(false);
               }}>
                 <Home className="mr-2 h-4 w-4" />
                 Main Chat
               </Button>
 
-              {/* User badge moved to bottom of nav panel */}
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="w-full justify-start"
-                >
-                  <UserIcon className="mr-2 h-5 w-5" />
-                  <div className="flex-1 text-left">
-                    <div className="text-sm font-medium text-foreground">
-                      {user?.displayName || user?.id || 'Admin'}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {user?.id}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Badge variant="secondary">Admin</Badge>
-                    <ChevronDown className="h-4 w-4 text-foreground" />
-                  </div>
-                </Button>
-
-                {userMenuOpen && (
-                  <div className="absolute left-0 right-0 mt-2 bg-card rounded-md shadow-lg border border-border py-1 z-50">
-                    <div className="px-4 py-2 border-b border-border">
-                      <p className="text-sm font-semibold text-foreground">
-                        {user?.displayName || user?.id}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {user?.id}
-                      </p>
-                    </div>
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          window.location.href = '/profile';
-                          setUserMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                      >
-                        Profile
-                      </button>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                      >
-                        <LogOut className="inline mr-2 h-4 w-4" />
-                        Logout
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* User badge */}
+              <UserBadge />
             </div>
           </div>
         </div>
