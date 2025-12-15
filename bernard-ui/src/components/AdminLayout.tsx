@@ -12,14 +12,12 @@ import {
   MessagesSquare,
   Users as UsersIcon,
   LogOut,
-  Menu,
   X,
   Home,
-  Moon,
-  Sun,
   User as UserIcon,
   ChevronDown
 } from 'lucide-react';
+import { DarkModeToggle } from './DarkModeToggle';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -31,7 +29,7 @@ const navigation = [
 export function AdminLayout() {
   const location = useLocation();
   const { isAdmin, isAdminLoading, user } = useAdminAuth();
-  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { isDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -95,18 +93,7 @@ export function AdminLayout() {
               <h1 className="text-xl font-semibold text-foreground">Admin Panel</h1>
               <div className="flex items-center space-x-2">
                 {/* Dark mode toggle moved to the right side of the nav panel */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleDarkMode}
-                  aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                >
-                  {isDarkMode ? (
-                    <Sun className="h-5 w-5 text-yellow-500" />
-                  ) : (
-                    <Moon className="h-5 w-5 text-foreground" />
-                  )}
-                </Button>
+                <DarkModeToggle />
                 <Button
                   variant="ghost"
                   size="icon"

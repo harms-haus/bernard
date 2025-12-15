@@ -3,6 +3,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Avatar from '@radix-ui/react-avatar';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { ChevronUp } from 'lucide-react';
 
 export function UserBadge() {
   const { state, logout } = useAuth();
@@ -43,17 +44,7 @@ export function UserBadge() {
             </Avatar.Fallback>
           </Avatar.Root>
           <span className="ml-2 hidden sm:inline">{state.user.displayName}</span>
-          <svg
-            className="ml-1 h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+          <ChevronUp />
         </button>
       </DropdownMenu.Trigger>
 

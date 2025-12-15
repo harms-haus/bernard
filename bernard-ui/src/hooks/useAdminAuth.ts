@@ -2,26 +2,20 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './useAuth';
 
 export function useAdminAuth() {
-  const { state, getCurrentUser } = useAuth();
+  const { state } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isAdminLoading, setIsAdminLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      setIsAdminLoading(true);
-      try {
-        await getCurrentUser();
-      } finally {
-        setIsAdminLoading(false);
-      }
-    };
+    // The useAuth hook already calls getCurrentUser() on mount,
+    // so we can derive admin status from the existing user state
+    const isLoading = state.loading;
+    const hasUser = !!state.user;
+    const userIsAdmin = !!state.user?.isAdmin;
 
-    checkAdmin();
-  }, []);
-
-  useEffect(() => {
-    setIsAdmin(!!state.user?.isAdmin);
-  }, [state.user]);
+    setIsAdminLoading(isLoading || (!hasUser && !state.error));
+    setIsAdmin(userIsAdmin);
+  }, [state.loading, state.user, state.error]);
 
   return {
     isAdmin,
