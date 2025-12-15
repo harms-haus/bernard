@@ -6,14 +6,15 @@ import { ttlSeconds } from "@/lib/memory";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdminRequest(req, { route: `/api/providers/${params.id}/models` });
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const auth = await requireAdminRequest(req, { route: `/api/providers/${id}/models` });
   if ("error" in auth) return auth.error;
 
   try {
     const store = settingsStore();
     const providers = await store.getProviders();
-    const provider = providers.find(p => p.id === params.id);
+    const provider = providers.find(p => p.id === id);
 
     if (!provider) {
       return new Response(JSON.stringify({ error: "Provider not found" }), { status: 404 });
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           auth.reqLog.success(200, {
             action: "providers.models.get",
             adminId: auth.admin.user.id,
-            providerId: params.id,
+            providerId: id,
             source: "cache"
           });
           return Response.json(parsed.models);
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     auth.reqLog.success(200, {
       action: "providers.models.get",
       adminId: auth.admin.user.id,
-      providerId: params.id,
+      providerId: id,
       source: "provider",
       modelCount: models.length
     });
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return Response.json(models);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    auth.reqLog.failure(400, err, { action: "providers.models.get", providerId: params.id, reason });
+    auth.reqLog.failure(400, err, { action: "providers.models.get", providerId: id, reason });
     return new Response(JSON.stringify({ error: "Failed to fetch models from provider" }), { status: 400 });
   }
 }

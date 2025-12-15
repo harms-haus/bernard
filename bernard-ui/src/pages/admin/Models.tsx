@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -55,6 +55,19 @@ export default function Models() {
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  // Load models from localStorage on page load
+  useEffect(() => {
+    const savedModels = localStorage.getItem('providerModels');
+    if (savedModels) {
+      try {
+        const parsedModels = JSON.parse(savedModels);
+        setProviderModels(parsedModels);
+      } catch (error) {
+        console.error('Failed to parse saved models from localStorage:', error);
+      }
+    }
   }, []);
 
   const loadSettings = async () => {
@@ -147,7 +160,10 @@ export default function Models() {
   const loadProviderModels = async (providerId: string) => {
     try {
       const models = await adminApiClient.getProviderModels(providerId);
-      setProviderModels(prev => ({ ...prev, [providerId]: models }));
+      const updatedModels = { ...providerModels, [providerId]: models };
+      setProviderModels(updatedModels);
+      // Save to localStorage
+      localStorage.setItem('providerModels', JSON.stringify(updatedModels));
     } catch (error) {
       console.error('Failed to load models:', error);
     }
@@ -163,6 +179,23 @@ export default function Models() {
         [category]: {
           ...prev[category as keyof ModelsSettings],
           primary: modelId,
+          providerId: providerId
+        }
+      };
+    });
+  };
+
+  const handleProviderChange = (category: ModelCategory, providerId: string) => {
+    // When provider changes, clear the selected model for that category
+    setSelectedModels(prev => ({ ...prev, [category]: '' }));
+    
+    setSettings(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [category]: {
+          ...prev[category as keyof ModelsSettings],
+          primary: '',
           providerId: providerId
         }
       };
@@ -189,11 +222,6 @@ export default function Models() {
     return providerModels[providerId] || [];
   };
 
-  const isProviderWorking = (providerId: string) => {
-    const provider = providers.find(p => p.id === providerId);
-    return provider?.testStatus === 'working';
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -201,6 +229,182 @@ export default function Models() {
       </div>
     );
   }
+
+  // ProviderSelector Component - Dropdown for provider selection
+  const ProviderSelector = ({
+    value,
+    onChange,
+    providers,
+    disabled,
+    placeholder = "Select a provider..."
+  }: {
+    value: string;
+    onChange: (providerId: string) => void;
+    providers: ProviderType[];
+    disabled?: boolean;
+    placeholder?: string;
+  }) => {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">{placeholder}</option>
+        {providers.map(provider => (
+          <option key={provider.id} value={provider.id}>
+            {provider.name}
+          </option>
+        ))}
+      </select>
+    );
+  };
+
+  // ModelSelector Component - Searchable dropdown for model selection
+  const ModelSelector = ({
+    value,
+    onChange,
+    models,
+    disabled,
+    placeholder = "Select or type a model..."
+  }: {
+    value: string;
+    onChange: (modelId: string) => void;
+    models: ModelInfo[];
+    disabled?: boolean;
+    placeholder?: string;
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [inputValue, setInputValue] = useState(value);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Update input when value changes externally
+    useEffect(() => {
+      setInputValue(value);
+    }, [value]);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      function handleClickOutside(event: MouseEvent) {
+        if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+          setSelectedIndex(-1);
+        }
+      }
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredModels = models.filter(model =>
+      model.id.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const handleSelect = (modelId: string) => {
+      onChange(modelId);
+      setInputValue(modelId);
+      setIsOpen(false);
+      setSearch('');
+      setSelectedIndex(-1);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setInputValue(newValue);
+      setSearch(newValue);
+      setSelectedIndex(-1); // Reset selection when typing
+      // Only update when a model is selected, not on every keystroke
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const filteredModelsCount = filteredModels.length;
+      
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          if (!isOpen) {
+            setIsOpen(true);
+            setSelectedIndex(0);
+          } else {
+            setSelectedIndex(prev =>
+              prev < filteredModelsCount - 1 ? prev + 1 : 0
+            );
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (!isOpen) {
+            setIsOpen(true);
+            setSelectedIndex(filteredModelsCount - 1);
+          } else {
+            setSelectedIndex(prev =>
+              prev > 0 ? prev - 1 : filteredModelsCount - 1
+            );
+          }
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (isOpen && selectedIndex >= 0 && selectedIndex < filteredModelsCount) {
+            handleSelect(filteredModels[selectedIndex].id);
+          } else if (isOpen && filteredModelsCount > 0) {
+            // If no selection but dropdown is open, select the first item
+            handleSelect(filteredModels[0].id);
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          setIsOpen(false);
+          setSelectedIndex(-1);
+          break;
+      }
+    };
+
+    return (
+      <div ref={containerRef} className="relative">
+        <Input
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="pr-8"
+        />
+        {isOpen && (
+          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
+            {filteredModels.length === 0 ? (
+              <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
+                No models found
+              </div>
+            ) : (
+              filteredModels.map((model, index) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  ref={index === selectedIndex ? dropdownRef : undefined}
+                  className={`w-full text-left px-3 py-2 cursor-pointer ${
+                    index === selectedIndex
+                      ? 'bg-blue-100 dark:bg-blue-900'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                  onClick={() => handleSelect(model.id)}
+                >
+                  <div className="font-medium">{model.id}</div>
+                  {model.description && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -236,7 +440,6 @@ export default function Models() {
               <tbody>
                 {providers.map(provider => {
                   const models = getModelsForProvider(provider.id);
-                  const isWorking = isProviderWorking(provider.id);
                   
                   return (
                     <tr key={provider.id} className="border-b border-gray-200 dark:border-gray-700">
@@ -308,49 +511,41 @@ export default function Models() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {categories.map(category => (
-              <div key={category.key} className="space-y-2">
-                <div>
-                  <h3 className="font-semibold">{category.label}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{category.description}</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {providers.map(provider => (
-                    <div key={provider.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{provider.name}</h4>
-                        <Badge variant={isProviderWorking(provider.id) ? "default" : "secondary"}>
-                          {isProviderWorking(provider.id) ? 'Ready' : 'Not tested'}
-                        </Badge>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categories.map(category => (
+                <div key={category.key} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="font-semibold text-lg">{category.label}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{category.description}</p>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor={`${category.key}-provider`}>Provider</Label>
+                        <ProviderSelector
+                          value={settings?.[category.key]?.providerId || ''}
+                          onChange={(providerId) => handleProviderChange(category.key, providerId)}
+                          providers={providers}
+                          disabled={false}
+                          placeholder="Select a provider..."
+                        />
                       </div>
                       
-                      <select
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        value={settings?.[category.key]?.primary || ''}
-                        onChange={(e) => handleModelChange(category.key, e.target.value, provider.id)}
-                        disabled={!isProviderWorking(provider.id)}
-                      >
-                        <option value="">Select a model...</option>
-                        {getModelsForProvider(provider.id).map(model => (
-                          <option key={model.id} value={model.id}>
-                            {model.id}
-                          </option>
-                        ))}
-                      </select>
-                      
-                      {settings?.[category.key]?.providerId === provider.id && settings[category.key]?.primary && (
-                        <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
-                          <p className="text-sm text-green-700 dark:text-green-300">
-                            Currently selected: {settings[category.key].primary}
-                          </p>
-                        </div>
-                      )}
+                      <div>
+                        <Label htmlFor={`${category.key}-model`}>Model</Label>
+                        <ModelSelector
+                          value={settings?.[category.key]?.primary || ''}
+                          onChange={(modelId) => handleModelChange(category.key, modelId, settings?.[category.key]?.providerId || '')}
+                          models={getModelsForProvider(settings?.[category.key]?.providerId || '')}
+                          disabled={getModelsForProvider(settings?.[category.key]?.providerId || '').length === 0}
+                          placeholder="Select or type a model..."
+                        />
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
