@@ -23,15 +23,7 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = ModelsSettingsSchema.parse(body);
-    const store = settingsStore();
-    const before = await store.getModels();
-    const saved = await store.setModels(parsed);
-    const changed = Object.keys(parsed).filter((key) => JSON.stringify((before as Record<string, unknown>)[key]) !== JSON.stringify((parsed as Record<string, unknown>)[key]));
-    auth.reqLog.success(200, {
-      action: "settings.models.update",
-      adminId: auth.admin.user.id,
-      changed
-    });
+    const saved = await settingsStore().setModels(parsed);
     return Response.json(saved);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

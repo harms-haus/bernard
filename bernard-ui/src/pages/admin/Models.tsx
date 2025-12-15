@@ -9,8 +9,6 @@ import {
   Save, 
   Trash2, 
   TestTube, 
-  CheckCircle, 
-  XCircle,
   RefreshCw
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
@@ -126,9 +124,13 @@ export default function Models() {
       setProviders(providers.filter(p => p.id !== providerId));
       // Clear any selected models from this provider
       const updatedSettings = { ...settings! };
-      categories.forEach(category => {
-        if (updatedSettings[category]?.providerId === providerId) {
-          updatedSettings[category] = { primary: '', providerId: '', options: {} };
+      categories.forEach(categoryObj => {
+        const category = categoryObj.key;
+        const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
+        if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
+          if (categorySettings.providerId === providerId) {
+            updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
+          }
         }
       });
       setSettings(updatedSettings);
@@ -174,45 +176,59 @@ export default function Models() {
     
     setSettings(prev => {
       if (!prev) return prev;
-      return {
+      const newSettings = {
         ...prev,
         [category]: {
-          ...prev[category as keyof ModelsSettings],
+          ...(prev[category as keyof ModelsSettings] || {}),
           primary: modelId,
           providerId: providerId
         }
       };
+      return newSettings;
     });
   };
 
   const handleProviderChange = (category: ModelCategory, providerId: string) => {
-    // When provider changes, clear the selected model for that category
-    setSelectedModels(prev => ({ ...prev, [category]: '' }));
+    // When provider changes, keep the existing model selection
+    // Users should be able to select a provider and type any model name
     
     setSettings(prev => {
       if (!prev) return prev;
       return {
         ...prev,
         [category]: {
-          ...prev[category as keyof ModelsSettings],
-          primary: '',
+          ...(prev[category as keyof ModelsSettings] || {}),
           providerId: providerId
+          // Don't clear the primary model - let users keep their custom model names
         }
       };
     });
   };
 
   const handleSave = async () => {
-    if (!settings) return;
+    if (!settings) {
+      return;
+    }
     
     setSaving(true);
     try {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
+      
+      // Check if backend is returning different model names
+      const categories: ModelCategory[] = ['response', 'intent', 'memory', 'utility', 'aggregation'];
+      categories.forEach(category => {
+        const frontendModel = settings[category]?.primary;
+        const backendModel = updatedSettings[category]?.primary;
+        if (frontendModel !== backendModel) {
+        }
+      });
+      
       setSettings(updatedSettings);
       alert('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to save settings: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
@@ -280,7 +296,6 @@ export default function Models() {
     const [inputValue, setInputValue] = useState(value);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const containerRef = useRef<HTMLDivElement>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Update input when value changes externally
     useEffect(() => {
@@ -317,7 +332,7 @@ export default function Models() {
       setInputValue(newValue);
       setSearch(newValue);
       setSelectedIndex(-1); // Reset selection when typing
-      // Only update when a model is selected, not on every keystroke
+      // Note: Don't call onChange(newValue) here to avoid losing focus
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -385,7 +400,6 @@ export default function Models() {
                 <button
                   key={model.id}
                   type="button"
-                  ref={index === selectedIndex ? dropdownRef : undefined}
                   className={`w-full text-left px-3 py-2 cursor-pointer ${
                     index === selectedIndex
                       ? 'bg-blue-100 dark:bg-blue-900'
@@ -394,9 +408,6 @@ export default function Models() {
                   onClick={() => handleSelect(model.id)}
                 >
                   <div className="font-medium">{model.id}</div>
-                  {model.description && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
-                  )}
                 </button>
               ))
             )}
@@ -507,7 +518,7 @@ export default function Models() {
       <Card>
         <CardHeader>
           <CardTitle>Model Assignment</CardTitle>
-          <CardDescription>Assign models to different harness categories</CardDescription>
+          <CardDescription>Assign models to different harness categories. You can select from the dropdown or type any model name.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -538,7 +549,7 @@ export default function Models() {
                           onChange={(modelId) => handleModelChange(category.key, modelId, settings?.[category.key]?.providerId || '')}
                           models={getModelsForProvider(settings?.[category.key]?.providerId || '')}
                           disabled={getModelsForProvider(settings?.[category.key]?.providerId || '').length === 0}
-                          placeholder="Select or type a model..."
+                          placeholder="Select or type any model name..."
                         />
                       </div>
                     </div>
@@ -552,7 +563,7 @@ export default function Models() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={() => { handleSave(); }} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
           {saving ? 'Saving...' : 'Save Configuration'}
         </Button>
