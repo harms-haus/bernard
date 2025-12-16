@@ -30,6 +30,7 @@ export function ChatInterface() {
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [notification, setNotification] = React.useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
   const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
@@ -37,6 +38,9 @@ export function ChatInterface() {
   
   // Buffer for streaming tool call arguments
   const toolCallBufferRef = React.useRef<Record<string, string>>({});
+  
+  // Ref to store timeout ID for cleanup
+  const notificationTimeoutRef = React.useRef<number | null>(null);
 
   // Handle input focus/blur with content check
   const handleInputFocus = () => {
@@ -57,6 +61,15 @@ export function ChatInterface() {
     }
   }, [messages]);
 
+  // Cleanup notification timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
 
@@ -70,6 +83,7 @@ export function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setError(null);
+    setNotification(null);
     setIsStreaming(true);
 
     try {
@@ -154,11 +168,10 @@ export function ChatInterface() {
               };
               
               setMessages(prev => {
-                const updated = [...prev];
-                const lastIndex = updated.length - 1;
-                updated[lastIndex] = assistantMessage;
-                return updated;
-              });
+                  return prev.map(msg => 
+                    msg.id === assistantMessage.id ? assistantMessage : msg
+                  );
+                });
             }
           } catch {
             // Ignore malformed chunks
@@ -199,7 +212,7 @@ export function ChatInterface() {
 
   // Parse streaming tool call arguments with proper buffering
   const parseToolCallArguments = (argumentsChunk: string, toolCallId: string): any => {
-    if (!argumentsChunk) return {};
+    if (!argumentsChunk) return null;
     
     // Initialize buffer for this tool call if not exists
     if (!toolCallBufferRef.current[toolCallId]) {
@@ -271,6 +284,8 @@ export function ChatInterface() {
   const handleNewChat = () => {
     setMessages([]);
     setCurrentConversationId(null);
+    setError(null);
+    setNotification(null);
   };
 
   const handlePrivateChat = () => {
@@ -322,12 +337,15 @@ export function ChatInterface() {
       const jsonContent = JSON.stringify(historyData, null, 2);
       await navigator.clipboard.writeText(jsonContent);
       
-      // Show success message
-      setError('Chat history copied to clipboard!');
+      // Show success notification
+      setNotification('Chat history copied to clipboard!');
       
-      // Clear the success message after 5 seconds
-      setTimeout(() => {
-        setError(null);
+      // Clear the notification after 5 seconds with proper cleanup
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+      notificationTimeoutRef.current = window.setTimeout(() => {
+        setNotification(null);
       }, 5000);
       
     } catch (err) {
@@ -439,7 +457,7 @@ export function ChatInterface() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-2">
                 {messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {message.role === 'assistant' && (
@@ -560,6 +578,11 @@ export function ChatInterface() {
           {error && (
             <div className={`mt-2 border border-red-200 text-red-700 px-4 py-2 rounded text-sm ${isDarkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
               {error}
+            </div>
+          )}
+          {notification && (
+            <div className={`mt-2 border border-green-200 text-green-700 px-4 py-2 rounded text-sm ${isDarkMode ? 'bg-green-900/20' : 'bg-green-50'}`}>
+              {notification}
             </div>
           )}
         </div>

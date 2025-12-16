@@ -5,7 +5,6 @@ import { useDarkMode } from '../../hooks/useDarkMode';
 interface ToolUseMessageProps {
   toolName: string;
   arguments: Record<string, any>;
-  toolUseId: string;
   status: 'in-progress' | 'success' | 'failure';
   response?: string;
   error?: string;
@@ -14,7 +13,6 @@ interface ToolUseMessageProps {
 export function ToolUseMessage({
   toolName,
   arguments: args,
-  toolUseId,
   status,
   response,
   error
@@ -24,7 +22,7 @@ export function ToolUseMessage({
 
   const formatArguments = (args: Record<string, any>): string => {
     const formattedArgs = Object.entries(args)
-      .map(([key, value]) => `${key}: ${typeof value === 'string' ? `"${value}"` : value}`)
+      .map(([key, value]) => `${key}: ${typeof value === 'string' ? `"${value}"` : JSON.stringify(value)}`)
       .join(', ');
     return `${toolName}(${formattedArgs})`;
   };
@@ -75,8 +73,17 @@ export function ToolUseMessage({
   return (
     <div className={`max-w-xs lg:max-w-md rounded-sm ml-12 px-2 py-1 border ${styles.container} ${styles.border}`}>
       <div 
+        role="button"
+        tabIndex={isCompleted ? 0 : -1}
+        aria-expanded={isCompleted ? isExpanded : undefined}
         className={`flex items-center justify-between cursor-pointer ${isCompleted ? 'hover:opacity-80' : ''}`}
         onClick={handleToggleExpanded}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggleExpanded();
+          }
+        }}
       >
         <div className="text-xs font-mono break-words flex-1">
           {formatArguments(args)}

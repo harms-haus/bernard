@@ -13,7 +13,7 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
-          proxy.on('proxyReq', (proxyReq, req, res) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
             // Add CORS headers
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');

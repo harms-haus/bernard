@@ -31,7 +31,7 @@ export function AssistantMessage({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-1 text-gray-500 hover:text-gray-700"
+          className={`h-6 w-6 p-1 ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
           onClick={onCopy}
           title="Copy to clipboard"
         >
@@ -40,7 +40,7 @@ export function AssistantMessage({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-1 text-gray-500 hover:text-gray-700"
+          className={`h-6 w-6 p-1 ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
           disabled
           title="Regenerate (not implemented)"
         >
@@ -50,7 +50,7 @@ export function AssistantMessage({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-1 text-gray-500 hover:text-gray-700"
+            className={`h-6 w-6 p-1 ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
             onClick={onToggleToolDetails}
             title="Show tools used"
           >

@@ -425,7 +425,10 @@ export default function Models() {
                       ? 'bg-blue-100 dark:bg-blue-900'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
-                  onClick={() => handleSelect(model.id)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent input blur
+                    handleSelect(model.id);
+                  }}
                 >
                   <div className="font-medium">{model.id}</div>
                 </button>

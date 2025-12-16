@@ -276,7 +276,10 @@ class APIClient {
       throw new Error('Failed to send message');
     }
 
-    return response.body!;
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+    return response.body;
   }
 
   async getConversationHistory(limit: number = 100, includeMessages: boolean = false, conversationId?: string | null): Promise<any[]> {
