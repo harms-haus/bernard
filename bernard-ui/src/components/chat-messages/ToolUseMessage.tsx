@@ -73,12 +73,12 @@ export function ToolUseMessage({
   };
 
   return (
-    <div className={`max-w-xs lg:max-w-md rounded-full px-4 py-2 border ${styles.container} ${styles.border}`}>
+    <div className={`max-w-xs lg:max-w-md rounded-sm ml-12 px-2 py-1 border ${styles.container} ${styles.border}`}>
       <div 
         className={`flex items-center justify-between cursor-pointer ${isCompleted ? 'hover:opacity-80' : ''}`}
         onClick={handleToggleExpanded}
       >
-        <div className="text-sm font-mono break-words flex-1">
+        <div className="text-xs font-mono break-words flex-1">
           {formatArguments(args)}
         </div>
         {isCompleted && (

@@ -296,10 +296,15 @@ export default function Models() {
     const [inputValue, setInputValue] = useState(value);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const containerRef = useRef<HTMLDivElement>(null);
+    const lastEmittedValueRef = useRef(value);
 
-    // Update input when value changes externally
+    // Update input when value changes externally, but only if the dropdown is closed
+    // This preserves user-typed values when the dropdown is open
     useEffect(() => {
-      setInputValue(value);
+      if (!isOpen && value !== inputValue) {
+        setInputValue(value);
+        lastEmittedValueRef.current = value;
+      }
     }, [value]);
 
     // Close dropdown when clicking outside
@@ -320,7 +325,11 @@ export default function Models() {
     );
 
     const handleSelect = (modelId: string) => {
-      onChange(modelId);
+      // Only call onChange if the value has actually changed
+      if (modelId !== lastEmittedValueRef.current) {
+        onChange(modelId);
+        lastEmittedValueRef.current = modelId;
+      }
       setInputValue(modelId);
       setIsOpen(false);
       setSearch('');
@@ -332,7 +341,8 @@ export default function Models() {
       setInputValue(newValue);
       setSearch(newValue);
       setSelectedIndex(-1); // Reset selection when typing
-      // Note: Don't call onChange(newValue) here to avoid losing focus
+      // Don't call onChange on every keystroke to avoid losing focus
+      // The value will be propagated on blur or when selecting from dropdown
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -385,6 +395,16 @@ export default function Models() {
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsOpen(true)}
+          onBlur={() => {
+            // When input loses focus, update the parent with the current input value
+            // This ensures custom model names are preserved even if not in the dropdown
+            if (inputValue !== lastEmittedValueRef.current) {
+              onChange(inputValue);
+              lastEmittedValueRef.current = inputValue;
+            }
+            setIsOpen(false);
+            setSelectedIndex(-1);
+          }}
           placeholder={placeholder}
           disabled={disabled}
           className="pr-8"

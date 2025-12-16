@@ -651,4 +651,53 @@ test("IntentHarness throws when a failing tool repeats three times", async () =>
   await assert.rejects(() => harness.run({}, baseCtx), /repeated 3 times/);
 });
 
+test("IntentHarness streams tool calls and responses", async () => {
+  const toolCall = {
+    id: "call_stream",
+    name: "echo_tool",
+    function: { name: "echo_tool", arguments: '{"value":"test"}' },
+    arguments: '{"value":"test"}'
+  };
+
+  const caller = new FakeLLMCaller([
+    {
+      text: "",
+      message: new AIMessage({ content: "", tool_calls: [toolCall] } as any),
+      toolCalls: [toolCall]
+    },
+    {
+      text: "",
+      message: new AIMessage({ content: "" }),
+      toolCalls: []
+    }
+  ]);
+
+  const streamEvents: any[] = [];
+  const tools: IntentTool[] = [
+    {
+      name: "echo_tool",
+      async invoke(input) {
+        return { echoed: input };
+      }
+    }
+  ];
+
+  const harness = new IntentHarness(caller, tools, 3);
+  const result = await harness.run({}, baseCtx, (event) => {
+    streamEvents.push(event);
+  });
+
+  // Verify that we received streaming events
+  assert.equal(streamEvents.length, 2);
+  
+  // First event should be tool call
+  assert.equal(streamEvents[0].type, "tool_call");
+  assert.equal(streamEvents[0].toolCall?.name, "echo_tool");
+  
+  // Second event should be tool response
+  assert.equal(streamEvents[1].type, "tool_response");
+  assert.equal(streamEvents[1].toolResponse?.toolName, "echo_tool");
+  assert.ok(streamEvents[1].toolResponse?.content.includes("echoed"));
+});
+
 

@@ -1,4 +1,4 @@
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
 import type { Logger } from "pino";
@@ -46,7 +46,7 @@ function buildRespondTool(): IntentTool {
     description:
       "Mark the agent loop as ready to hand off to respond to the user, once tooling is complete. Prefer calling this after your final tool call; if all necessary tools already succeeded, calling respond() alone is allowed.",
     schema: { type: "object", properties: {}, additionalProperties: false },
-    async invoke() {
+     invoke() {
       return "Requested to finish tool calling once all calls in this turn succeeded.";
     }
   };
@@ -184,9 +184,9 @@ async function runWithTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label:
         clearTimeout(timer);
         resolve(value);
       })
-      .catch((err) => {
+       .catch((err) => {
         clearTimeout(timer);
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
       });
   });
 }
@@ -238,7 +238,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   public readonly llm: LLMCaller;
   public readonly maxIterations: number;
   private readonly log = childLogger({ component: "intent_harness" }, logger);
-
+  
   /**
    * Create a new intent harness.
    */
@@ -250,6 +250,11 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     this.tools = tools;
     this.maxIterations = maxIterations;
   }
+  
+  /**
+   * Run the intent harness loop until completion or max iterations.
+   */
+  async run(input: IntentInput, ctx: HarnessContext, onStreamEvent?: (event: StreamEvent) => void): Promise<HarnessResult<IntentOutput>>;
 
   /**
    * Validate tool configuration and prepare tool lists for the model.
@@ -362,12 +367,11 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   /**
    * Update repetition tracking and short-circuit if work is already finished.
    */
-  private handleRepeatTracking(
+   private handleRepeatTracking(
     parsedCalls: ParsedCall[],
     state: RunState,
     successfulToolRuns: number,
-    transcript: BaseMessage[],
-    context: BaseMessage[]
+    transcript: BaseMessage[]
   ) {
     const currentKeys = new Set(parsedCalls.map((entry) => entry.key));
     const hasNewCalls = parsedCalls.some((entry) => !state.previousCallKeys.has(entry.key));
@@ -455,7 +459,8 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
     toolMap: Map<string, IntentTool>,
     ctx: HarnessContext,
     state: RunState,
-    log: Logger
+    log: Logger,
+    onStreamEvent?: (event: StreamEvent) => void
   ) {
     const callFailures: ToolFailure[] = [];
     let toolLatencyMsTotal = 0;
@@ -496,7 +501,14 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
         turnId: ctx.turnId
       });
       
-      try {
+       try {
+        // Stream the tool call before execution
+        if (onStreamEvent) {
+          onStreamEvent({
+            type: "tool_call",
+            toolCall: call
+          });
+        }
         const result = await runWithTimeout(() => tool.invoke(args), TOOL_TIMEOUT_MS, `Tool ${call.name}`);
         const elapsed = Date.now() - start;
         toolLatencyMsTotal += elapsed;
@@ -583,7 +595,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
             });
           }
           
-          const message = toToolMessage(call, result);
+           const message = toToolMessage(call, result);
           (message as { response_metadata?: Record<string, unknown> }).response_metadata = {
             ...(message as { response_metadata?: Record<string, unknown> }).response_metadata,
             toolLatencyMs: elapsed,
@@ -592,6 +604,18 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
           state.successfulToolRuns += 1;
           state.pendingFailureKeys.delete(key);
           state.transcript.push(message);
+          
+          // Stream the tool response
+          if (onStreamEvent) {
+            onStreamEvent({
+              type: "tool_response",
+              toolResponse: {
+                toolCallId: call.id,
+                toolName: call.name,
+                content: typeof result === "string" ? result : safeStringify(result)
+              }
+            });
+          }
           callLogger.info({
             event: "tool.success",
             durationMs: elapsed,
@@ -791,7 +815,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
   /**
    * Run the intent harness loop until completion or max iterations.
    */
-  async run(input: IntentInput, ctx: HarnessContext): Promise<HarnessResult<IntentOutput>> {
+  async run(input: IntentInput, ctx: HarnessContext, onStreamEvent?: (event: StreamEvent) => void): Promise<HarnessResult<IntentOutput>> {
     await this.ensureToolsReady();
     const runLogger = childLogger(
       {
@@ -860,7 +884,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
           const parsedResult = this.parseToolCalls(lastToolCalls, state.transcript);
           const parsedCalls = this.enforceParallelLimit(parsedResult.parsedCalls, state.transcript, parsedResult.callFailures);
 
-          const repeatCheck = this.handleRepeatTracking(parsedCalls, state, state.successfulToolRuns, state.transcript, context);
+           const repeatCheck = this.handleRepeatTracking(parsedCalls, state, state.successfulToolRuns, state.transcript);
           if (repeatCheck.done) {
             return finish(repeatCheck.output as HarnessResult<IntentOutput>);
           }
@@ -875,7 +899,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
           const runnableCalls = parsedCalls.filter((entry) => entry.call.name !== RESPOND_TOOL_NAME);
           const respondCalls = parsedCalls.filter((entry) => entry.call.name === RESPOND_TOOL_NAME);
 
-          const execution = await this.executeRunnableCalls(runnableCalls, toolMap, ctx, state, runLogger);
+           const execution = await this.executeRunnableCalls(runnableCalls, toolMap, ctx, state, runLogger, onStreamEvent);
           toolLatencyMsTotal += execution.toolLatencyMsTotal;
           const combinedFailures = [...parsedResult.callFailures, ...execution.callFailures];
 

@@ -84,7 +84,7 @@ export class Orchestrator {
    * Run the full orchestration loop: intent → memory → respond, persisting
    * conversation deltas and bubbling errors after logging.
    */
-  async run(input: OrchestratorRunInput): Promise<OrchestratorResult> {
+  async run(input: OrchestratorRunInput, onStreamEvent?: (event: StreamEvent) => void): Promise<OrchestratorResult> {
     const runLogger = childLogger(
       {
         conversationId: input.conversationId,
@@ -138,11 +138,11 @@ export class Orchestrator {
     const { IntentHarness } = await import("../harness/intent/intent.harness");
     const intentHarnessWithHA = new IntentHarness(this.intent.llm, intentTools, this.intent.maxIterations);
     
-    try {
-      const [intentRes, memoryRes] = await Promise.all([
-        intentHarnessWithHA.run(input.intentInput ?? {}, ctxWithHA),
-        this.memory.run(input.memoryInput ?? {}, ctxWithHA)
-      ]);
+     try {
+       const [intentRes, memoryRes] = await Promise.all([
+         intentHarnessWithHA.run(input.intentInput ?? {}, ctxWithHA, onStreamEvent),
+         this.memory.run(input.memoryInput ?? {}, ctxWithHA)
+       ]);
 
       ({ conversation, ctx } = await this.applyIntentDelta(conversation, ctxWithHA, intentRes, input));
 

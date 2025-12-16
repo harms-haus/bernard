@@ -27,14 +27,7 @@ function lastMessageText(turns: BaseMessage[], predicate: (msg: BaseMessage) => 
 function buildBlankResponseFallback(turns: BaseMessage[]): string {
   const lastToolText = lastMessageText(turns, (msg) => isToolMessage(msg));
   if (lastToolText) {
-    return `Here's what I found: ${truncate(lastToolText)}`;
-  }
-  const lastUserText = lastMessageText(
-    turns,
-    (msg) => (msg as { _getType?: () => string })._getType?.() === "human"
-  );
-  if (lastUserText) {
-    return `I didn't get a reply yet. Want me to check again for "${truncate(lastUserText, 160)}"?`;
+    return lastToolText;
   }
   return "I didn't get a reply yet, but I'm here if you want to try again.";
 }

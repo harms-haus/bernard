@@ -5,6 +5,7 @@ import { buildHarnessConfig } from "@/agent/orchestrator/config";
 import type { OrchestratorRunInput } from "@/agent/orchestrator/orchestrator";
 import { getPrimaryModel } from "@/lib/config/models";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import type { StreamEvent } from "@/agent/harness/lib/types";
 import {
   mapOpenAIToMessages,
   mapRecordsToMessages,
@@ -83,7 +84,7 @@ export async function buildGraph(ctx: LegacyGraphContext, deps: BuildGraphDeps =
   const intentModel = ctx.intentModel ?? (await getPrimaryModelFn("intent", { fallback: [responseModel] }));
   const { orchestrator } = await createOrchestratorFn(ctx.recordKeeper, { intentModel, responseModel });
 
-  const runWithDetails = async (input: { messages: BaseMessage[] }) => {
+  const runWithDetails = async (input: { messages: BaseMessage[] }, onStreamEvent?: (event: StreamEvent) => void) => {
     const persistable = newInboundMessagesFn(input.messages);
     const historyLength = input.messages.filter((msg) => (msg as { _getType?: () => string })._getType?.() !== "system")
       .length;
@@ -97,7 +98,7 @@ export async function buildGraph(ctx: LegacyGraphContext, deps: BuildGraphDeps =
     };
     if (ctx.turnId) runInput.turnId = ctx.turnId;
 
-    const result = await orchestrator.run(runInput);
+    const result = await orchestrator.run(runInput, onStreamEvent);
     const messages = [...input.messages, result.response.message];
     return { ...result, messages, historyLength, transcript: result.intent.transcript };
   };

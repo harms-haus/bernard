@@ -88,6 +88,16 @@ export type HarnessError = {
   cause?: unknown;
 };
 
+export type StreamEvent = {
+  type: "tool_call" | "tool_response";
+  toolCall?: ToolCall;
+  toolResponse?: {
+    toolCallId: string;
+    toolName: string;
+    content: string;
+  };
+};
+
 export interface Harness<TIn, TOut> {
-  run(input: TIn, ctx: HarnessContext): Promise<HarnessResult<TOut>>;
+  run(input: TIn, ctx: HarnessContext, onStreamEvent?: (event: StreamEvent) => void): Promise<HarnessResult<TOut>>;
 }

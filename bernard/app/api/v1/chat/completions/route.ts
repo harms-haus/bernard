@@ -11,6 +11,7 @@ import {
   mapChatMessages,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
+import type { StreamEvent } from "@/agent/harness/lib/types";
 import { chunkContent, buildToolChunks } from "@/app/api/v1/_lib/openai/chatChunks";
 import { buildIntentLLM, buildResponseLLM } from "@/app/api/v1/_lib/openai/modelBuilders";
 import {
@@ -265,10 +266,14 @@ async function streamChatCompletion(opts: {
   start: number;
   haContextManager: HomeAssistantContextManager;
 }) {
-  const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start, haContextManager } = opts;
+   const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start, haContextManager } = opts;
   let detailed;
+  const streamEvents: StreamEvent[] = [];
   try {
-    detailed = await graph.runWithDetails({ messages: mergedMessages });
+    // Collect streaming events from intent phase
+    detailed = await graph.runWithDetails({ messages: mergedMessages }, (event) => {
+      streamEvents.push(event);
+    });
   } catch (err) {
     await finalizeTurn({
       keeper,
@@ -315,7 +320,7 @@ async function streamChatCompletion(opts: {
 
       sendDelta({ role: "assistant" });
 
-      try {
+       try {
         // Send Home Assistant service calls first if any
         const haServiceCalls = buildHAServiceCallsForResponse(haContextManager);
         if (haServiceCalls.length) {
@@ -325,6 +330,35 @@ async function streamChatCompletion(opts: {
             },
             null
           );
+        }
+
+        // Stream intent phase tool calls and responses as they happened
+        for (const event of streamEvents) {
+          if (event.type === "tool_call" && event.toolCall) {
+            sendDelta(
+              {
+                tool_calls: [{
+                  id: event.toolCall.id,
+                  type: "function",
+                  function: {
+                    name: event.toolCall.name,
+                    arguments: typeof event.toolCall.arguments === "string" ? event.toolCall.arguments : JSON.stringify(event.toolCall.arguments)
+                  }
+                }]
+              },
+              null
+            );
+          } else if (event.type === "tool_response" && event.toolResponse) {
+            sendDelta(
+              {
+                tool_outputs: [{
+                  id: event.toolResponse.toolCallId,
+                  content: event.toolResponse.content
+                }]
+              },
+              null
+            );
+          }
         }
 
         for (const chunk of toolChunks) {

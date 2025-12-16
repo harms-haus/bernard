@@ -1,43 +1,32 @@
 import * as React from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
-import { apiClient, ConversationMessage } from '../services/api';
+import { apiClient } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Send, Loader2, Copy, RefreshCw, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard } from 'lucide-react';
+import { Send, Loader2, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { UserMessage } from './chat-messages/UserMessage';
 import { AssistantMessage } from './chat-messages/AssistantMessage';
 import { ToolUseMessage } from './chat-messages/ToolUseMessage';
+import { MessageRecord } from '../../../bernard/lib/conversation/types';
+import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 
-interface ToolUse {
-  toolName: string;
-  arguments: Record<string, any>;
-  toolUseId: string;
-  status: 'in-progress' | 'success' | 'failure';
-  response?: string;
-  error?: string;
-}
-
-interface Message {
+interface ToolCall {
   id: string;
-  role: 'user' | 'assistant' | 'tool-use';
-  content?: string;
-  toolsUsed?: string[];
-  toolUse?: ToolUse;
-  toolResponse?: {
-    toolUseId: string;
-    content?: string;
-    error?: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
   };
 }
 
 export function ChatInterface() {
   const { state } = useAuth();
   const { isDarkMode } = useDarkMode();
-  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [messages, setMessages] = React.useState<MessageRecord[]>([]);
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -45,6 +34,9 @@ export function ChatInterface() {
   const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+  
+  // Buffer for streaming tool call arguments
+  const toolCallBufferRef = React.useRef<Record<string, string>>({});
 
   // Handle input focus/blur with content check
   const handleInputFocus = () => {
@@ -68,10 +60,11 @@ export function ChatInterface() {
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
 
-    const userMessage: Message = {
+    const userMessage: MessageRecord = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim()
+      content: input.trim(),
+      createdAt: new Date().toISOString()
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -81,19 +74,20 @@ export function ChatInterface() {
 
     try {
       const stream = await apiClient.chatStream(
-        messages.concat(userMessage).map(msg => ({
-          role: msg.role === 'tool-use' ? 'assistant' : msg.role,
-          content: msg.content || ''
+        messages.concat(userMessage).filter(msg => msg.role !== 'system').map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
         }))
       );
 
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let assistantMessage: Message = {
+      let assistantMessage: MessageRecord = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: ''
+        content: '',
+        createdAt: new Date().toISOString()
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -118,6 +112,40 @@ export function ChatInterface() {
 
           try {
             const chunk = JSON.parse(payload);
+            
+            // Handle tool calls
+            if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta && chunk.choices[0].delta.tool_calls) {
+              const toolCalls: ToolCall[] = chunk.choices[0].delta.tool_calls;
+              
+              for (const toolCall of toolCalls) {
+                try {
+                  // Handle streaming tool call arguments
+                  const toolArgs = parseToolCallArguments(toolCall.function.arguments, toolCall.id);
+                  
+                  // Only create message if we have valid arguments
+                  if (toolArgs !== null) {
+                    // Create tool use message
+                    const toolUseMessage: MessageRecord = {
+                      id: `tool-${toolCall.id}`,
+                      role: 'tool',
+                      content: {
+                        toolName: toolCall.function.name,
+                        arguments: toolArgs,
+                        toolUseId: toolCall.id,
+                        status: 'in-progress'
+                      },
+                      createdAt: new Date().toISOString()
+                    };
+                    
+                    setMessages(prev => [...prev, toolUseMessage]);
+                  }
+                } catch (parseError) {
+                  console.error('Failed to parse tool call arguments:', parseError);
+                }
+              }
+            }
+            
+            // Handle regular text content
             const text = extractTextFromChunk(chunk);
             if (text) {
               assistantMessage = {
@@ -143,12 +171,10 @@ export function ChatInterface() {
       console.error('Chat error:', err);
       setError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
+      // Clear tool call buffers when stream ends
+      toolCallBufferRef.current = {};
       setIsStreaming(false);
     }
-  };
-
-  const handleStopStreaming = () => {
-    setIsStreaming(false);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -169,6 +195,66 @@ export function ChatInterface() {
     if (typeof messageContent === 'string') return messageContent;
 
     return null;
+  };
+
+  // Parse streaming tool call arguments with proper buffering
+  const parseToolCallArguments = (argumentsChunk: string, toolCallId: string): any => {
+    if (!argumentsChunk) return {};
+    
+    // Initialize buffer for this tool call if not exists
+    if (!toolCallBufferRef.current[toolCallId]) {
+      toolCallBufferRef.current[toolCallId] = '';
+    }
+    
+    // Append chunk to buffer
+    toolCallBufferRef.current[toolCallId] += argumentsChunk;
+    
+    const buffer = toolCallBufferRef.current[toolCallId];
+    
+    try {
+      // Try to parse the current buffer
+      const parsed = JSON.parse(buffer);
+      // If successful, clear the buffer for this tool call
+      toolCallBufferRef.current[toolCallId] = '';
+      return parsed;
+    } catch (error) {
+      // If parsing fails, check if we have a partial JSON object
+      if (buffer.trim().endsWith(',') || buffer.trim().endsWith(':')) {
+        // Partial object, keep buffering
+        return null;
+      }
+      
+      // Try to extract a valid JSON object from the buffer
+      const trimmed = buffer.trim();
+      let openBraces = 0;
+      let closeBraces = 0;
+      let openBrackets = 0;
+      let closeBrackets = 0;
+      
+      for (let i = 0; i < trimmed.length; i++) {
+        const char = trimmed[i];
+        if (char === '{') openBraces++;
+        else if (char === '}') closeBraces++;
+        else if (char === '[') openBrackets++;
+        else if (char === ']') closeBrackets++;
+        
+        // If we have balanced braces and brackets, try to parse up to this point
+        if (openBraces === closeBraces && openBrackets === closeBrackets && openBraces > 0) {
+          try {
+            const partial = trimmed.substring(0, i + 1);
+            const parsed = JSON.parse(partial);
+            // Update buffer to start after the parsed object
+            toolCallBufferRef.current[toolCallId] = trimmed.substring(i + 1);
+            return parsed;
+          } catch {
+            // Continue searching
+          }
+        }
+      }
+      
+      // If we can't parse anything, return null to keep buffering
+      return null;
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -203,7 +289,20 @@ export function ChatInterface() {
       
       // Try to fetch current conversation history from the API first
       try {
-        historyData = await apiClient.getConversationHistory(1000, true, currentConversationId);
+        const apiResponse = await apiClient.getConversationHistory(1000, true, currentConversationId);
+        // API returns an array of conversations, we need to extract the relevant one
+        if (apiResponse && apiResponse.length > 0) {
+          // If we have a current conversation ID, find it; otherwise use the first
+          if (currentConversationId) {
+            const found = apiResponse.find(conv => conv.id === currentConversationId);
+            if (found) {
+              historyData = found.messages || [];
+            }
+          } else {
+            // Use the most recent conversation
+            historyData = apiResponse[0].messages || [];
+          }
+        }
       } catch (apiError) {
         console.warn('Could not fetch full history from API, using current messages:', apiError);
       }
@@ -219,15 +318,17 @@ export function ChatInterface() {
         return;
       }
 
-      // Copy COMPLETE HISTORY JSON OBJECT - NO PARSING
+      // Copy chat history JSON
       const jsonContent = JSON.stringify(historyData, null, 2);
       await navigator.clipboard.writeText(jsonContent);
+      
+      // Show success message
       setError('Chat history copied to clipboard!');
       
-      // Clear the success message after 3 seconds
+      // Clear the success message after 5 seconds
       setTimeout(() => {
         setError(null);
-      }, 3000);
+      }, 5000);
       
     } catch (err) {
       console.error('Failed to copy chat history:', err);
@@ -350,23 +451,23 @@ export function ChatInterface() {
                     )}
                     {message.role === 'user' ? (
                       <UserMessage
-                        content={message.content || ''}
+                        content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
                       />
-                    ) : message.role === 'tool-use' && message.toolUse ? (
+                    ) : message.role === 'tool' ? (
                       <ToolUseMessage
-                        toolName={message.toolUse.toolName}
-                        arguments={message.toolUse.arguments}
-                        toolUseId={message.toolUse.toolUseId}
-                        status={message.toolUse.status}
-                        response={message.toolUse.response}
-                        error={message.toolUse.error}
+                        toolName={typeof message.content === 'object' && message.content ? (message.content as any).toolName || '' : ''}
+                        arguments={typeof message.content === 'object' && message.content ? (message.content as any).arguments || {} : {}}
+                        toolUseId={typeof message.content === 'object' && message.content ? (message.content as any).toolUseId || '' : ''}
+                        status={typeof message.content === 'object' && message.content ? (message.content as any).status || 'in-progress' : 'in-progress'}
+                        response={typeof message.content === 'object' && message.content ? (message.content as any).response || '' : ''}
+                        error={typeof message.content === 'object' && message.content ? (message.content as any).error || '' : ''}
                       />
                     ) : (
                       <AssistantMessage
-                        content={message.content || ''}
-                        toolsUsed={message.toolsUsed}
+                        content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
+                        toolsUsed={[]}
                         showToolDetails={showToolDetails[message.id]}
-                        onCopy={() => copyToClipboard(message.content || '')}
+                        onCopy={() => copyToClipboard(typeof message.content === 'string' ? message.content : JSON.stringify(message.content))}
                         onToggleToolDetails={() => toggleToolDetails(message.id)}
                       />
                     )}
@@ -389,10 +490,7 @@ export function ChatInterface() {
                       </Avatar>
                     </div>
                     <div className="">
-                      <div className="flex items-center space-x-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Thinking...</span>
-                      </div>
+                      <ThinkingMessage />
                     </div>
                   </div>
                 )}
