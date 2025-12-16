@@ -39,35 +39,18 @@ export interface UpdateTokenRequest {
 }
 
 export interface ConversationMessage {
-  id: string;
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | Record<string, unknown> | Array<Record<string, unknown>>;
-  name?: string;
-  tool_call_id?: string;
-  tool_calls?: Array<{
-    id?: string;
-    type?: string;
-    name?: string;
-    arguments?: unknown;
-    args?: unknown;
-    input?: unknown;
-    function?: { name?: string; arguments?: unknown; args?: unknown };
-  }>;
-  createdAt: string;
-  tokenDeltas?: { in?: number; out?: number };
-  metadata?: Record<string, unknown>;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-export interface APIError extends Error {
-  status?: number;
-  details?: unknown;
+export interface ChatResponse {
+  content: string;
 }
 
-class ApiClient {
+class APIClient {
   private readonly baseUrl: string;
   private currentUserInFlight: Promise<User | null> | null = null;
-  private currentUserCache: { user: User | null; cachedAtMs: number } | null =
-    null;
+  private currentUserCache: { user: User | null; cachedAtMs: number } | null = null;
 
   constructor(baseUrl: string = '/api') {
     this.baseUrl = baseUrl;
@@ -93,7 +76,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      const error: APIError = new Error(
+      const error: Error & { status?: number; details?: unknown } = new Error(
         errorText || `HTTP ${response.status}`
       );
       error.status = response.status;
@@ -106,6 +89,11 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const token = localStorage.getItem('authToken');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
   }
 
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
@@ -244,34 +232,73 @@ class ApiClient {
     });
   }
 
-  async chatStream(messages: Array<{ role: string; content: string }>): Promise<ReadableStream> {
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+  async chat(messages: ConversationMessage[]): Promise<ChatResponse> {
+    const response = await fetch('/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream'
+        ...this.getAuthHeaders()
       },
-      credentials: 'include',
       body: JSON.stringify({
         model: 'bernard-v1',
-        stream: true,
         messages: messages.map(msg => ({
-          role: msg.role === 'ai' ? 'assistant' : msg.role,
+          role: msg.role,
           content: msg.content
         }))
       })
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      const error: APIError = new Error(errorText || `HTTP ${response.status}`);
-      error.status = response.status;
-      error.details = errorText;
-      throw error;
+      throw new Error('Failed to send message');
     }
 
-    return response.body as ReadableStream;
+    return response.json();
+  }
+
+  async chatStream(messages: ConversationMessage[]): Promise<ReadableStream> {
+    const response = await fetch('/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({
+        model: 'bernard-v1',
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to send message');
+    }
+
+    return response.body!;
+  }
+
+  async getConversationHistory(limit: number = 100, includeMessages: boolean = false, conversationId?: string | null): Promise<any[]> {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      includeMessages: String(includeMessages)
+    });
+    if (conversationId) {
+      params.set('conversationId', conversationId);
+    }
+    
+    const response = await fetch(`/api/history?${params.toString()}`, {
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch conversation history');
+    }
+
+    const data = await response.json();
+    return data.results || [];
   }
 }
 
-export const apiClient = new ApiClient();
+export const apiClient = new APIClient();

@@ -9,6 +9,9 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 export NG_CLI_ANALYTICS="${NG_CLI_ANALYTICS:-false}"
 export NEXT_TELEMETRY_DISABLED="${NEXT_TELEMETRY_DISABLED:-1}"
 
+# Disable job control to ensure signals are handled properly
+set +m
+
 cleaned=0
 cleanup() {
   if [[ "${cleaned}" -eq 1 ]]; then
@@ -16,15 +19,48 @@ cleanup() {
   fi
   cleaned=1
   echo "Stopping services..."
+  
+  # Send SIGTERM to all processes first for graceful shutdown
   for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-      kill "${pid}" 2>/dev/null || true
+      echo "Sending SIGTERM to process ${pid}..."
+      kill -TERM "${pid}" 2>/dev/null || true
+    fi
+  done
+  
+  # Wait up to 5 seconds for graceful shutdown
+  local count=0
+  local max_wait=20  # 5 seconds at 0.25s intervals
+  while [[ ${count} -lt ${max_wait} ]]; do
+    local running=0
+    for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
+      if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+        running=1
+        break
+      fi
+    done
+    if [[ ${running} -eq 0 ]]; then
+      break
+    fi
+    sleep 0.25
+    count=$((count + 1))
+  done
+  
+  # Force kill any remaining processes
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+      echo "Force killing process ${pid}..."
+      kill -KILL "${pid}" 2>/dev/null || true
       wait "${pid}" 2>/dev/null || true
     fi
   done
+  
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    echo "Stopping Redis container..."
     docker stop -t 1 "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  
+  echo "Cleanup complete."
 }
 trap cleanup EXIT INT TERM
 
@@ -113,6 +149,13 @@ export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
 echo "Starting bernard dev server on port ${BERNARD_PORT}..."
 kill_port_processes "${BERNARD_PORT}"
+
+# Wait for port to actually be free
+echo "Waiting for port ${BERNARD_PORT} to be available..."
+while get_port_pid "${BERNARD_PORT}" | grep -q .; do
+  sleep 0.5
+done
+
 npm run dev --prefix "${ROOT_DIR}/bernard" -- --port "${BERNARD_PORT}" --hostname 0.0.0.0 &
 BERNARD_PID=$!
 
@@ -122,11 +165,20 @@ WORKER_PID=$!
 
 echo "Starting bernard-ui on port ${UI_PORT}..."
 kill_port_processes "${UI_PORT}"
-npm run dev --prefix "${ROOT_DIR}/bernard-ui" &
+
+# Wait for port to actually be free
+echo "Waiting for port ${UI_PORT} to be available..."
+while get_port_pid "${UI_PORT}" | grep -q .; do
+  sleep 0.5
+done
+
+PORT="${UI_PORT}" npm run dev --prefix "${ROOT_DIR}/bernard-ui" &
 UI_PID=$!
 
+# Wait for any of the background processes to exit
+# This properly handles signals and ensures cleanup runs
 status=0
-wait -n "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" || status=$?
-cleanup
-exit "${status}"
+wait "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" || status=$?
 
+# Cleanup will be called automatically via the EXIT trap
+exit "${status}"

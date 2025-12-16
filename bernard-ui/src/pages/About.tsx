@@ -8,7 +8,7 @@ import {
 
 export function About() {
   return (
-    <div className="px-4 py-6 sm:px-0">
+    <div className="px-6 py-6">
       <div className="max-w-3xl mx-auto">
         <Card>
           <CardHeader>

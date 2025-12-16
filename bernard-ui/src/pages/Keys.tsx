@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { apiClient } from '../services/api';
+import { apiClient, Token } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Copy, Plus, RefreshCw, Trash2, Key, Check, MoreVertical } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface TokenWithSecret extends apiClient.Token {
+interface TokenWithSecret extends Token {
   token?: string;
 }
 
@@ -118,7 +118,7 @@ export function Keys() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-6xl">
+    <div className="container mx-auto px-6 py-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Access Tokens</h1>
