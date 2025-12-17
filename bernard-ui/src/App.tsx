@@ -15,6 +15,7 @@ import History from './pages/admin/History'
 import Models from './pages/admin/Models'
 import Users from './pages/admin/Users'
 import ConversationDetail from './pages/admin/ConversationDetail'
+import { DialogManagerProvider, ToastManagerProvider } from './components'
 
 // Admin protected route component
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -27,45 +28,49 @@ function App() {
   return (
     <AuthProvider>
       <DarkModeProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+        <DialogManagerProvider>
+          <ToastManagerProvider>
+            <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            {/* User routes with navigation */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <UserLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Home />} />
-              <Route path="chat" element={<Chat />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="keys" element={<Keys />} />
-              <Route path="about" element={<About />} />
-            </Route>
+              {/* User routes with navigation */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <UserLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Home />} />
+                <Route path="chat" element={<Chat />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="keys" element={<Keys />} />
+                <Route path="about" element={<About />} />
+              </Route>
 
-            {/* Admin routes */}
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute>
-                  <AdminProtectedRoute>
-                    <AdminLayout />
-                  </AdminProtectedRoute>
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Dashboard />} />
-              <Route path="models" element={<Models />} />
-              <Route path="history" element={<History />} />
-              <Route path="history/:id" element={<ConversationDetail />} />
-              <Route path="users" element={<Users />} />
-            </Route>
-          </Routes>
-        </Router>
+              {/* Admin routes */}
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <AdminProtectedRoute>
+                      <AdminLayout />
+                    </AdminProtectedRoute>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Dashboard />} />
+                <Route path="models" element={<Models />} />
+                <Route path="history" element={<History />} />
+                <Route path="history/:id" element={<ConversationDetail />} />
+                <Route path="users" element={<Users />} />
+              </Route>
+            </Routes>
+          </Router>
+          </ToastManagerProvider>
+        </DialogManagerProvider>
       </DarkModeProvider>
     </AuthProvider>
   )

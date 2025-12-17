@@ -13,6 +13,7 @@ import { AssistantMessage } from './chat-messages/AssistantMessage';
 import { ToolUseMessage } from './chat-messages/ToolUseMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
+import { useToast } from './ToastManager';
 
 interface ToolCall {
   id: string;
@@ -29,8 +30,6 @@ export function ChatInterface() {
   const [messages, setMessages] = React.useState<MessageRecord[]>([]);
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [notification, setNotification] = React.useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
   const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
@@ -39,8 +38,11 @@ export function ChatInterface() {
   // Buffer for streaming tool call arguments
   const toolCallBufferRef = React.useRef<Record<string, string>>({});
   
-  // Ref to store timeout ID for cleanup
-  const notificationTimeoutRef = React.useRef<number | null>(null);
+  // Store current assistant message ID for cleanup
+  const currentAssistantIdRef = React.useRef<string | null>(null);
+  
+  // Hook calls - must be at the top level of the component function
+  const toast = useToast();
 
   // Handle input focus/blur with content check
   const handleInputFocus = () => {
@@ -61,14 +63,6 @@ export function ChatInterface() {
     }
   }, [messages]);
 
-  // Cleanup notification timeout on unmount
-  React.useEffect(() => {
-    return () => {
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
@@ -82,8 +76,6 @@ export function ChatInterface() {
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
-    setError(null);
-    setNotification(null);
     setIsStreaming(true);
 
     try {
@@ -103,6 +95,9 @@ export function ChatInterface() {
         content: '',
         createdAt: new Date().toISOString()
       };
+
+      // Store current assistant message ID for cleanup
+      currentAssistantIdRef.current = assistantMessage.id;
 
       setMessages(prev => [...prev, assistantMessage]);
 
@@ -151,7 +146,19 @@ export function ChatInterface() {
                       createdAt: new Date().toISOString()
                     };
                     
-                    setMessages(prev => [...prev, toolUseMessage]);
+                    // Insert tool message above the thinking message (if streaming)
+                    setMessages(prev => {
+                      if (isStreaming) {
+                        // Find the last assistant message (thinking message placeholder)
+                        const lastAssistantIndex = prev.map(msg => msg.role).lastIndexOf('assistant');
+                        if (lastAssistantIndex !== -1) {
+                          const newMessages = [...prev];
+                          newMessages.splice(lastAssistantIndex, 0, toolUseMessage);
+                          return newMessages;
+                        }
+                      }
+                      return [...prev, toolUseMessage];
+                    });
                   }
                 } catch (parseError) {
                   console.error('Failed to parse tool call arguments:', parseError);
@@ -168,10 +175,22 @@ export function ChatInterface() {
               };
               
               setMessages(prev => {
-                  return prev.map(msg => 
-                    msg.id === assistantMessage.id ? assistantMessage : msg
-                  );
-                });
+                // Update the assistant message in place
+                const updatedMessages = prev.map(msg =>
+                  msg.id === assistantMessage.id ? assistantMessage : msg
+                );
+                
+                // If streaming and assistant message is not at the end, move it to the end
+                if (isStreaming && updatedMessages.length > 0 &&
+                    updatedMessages[updatedMessages.length - 1].id !== assistantMessage.id) {
+                  // Remove the assistant message from its current position
+                  const filteredMessages = updatedMessages.filter(msg => msg.id !== assistantMessage.id);
+                  // Add it back at the end
+                  return [...filteredMessages, assistantMessage];
+                }
+                
+                return updatedMessages;
+              });
             }
           } catch {
             // Ignore malformed chunks
@@ -182,10 +201,25 @@ export function ChatInterface() {
       }
     } catch (err) {
       console.error('Chat error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send message');
+      toast.error('Chat Error', err instanceof Error ? err.message : 'Failed to send message');
     } finally {
       // Clear tool call buffers when stream ends
       toolCallBufferRef.current = {};
+      
+      // Move assistant message to the end after all tool messages
+      const assistantId = currentAssistantIdRef.current;
+      if (assistantId) {
+        setMessages(prev => {
+          const idx = prev.findIndex(msg => msg.id === assistantId);
+          if (idx !== -1 && idx !== prev.length - 1) {
+            const msg = prev[idx];
+            return [...prev.slice(0, idx), ...prev.slice(idx + 1), msg];
+          }
+          return prev;
+        });
+        currentAssistantIdRef.current = null;
+      }
+      
       setIsStreaming(false);
     }
   };
@@ -284,8 +318,6 @@ export function ChatInterface() {
   const handleNewChat = () => {
     setMessages([]);
     setCurrentConversationId(null);
-    setError(null);
-    setNotification(null);
   };
 
   const handlePrivateChat = () => {
@@ -329,7 +361,7 @@ export function ChatInterface() {
       
       // If still no messages, show error
       if (!historyData || historyData.length === 0) {
-        setError('No chat history available to copy');
+        toast.error('No History', 'No chat history available to copy');
         return;
       }
 
@@ -337,20 +369,12 @@ export function ChatInterface() {
       const jsonContent = JSON.stringify(historyData, null, 2);
       await navigator.clipboard.writeText(jsonContent);
       
-      // Show success notification
-      setNotification('Chat history copied to clipboard!');
-      
-      // Clear the notification after 5 seconds with proper cleanup
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-      notificationTimeoutRef.current = window.setTimeout(() => {
-        setNotification(null);
-      }, 5000);
+      // Show success toast
+      toast.success('Success', 'Chat history copied to clipboard!');
       
     } catch (err) {
       console.error('Failed to copy chat history:', err);
-      setError(err instanceof Error ? err.message : 'Failed to copy chat history');
+      toast.error('Copy Failed', err instanceof Error ? err.message : 'Failed to copy chat history');
     }
   };
 
@@ -372,7 +396,7 @@ export function ChatInterface() {
       
       // If still no messages, show error
       if (!historyData || historyData.length === 0) {
-        setError('No chat history available to download');
+        toast.error('No History', 'No chat history available to download');
         return;
       }
 
@@ -390,7 +414,7 @@ export function ChatInterface() {
       
     } catch (err) {
       console.error('Failed to download chat history:', err);
-      setError(err instanceof Error ? err.message : 'Failed to download chat history');
+      toast.error('Download Failed', err instanceof Error ? err.message : 'Failed to download chat history');
     }
   };
 
@@ -475,7 +499,6 @@ export function ChatInterface() {
                       <ToolUseMessage
                         toolName={typeof message.content === 'object' && message.content ? (message.content as any).toolName || '' : ''}
                         arguments={typeof message.content === 'object' && message.content ? (message.content as any).arguments || {} : {}}
-                        toolUseId={typeof message.content === 'object' && message.content ? (message.content as any).toolUseId || '' : ''}
                         status={typeof message.content === 'object' && message.content ? (message.content as any).status || 'in-progress' : 'in-progress'}
                         response={typeof message.content === 'object' && message.content ? (message.content as any).response || '' : ''}
                         error={typeof message.content === 'object' && message.content ? (message.content as any).error || '' : ''}
@@ -517,7 +540,7 @@ export function ChatInterface() {
           </ScrollArea>
 
           {/* Chat input area */}
-          <div className={`${isInputFocused || input.trim() ? 'rounded-3xl' : 'rounded-full'} ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <div className={`${isInputFocused || input.trim() ? 'rounded-3xl' : 'rounded-full'} ${isDarkMode ? 'bg-gray-800' : 'bg-white'} my-2`}>
             {isInputFocused ? (
               <div className="flex flex-col p-2">
                 {/* First row: transparent input */}
@@ -549,7 +572,7 @@ export function ChatInterface() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center h-11 px-2">
+              <div className="flex items-center h-11 px-2 ">
                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -575,16 +598,6 @@ export function ChatInterface() {
               </div>
             )}
           </div>
-          {error && (
-            <div className={`mt-2 border border-red-200 text-red-700 px-4 py-2 rounded text-sm ${isDarkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
-              {error}
-            </div>
-          )}
-          {notification && (
-            <div className={`mt-2 border border-green-200 text-green-700 px-4 py-2 rounded text-sm ${isDarkMode ? 'bg-green-900/20' : 'bg-green-50'}`}>
-              {notification}
-            </div>
-          )}
         </div>
       </div>
     </div>

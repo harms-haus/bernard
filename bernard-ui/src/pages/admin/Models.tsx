@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ProviderType, ModelsSettings, ModelInfo } from '../../services/adminApi';
+import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
+import { useToast } from '../../components/ToastManager';
 
 type ModelCategory = 'response' | 'intent' | 'memory' | 'utility' | 'aggregation';
 
@@ -42,6 +44,11 @@ export default function Models() {
     utility: '',
     aggregation: ''
   });
+
+  // Hook calls - must be at the top level of the component function
+  const confirm = useConfirmDialog();
+  const alert = useAlertDialog();
+  const toast = useToast();
 
   const categories: { key: ModelCategory; label: string; description: string }[] = [
     { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
@@ -97,7 +104,11 @@ export default function Models() {
   const handleProviderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!providerForm.name || !providerForm.baseUrl || !providerForm.apiKey) {
-      alert('Please fill in all provider fields');
+      alert({
+        title: 'Missing Fields',
+        description: 'Please fill in all provider fields',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -110,34 +121,42 @@ export default function Models() {
       await loadProviderModels(newProvider.id);
     } catch (error) {
       console.error('Failed to create provider:', error);
-      alert('Failed to create provider');
+      alert({
+        title: 'Failed to Create Provider',
+        description: 'Failed to create provider',
+        variant: 'error'
+      });
     }
   };
 
   const handleDeleteProvider = async (providerId: string) => {
-    if (!confirm('Delete this provider? This will also remove it from any model configurations.')) {
-      return;
-    }
-
-    try {
-      await adminApiClient.deleteProvider(providerId);
-      setProviders(providers.filter(p => p.id !== providerId));
-      // Clear any selected models from this provider
-      const updatedSettings = { ...settings! };
-      categories.forEach(categoryObj => {
-        const category = categoryObj.key;
-        const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
-        if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
-          if (categorySettings.providerId === providerId) {
-            updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
-          }
+    const closeDialog = confirm({
+      title: 'Delete Provider',
+      description: 'Delete this provider? This will also remove it from any model configurations.',
+      confirmVariant: 'destructive',
+      onConfirm: async () => {
+        try {
+          await adminApiClient.deleteProvider(providerId);
+          setProviders(providers.filter(p => p.id !== providerId));
+          // Clear any selected models from this provider
+          const updatedSettings = { ...settings! };
+          categories.forEach(categoryObj => {
+            const category = categoryObj.key;
+            const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
+            if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
+              if (categorySettings.providerId === providerId) {
+                updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
+              }
+            }
+          });
+          setSettings(updatedSettings);
+          toast.success('Provider deleted successfully');
+        } catch (error) {
+          console.error('Failed to delete provider:', error);
+          toast.error('Failed to delete provider');
         }
-      });
-      setSettings(updatedSettings);
-    } catch (error) {
-      console.error('Failed to delete provider:', error);
-      alert('Failed to delete provider');
-    }
+      }
+    });
   };
 
   const handleTestProvider = async (providerId: string) => {
@@ -145,15 +164,27 @@ export default function Models() {
     try {
       const result = await adminApiClient.testProvider(providerId);
       if (result.status === 'working') {
-        alert('Provider test successful!');
+        alert({
+          title: 'Provider Test Successful',
+          description: 'Provider test successful!',
+          variant: 'success'
+        });
         // Fetch models after successful test
         await loadProviderModels(providerId);
       } else {
-        alert(`Provider test failed: ${result.error || 'Unknown error'}`);
+        alert({
+          title: 'Provider Test Failed',
+          description: `Provider test failed: ${result.error || 'Unknown error'}`,
+          variant: 'error'
+        });
       }
     } catch (error) {
       console.error('Failed to test provider:', error);
-      alert('Failed to test provider');
+      alert({
+        title: 'Failed to Test Provider',
+        description: 'Failed to test provider',
+        variant: 'error'
+      });
     } finally {
       setTestingProvider(null);
     }
@@ -224,11 +255,11 @@ export default function Models() {
       });
       
       setSettings(updatedSettings);
-      alert('Settings saved successfully!');
+      toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Failed to save settings: ${errorMessage}`);
+      toast.error(`Failed to save settings: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

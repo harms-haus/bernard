@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ConversationListItem } from '../../services/adminApi';
+import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
+import { useToast } from '../../components/ToastManager';
 
 export default function History() {
   const [loading, setLoading] = useState(false);
@@ -32,17 +34,30 @@ export default function History() {
   const [stats, setStats] = useState({ total: 0, active: 0, closed: 0 });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
+  
+  // Hook calls - must be at the top level of the component function
+  const confirmDialog = useConfirmDialog();
+  const alertDialog = useAlertDialog();
+  const toast = useToast();
+  
+  // Ref to track if component is mounted for cleanup
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     loadHistory();
+    
+    // Cleanup function to mark component as unmounted
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadHistory = async () => {
     setLoading(true);
     try {
-      const response = await adminApiClient.listHistory({ 
-        includeOpen: true, 
-        includeClosed: true 
+      const response = await adminApiClient.listHistory({
+        includeOpen: true,
+        includeClosed: true
       });
       setConversations(response.items || []);
       setStats({
@@ -52,16 +67,64 @@ export default function History() {
       });
     } catch (error) {
       console.error('Failed to load history:', error);
-      alert('Failed to load conversation history');
+      toast.error('Failed to load conversation history');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteConversation = async (conversationId: string) => {
-    if (!confirm('Delete this conversation? This action cannot be undone.')) {
-      return;
-    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      
+      // Create a safe resolve function that checks mounted state and prevents double resolution
+      const safeResolve = (value: boolean) => {
+        if (!resolved && isMountedRef.current) {
+          resolved = true;
+          resolve(value);
+        }
+      };
+      
+      // Set up a timeout to ensure the Promise resolves if the dialog doesn't call onClose properly
+      const timeoutId = setTimeout(() => {
+        if (!resolved && isMountedRef.current) {
+          safeResolve(false);
+        }
+      }, 30000); // 30 second timeout as a safety net
+      
+      // Create a cleanup function that will be called when the Promise resolves
+      const cleanup = () => {
+        if (!resolved && isMountedRef.current) {
+          safeResolve(false);
+        }
+        clearTimeout(timeoutId);
+      };
+      
+      // Override the close function to include cleanup
+      const originalClose = () => {
+        cleanup();
+      };
+      const wrappedClose = () => {
+        cleanup();
+        originalClose();
+      };
+      
+      // Open the dialog
+      const close = confirmDialog({
+        title: 'Delete this conversation?',
+        description: 'This action cannot be undone.',
+        onConfirm: () => {
+          safeResolve(true);
+          wrappedClose();
+        },
+        onCancel: () => {
+          safeResolve(false);
+          wrappedClose();
+        },
+      });
+    });
+    
+    if (!confirmed) return;
 
     setDeletingId(conversationId);
     try {
@@ -70,7 +133,7 @@ export default function History() {
       loadHistory(); // Refresh stats
     } catch (error) {
       console.error('Failed to delete conversation:', error);
-      alert('Failed to delete conversation');
+      toast.error('Failed to delete conversation');
     } finally {
       setDeletingId(null);
     }
@@ -79,13 +142,13 @@ export default function History() {
   const handleCloseConversation = async (conversationId: string) => {
     try {
       await adminApiClient.closeConversation(conversationId);
-      setConversations(conversations.map(c => 
+      setConversations(conversations.map(c =>
         c.id === conversationId ? { ...c, status: 'closed' as const } : c
       ));
       loadHistory(); // Refresh stats
     } catch (error) {
       console.error('Failed to close conversation:', error);
-      alert('Failed to close conversation');
+      toast.error('Failed to close conversation');
     }
   };
 
@@ -96,17 +159,17 @@ export default function History() {
     try {
       const result = await adminApiClient.retryIndexing(conversationId);
       if (result.success) {
-        setConversations(conversations.map(c => 
-          c.id === conversationId 
+        setConversations(conversations.map(c =>
+          c.id === conversationId
             ? { ...c, indexingStatus: result.indexingStatus, indexingAttempts: (c.indexingAttempts || 0) + 1, indexingError: undefined }
             : c
         ));
       } else {
-        alert(result.message || 'Unable to retry indexing');
+        toast.error(result.message || 'Unable to retry indexing');
       }
     } catch (error) {
       console.error('Failed to retry indexing:', error);
-      alert('Failed to retry indexing');
+      toast.error('Failed to retry indexing');
     } finally {
       setIndexingAction(null);
     }
@@ -125,20 +188,33 @@ export default function History() {
             : c
         ));
       } else {
-        alert(result.message || 'Unable to cancel indexing');
+        toast.error(result.message || 'Unable to cancel indexing');
       }
     } catch (error) {
       console.error('Failed to cancel indexing:', error);
-      alert('Failed to cancel indexing');
+      toast.error('Failed to cancel indexing');
     } finally {
       setIndexingAction(null);
     }
   };
 
   const handleDeleteIndex = async (conversationId: string) => {
-    if (!confirm('Delete the index for this conversation? This will reset the indexing status.')) {
-      return;
-    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const close = confirmDialog({
+        title: 'Delete the index for this conversation?',
+        description: 'This will reset the indexing status.',
+        onConfirm: () => {
+          resolve(true);
+          close();
+        },
+        onCancel: () => {
+          resolve(false);
+          close();
+        },
+      });
+    });
+    
+    if (!confirmed) return;
 
     try {
       // Note: This might need to be implemented as an API call to delete index
@@ -148,10 +224,15 @@ export default function History() {
           ? { ...c, indexingStatus: 'none' as const, indexingError: undefined, indexingAttempts: 0 }
           : c
       ));
-      alert('Index deleted successfully');
+      
+      alertDialog({
+        title: 'Index deleted successfully',
+        variant: 'success',
+        confirmText: 'OK',
+      });
     } catch (error) {
       console.error('Failed to delete index:', error);
-      alert('Failed to delete index');
+      toast.error('Failed to delete index');
     }
   };
 

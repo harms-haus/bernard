@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { User, UserStatus } from '../../types/auth';
+import { useAlertDialog, useConfirmDialog } from '../../components/DialogManager';
 
 interface UserForm {
   id: string;
@@ -45,6 +46,10 @@ export default function Users() {
     isAdmin: false
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  
+  // Hook calls - must be at the top level of the component function
+  const alertDialog = useAlertDialog();
+  const confirmDialog = useConfirmDialog();
 
   useEffect(() => {
     loadUsers();
@@ -57,7 +62,11 @@ export default function Users() {
       setUsers(userList);
     } catch (error) {
       console.error('Failed to load users:', error);
-      alert('Failed to load users');
+      alertDialog({
+        title: 'Error',
+        description: 'Failed to load users',
+        variant: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -68,7 +77,11 @@ export default function Users() {
     
     const trimmedName = userForm.displayName.trim();
     if (!trimmedName) {
-      alert('Display name is required');
+      alertDialog({
+        title: 'Validation Error',
+        description: 'Display name is required',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -80,7 +93,11 @@ export default function Users() {
           isAdmin: userForm.isAdmin
         });
         setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
-        alert('User updated successfully!');
+        alertDialog({
+          title: 'Success',
+          description: 'User updated successfully!',
+          variant: 'success'
+        });
       } else {
         const newUser = await adminApiClient.createUser({
           id: userForm.id.trim(),
@@ -88,7 +105,11 @@ export default function Users() {
           isAdmin: userForm.isAdmin
         });
         setUsers([...users, newUser]);
-        alert('User created successfully!');
+        alertDialog({
+          title: 'Success',
+          description: 'User created successfully!',
+          variant: 'success'
+        });
       }
       
       setShowUserForm(false);
@@ -97,7 +118,11 @@ export default function Users() {
     } catch (error: any) {
       console.error('Failed to save user:', error);
       const errorMessage = error?.details || error?.message || 'Failed to save user';
-      alert(`Error: ${errorMessage}`);
+      alertDialog({
+        title: 'Error',
+        description: `Error: ${errorMessage}`,
+        variant: 'error'
+      });
     } finally {
       setSaving(false);
     }
@@ -114,21 +139,34 @@ export default function Users() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Delete this user? This action cannot be undone.')) {
-      return;
-    }
-
-    setDeletingId(userId);
-    try {
-      const updatedUser = await adminApiClient.deleteUser(userId);
-      setUsers(users.map(u => u.id === userId ? updatedUser : u));
-      alert('User deleted successfully!');
-    } catch (error) {
-      console.error('Failed to delete user:', error);
-      alert('Failed to delete user');
-    } finally {
-      setDeletingId(null);
-    }
+    confirmDialog({
+      title: 'Delete User',
+      description: 'Delete this user? This action cannot be undone.',
+      confirmVariant: 'destructive',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setDeletingId(userId);
+        try {
+          const updatedUser = await adminApiClient.deleteUser(userId);
+          setUsers(users.map(u => u.id === userId ? updatedUser : u));
+          alertDialog({
+            title: 'Success',
+            description: 'User deleted successfully!',
+            variant: 'success'
+          });
+        } catch (error) {
+          console.error('Failed to delete user:', error);
+          alertDialog({
+            title: 'Error',
+            description: 'Failed to delete user',
+            variant: 'error'
+          });
+        } finally {
+          setDeletingId(null);
+        }
+      }
+    });
   };
 
   const handleToggleStatus = async (user: User) => {
@@ -136,25 +174,45 @@ export default function Users() {
     try {
       const updatedUser = await adminApiClient.updateUser(user.id, { status: newStatus });
       setUsers(users.map(u => u.id === user.id ? updatedUser : u));
-      alert(`User ${newStatus === 'active' ? 'enabled' : 'disabled'} successfully!`);
+      alertDialog({
+        title: 'Success',
+        description: `User ${newStatus === 'active' ? 'enabled' : 'disabled'} successfully!`,
+        variant: 'success'
+      });
     } catch (error) {
       console.error('Failed to update user status:', error);
-      alert('Failed to update user status');
+      alertDialog({
+        title: 'Error',
+        description: 'Failed to update user status',
+        variant: 'error'
+      });
     }
   };
 
   const handleResetPassword = async (userId: string) => {
-    if (!confirm('Reset password for this user?')) {
-      return;
-    }
-
-    try {
-      await adminApiClient.resetUser(userId);
-      alert('Password reset successfully!');
-    } catch (error) {
-      console.error('Failed to reset password:', error);
-      alert('Failed to reset password');
-    }
+    confirmDialog({
+      title: 'Reset Password',
+      description: 'Reset password for this user?',
+      confirmText: 'Reset',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await adminApiClient.resetUser(userId);
+          alertDialog({
+            title: 'Success',
+            description: 'Password reset successfully!',
+            variant: 'success'
+          });
+        } catch (error) {
+          console.error('Failed to reset password:', error);
+          alertDialog({
+            title: 'Error',
+            description: 'Failed to reset password',
+            variant: 'error'
+          });
+        }
+      }
+    });
   };
 
 
