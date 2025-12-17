@@ -333,6 +333,31 @@ async function streamChatCompletion(opts: {
         }
 
         // Stream intent phase tool calls and responses as they happened
+        // Stream LLM call events
+        for (const event of streamEvents) {
+          if (event.type === "llm_call_start" && event.llmCallStart) {
+            sendDelta(
+              {
+                content: `LLM Call Start: ${event.llmCallStart.model} (${event.llmCallStart.stage})`
+              },
+              null
+            );
+          } else if (event.type === "llm_call_chunk" && event.llmCallChunk) {
+            sendDelta(
+              {
+                content: event.llmCallChunk.content
+              },
+              null
+            );
+          } else if (event.type === "llm_call_complete" && event.llmCallComplete) {
+            sendDelta(
+              {
+                content: `LLM Call Complete: ${event.llmCallComplete.model} (${event.llmCallComplete.stage})`
+              },
+              null
+            );
+          }
+        }
         for (const event of streamEvents) {
           if (event.type === "tool_call" && event.toolCall) {
             sendDelta(

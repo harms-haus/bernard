@@ -8,7 +8,7 @@ import {
   MAX_PARALLEL_TOOL_CALLS,
   buildIntentSystemPrompt
 } from "./prompts";
-import type { Harness, HarnessContext, HarnessResult, LLMCaller, ToolCall } from "../lib/types";
+import type { Harness, HarnessContext, HarnessResult, LLMCaller, StreamEvent, ToolCall } from "../lib/types";
 import type { MessageRecord } from "@/lib/conversation/recordKeeper";
 import { childLogger, logger, startTimer, toErrorObject } from "@/lib/logging";
 
@@ -817,15 +817,14 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
    */
   async run(input: IntentInput, ctx: HarnessContext, onStreamEvent?: (event: StreamEvent) => void): Promise<HarnessResult<IntentOutput>> {
     await this.ensureToolsReady();
-    const runLogger = childLogger(
-      {
+    const runLogger = childLogger({
         conversationId: ctx.conversationId,
         requestId: ctx.requestId ?? undefined,
         turnId: ctx.turnId ?? undefined,
         stage: "intent",
-        component: "intent_harness"
+        component: "intent_harness",
       },
-      this.log
+      this.log,
     );
     const elapsed = startTimer();
 
@@ -855,19 +854,45 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
       for (let i = 0; i < (ctx.config.maxIntentIterations ?? this.maxIterations); i++) {
         const context = this.buildRequestContext(input, ctx, state.transcript);
         
+        // Emit LLM call start event
+        if (onStreamEvent) {
+          onStreamEvent({
+            type: "llm_call_start",
+            llmCallStart: {
+              model: ctx.config.intentModel,
+              context: context,
+              stage: "intent"
+            }
+          });
+        }
+
         const res = await this.llm.call({
           model: ctx.config.intentModel,
           messages: context,
           tools: this.toolsForLLM,
-          stream: false,
+          stream: true,
           meta: {
             conversationId: ctx.conversationId,
             traceName: "intent",
             ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
             ...(ctx.turnId ? { turnId: ctx.turnId } : {}),
-            ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {})
+            ...(ctx.recordKeeper ? { recordKeeper: ctx.recordKeeper } : {}),
+            ...(onStreamEvent ? { onStreamEvent } : {})
           }
         });
+
+        // Emit LLM call complete event
+        if (onStreamEvent) {
+          onStreamEvent({
+            type: "llm_call_complete",
+            llmCallComplete: {
+              model: ctx.config.intentModel,
+              response: res.text,
+              stage: "intent",
+              usage: res.usage
+            }
+          });
+        }
 
         let toolLatencyMsTotal = 0;
 

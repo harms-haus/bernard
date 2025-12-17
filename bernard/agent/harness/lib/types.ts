@@ -89,12 +89,31 @@ export type HarnessError = {
 };
 
 export type StreamEvent = {
-  type: "tool_call" | "tool_response";
+  type: "tool_call" | "tool_response" | "llm_call_start" | "llm_call_chunk" | "llm_call_complete" | "context_update";
   toolCall?: ToolCall;
   toolResponse?: {
     toolCallId: string;
     toolName: string;
     content: string;
+  };
+  llmCallStart?: {
+    model: string;
+    context: BaseMessage[];
+    stage: string;
+  };
+  llmCallChunk?: {
+    content: string;
+    stage: string;
+  };
+  llmCallComplete?: {
+    model: string;
+    response: string;
+    stage: string;
+    usage?: { in?: number; out?: number; cacheRead?: number; cacheWrite?: number; cached?: boolean };
+  };
+  contextUpdate?: {
+    messages: BaseMessage[];
+    stage: string;
   };
 };
 

@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import type { BaseMessage } from "@langchain/core/messages";
 
 import { buildResponseSystemPrompt } from "./prompts";
-import type { Harness, HarnessContext, HarnessResult, LLMCaller } from "../lib/types";
+import type { Harness, HarnessContext, HarnessResult, LLMCaller, StreamEvent } from "../lib/types";
 import type { IntentOutput } from "../intent/intent.harness";
 import type { MemoryOutput } from "../memory/memory.harness";
 import { contentFromMessage, isToolMessage } from "@/lib/conversation/messages";
@@ -49,7 +49,7 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
 
   constructor(private readonly llm: LLMCaller) {}
 
-  async run(input: ResponseInput, ctx: HarnessContext): Promise<HarnessResult<ResponseOutput>> {
+  async run(input: ResponseInput, ctx: HarnessContext, onStreamEvent?: (event: StreamEvent) => void): Promise<HarnessResult<ResponseOutput>> {
     const runLogger = childLogger(
       {
         conversationId: ctx.conversationId,
@@ -62,12 +62,37 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
     const elapsed = startTimer();
     const messages = this.buildMessages(input, ctx);
     try {
+        // Emit LLM call start event
+        if (onStreamEvent) {
+          onStreamEvent({
+            type: "llm_call_start",
+            llmCallStart: {
+              model: ctx.config.responseModel,
+              context: messages,
+              stage: "response"
+            }
+          });
+        }
       const res = await this.llm.call({
         model: ctx.config.responseModel,
-        messages,
+        messages: messages,
+        stream: true,
         meta: this.buildMeta(ctx)
       });
 
+
+      // Emit LLM call complete event
+      if (onStreamEvent) {
+        onStreamEvent({
+          type: "llm_call_complete",
+          llmCallComplete: {
+            model: ctx.config.responseModel,
+            response: res.text,
+            stage: "response",
+            usage: res.usage
+          }
+        });
+      }
       const ensured = this.ensureResponse(res, ctx.conversation.turns);
       runLogger.info({
         event: "response.run.success",
