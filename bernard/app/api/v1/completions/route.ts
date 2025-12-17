@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getCorsHeaders } from "@/app/api/_lib/cors";
 
 import {
   BERNARD_MODEL_ID,
@@ -28,6 +29,23 @@ import { resolveModel } from "@/lib/config/models";
 
 export const runtime = "nodejs";
 
+// CORS headers for OpenAI API compatibility
+function getCorsHeadersForRequest(request: NextRequest) {
+  // Try multiple case variations of the Origin header
+  const origin = request.headers.get('origin');
+  return getCorsHeaders(origin);
+}
+
+// OPTIONS handler for CORS preflight
+export function OPTIONS(request: NextRequest): NextResponse {
+  const corsHeaders = getCorsHeadersForRequest(request);
+  
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders
+  });
+}
+
 export type CompletionBody = {
   model?: string;
   prompt?: string;
@@ -51,6 +69,7 @@ const UNSUPPORTED: Array<keyof CompletionBody> = ["n", "echo", "best_of"];
 
 export async function POST(req: NextRequest) {
   const reqLog = buildRequestLogger(req, { route: "/api/v1/completions" });
+  const corsHeaders = getCorsHeadersForRequest(req);
   const auth = await validateAuth(req);
   if ("error" in auth) {
     reqLog.failure(auth.error.status ?? 401, "auth_failed");
@@ -66,14 +85,14 @@ export async function POST(req: NextRequest) {
 
   if (!body?.prompt || typeof body.prompt !== "string") {
     reqLog.failure(400, "missing_prompt");
-    return new NextResponse(JSON.stringify({ error: "`prompt` is required" }), { status: 400 });
+    return new NextResponse(JSON.stringify({ error: "`prompt` is required" }), { status: 400, headers: corsHeaders });
   }
 
   const unsupported = rejectUnsupportedKeys(body, UNSUPPORTED);
   if (unsupported) return unsupported;
 
   if (body.n && body.n > 1) {
-    return new NextResponse(JSON.stringify({ error: "`n>1` is not supported" }), { status: 400 });
+    return new NextResponse(JSON.stringify({ error: "`n>1` is not supported" }), { status: 400, headers: corsHeaders });
   }
 
   const modelError = ensureBernardModel(body.model);
@@ -89,15 +108,15 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return new NextResponse(
       JSON.stringify({ error: "Failed to map prompt", reason: err instanceof Error ? err.message : String(err) }),
-      { status: 400 }
+      { status: 400, headers: corsHeaders }
     );
   }
 
   const responseModelConfig = await resolveModel("response");
   const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
 
-  const scaffold = await createScaffolding({ 
-    token: auth.token, 
+  const scaffold = await createScaffolding({
+    token: auth.token,
     responseModelOverride: responseModelConfig.id,
     userId: body.user
   });
@@ -138,7 +157,7 @@ export async function POST(req: NextRequest) {
   );
 
   if (!shouldStream) {
-    return runCompletionOnce({ graph, mergedMessages, keeper, turnId, requestId, start });
+    return runCompletionOnce({ graph, mergedMessages, keeper, turnId, requestId, start, corsHeaders });
   }
 
   return streamCompletion({
@@ -148,7 +167,10 @@ export async function POST(req: NextRequest) {
     keeper,
     turnId,
     requestId,
-    start
+    start,
+    _shouldStream: shouldStream,
+    _isNewConversation: isNewConversation,
+    corsHeaders
   });
 }
 
@@ -168,8 +190,9 @@ async function runCompletionOnce(opts: {
   turnId: string;
   requestId: string;
   start: number;
+  corsHeaders: Record<string, string>;
 }) {
-  const { graph, mergedMessages, keeper, turnId, requestId, start } = opts;
+  const { graph, mergedMessages, keeper, turnId, requestId, start, corsHeaders } = opts;
   try {
     const result = await graph.invoke({ messages: mergedMessages });
     const allMessages = result.messages ?? mergedMessages;
@@ -193,7 +216,7 @@ async function runCompletionOnce(opts: {
         }
       ],
       ...(usage ? { usage } : {})
-    });
+    }, { headers: corsHeaders });
   } catch (err) {
     await finalizeTurn({
       keeper,
@@ -205,7 +228,7 @@ async function runCompletionOnce(opts: {
     });
     return new NextResponse(
       JSON.stringify({ error: "Completion failed", reason: err instanceof Error ? err.message : String(err) }),
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -221,8 +244,11 @@ function streamCompletion(opts: {
   turnId: string;
   requestId: string;
   start: number;
+  _shouldStream: boolean;
+  _isNewConversation: boolean;
+  corsHeaders: Record<string, string>;
 }) {
-  const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start } = opts;
+  const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start, _shouldStream, _isNewConversation, corsHeaders } = opts;
   const encoder = new TextEncoder();
   const iterator = graph.stream({ messages: mergedMessages });
 
@@ -277,14 +303,6 @@ function streamCompletion(opts: {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
         await finalizeTurn({ keeper, turnId, requestId, start, status: "ok" });
-        reqLog.success(200, {
-          action: "completion.stream",
-          conversationId,
-          requestId,
-          turnId,
-          stream: shouldStream,
-          newConversation: isNewConversation
-        });
       } catch (err) {
         await finalizeTurn({
           keeper,
@@ -293,12 +311,6 @@ function streamCompletion(opts: {
           start,
           status: "error",
           errorType: err instanceof Error ? err.name : "error"
-        });
-        reqLog.failure(500, err, {
-          action: "completion.stream",
-          conversationId,
-          requestId,
-          turnId
         });
         sendChunk([{ index: 0, text: "", finish_reason: "stop" }]);
         controller.enqueue(
@@ -317,6 +329,7 @@ function streamCompletion(opts: {
 
   return new NextResponse(stream, {
     headers: {
+      ...corsHeaders,
       "Content-Type": "text/event-stream",
       Connection: "keep-alive",
       "Cache-Control": "no-cache, no-transform"

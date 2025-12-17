@@ -62,24 +62,46 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
     const elapsed = startTimer();
     const messages = this.buildMessages(input, ctx);
     try {
-        // Emit LLM call start event
-        if (onStreamEvent) {
-          onStreamEvent({
-            type: "llm_call_start",
-            llmCallStart: {
-              model: ctx.config.responseModel,
-              context: messages,
-              stage: "response"
-            }
-          });
-        }
+      // Emit LLM call start event
+      if (onStreamEvent) {
+        onStreamEvent({
+          type: "llm_call_start",
+          llmCallStart: {
+            model: ctx.config.responseModel,
+            context: messages,
+            stage: "response"
+          }
+        });
+      }
+
+      // For now, simulate streaming by chunking the response after it completes
+      // This provides the streaming experience while we work on true LLM streaming
       const res = await this.llm.call({
         model: ctx.config.responseModel,
-        messages: messages,
-        stream: true,
+        messages,
+        stream: false, // Keep false for now until we implement true streaming
         meta: this.buildMeta(ctx)
       });
 
+      // Simulate streaming chunks if streaming is requested
+      if (onStreamEvent) {
+        const content = res.text || "";
+        if (content) {
+          // Split content into chunks and stream them
+          const chunks = this.chunkContent(content);
+          
+          for (const chunk of chunks) {
+            onStreamEvent({
+              type: "llm_call_chunk",
+              llmCallChunk: {
+                content: chunk,
+                stage: "response"
+              }
+            });
+            
+          }
+        }
+      }
 
       // Emit LLM call complete event
       if (onStreamEvent) {
@@ -89,10 +111,11 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
             model: ctx.config.responseModel,
             response: res.text,
             stage: "response",
-            usage: res.usage
+            ...(res.usage ? { usage: res.usage } : {})
           }
         });
       }
+
       const ensured = this.ensureResponse(res, ctx.conversation.turns);
       runLogger.info({
         event: "response.run.success",
@@ -151,6 +174,15 @@ export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
     (message as { content?: unknown }).content = fallback;
     return { text: fallback, message };
   }
+
+  /**
+   * Split content into reasonable chunks for streaming simulation
+   */
+  private chunkContent(content: string, chunkSize: number = 8): string[] {
+    const chunks: string[] = [];
+    for (let i = 0; i < content.length; i += chunkSize) {
+      chunks.push(content.slice(i, i + chunkSize));
+    }
+    return chunks.length > 0 ? chunks : [""];
+  }
 }
-
-

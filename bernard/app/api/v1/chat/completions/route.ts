@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getCorsHeaders } from "@/app/api/_lib/cors";
+import { withCors } from "@/app/api/_lib/cors";
 
 import {
   BERNARD_MODEL_ID,
@@ -29,6 +31,23 @@ import { resolveModel } from "@/lib/config/models";
 import { HomeAssistantContextManager } from "@/agent/harness/intent/tools/ha-context";
 
 export const runtime = "nodejs";
+
+type AgentGraph = Awaited<ReturnType<typeof buildGraph>>;
+// CORS headers for OpenAI API compatibility
+function getCorsHeadersForRequest(req) {
+  const origin = req.headers.get("origin") || req.headers.get("Origin") || null;
+  return getCorsHeaders(origin);
+}
+
+// OPTIONS handler for CORS preflight
+export function OPTIONS(req) {
+  const corsHeaders = getCorsHeadersForRequest(req);
+  
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders
+  });
+}
 
 type ChatCompletionBody = {
   model?: string;
@@ -63,6 +82,7 @@ const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
 ];
 
 export async function POST(req: NextRequest) {
+  return withCors(async (req: NextRequest) => {
   const auth = await validateAuth(req);
   if ("error" in auth) return auth.error;
 
@@ -161,10 +181,8 @@ export async function POST(req: NextRequest) {
     start,
     haContextManager
   });
+  })(req);
 }
-
-type AgentGraph = Awaited<ReturnType<typeof buildGraph>>;
-
 function usageFromMessages(messages: BaseMessage[]) {
   return buildUsage(extractUsageFromMessages(messages));
 }
