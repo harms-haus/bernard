@@ -7,7 +7,6 @@
 - reminders
 - service checker (proxmox, mealie, plex, etc)
 - overseer ingress
-- home assistant ingress
 - notifications (whole-home, or directed at a device)
 
 ## admin

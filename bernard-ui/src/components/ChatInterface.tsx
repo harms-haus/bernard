@@ -112,8 +112,11 @@ export function ChatInterface() {
           const raw = buffer.slice(0, boundary);
           buffer = buffer.slice(boundary + 2);
           
-          const lines = raw.split('\n').filter((line) => line.startsWith('data:'));
-          const payload = lines.map((line) => line.replace(/^data:\s*/, '')).join('');
+          // Extract data payload - remove "data: " prefix if present
+          let payload = raw;
+          if (raw.startsWith('data: ')) {
+            payload = raw.substring(6).trim();
+          }
 
           if (!payload || payload === '[DONE]') {
             break;

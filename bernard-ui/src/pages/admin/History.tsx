@@ -74,69 +74,27 @@ export default function History() {
   };
 
   const handleDeleteConversation = async (conversationId: string) => {
-    const confirmed = await new Promise<boolean>((resolve) => {
-      let resolved = false;
-      
-      // Create a safe resolve function that checks mounted state and prevents double resolution
-      const safeResolve = (value: boolean) => {
-        if (!resolved && isMountedRef.current) {
-          resolved = true;
-          resolve(value);
+    confirmDialog({
+      title: 'Delete this conversation?',
+      description: 'This action cannot be undone.',
+      confirmVariant: 'destructive',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setDeletingId(conversationId);
+        try {
+          await adminApiClient.deleteConversation(conversationId);
+          setConversations(conversations.filter(c => c.id !== conversationId));
+          loadHistory(); // Refresh stats
+          toast.success('Conversation deleted successfully');
+        } catch (error) {
+          console.error('Failed to delete conversation:', error);
+          toast.error('Failed to delete conversation');
+        } finally {
+          setDeletingId(null);
         }
-      };
-      
-      // Set up a timeout to ensure the Promise resolves if the dialog doesn't call onClose properly
-      const timeoutId = setTimeout(() => {
-        if (!resolved && isMountedRef.current) {
-          safeResolve(false);
-        }
-      }, 30000); // 30 second timeout as a safety net
-      
-      // Create a cleanup function that will be called when the Promise resolves
-      const cleanup = () => {
-        if (!resolved && isMountedRef.current) {
-          safeResolve(false);
-        }
-        clearTimeout(timeoutId);
-      };
-      
-      // Override the close function to include cleanup
-      const originalClose = () => {
-        cleanup();
-      };
-      const wrappedClose = () => {
-        cleanup();
-        originalClose();
-      };
-      
-      // Open the dialog
-      const close = confirmDialog({
-        title: 'Delete this conversation?',
-        description: 'This action cannot be undone.',
-        onConfirm: () => {
-          safeResolve(true);
-          wrappedClose();
-        },
-        onCancel: () => {
-          safeResolve(false);
-          wrappedClose();
-        },
-      });
+      }
     });
-    
-    if (!confirmed) return;
-
-    setDeletingId(conversationId);
-    try {
-      await adminApiClient.deleteConversation(conversationId);
-      setConversations(conversations.filter(c => c.id !== conversationId));
-      loadHistory(); // Refresh stats
-    } catch (error) {
-      console.error('Failed to delete conversation:', error);
-      toast.error('Failed to delete conversation');
-    } finally {
-      setDeletingId(null);
-    }
   };
 
   const handleCloseConversation = async (conversationId: string) => {
@@ -199,41 +157,32 @@ export default function History() {
   };
 
   const handleDeleteIndex = async (conversationId: string) => {
-    const confirmed = await new Promise<boolean>((resolve) => {
-      const close = confirmDialog({
-        title: 'Delete the index for this conversation?',
-        description: 'This will reset the indexing status.',
-        onConfirm: () => {
-          resolve(true);
-          close();
-        },
-        onCancel: () => {
-          resolve(false);
-          close();
-        },
-      });
+    confirmDialog({
+      title: 'Delete the index for this conversation?',
+      description: 'This will reset the indexing status.',
+      confirmText: 'Delete Index',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          // Note: This might need to be implemented as an API call to delete index
+          // For now, we'll reset the local state to simulate the action
+          setConversations(conversations.map(c =>
+            c.id === conversationId
+              ? { ...c, indexingStatus: 'none' as const, indexingError: undefined, indexingAttempts: 0 }
+              : c
+          ));
+          
+          alertDialog({
+            title: 'Index deleted successfully',
+            variant: 'success',
+            confirmText: 'OK',
+          });
+        } catch (error) {
+          console.error('Failed to delete index:', error);
+          toast.error('Failed to delete index');
+        }
+      }
     });
-    
-    if (!confirmed) return;
-
-    try {
-      // Note: This might need to be implemented as an API call to delete index
-      // For now, we'll reset the local state to simulate the action
-      setConversations(conversations.map(c =>
-        c.id === conversationId
-          ? { ...c, indexingStatus: 'none' as const, indexingError: undefined, indexingAttempts: 0 }
-          : c
-      ));
-      
-      alertDialog({
-        title: 'Index deleted successfully',
-        variant: 'success',
-        confirmText: 'OK',
-      });
-    } catch (error) {
-      console.error('Failed to delete index:', error);
-      toast.error('Failed to delete index');
-    }
   };
 
   const canRetryIndexing = (conversation: ConversationListItem): boolean => {

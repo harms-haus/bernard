@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { Copy, Plus, RefreshCw, Trash2, Key, Check, MoreVertical } from 'lucide-react';
+import { Copy, Plus, RefreshCw, Trash2, Key, Check, MoreVertical, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TokenWithSecret extends Token {
@@ -27,10 +27,17 @@ export function Keys() {
   const [creating, setCreating] = React.useState(false);
   const [latestSecret, setLatestSecret] = React.useState<{ name: string; token: string } | null>(null);
   const [copiedTokenId, setCopiedTokenId] = React.useState<string | null>(null);
+  const [showActualToken, setShowActualToken] = React.useState(false);
 
   React.useEffect(() => {
     loadTokens();
   }, []);
+
+  React.useEffect(() => {
+    if (showSecretDialog && latestSecret) {
+      console.log('Secret dialog opened for token:', latestSecret.name);
+    }
+  }, [showSecretDialog, latestSecret]);
 
   const loadTokens = async () => {
     try {
@@ -55,20 +62,30 @@ export function Keys() {
 
     try {
       const newToken = await apiClient.createToken({ name: newTokenName.trim() });
-      setTokens(prev => [newToken, ...prev]);
+      
+      // Add token to list without the secret (for security)
+      const { token: _, ...tokenWithoutSecret } = newToken;
+      setTokens(prev => [tokenWithoutSecret, ...prev]);
       setNewTokenName('');
       setShowCreateDialog(false);
       
-      // Show the secret only once
+      // Show the secret only once in the dialog
       if (newToken.token) {
         setLatestSecret({ name: newToken.name, token: newToken.token });
         setShowSecretDialog(true);
+        console.log('Token created, opening secret dialog:', newToken.name);
+        toast.success('Token created successfully');
+      } else {
+        console.warn('Token created but no token secret returned:', newToken);
+        toast.warning('Token created but no API key was returned');
+        // Still show the dialog with available info
+        setLatestSecret({ name: newToken.name, token: 'TOKEN_NOT_RETURNED' });
+        setShowSecretDialog(true);
       }
-      
-      toast.success('Token created successfully');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create token');
       toast.error('Failed to create token');
+      console.error('Token creation error:', err);
     } finally {
       setCreating(false);
     }
@@ -167,16 +184,16 @@ export function Keys() {
                     <TableRow key={token.id} className="border-b border-gray-100 dark:border-gray-800">
                       <TableCell className="font-medium py-3 px-4">
                         <div>
-                          <div>{token.name}</div>
+                          <div>{token.name || 'Unnamed Token'}</div>
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-col">
                           <span className="text-sm text-gray-600 dark:text-gray-300">
-                            {formatDate(token.createdAt).date}
+                            {token.createdAt ? formatDate(token.createdAt).date : 'Invalid Date'}
                           </span>
                           <span className="text-xs text-gray-400 dark:text-gray-500">
-                            {formatDate(token.createdAt).time}
+                            {token.createdAt ? formatDate(token.createdAt).time : ''}
                           </span>
                         </div>
                       </TableCell>
@@ -228,12 +245,12 @@ export function Keys() {
                   ))}
                   
                   {tokens.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
-                        No tokens found.
-                      </TableCell>
-                    </TableRow>
-                  )}
+                   <TableRow key="no-tokens">
+                     <TableCell colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                       No tokens found.
+                     </TableCell>
+                   </TableRow>
+                 )}
                 </TableBody>
               </Table>
             </div>
@@ -291,40 +308,65 @@ export function Keys() {
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-3">
               <Key className="h-5 w-5" />
-              <span>Your New Token</span>
+              <span>Your New API Key</span>
             </DialogTitle>
             <DialogDescription>
-              Copy this token now. It will not be shown again for security reasons.
+              This is your new API key. It will NOT be shown again after you close this dialog.
             </DialogDescription>
           </DialogHeader>
           {latestSecret && (
             <div className="space-y-4">
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Token Name</div>
-                <div className="font-mono text-sm">{latestSecret.name}</div>
+              <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Token Name</div>
+                <div className="font-mono text-sm dark:text-gray-300">{latestSecret.name}</div>
               </div>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs text-gray-500">Token</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(latestSecret.token, 'secret')}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">API Key</div>
+                  <div className="flex items-center space-x-2">
+                    {latestSecret.token !== 'TOKEN_NOT_RETURNED' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(latestSecret.token, 'secret')}
+                        className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {latestSecret.token !== 'TOKEN_NOT_RETURNED' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowActualToken(!showActualToken)}
+                        className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      >
+                        {showActualToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="font-mono text-sm break-all">{latestSecret.token}</div>
+                <div className="font-mono text-sm break-all bg-gray-100 dark:bg-gray-700 rounded p-2">
+                  {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
+                    <span className="text-red-600 dark:text-red-400">Error: Token not returned from server</span>
+                  ) : showActualToken ? latestSecret.token : latestSecret.token.replace(/./g, '*')}
+                </div>
               </div>
-              <div className="text-xs text-gray-500">
-                Store this token securely. You will need it to authenticate API requests.
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                <div className="text-xs font-medium text-yellow-800 dark:text-yellow-300">IMPORTANT WARNING</div>
+                <div className="text-sm text-yellow-700 dark:text-yellow-200 mt-1">
+                  {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
+                    'There was an issue retrieving your API key. Please try creating the token again.'
+                  ) : (
+                    'This API key will NOT be shown again after you close this dialog. Make sure to copy it now and store it securely.'
+                  )}
+                </div>
               </div>
             </div>
           )}
           <DialogFooter>
             <Button onClick={() => setShowSecretDialog(false)}>
-              I've Saved It
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

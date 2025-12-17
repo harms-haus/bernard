@@ -478,17 +478,25 @@ export default function Models() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Models Configuration</h1>
           <p className="text-gray-600 dark:text-gray-300">Configure AI providers and assign models</p>
         </div>
-        <Button onClick={() => setShowProviderForm(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Provider
+        <Button onClick={() => { handleSave(); }} disabled={saving}>
+          <Save className="mr-2 h-4 w-4" />
+          {saving ? 'Saving...' : 'Save Configuration'}
         </Button>
       </div>
 
       {/* Providers Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Providers</CardTitle>
-          <CardDescription>Manage AI service providers</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Providers</CardTitle>
+              <CardDescription>Manage AI service providers</CardDescription>
+            </div>
+            <Button onClick={() => setShowProviderForm(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Provider
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -614,14 +622,6 @@ export default function Models() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button onClick={() => { handleSave(); }} disabled={saving}>
-          <Save className="mr-2 h-4 w-4" />
-          {saving ? 'Saving...' : 'Save Configuration'}
-        </Button>
-      </div>
 
       {/* Add Provider Form */}
       {showProviderForm && (
