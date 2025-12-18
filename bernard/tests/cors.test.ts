@@ -8,31 +8,30 @@ describe('CORS middleware', () => {
   });
 
   describe('getCorsHeaders', () => {
-    it('should return CORS headers for allowed origin', () => {
-      process.env['ALLOWED_ORIGINS'] = 'https://example.com,https://test.com';
-      
-      const headers = getCorsHeaders('https://example.com');
-      expect(headers).toEqual({
-        'Access-Control-Allow-Origin': 'https://example.com',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true'
-      });
-    });
-
-    it('should return empty headers for disallowed origin when ALLOWED_ORIGINS is set', () => {
-      process.env['ALLOWED_ORIGINS'] = 'https://example.com';
-      
-      const headers = getCorsHeaders('https://evil.com');
-      expect(headers).toEqual({});
-    });
-
-    it('should return wildcard CORS headers when ALLOWED_ORIGINS is not set', () => {
+    it('should return wildcard CORS headers for OpenAI API compatibility', () => {
       const headers = getCorsHeaders('https://any-origin.com');
       expect(headers).toEqual({
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Accept-Encoding, Accept-Language, Cache-Control, Connection, Host, Origin, Referer, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, User-Agent'
+      });
+    });
+
+    it('should return wildcard CORS headers regardless of origin', () => {
+      const headers = getCorsHeaders('https://evil.com');
+      expect(headers).toEqual({
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Accept-Encoding, Accept-Language, Cache-Control, Connection, Host, Origin, Referer, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, User-Agent'
+      });
+    });
+
+    it('should return wildcard CORS headers when no origin provided', () => {
+      const headers = getCorsHeaders(null);
+      expect(headers).toEqual({
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Accept-Encoding, Accept-Language, Cache-Control, Connection, Host, Origin, Referer, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, User-Agent'
       });
     });
   });
@@ -83,44 +82,36 @@ describe('CORS middleware', () => {
       expect(bodyText).toBe('No headers');
     });
 
-    it('should work with different origin when ALLOWED_ORIGINS is set', async () => {
-      process.env['ALLOWED_ORIGINS'] = 'https://trusted.com';
-      
+    it('should work with any origin for OpenAI API compatibility', async () => {
       const handler = async () => {
-        return new Response('Trusted content', {
+        return new Response('Any origin content', {
           status: 200
         });
       };
 
-      const request = new Request('https://trusted.com/api/test', {
-        headers: { 'Origin': 'https://trusted.com' }
+      const request = new Request('https://any-origin.com/api/test', {
+        headers: { 'Origin': 'https://any-origin.com' }
       });
 
       const wrappedHandler = withCors(handler);
       const response = await wrappedHandler(request);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://trusted.com');
-      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
     });
 
-    it('should not add CORS headers for disallowed origin when ALLOWED_ORIGINS is set', async () => {
-      process.env['ALLOWED_ORIGINS'] = 'https://trusted.com';
-      
+    it('should work with null origin', async () => {
       const handler = async () => {
-        return new Response('Untrusted content', {
+        return new Response('No origin content', {
           status: 200
         });
       };
 
-      const request = new Request('https://evil.com/api/test', {
-        headers: { 'Origin': 'https://evil.com' }
-      });
-
       const wrappedHandler = withCors(handler);
-      const response = await wrappedHandler(request);
+      const response = await wrappedHandler();
 
-      // Should not have CORS headers for disallowed origin
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
     });
   });
 

@@ -86,11 +86,11 @@ test("ResponseHarness builds messages with system prompt, thread, and memories",
 
   assert.ok(caller.lastInput);
   const messages = caller.lastInput?.messages ?? [];
-  assert.equal((messages[0] as { _getType?: () => string })._getType?.(), "system");
+  assert.equal((messages[0] as { type: string }).type, "system");
   const systemContent = String((messages[0] as SystemMessage).content ?? "");
   assert.ok(systemContent.includes("Now:"));
   assert.ok(systemContent.toLowerCase().includes("bernard"));
-  assert.ok(messages.some((msg) => (msg as { _getType?: () => string })._getType?.() === "human"));
+  assert.ok(messages.some((msg: { type: string }) => msg.type === "human"));
   const memoryMessage = messages[messages.length - 1] as HumanMessage;
   const memoryContent = String(memoryMessage.content ?? "");
   assert.ok(memoryContent.includes("Relevant memories"));
@@ -177,7 +177,7 @@ test("ResponseHarness creates message when LLM omits one and no history exists",
   const result = await harness.run(buildInput(), ctx);
   assert.ok(result.output.text.includes("I'm here if you want to try again"));
   assert.ok(result.output.message);
-  assert.equal((result.output.message as { _getType?: () => string })._getType?.(), "ai");
+  assert.equal((result.output.message as { type: string }).type, "ai");
 });
 
 

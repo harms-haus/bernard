@@ -129,9 +129,7 @@ export function countUserAssistantMessages(messages: MessageRecord[]): number {
 
 export function snapshotMessageForTrace(message: BaseMessage | MessageRecord) {
   const isRecord = isMessageRecord(message);
-  const baseType =
-    (message as { _getType?: () => string })._getType?.() ??
-    (message as { getType?: () => string }).getType?.();
+  const baseType = (message as { type: string }).type;
   const role = isRecord ? message.role : mapMessageRole(baseType);
   const name = (message as { name?: string }).name;
   const tool_call_id = (message as { tool_call_id?: string }).tool_call_id;
@@ -178,7 +176,7 @@ export class MessageLog {
       usage_metadata?: { input_tokens?: number; output_tokens?: number };
       name?: string;
     };
-    const role = mapMessageRole((base as { _getType?: () => string })._getType?.());
+    const role = mapMessageRole((base as { type: string }).type);
     const content = normalizeMessageContent((base as { content?: unknown }).content);
     const toolCallId = base.tool_call_id ?? base.name;
     const toolCalls = base.tool_calls ?? base.additional_kwargs?.tool_calls;

@@ -1,51 +1,33 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getCorsHeaders } from "@/app/api/_lib/cors";
-import { withCors } from "@/app/api/_lib/cors";
 
 import {
   BERNARD_MODEL_ID,
+  collectToolCalls,
   contentFromMessage,
   createScaffolding,
   extractUsageFromMessages,
   findLastAssistantMessage,
-  hydrateMessagesWithHistory,
+  isBernardModel,
   mapChatMessages,
+  hydrateMessagesWithHistory,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
-import type { StreamEvent } from "@/agent/harness/lib/types";
-import { chunkContent, buildToolChunks } from "@/app/api/v1/_lib/openai/chatChunks";
-import { buildIntentLLM, buildResponseLLM } from "@/app/api/v1/_lib/openai/modelBuilders";
-import {
-  buildUsage,
-  ensureBernardModel,
-  finalizeTurn,
-  normalizeStop,
-  parseJsonBody,
-  rejectUnsupportedKeys
-} from "@/app/api/v1/_lib/openai/request";
-import { buildGraph } from "@/lib/agent";
 import type { BaseMessage } from "@langchain/core/messages";
-import type { OpenAIMessage } from "@/lib/agent";
-import { resolveModel } from "@/lib/config/models";
-import { HomeAssistantContextManager } from "@/agent/harness/intent/tools/ha-context";
+import type { OpenAIMessage } from "@/lib/conversation/messages";
+import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/config/models";
+import { runChatCompletionTurn } from "@/agent/loop/chatCompletionsTurn";
+import { ChatOpenAILLMCaller } from "@/agent/llm/chatOpenAI";
+import type { AgentOutputItem } from "@/agent/streaming/types";
 
 export const runtime = "nodejs";
 
-type AgentGraph = Awaited<ReturnType<typeof buildGraph>>;
-// CORS headers for OpenAI API compatibility
-function getCorsHeadersForRequest(req) {
-  const origin = req.headers.get("origin") || req.headers.get("Origin") || null;
-  return getCorsHeaders(origin);
-}
-
 // OPTIONS handler for CORS preflight
-export function OPTIONS(req) {
-  const corsHeaders = getCorsHeadersForRequest(req);
-  
+export function OPTIONS(request: NextRequest): NextResponse {
   return new NextResponse(null, {
     status: 204,
-    headers: corsHeaders
+    headers: getCorsHeaders(null)
   });
 }
 
@@ -61,11 +43,11 @@ type ChatCompletionBody = {
   max_tokens?: number;
   stop?: string | string[] | null;
   logit_bias?: Record<string, number>;
-  user?: string;
   // unsupported but may appear; reject when present
   n?: number;
   tools?: unknown;
   response_format?: unknown;
+  user?: unknown;
   prediction?: unknown;
   service_tier?: unknown;
   store?: unknown;
@@ -74,7 +56,9 @@ type ChatCompletionBody = {
 
 const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
   "n",
+  "tools",
   "response_format",
+  "user",
   "prediction",
   "service_tier",
   "store",
@@ -82,27 +66,33 @@ const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
 ];
 
 export async function POST(req: NextRequest) {
-  return withCors(async (req: NextRequest) => {
   const auth = await validateAuth(req);
   if ("error" in auth) return auth.error;
 
-  const parsed = await parseJsonBody<ChatCompletionBody>(req);
-  if ("error" in parsed) return parsed.error;
-  const body = parsed.ok;
+  let body: ChatCompletionBody | null = null;
+  try {
+    body = (await req.json()) as ChatCompletionBody;
+  } catch (err) {
+    return new NextResponse(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: getCorsHeaders(null) });
+  }
 
   if (!body?.messages || !Array.isArray(body.messages)) {
-    return new NextResponse(JSON.stringify({ error: "`messages` array is required" }), { status: 400 });
+    return new NextResponse(JSON.stringify({ error: "`messages` array is required" }), { status: 400, headers: getCorsHeaders(null) });
   }
 
-  const unsupported = rejectUnsupportedKeys(body, UNSUPPORTED_KEYS);
-  if (unsupported) return unsupported;
+  for (const key of UNSUPPORTED_KEYS) {
+    if (body[key] !== undefined && body[key] !== null) {
+      return new NextResponse(JSON.stringify({ error: `Unsupported parameter: ${key}` }), { status: 400, headers: getCorsHeaders(null) });
+    }
+  }
 
   if (body.n && body.n > 1) {
-    return new NextResponse(JSON.stringify({ error: "`n>1` is not supported" }), { status: 400 });
+    return new NextResponse(JSON.stringify({ error: "`n>1` is not supported" }), { status: 400, headers: getCorsHeaders(null) });
   }
 
-  const modelError = ensureBernardModel(body.model);
-  if (modelError) return modelError;
+  if (!isBernardModel(body.model)) {
+    return new NextResponse(JSON.stringify({ error: "Model not found", allowed: BERNARD_MODEL_ID }), { status: 404, headers: getCorsHeaders(null) });
+  }
 
   const includeUsage = body.stream_options?.include_usage === true;
   const shouldStream = body.stream === true;
@@ -113,19 +103,15 @@ export async function POST(req: NextRequest) {
     inputMessages = mapChatMessages(body.messages);
   } catch (err) {
     return new NextResponse(
-      JSON.stringify({ error: "Invalid messages", reason: err instanceof Error ? err.message : String(err) }),
-      { status: 400 }
+      JSON.stringify({ error: "Invalid messages" }),
+      { status: 400, headers: getCorsHeaders(null) }
     );
   }
 
   const responseModelConfig = await resolveModel("response");
   const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
 
-  const scaffold = await createScaffolding({ 
-    token: auth.token, 
-    responseModelOverride: responseModelConfig.id,
-    userId: body.user
-  });
+  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
   const {
     keeper,
     conversationId,
@@ -146,311 +132,131 @@ export async function POST(req: NextRequest) {
         incoming: inputMessages
       });
 
-  const intentLLM = buildIntentLLM(intentModelConfig, responseModelConfig);
-  const responseLLM = buildResponseLLM(responseModelConfig, { ...body, stop: normalizeStop(body.stop) });
+  const intentModel = splitModelAndProvider(intentModelName);
+  const intentApiKey =
+    resolveApiKey(undefined, intentModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
+  const intentBaseURL = resolveBaseUrl(undefined, intentModelConfig.options);
+  const responseModel = splitModelAndProvider(responseModelName);
+  const responseApiKey = resolveApiKey(undefined, responseModelConfig.options);
+  const responseBaseURL = resolveBaseUrl(undefined, responseModelConfig.options);
 
-  const haContextManager = new HomeAssistantContextManager();
-  haContextManager.updateFromMessages(mergedMessages);
-
-  const graph = await buildGraph(
-    {
-      recordKeeper: keeper,
-      turnId,
-      conversationId,
-      requestId,
-      token: auth.token,
-      model: responseModelName,
-      responseModel: responseModelName,
-      intentModel: intentModelName,
-      haContextManager
-    },
-    { responseModel: responseLLM, intentModel: intentLLM }
+  const responseLLMCaller = new ChatOpenAILLMCaller(
+    responseApiKey || process.env["OPENAI_API_KEY"] || "",
+    responseBaseURL || "https://api.openai.com/v1",
+    responseModel.model
   );
 
-  if (!shouldStream) {
-    return runChatCompletionOnce({ graph, mergedMessages, keeper, turnId, requestId, start, haContextManager });
-  }
+  const intentLLMCaller = new ChatOpenAILLMCaller(
+    intentApiKey || process.env["OPENAI_API_KEY"] || "",
+    intentBaseURL || "https://api.openai.com/v1",
+    intentModel.model
+  );
 
-  return streamChatCompletion({
-    graph,
-    mergedMessages,
-    includeUsage,
-    keeper,
-    turnId,
-    requestId,
-    start,
-    haContextManager
-  });
-  })(req);
-}
-function usageFromMessages(messages: BaseMessage[]) {
-  return buildUsage(extractUsageFromMessages(messages));
-}
-
-/**
- * Build Home Assistant service calls for response
- */
-function buildHAServiceCallsForResponse(haContextManager: HomeAssistantContextManager): Array<{
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}> {
-  const serviceCalls = haContextManager.getRecordedServiceCalls();
-  
-  if (serviceCalls.length === 0) {
-    return [];
-  }
-  
-  return serviceCalls.map((call, index) => ({
-    id: `ha_service_call_${index}`,
-    type: "function",
-    function: {
-      name: "execute_services",
-      arguments: JSON.stringify({
-        list: [call]
-      })
-    }
-  }));
-}
-
-/**
- * Execute a chat completion without streaming output.
- */
-async function runChatCompletionOnce(opts: {
-  graph: AgentGraph;
-  mergedMessages: BaseMessage[];
-  keeper: Awaited<ReturnType<typeof createScaffolding>>["keeper"];
-  turnId: string;
-  requestId: string;
-  start: number;
-  haContextManager: HomeAssistantContextManager;
-}) {
-  const { graph, mergedMessages, keeper, turnId, requestId, start, haContextManager } = opts;
+  let turnResult;
   try {
-    const result = await graph.invoke({ messages: mergedMessages });
-    const messages = result.messages ?? mergedMessages;
-    const assistantMessage = findLastAssistantMessage(messages);
-    const content = contentFromMessage(assistantMessage) ?? "";
-    const usage = usageFromMessages(messages);
-
-    await finalizeTurn({ keeper, turnId, requestId, start, status: "ok" });
-
-    const haServiceCalls = buildHAServiceCallsForResponse(haContextManager);
-
-    return NextResponse.json({
-      id: requestId,
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
+    turnResult = await runChatCompletionTurn({
+      conversationId,
+      requestId,
+      turnId,
       model: BERNARD_MODEL_ID,
-      choices: [
-        {
-          index: 0,
-          finish_reason: "stop",
-          message: {
-            role: "assistant",
-            content,
-            ...(haServiceCalls.length ? { tool_calls: haServiceCalls } : {})
+      messages: mergedMessages,
+      intentLLMCaller,
+      responseLLMCaller,
+      recordKeeper: keeper,
+      includeUsage,
+    });
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+    await keeper.completeRequest(requestId, latencyMs);
+    return new NextResponse(
+      JSON.stringify({ error: "Chat completion failed" }),
+      { status: 500, headers: getCorsHeaders(null) }
+    );
+  }
+
+  if (!shouldStream) {
+    try {
+      const messages = await turnResult.finalMessages;
+      const assistantMessage = findLastAssistantMessage(messages);
+      const content = contentFromMessage(assistantMessage) ?? "";
+      const usageMeta = extractUsageFromMessages(messages);
+      const usage =
+        typeof usageMeta.prompt_tokens === "number" || typeof usageMeta.completion_tokens === "number"
+          ? {
+              prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
+              completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
+              total_tokens:
+                (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) +
+                (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
+            }
+          : undefined;
+
+      const latencyMs = Date.now() - start;
+      await keeper.endTurn(turnId, { status: "ok", latencyMs });
+      await keeper.completeRequest(requestId, latencyMs);
+
+      return NextResponse.json({
+        id: requestId,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: BERNARD_MODEL_ID,
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content
+            }
           }
-        }
-      ],
-      ...(usage ? { usage } : {})
-    });
-  } catch (err) {
-    await finalizeTurn({
-      keeper,
-      turnId,
-      requestId,
-      start,
-      status: "error",
-      errorType: err instanceof Error ? err.name : "error"
-    });
-    return new NextResponse(
-      JSON.stringify({ error: "Chat completion failed", reason: err instanceof Error ? err.message : String(err) }),
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * Stream a chat completion with incremental deltas and optional usage.
- */
-async function streamChatCompletion(opts: {
-  graph: AgentGraph;
-  mergedMessages: BaseMessage[];
-  includeUsage: boolean;
-  keeper: Awaited<ReturnType<typeof createScaffolding>>["keeper"];
-  turnId: string;
-  requestId: string;
-  start: number;
-  haContextManager: HomeAssistantContextManager;
-}) {
-   const { graph, mergedMessages, includeUsage, keeper, turnId, requestId, start, haContextManager } = opts;
-  let detailed;
-  const streamEvents: StreamEvent[] = [];
-  try {
-    // Collect streaming events from intent phase
-    detailed = await graph.runWithDetails({ messages: mergedMessages }, (event) => {
-      streamEvents.push(event);
-    });
-  } catch (err) {
-    await finalizeTurn({
-      keeper,
-      turnId,
-      requestId,
-      start,
-      status: "error",
-      errorType: err instanceof Error ? err.name : "error"
-    });
-    return new NextResponse(
-      JSON.stringify({ error: "Chat completion failed", reason: err instanceof Error ? err.message : String(err) }),
-      { status: 500 }
-    );
+        ],
+        ...(usage ? { usage } : {})
+      }, { headers: getCorsHeaders(null) });
+    } catch (err) {
+      const latencyMs = Date.now() - start;
+      await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+      await keeper.completeRequest(requestId, latencyMs);
+      return new NextResponse(
+        JSON.stringify({ error: "Chat completion failed" }),
+        { status: 500, headers: getCorsHeaders(null) }
+      );
+    }
   }
 
-  const responseMessages = [...detailed.transcript, detailed.response.message];
-  const usage = usageFromMessages(responseMessages);
-  const toolChunks = buildToolChunks(detailed.transcript, detailed.historyLength);
-  const finalContent = contentFromMessage(detailed.response.message) ?? "";
-  const contentChunks = chunkContent(finalContent);
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
+  // For streaming, we need to wrap the stream to record completion in keeper
+  const wrappedStream = new ReadableStream({
     async start(controller) {
-      const sendChunk = (payload: Record<string, unknown>) => {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              id: requestId,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: BERNARD_MODEL_ID,
-              ...payload
-            })}\n\n`
-          )
-        );
-      };
-
-      const sendDelta = (delta: Record<string, unknown>, finish_reason: string | null = null) => {
-        sendChunk({
-          choices: [{ index: 0, delta, finish_reason }]
-        });
-      };
-
-      sendDelta({ role: "assistant" });
-
-       try {
-        // Send Home Assistant service calls first if any
-        const haServiceCalls = buildHAServiceCallsForResponse(haContextManager);
-        if (haServiceCalls.length) {
-          sendDelta(
-            {
-              tool_calls: haServiceCalls
-            },
-            null
-          );
+      const reader = turnResult.stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(value);
         }
-
-        // Stream intent phase tool calls and responses as they happened
-        // Stream LLM call events
-        for (const event of streamEvents) {
-          if (event.type === "llm_call_start" && event.llmCallStart) {
-            sendDelta(
-              {
-                content: `LLM Call Start: ${event.llmCallStart.model} (${event.llmCallStart.stage})`
-              },
-              null
-            );
-          } else if (event.type === "llm_call_chunk" && event.llmCallChunk) {
-            sendDelta(
-              {
-                content: event.llmCallChunk.content
-              },
-              null
-            );
-          } else if (event.type === "llm_call_complete" && event.llmCallComplete) {
-            sendDelta(
-              {
-                content: `LLM Call Complete: ${event.llmCallComplete.model} (${event.llmCallComplete.stage})`
-              },
-              null
-            );
-          }
-        }
-        for (const event of streamEvents) {
-          if (event.type === "tool_call" && event.toolCall) {
-            sendDelta(
-              {
-                tool_calls: [{
-                  id: event.toolCall.id,
-                  type: "function",
-                  function: {
-                    name: event.toolCall.name,
-                    arguments: typeof event.toolCall.arguments === "string" ? event.toolCall.arguments : JSON.stringify(event.toolCall.arguments)
-                  }
-                }]
-              },
-              null
-            );
-          } else if (event.type === "tool_response" && event.toolResponse) {
-            sendDelta(
-              {
-                tool_outputs: [{
-                  id: event.toolResponse.toolCallId,
-                  content: event.toolResponse.content
-                }]
-              },
-              null
-            );
-          }
-        }
-
-        for (const chunk of toolChunks) {
-          if (!chunk.tool_calls.length && !chunk.tool_outputs.length) continue;
-          sendDelta(
-            {
-              ...(chunk.tool_calls.length ? { tool_calls: chunk.tool_calls } : {}),
-              ...(chunk.tool_outputs.length ? { tool_outputs: chunk.tool_outputs } : {})
-            },
-            null
-          );
-        }
-
-        for (const piece of contentChunks) {
-          if (!piece) continue;
-          sendDelta({ content: piece });
-        }
-
-        sendDelta({}, "stop");
-        if (includeUsage && usage) {
-          sendChunk({ choices: [], usage });
-        }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
-        await finalizeTurn({ keeper, turnId, requestId, start, status: "ok" });
+        
+        const latencyMs = Date.now() - start;
+        await keeper.endTurn(turnId, { status: "ok", latencyMs });
+        await keeper.completeRequest(requestId, latencyMs);
       } catch (err) {
-        await finalizeTurn({
-          keeper,
-          turnId,
-          requestId,
-          start,
-          status: "error",
-          errorType: err instanceof Error ? err.name : "error"
-        });
-        sendChunk({
-          error: "Chat completion stream failed",
-          reason: err instanceof Error ? err.message : String(err)
-        });
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
+        const latencyMs = Date.now() - start;
+        await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
+        await keeper.completeRequest(requestId, latencyMs);
+        controller.error(err);
+      } finally {
+        reader.releaseLock();
       }
     }
   });
 
-  return new NextResponse(stream, {
+  return new NextResponse(wrappedStream, {
     headers: {
       "Content-Type": "text/event-stream",
       Connection: "keep-alive",
-      "Cache-Control": "no-cache, no-transform"
+      "Cache-Control": "no-cache, no-transform",
+      ...getCorsHeaders(null)
     }
   });
 }
+

@@ -1,5 +1,7 @@
-import type { IntentTool } from "../intent.harness";
-import { geocodeSearchTool } from "./geocode";
+import { tool, type StructuredToolInterface } from "@langchain/core/tools";
+import { z } from "zod";
+
+import { enhancedGeocodeSearchTool } from "./geocode-enhanced";
 import { memorizeTool } from "./memorize";
 import { webSearchTool } from "./web-search";
 import { getWeatherCurrentTool } from "./weather-current";
@@ -9,60 +11,42 @@ import { createListHAServicesToolInstance } from "./ha-list-services";
 import { createExecuteServicesToolInstance } from "./ha-execute-services";
 import type { HomeAssistantContextManager } from "./ha-context";
 
-type LangChainTool = {
-  name?: string;
-  description?: string;
-  schema?: unknown;
-  invoke?: (input: Record<string, unknown>) => Promise<unknown>;
-  call?: (input: Record<string, unknown>) => Promise<unknown>;
-  verifyConfiguration?: () => { ok: boolean; reason?: string } | Promise<{ ok: boolean; reason?: string }>;
-};
+/**
+ * Respond tool - signals that intent harness is complete and ready for response generation.
+ * This is a no-op tool that the LLM calls to indicate it's done with tool calling.
+ */
+const respondTool = tool(
+  async () => {
+    return { status: "ready_to_respond" };
+  },
+  {
+    name: "respond",
+    description: "Signal that you have completed all necessary tool calls and are ready to generate a response to the user. Call this when you have gathered all the information needed.",
+    schema: z.object({})
+  }
+);
 
-function adaptToIntentTool(tool: unknown): IntentTool {
-  const lcTool = tool as LangChainTool;
-  const name = lcTool.name ?? "tool";
-  const description = lcTool.description;
-  const schema = lcTool.schema;
-  const verifyConfiguration =
-    typeof lcTool.verifyConfiguration === "function"
-      ? async () => lcTool.verifyConfiguration!()
-      : undefined;
-
-  const invoke = async (input: Record<string, unknown>) => {
-    if (typeof lcTool.invoke === "function") return lcTool.invoke(input);
-    if (typeof lcTool.call === "function") return lcTool.call(input);
-    throw new Error(`Tool ${name} cannot be invoked`);
-  };
-
-  return {
-    name,
-    ...(description ? { description } : {}),
-    ...(schema !== undefined ? { schema } : {}),
-    invoke,
-    ...(verifyConfiguration ? { verifyConfiguration } : {})
-  };
-}
-
-export function getIntentTools(haContextManager?: HomeAssistantContextManager): IntentTool[] {
-  const baseTools = [
+export function getIntentTools(haContextManager?: HomeAssistantContextManager): StructuredToolInterface[] {
+  const baseTools: StructuredToolInterface[] = [
     webSearchTool,
-    geocodeSearchTool,
+    enhancedGeocodeSearchTool,
     memorizeTool,
     getWeatherCurrentTool,
     getWeatherForecastTool,
-    getWeatherHistoricalTool
+    getWeatherHistoricalTool,
+    respondTool, // Add respond tool at the end
   ];
 
-  const haTools = haContextManager ? [
+  const haTools: StructuredToolInterface[] = haContextManager ? [
     createListHAServicesToolInstance(haContextManager),
     createExecuteServicesToolInstance(haContextManager)
   ] : [];
 
-  return [...baseTools, ...haTools].map((tool) => adaptToIntentTool(tool));
+  return [...baseTools, ...haTools];
 }
 
 export {
-  geocodeSearchTool,
+  enhancedGeocodeSearchTool,
   memorizeTool,
   webSearchTool,
   getWeatherCurrentTool,

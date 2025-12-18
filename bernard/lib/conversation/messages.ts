@@ -152,11 +152,8 @@ export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage |
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (!message) continue;
-    const candidate = message as { _getType?: () => string };
-    if (candidate._getType?.() === "ai") return message;
-    // LangChain sometimes uses `getType`
-    const getType = (message as { getType?: () => string }).getType;
-    if (getType?.call(message) === "ai") return message;
+    const candidate = message as { type: string };
+    if (candidate.type === "ai") return message;
   }
   return null;
 }
@@ -449,7 +446,7 @@ export function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
  */
 export function summarizeToolOutputs(messages: BaseMessage[]) {
   return messages
-    .filter((m) => (m as { _getType?: () => string })._getType?.() === "tool")
+    .filter((m) => (m as { type: string }).type === "tool")
     .map((m) => {
       const id = (m as { tool_call_id?: string }).tool_call_id ?? "tool_call";
       const content = contentFromMessage(m) ?? "";
@@ -461,7 +458,7 @@ export function summarizeToolOutputs(messages: BaseMessage[]) {
  * Quick type guard for tool messages.
  */
 export function isToolMessage(message: BaseMessage) {
-  return (message as { _getType?: () => string })._getType?.() === "tool";
+  return (message as { type: string }).type === "tool";
 }
 
 

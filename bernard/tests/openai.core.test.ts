@@ -76,7 +76,7 @@ vi.mock("@/lib/conversation/messages", () => ({
     record
       ? ({
           content: record.content ?? record.role,
-          _getType: () => record.role
+          type: record.role
         } as unknown)
       : null
 }));
@@ -95,7 +95,7 @@ beforeAll(async () => {
 
 const mkMessage = (role: Role, content: unknown = "") =>
   ({
-    _getType: () => role,
+    type: role,
     content
   }) as unknown as import("@langchain/core/messages").BaseMessage;
 
@@ -213,7 +213,7 @@ test("summarizeToolOutputs collects tool outputs and respects ids", () => {
   assert.equal(summary[0].content, "out1");
 });
 
-test("isToolMessage checks _getType", () => {
+test("isToolMessage checks type", () => {
   assert.equal(openai.isToolMessage(mkMessage("tool")), true);
   assert.equal(openai.isToolMessage(mkMessage("human")), false);
 });

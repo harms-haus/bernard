@@ -66,7 +66,7 @@ export function buildToolChunks(transcript: BaseMessage[], historyLength: number
       continue;
     }
 
-    const type = (message as { _getType?: () => string })._getType?.();
+    const type = (message as { type: string }).type;
     if (type === "tool") {
       const id =
         (message as { tool_call_id?: string }).tool_call_id ?? (message as { name?: string }).name ?? "tool_call";

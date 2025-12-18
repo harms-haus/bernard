@@ -11,28 +11,12 @@ export type CorsHeaders = {
 };
 
 export function getCorsHeaders(origin: string | null): CorsHeaders {
-  // Allow specific origins or all origins for development
-  const allowedOrigins = process.env['ALLOWED_ORIGINS']?.split(',').map(s => s.trim()) || [];
-  
-  if (allowedOrigins.length > 0) {
-    // If specific origins are configured, check if the request origin is allowed
-    if (origin && allowedOrigins.includes(origin)) {
-      return {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true'
-      };
-    }
-    // If no specific origin match, return empty headers (will be blocked by browser)
-    return {};
-  }
-  
-  // Default: allow all origins (development mode)
+  // OpenAI API endpoints should allow all origins for compatibility
+  // This ensures any client can connect to Bernard's OpenAI-compatible API
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Accept-Encoding, Accept-Language, Cache-Control, Connection, Host, Origin, Referer, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, User-Agent'
   };
 }
 

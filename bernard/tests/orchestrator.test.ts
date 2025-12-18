@@ -312,17 +312,17 @@ test("Orchestrator removes blank/response tool messages before response prompt",
 
   assert.ok(responseCallInput);
   const responseMessages = (responseCallInput?.messages ?? []).filter(
-    (msg) => (msg as { _getType?: () => string })._getType?.() !== "system"
+    (msg:{ type: string }) => msg.type !== "system"
   );
-  const contents = responseMessages.map((msg) => String((msg as { content?: unknown }).content ?? ""));
+  const contents = responseMessages.map((msg: { content?: unknown }) => String(msg.content ?? ""));
 
   assert.equal(responseMessages.length, 2);
-  assert.ok(contents.every((content) => content.trim().length > 0));
-  assert.ok(contents.some((content) => content.includes("hi orchestrator")));
-  assert.ok(contents.some((content) => content.includes("search result")));
+  assert.ok(contents.every((content: string) => content.trim().length > 0));
+  assert.ok(contents.some((content: string) => content.includes("hi orchestrator")));
+  assert.ok(contents.some((content: string) => content.includes("search result")));
 
   const toolNames = responseMessages
-    .filter((msg) => (msg as { _getType?: () => string })._getType?.() === "tool")
+    .filter((msg) => (msg as { type: string }).type === "tool")
     .map((msg) => (msg as { name?: string }).name);
   assert.ok(!toolNames.includes("respond"));
 });

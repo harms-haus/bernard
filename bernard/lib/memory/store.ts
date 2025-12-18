@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { RedisVectorStore } from "@langchain/community/vectorstores/redis";
+import { RedisVectorStore } from "@langchain/redis";
 import { Document } from "@langchain/core/documents";
 import { getEmbeddingModel, type EmbeddingConfig, verifyEmbeddingConfig } from "../config/embeddings";
 import { getRedis } from "../infra/redis";

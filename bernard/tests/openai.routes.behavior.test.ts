@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 
 const BERNARD_MODEL_ID = "bernard-v1";
 
-type BaseMsg = { content?: string; _getType?: () => string };
+type BaseMsg = { content?: string; type: string };
 
 const state = {
   authOk: true,
@@ -17,7 +17,7 @@ const state = {
   runWithDetails: {
     transcript: [] as BaseMsg[],
     historyLength: 0,
-    response: { message: { content: "hi", _getType: () => "ai" } as BaseMsg }
+    response: { message: { content: "hi", type: "ai" } as BaseMsg }
   },
   runWithDetailsError: false
 };
@@ -50,7 +50,7 @@ vi.mock("@/app/api/v1/_lib/openai", () => ({
   extractUsageFromMessages: () => state.usageMeta,
   findLastAssistantMessage: (msgs: BaseMsg[]) => (msgs.length ? msgs[msgs.length - 1] : null),
   hydrateMessagesWithHistory: async (_opts: unknown) => (_opts as { incoming: BaseMsg[] }).incoming,
-  mapCompletionPrompt: (prompt: string) => [{ content: prompt, _getType: () => "human" }],
+  mapCompletionPrompt: (prompt: string) => [{ content: prompt, type: "human" }],
   mapChatMessages: (msgs: BaseMsg[]) => msgs,
   isBernardModel: (model?: string | null) => state.modelOk && (!model || model === BERNARD_MODEL_ID)
 }));
@@ -144,7 +144,7 @@ test("completions rejects wrong model", async () => {
 });
 
 test("completions returns non-streamed completion with usage", async () => {
-  state.invokeResult = { messages: [{ content: "hello", _getType: () => "ai" }] };
+  state.invokeResult = { messages: [{ content: "hello", type: "ai" }] };
   const req = new NextRequest(
     new Request("http://localhost/api", { method: "POST", body: JSON.stringify({ prompt: "hi" }) })
   );
@@ -158,8 +158,8 @@ test("completions returns non-streamed completion with usage", async () => {
 test("completions streams incremental chunks and usage", async () => {
   state.streamError = false;
   state.streamChunks = [
-    [{ content: "Hello", _getType: () => "ai" }],
-    [{ content: "Hello world", _getType: () => "ai" }]
+    [{ content: "Hello", type: "ai" }],
+    [{ content: "Hello world", type: "ai" }]
   ];
   const req = new NextRequest(
     new Request("http://localhost/api", {
@@ -197,7 +197,7 @@ test("chat completion rejects wrong model", async () => {
 });
 
 test("chat completion returns non-streamed message with usage", async () => {
-  state.invokeResult = { messages: [{ content: "chat", _getType: () => "ai" }] };
+  state.invokeResult = { messages: [{ content: "chat", type: "ai" }] };
   const req = new NextRequest(
     new Request("http://localhost/api", { method: "POST", body: JSON.stringify({ messages: [] }) })
   );
@@ -210,9 +210,9 @@ test("chat completion returns non-streamed message with usage", async () => {
 test("chat completion streams tool calls, content, and usage", async () => {
   state.runWithDetailsError = false;
   state.runWithDetails = {
-    transcript: [{ content: "tool delta", _getType: () => "tool" }],
+    transcript: [{ content: "tool delta", type: "tool" }],
     historyLength: 0,
-    response: { message: { content: "hello world", _getType: () => "ai" } }
+    response: { message: { content: "hello world", type: "ai" } }
   };
   const req = new NextRequest(
     new Request("http://localhost/api", {

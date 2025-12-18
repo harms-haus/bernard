@@ -1,5 +1,4 @@
 import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 
 export const timerTool = tool(
   async ({ seconds, note }) => {
@@ -9,12 +8,19 @@ export const timerTool = tool(
   {
     name: "set_timer",
     description: "Set a short timer (<= 60s) to wait before responding.",
-    schema: z.object({
-      seconds: z.number().int().min(1).max(60),
-      note: z.string().optional()
-    })
+    schema: {
+      type: "object",
+      properties: {
+        seconds: {
+          type: "number",
+          description: "Number of seconds to wait (1-60)"
+        },
+        note: {
+          type: "string",
+          description: "Optional note to display when timer finishes"
+        }
+      },
+      required: ["seconds"]
+    }
   }
 );
-
-
-

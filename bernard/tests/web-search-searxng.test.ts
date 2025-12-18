@@ -464,7 +464,7 @@ void test(
   }
 );
 
-void test(
+test(
   "webSearchTool handles mixed response formats gracefully",
   { timeout: TEST_TIMEOUT },
   async () => {
@@ -485,4 +485,4 @@ void test(
     const output = String(await webSearchTool.invoke({ query: "test", count: 1 }));
     assert.match(output, /Mixed Format Result/);
   }
-});
+);

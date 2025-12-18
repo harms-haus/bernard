@@ -4,7 +4,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
 import { validateAccessToken } from "@/lib/auth";
-import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/agent";
+import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/conversation/messages";
 import { ConversationSummaryService } from "@/lib/conversation/summary";
 import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
 import { getPrimaryModel } from "@/lib/config/models";
@@ -161,8 +161,8 @@ export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage |
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (!message) continue;
-    const candidate = message as { _getType?: () => string };
-    if (candidate._getType?.() === "ai") return message;
+    const candidate = message as { type: string };
+    if (candidate.type === "ai") return message;
   }
   return null;
 }
@@ -194,7 +194,7 @@ export function mapCompletionPrompt(prompt: string): BaseMessage[] {
 
 export function summarizeToolOutputs(messages: BaseMessage[]) {
   return messages
-    .filter((m) => (m as { _getType?: () => string })._getType?.() === "tool")
+    .filter((m) => (m as { type: string }).type === "tool")
     .map((m) => {
       const id = (m as { tool_call_id?: string }).tool_call_id ?? "tool_call";
       const content = contentFromMessage(m) ?? "";
@@ -203,7 +203,7 @@ export function summarizeToolOutputs(messages: BaseMessage[]) {
 }
 
 export function isToolMessage(message: BaseMessage) {
-  return (message as { _getType?: () => string })._getType?.() === "tool";
+  return (message as { type: string }).type === "tool";
 }
 
 type TimelineEntry = {
@@ -214,7 +214,7 @@ type TimelineEntry = {
 };
 
 function roleOrder(message: BaseMessage): number {
-  const type = (message as { _getType?: () => string })._getType?.();
+  const type = (message as { type: string }).type;
   switch (type) {
     case "human":
       return 0;
@@ -231,11 +231,10 @@ function roleOrder(message: BaseMessage): number {
 
 function shouldIncludeHistoryRecord(record: MessageRecord): boolean {
   if (record.role !== "system") return true;
-  const traceType = (record.metadata as { traceType?: string } | undefined)?.traceType ?? "";
-  if (traceType === "llm_call") return true;
-  if (traceType === "error" || traceType === "orchestrator.error") return true;
-  if (record.name === "llm_call") return true;
-  if (record.name === "orchestrator.error" || record.name?.endsWith(".error")) return true;
+
+  // Exclude all system messages from history when preparing LLM context.
+  // Harnesses provide their own fresh system prompts.
+  // This also excludes traces and errors which are recorded as system messages.
   return false;
 }
 
@@ -264,7 +263,7 @@ function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
   return a.seq - b.seq;
 }
 
-function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage[]): BaseMessage[] {
+async function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage[]): BaseMessage[] {
   const historyEntries = history
     .map((record, index) => toTimelineEntry(record, index))
     .filter((entry): entry is TimelineEntry => Boolean(entry));
@@ -291,7 +290,11 @@ function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessag
   const combined = [...historyWithTs, ...incomingEntries];
   combined.sort(compareEntries);
 
-  return combined.map((entry) => entry.message);
+  const messages = combined.map((entry) => entry.message);
+
+  // Import and apply deduplication to prevent duplicate messages
+  const { deduplicateMessages } = await import("@/lib/conversation/dedup");
+  return deduplicateMessages(messages);
 }
 
 export async function hydrateMessagesWithHistory(opts: {

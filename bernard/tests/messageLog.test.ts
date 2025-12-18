@@ -152,7 +152,7 @@ test("count helpers and error detection cover tool and assistant paths", () => {
 
 test("snapshotMessageForTrace normalizes roles, content, and tool calls", () => {
   const baseMsg = {
-    _getType: () => "ai",
+    type: "ai",
     content: [{ text: "hello" }, { content: "world" }, 5],
     tool_calls: [{ id: "1", function: { name: "fn", arguments: "{}" } as ToolCallEntry["function"] }],
     name: "assistant-name",
@@ -202,7 +202,7 @@ test("append persists messages and updates counters with consistent timestamps",
   const log = new MessageLog(redis as any, (suffix) => `ns:${suffix}`);
 
   const assistant = {
-    _getType: () => "ai",
+    type: "ai",
     content: "hello",
     tool_calls: [{ id: "call-1", function: { name: "lookup", arguments: '{"q":1}' } }],
     usage_metadata: { input_tokens: 10, output_tokens: 5 },

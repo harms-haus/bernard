@@ -145,7 +145,7 @@ function parseCSVLine(line: string): string[] {
 export function extractHomeAssistantContext(messages: BaseMessage[]): HomeAssistantContext | null {
   // Look for system messages that might contain HA entities
   for (const message of messages) {
-    const messageType = (message as { _getType?: () => string })._getType?.();
+    const messageType = (message as { type: string }).type;
     if (messageType === 'system') {
       const content = extractContentFromMessage(message);
       if (content) {

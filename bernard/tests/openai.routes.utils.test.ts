@@ -42,11 +42,11 @@ test("chunkContent splits long text into multiple parts", () => {
 
 test("buildToolChunks groups tool calls and outputs", () => {
   const callMessage = {
-    _getType: () => "ai",
+    type: "ai",
     tool_calls: [{ id: "call-1", function: { name: "lookup", arguments: "{}" } }]
   } as unknown as BaseMessage;
   const outputMessage = {
-    _getType: () => "tool",
+    type: "tool",
     tool_call_id: "call-1",
     content: "result"
   } as unknown as BaseMessage;

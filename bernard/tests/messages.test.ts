@@ -73,12 +73,12 @@ test("contentFromMessage normalizes mixed content", () => {
   assert.equal(contentFromMessage(missing), null);
 });
 
-test("findLastAssistantMessage honors _getType and getType", () => {
-  const first = { _getType: () => "ai", content: "old" } as any;
-  const fallback = { getType: () => "ai", content: "new" } as any;
-  const result = findLastAssistantMessage([{ _getType: () => "human" } as any, first, fallback]);
+test("findLastAssistantMessage honors type", () => {
+  const first = { type: "ai", content: "old" } as any;
+  const fallback = { type: "ai", content: "new" } as any;
+  const result = findLastAssistantMessage([{ type: "human" } as any, first, fallback]);
   assert.equal(result?.content, "new");
-  assert.equal(findLastAssistantMessage([{ _getType: () => "human" } as any]), null);
+  assert.equal(findLastAssistantMessage([{ type: "human" } as any]), null);
 });
 
 test("collectToolCalls extracts and stringifies arguments", () => {
@@ -109,7 +109,7 @@ test("token usage extraction prefers response_metadata", () => {
   const usage = extractTokenUsage({ response_metadata: { token_usage: { prompt_tokens: 1 } }, usage_metadata: { prompt_tokens: 5 } });
   assert.deepEqual(usage, { prompt_tokens: 1 });
 
-  const assistant = { _getType: () => "ai", response_metadata: { token_usage: { completion_tokens: 2 } } } as any;
+  const assistant = { type: "ai", response_metadata: { token_usage: { completion_tokens: 2 } } } as any;
   const usageFromMessages = extractUsageFromMessages([assistant]);
   assert.deepEqual(usageFromMessages, { completion_tokens: 2 });
 });
@@ -187,8 +187,8 @@ test("mapRecordsToMessages restores conversation history and drops traces", () =
   const messages = mapRecordsToMessages(records);
 
   assert.equal(messages.length, 4);
-  assert.equal((messages[0] as { _getType?: () => string })._getType?.(), "system");
-  assert.equal((messages[1] as { _getType?: () => string })._getType?.(), "ai");
+  assert.equal((messages[0] as { type: string }).type, "system");
+  assert.equal((messages[1] as { type: string }).type, "ai");
   const toolCalls = (messages[1] as { tool_calls?: unknown[] }).tool_calls;
   assert.ok(Array.isArray(toolCalls));
   assert.equal((toolCalls as unknown[]).length, 1);
@@ -196,8 +196,8 @@ test("mapRecordsToMessages restores conversation history and drops traces", () =
     ((toolCalls as Array<{ function?: { name?: string } }>)[0]?.function?.name) ?? "",
     "lookup"
   );
-  assert.equal((messages[2] as { _getType?: () => string })._getType?.(), "tool");
-  assert.equal((messages[3] as { _getType?: () => string })._getType?.(), "human");
+  assert.equal((messages[2] as { type: string }).type, "tool");
+  assert.equal((messages[3] as { type: string }).type, "human");
 });
 
 test("mapOpenAIToMessages converts OpenAI-style messages", () => {
@@ -264,12 +264,12 @@ test("mapRecordsToMessages can include llm_call traces when requested", () => {
 
   const filtered = mapRecordsToMessages(records);
   assert.equal(filtered.length, 1);
-  assert.equal((filtered[0] as { _getType?: () => string })._getType?.(), "human");
+  assert.equal((filtered[0] as { type: string }).type, "human");
 
   const withTraces = mapRecordsToMessages(records, { includeTraces: true });
   assert.equal(withTraces.length, 2);
-  assert.equal((withTraces[0] as { _getType?: () => string })._getType?.(), "system");
-  assert.equal((withTraces[1] as { _getType?: () => string })._getType?.(), "human");
+  assert.equal((withTraces[0] as { type: string }).type, "system");
+  assert.equal((withTraces[1] as { type: string }).type, "human");
 });
 
 test("messageRecordToBaseMessage normalizes tool content and unknown role", () => {
@@ -285,7 +285,7 @@ test("messageRecordToBaseMessage normalizes tool content and unknown role", () =
   assert.equal(contentFromMessage(lcTool), '{"ok":true}');
 
   const unknown = messageRecordToBaseMessage({ ...toolRecord, role: "unknown" as any } as MessageRecord);
-  assert.equal((unknown as any)?._getType?.(), "human");
+  assert.equal((unknown as any)?.type, "human");
 });
 
 test("mapOpenAIToMessages rejects invalid roles and ChatML markers", () => {
@@ -380,9 +380,9 @@ test("hydrateMessagesWithHistory preserves tool call before tool result at ident
   });
 
   assert.equal(merged.length, 3);
-  assert.equal((merged[0] as { _getType?: () => string })._getType?.(), "ai");
-  assert.equal((merged[1] as { _getType?: () => string })._getType?.(), "tool");
-  assert.equal((merged[2] as { _getType?: () => string })._getType?.(), "human");
+  assert.equal((merged[0] as { type: string }).type, "ai");
+  assert.equal((merged[1] as { type: string }).type, "tool");
+  assert.equal((merged[2] as { type: string }).type, "human");
 });
 
 test("hydrateMessagesWithHistory falls back to sequence when timestamps are missing", async () => {
@@ -398,9 +398,9 @@ test("hydrateMessagesWithHistory falls back to sequence when timestamps are miss
   });
 
   assert.equal(merged.length, 3);
-  assert.equal((merged[0] as { _getType?: () => string })._getType?.(), "ai");
-  assert.equal((merged[1] as { _getType?: () => string })._getType?.(), "tool");
-  assert.equal((merged[2] as { _getType?: () => string })._getType?.(), "human");
+  assert.equal((merged[0] as { type: string }).type, "ai");
+  assert.equal((merged[1] as { type: string }).type, "tool");
+  assert.equal((merged[2] as { type: string }).type, "human");
 });
 
 
