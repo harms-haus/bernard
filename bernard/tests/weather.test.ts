@@ -5,8 +5,8 @@ import {
   getWeatherCurrentTool,
   getWeatherForecastTool,
   getWeatherHistoricalTool
-} from "../agent/harness/intent/tools";
-import { chooseUnits, parseTarget } from "../agent/harness/intent/tools/weather-common";
+} from "../agent/harness/router/tools";
+import { chooseUnits, parseTarget } from "../agent/harness/router/tools/weather-common";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;

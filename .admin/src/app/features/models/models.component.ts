@@ -80,7 +80,7 @@ export class ModelsComponent {
 
   protected readonly categories: ModelCategoryMeta[] = [
     { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
-    { key: 'intent', label: 'Intent', description: 'Routing and tool selection model.' },
+    { key: 'router', label: 'router', description: 'Routing and tool selection model.' },
     { key: 'memory', label: 'Memory', description: 'Utility model used for memory dedupe and search.' },
     { key: 'utility', label: 'Utility', description: 'Helper model for tools and misc tasks.' },
     { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' }
@@ -88,7 +88,7 @@ export class ModelsComponent {
 
   protected readonly form = this.fb.group({
     response: this.buildCategoryForm(),
-    intent: this.buildCategoryForm(),
+    router: this.buildCategoryForm(),
     memory: this.buildCategoryForm(),
     utility: this.buildCategoryForm(),
     aggregation: this.buildCategoryForm()
@@ -125,7 +125,7 @@ export class ModelsComponent {
           this.updateProviderOptions({ 
             providers, 
             response: { primary: '', providerId: '', options: {} },
-            intent: { primary: '', providerId: '', options: {} },
+            router: { primary: '', providerId: '', options: {} },
             memory: { primary: '', providerId: '', options: {} },
             utility: { primary: '', providerId: '', options: {} },
             aggregation: { primary: '', providerId: '', options: {} }
@@ -285,7 +285,7 @@ export class ModelsComponent {
   }
 
   protected isProviderInUse(providerId: string): boolean {
-    const categories: ModelKey[] = ['response', 'intent', 'memory', 'utility', 'aggregation'];
+    const categories: ModelKey[] = ['response', 'router', 'memory', 'utility', 'aggregation'];
     return categories.some(category => {
       const formCategory = this.form.get(category);
       return formCategory?.get('providerId')?.value === providerId;
@@ -348,7 +348,7 @@ export class ModelsComponent {
     return {
       providers: this.providers(),
       response: assembleCategory('response'),
-      intent: assembleCategory('intent'),
+      router: assembleCategory('router'),
       memory: assembleCategory('memory'),
       utility: assembleCategory('utility'),
       aggregation: assembleCategory('aggregation')

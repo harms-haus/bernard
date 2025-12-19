@@ -23,7 +23,7 @@ export function resetSettingsFetcher() {
   fetchSettings = getSettings;
 }
 
-export type ModelCategory = "response" | "intent" | "aggregation" | "utility" | "memory";
+export type ModelCategory = "response" | "router" | "aggregation" | "utility" | "memory";
 
 export type ModelCallOptions = {
   temperature?: number;

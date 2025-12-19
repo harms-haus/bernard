@@ -195,10 +195,10 @@ User-Agent: {SEARXNG_USER_AGENT}        # Default: bernard-assistant
 
 #### Response Processing
 
-1. **URL Construction**: [`buildSearXNGUrl()`](bernard/agent/harness/intent/tools/web-search.ts:218)
-2. **API Request**: [`fetchSearXNGSearch()`](bernard/agent/harness/intent/tools/web-search.ts:282)
-3. **Response Parsing**: [`parseSearXNGResults()`](bernard/agent/harness/intent/tools/web-search.ts:245)
-4. **Result Formatting**: [`formatResults()`](bernard/agent/harness/intent/tools/web-search.ts:274)
+1. **URL Construction**: [`buildSearXNGUrl()`](bernard/agent/harness/router/tools/web-search.ts:218)
+2. **API Request**: [`fetchSearXNGSearch()`](bernard/agent/harness/router/tools/web-search.ts:282)
+3. **Response Parsing**: [`parseSearXNGResults()`](bernard/agent/harness/router/tools/web-search.ts:245)
+4. **Result Formatting**: [`formatResults()`](bernard/agent/harness/router/tools/web-search.ts:274)
 
 #### SearXNG Response Format
 
@@ -346,7 +346,7 @@ journalctl -u bernard -f
 curl -v "https://your-searxng-instance.com/search?q=test&format=json"
 
 # Verify configuration
-node -e "console.log(require('./agent/harness/intent/tools/web-search.ts').verifySearchConfigured())"
+node -e "console.log(require('./agent/harness/router/tools/web-search.ts').verifySearchConfigured())"
 ```
 
 ## Best Practices
@@ -388,14 +388,14 @@ node -e "console.log(require('./agent/harness/intent/tools/web-search.ts').verif
 
 ### Configuration Functions
 
-- [`resolveSearchConfig()`](bernard/agent/harness/intent/tools/web-search.ts:174): Resolve search configuration
-- [`verifySearchConfigured()`](bernard/agent/harness/intent/tools/web-search.ts:194): Verify configuration status
-- [`executeSearch()`](bernard/agent/harness/intent/tools/web-search.ts:327): Execute search with selected provider
+- [`resolveSearchConfig()`](bernard/agent/harness/router/tools/web-search.ts:174): Resolve search configuration
+- [`verifySearchConfigured()`](bernard/agent/harness/router/tools/web-search.ts:194): Verify configuration status
+- [`executeSearch()`](bernard/agent/harness/router/tools/web-search.ts:327): Execute search with selected provider
 
 ### Utility Functions
 
-- [`buildSearXNGUrl()`](bernard/agent/harness/intent/tools/web-search.ts:218): Build SearXNG search URL
-- [`parseSearXNGResults()`](bernard/agent/harness/intent/tools/web-search.ts:245): Parse SearXNG response
-- [`formatResults()`](bernard/agent/harness/intent/tools/web-search.ts:274): Format results for output
+- [`buildSearXNGUrl()`](bernard/agent/harness/router/tools/web-search.ts:218): Build SearXNG search URL
+- [`parseSearXNGResults()`](bernard/agent/harness/router/tools/web-search.ts:245): Parse SearXNG response
+- [`formatResults()`](bernard/agent/harness/router/tools/web-search.ts:274): Format results for output
 
 This comprehensive API documentation covers all aspects of the Bernard web search tool, including configuration, usage, error handling, and provider-specific details for SearXNG integration.

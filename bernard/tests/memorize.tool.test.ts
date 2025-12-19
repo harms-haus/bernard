@@ -5,7 +5,7 @@ import {
   createMemorizeTool,
   type MemorizeDependencies,
   type MemorizeScheduler
-} from "../agent/harness/intent/tools/memorize";
+} from "../agent/harness/router/tools/memorize";
 
 const TEST_TIMEOUT = 2000;
 

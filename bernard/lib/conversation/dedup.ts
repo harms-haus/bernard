@@ -8,13 +8,18 @@ function createMessageFingerprint(message: BaseMessage | MessageRecord): string 
   const content = message.content ?? "";
   const role = (message as { role?: string }).role ?? (message as { type?: string }).type ?? "unknown";
   const name = (message as { name?: string }).name ?? "";
-  
+
   // Create a stable fingerprint that ignores formatting differences
-  const contentString = typeof content === "string" 
-    ? content.trim().toLowerCase() 
+  const contentString = typeof content === "string"
+    ? content.trim().toLowerCase()
     : JSON.stringify(content).toLowerCase();
-  
-  return `${role}:${name}:${contentString}`;
+
+  // Include tool calls and tool call ID for deeper uniqueness
+  const toolCalls = (message as any).tool_calls;
+  const toolCallsString = toolCalls ? JSON.stringify(toolCalls) : "";
+  const toolCallId = (message as any).tool_call_id || "";
+
+  return `${role}:${name}:${contentString}:${toolCallsString}:${toolCallId}`;
 }
 
 /**
@@ -23,7 +28,7 @@ function createMessageFingerprint(message: BaseMessage | MessageRecord): string 
 export function deduplicateMessages(messages: BaseMessage[]): BaseMessage[] {
   const seen = new Set<string>();
   const result: BaseMessage[] = [];
-  
+
   for (const message of messages) {
     const fingerprint = createMessageFingerprint(message);
     if (!seen.has(fingerprint)) {
@@ -31,7 +36,7 @@ export function deduplicateMessages(messages: BaseMessage[]): BaseMessage[] {
       result.push(message);
     }
   }
-  
+
   return result;
 }
 
@@ -41,7 +46,7 @@ export function deduplicateMessages(messages: BaseMessage[]): BaseMessage[] {
 export function deduplicateMessageRecords(records: MessageRecord[]): MessageRecord[] {
   const seen = new Set<string>();
   const result: MessageRecord[] = [];
-  
+
   for (const record of records) {
     const fingerprint = createMessageFingerprint(record);
     if (!seen.has(fingerprint)) {
@@ -49,7 +54,7 @@ export function deduplicateMessageRecords(records: MessageRecord[]): MessageReco
       result.push(record);
     }
   }
-  
+
   return result;
 }
 

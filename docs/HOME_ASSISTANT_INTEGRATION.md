@@ -47,14 +47,14 @@ The Home Assistant integration adds two new tools to Bernard that allow it to in
 
 ### Integration Points
 
-#### 1. Intent Harness Integration
-- **File**: `intent.harness.ts`
+#### 1. router Harness Integration
+- **File**: `routerHarness.ts`
 - **Changes**: Updated to call `haContextManager.updateFromMessages()` before each iteration
 - **Purpose**: Ensures Home Assistant context is current with conversation state
 
 #### 2. Tool Registration
 - **File**: `tools/index.ts`
-- **Changes**: Added `listHAServicesTool` and `executeServicesTool` to the intent tools array
+- **Changes**: Added `listHAServicesTool` and `executeServicesTool` to the router tools array
 - **Purpose**: Makes HA tools available to the agent for selection
 
 #### 3. API Response Handling
@@ -194,16 +194,16 @@ When Home Assistant service calls are made, they are included in the API respons
 ## Files Created/Modified
 
 ### New Files
-1. `agent/harness/intent/tools/ha-entities.ts` - Entity parsing and utilities
-2. `agent/harness/intent/tools/ha-list-services.ts` - List services tool
-3. `agent/harness/intent/tools/ha-execute-services.ts` - Execute services tool
-4. `agent/harness/intent/tools/ha-context.ts` - Context management
+1. `agent/harness/router/tools/ha-entities.ts` - Entity parsing and utilities
+2. `agent/harness/router/tools/ha-list-services.ts` - List services tool
+3. `agent/harness/router/tools/ha-execute-services.ts` - Execute services tool
+4. `agent/harness/router/tools/ha-context.ts` - Context management
 5. `tests/ha-tools.test.ts` - Unit tests (25 tests)
 6. `tests/ha-simple-integration.test.ts` - Integration tests (5 tests)
 
 ### Modified Files
-1. `agent/harness/intent/tools/index.ts` - Added HA tools to registry
-2. `agent/harness/intent/intent.harness.ts` - Integrated context updates
+1. `agent/harness/router/tools/index.ts` - Added HA tools to registry
+2. `agent/harness/router/routerHarness.ts` - Integrated context updates
 3. `app/api/v1/chat/completions/route.ts` - Added HA service call handling
 
 ## Implementation Notes

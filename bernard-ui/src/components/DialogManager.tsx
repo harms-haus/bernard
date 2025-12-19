@@ -38,7 +38,7 @@ export const DialogManagerProvider: React.FC<{ children: React.ReactNode }> = ({
   const [dialogs, setDialogs] = React.useState<DialogConfig[]>([]);
 
   const openDialog = React.useCallback((config: Omit<DialogConfig, 'id'>) => {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 11);
     const newDialog: DialogConfig = { ...config, id };
     setDialogs(prev => [...prev, newDialog]);
     return id;

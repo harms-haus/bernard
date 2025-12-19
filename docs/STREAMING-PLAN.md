@@ -7,13 +7,13 @@ We need to figure out why the streaming isn't working end-to-end. This is what i
 **Expected Flow:**
 - User: prompt [recorded in recordKeeper]
 - LLM: system prompt + user prompt + history (emitted whole, with context to the output stream) [recorded]
-- Intent: LLM response -> tool call (no streaming, emitted whole to the output stream) [recorded]
+- router: LLM response -> tool call (no streaming, emitted whole to the output stream) [recorded]
 - LLM: system prompt + user prompt + history (emitted whole, with context to the output stream) [recorded]
-- Intent: LLM response -> tool call (emitted whole, with context to the output stream) [recorded]
-- Intent: tool result (emitted whole to the output stream) [recorded]
-- Intent: tool result (emitted whole to the output stream) [recorded]
+- router: LLM response -> tool call (emitted whole, with context to the output stream) [recorded]
+- router: tool result (emitted whole to the output stream) [recorded]
+- router: tool result (emitted whole to the output stream) [recorded]
 - LLM: system prompt + user prompt + history (emitted whole, with context to the output stream) [recorded]
-- Intent: LLM response -> respond() (NOT emitted to the output stream) [recorded]
+- router: LLM response -> respond() (NOT emitted to the output stream) [recorded]
 - LLM: system prompt + user prompt + history (emitted whole, with context to the output stream) [recorded]
 - Response: LLM response -> stream begins (stream is mirrored to the output stream) [recorded]
 
@@ -22,16 +22,16 @@ We need to figure out why the streaming isn't working end-to-end. This is what i
 ### What Works ✅
 
 1. **User prompts are recorded** via `recordKeeper.appendMessages()` in orchestrator
-2. **Tool calls are streamed** via `onStreamEvent()` in intent harness:
-   - Lines 506-511 in `intent.harness.ts` emit `tool_call` events
-   - Lines 609-618 in `intent.harness.ts` emit `tool_response` events
+2. **Tool calls are streamed** via `onStreamEvent()` in router harness:
+   - Lines 506-511 in `router.harness.ts` emit `tool_call` events
+   - Lines 609-618 in `router.harness.ts` emit `tool_response` events
 3. **Tool responses are recorded** in record keeper via `recordToolResult()`
 4. **Final response content is chunked** in API endpoint via `chunkContent()`
 
 ### What's Missing ❌
 
 1. **LLM calls are NOT streamed to output**
-   - All harnesses (`intent`, `memory`, `respond`) use `stream: false`
+   - All harnesses (`router`, `memory`, `respond`) use `stream: false`
    - LLM calls with full context are only recorded as system messages via `recordLLMCall()`
    - No real-time visibility into model's thinking process
 
@@ -50,7 +50,7 @@ The streaming issues stem from **three fundamental gaps**:
 ### 1. Missing LLM Call Streaming
 **Problem**: The `LLMCaller.call()` method and all harnesses use `stream: false`
 **Evidence**: 
-- `intent.harness.ts:862`: `stream: false`
+- `router.harness.ts:862`: `stream: false`
 - `respond.harness.ts:65`: No stream parameter
 - `memory.harness.ts`: Similar pattern
 
@@ -94,7 +94,7 @@ To achieve the expected end-to-end streaming, the following changes are needed:
 
 ## Implementation Priority
 
-1. **High Priority**: Enable LLM streaming in intent harness (most critical for user experience)
+1. **High Priority**: Enable LLM streaming in router harness (most critical for user experience)
 2. **Medium Priority**: Add streaming support to response harness
 3. **Medium Priority**: Update API endpoint to stream LLM calls
 4. **Low Priority**: Update memory harness streaming
@@ -102,7 +102,7 @@ To achieve the expected end-to-end streaming, the following changes are needed:
 ## Files to Modify
 
 1. `bernard/agent/harness/lib/types.ts` - Update streaming types
-2. `bernard/agent/harness/intent/intent.harness.ts` - Enable LLM streaming
+2. `bernard/agent/harness/router/router.harness.ts` - Enable LLM streaming
 3. `bernard/agent/harness/respond/respond.harness.ts` - Add streaming support
 4. `bernard/agent/harness/memory/memory.harness.ts` - Enable LLM streaming
 5. `bernard/app/api/v1/chat/completions/route.ts` - Update streaming logic

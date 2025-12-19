@@ -33,7 +33,7 @@ const settingsWithModels = (overrides: ModelsOverride = {}) =>
   ({
     models: {
       response: { primary: "response-model", fallbacks: ["response-fb"] },
-      intent: { primary: "intent-model", fallbacks: ["intent-fb"] },
+      router: { primary: "router-model", fallbacks: ["router-fb"] },
       memory: { primary: "memory-model", fallbacks: ["memory-fb"] },
       utility: { primary: "utility-model", fallbacks: ["utility-fb"] },
       aggregation: { primary: "aggregation-model", fallbacks: ["aggregation-fb"] },
@@ -140,14 +140,14 @@ test(
   "getModelList uses settings before environment",
   { timeout: TEST_TIMEOUT },
   async () => {
-    process.env["INTENT_MODELS"] = "env-intent";
+    process.env["ROUTER_MODELS"] = "env-router";
     setSettingsFetcher(async () =>
       settingsWithModels({
-        intent: { primary: "intent-from-settings", fallbacks: ["intent-fb"] }
+        router: { primary: "router-from-settings", fallbacks: ["router-fb"] }
       })
     );
-    const models = await getModelList("intent");
-    assert.deepEqual(models, ["intent-from-settings", "intent-fb"]);
+    const models = await getModelList("router");
+    assert.deepEqual(models, ["router-from-settings", "router-fb"]);
   }
 );
 

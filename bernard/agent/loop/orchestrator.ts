@@ -1,0 +1,287 @@
+import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
+import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import type { AgentOutputItem } from "../streaming/types";
+import { runRouterHarness } from "../harness/router/routerHarness";
+import { runResponseHarness } from "../harness/respond/responseHarness";
+import type { LLMCaller } from "../llm/llm";
+import { AIMessage, BaseMessage } from "@langchain/core/messages";
+import { createDelegateSequencer } from "../streaming/delegateSequencer";
+import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
+import { deduplicateMessages } from "@/lib/conversation/dedup";
+import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
+import crypto from "node:crypto";
+
+function uniqueId(prefix: string) {
+    return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
+}
+
+export type OrchestratorInput = {
+    conversationId?: string;
+    incoming: BaseMessage[]; // User messages
+    persistable: BaseMessage[]; // Messages to persist
+    requestId?: string;
+    turnId?: string;
+    trace?: boolean; // Enable trace events
+    abortSignal?: AbortSignal;
+};
+
+export type OrchestratorResult = {
+    stream: AsyncIterable<AgentOutputItem>;
+    result: Promise<{
+        finalMessages: BaseMessage[];
+        conversationId: string;
+    }>;
+};
+
+export class StreamingOrchestrator {
+    private currentLLMCallMessageId: string | undefined;
+    private accumulatedDeltas: Map<string, string> = new Map();
+
+    constructor(
+        private recordKeeper: RecordKeeper,
+        private routerLLMCaller: LLMCaller,
+        private responseLLMCaller: LLMCaller,
+        private haContextManager?: HomeAssistantContextManager
+    ) { }
+
+    async run(input: OrchestratorInput): Promise<OrchestratorResult> {
+        const {
+            conversationId: providedId,
+            persistable,
+            requestId,
+            turnId,
+            trace = false,
+            abortSignal
+        } = input;
+
+        // Reset instance fields to prevent state leakage between runs
+        this.currentLLMCallMessageId = undefined;
+        this.accumulatedDeltas.clear();
+
+        // 1. Identify or create conversation
+        const { conversationId, isNewConversation, existingHistory } =
+            await this.identifyConversation(providedId);
+
+        // 3. Initialize RecordKeeper with conversation
+
+        // 3. Initialize RecordKeeper with conversation
+        const recorder = this.recordKeeper.asRecorder();
+        const archivist = this.recordKeeper.asArchivist();
+
+        // Record only new messages that aren't already in history
+        const historyMessages = (existingHistory || [])
+            .map((msg) => messageRecordToBaseMessage(msg))
+            .filter((m): m is BaseMessage => m !== null);
+
+        const historyUnique = deduplicateMessages(historyMessages);
+        const uniqueMessages = deduplicateMessages([...historyMessages, ...persistable]);
+        const newPersistable = uniqueMessages.slice(historyUnique.length);
+
+        for (const msg of newPersistable) {
+            await recorder.recordMessage(conversationId, msg);
+        }
+
+        // 4. Create event sequencer
+        const sequencer = createDelegateSequencer<AgentOutputItem>();
+
+        // 5. Run Router Harness
+        const routerStream = (async function* (this: StreamingOrchestrator) {
+            const routerHarness = runRouterHarness({
+                conversationId,
+                messages: newPersistable, // Pass only the truly new messages to the harness
+                llmCaller: this.routerLLMCaller,
+                archivist,
+                ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
+                ...(abortSignal ? { abortSignal } : {})
+            });
+
+            for await (const event of routerHarness) {
+                // Record events via Recorder
+                await this.recordEvent(recorder, conversationId, event, requestId, turnId);
+
+                // Yield filtered events
+                if (this.shouldEmitEvent(event, trace)) {
+                    yield event;
+                }
+            }
+        }).bind(this)();
+
+        sequencer.chain(routerStream);
+
+        // 6. Run Response Harness (after router completes)
+        const responseStream = (async function* (this: StreamingOrchestrator) {
+            // router harness might have added messages to the conversation
+            // We don't necessarily need to pass all of them, but runResponseHarness
+            // will fetch history from archivist anyway.
+            // We just need to pass the newly arrived messages (which are already in history now).
+            // Wait, the harnesses take `messages` as context.
+            // In the plan, it says:
+            // const finalContext = await this.getFinalContext(archivist, conversationId);
+            // Wait, let's just pass empty messages or the same ones.
+            // Actually, if we pass persistable again, it might duplicate if not careful.
+            // But harnesses typically only add them to history anyway.
+
+            const responseHarness = runResponseHarness({
+                conversationId,
+                messages: [], // History will be fetched by the harness
+                llmCaller: this.responseLLMCaller,
+                archivist,
+                ...(abortSignal ? { abortSignal } : {})
+            });
+
+            for await (const event of responseHarness) {
+                // Record events via Recorder
+                await this.recordEvent(recorder, conversationId, event, requestId, turnId);
+
+                // Yield filtered events
+                if (this.shouldEmitEvent(event, trace)) {
+                    yield event;
+                }
+            }
+        }).bind(this)();
+
+        sequencer.chain(responseStream);
+        sequencer.done();
+
+        // 7. Build result promise
+        let resolveResult: (value: { finalMessages: BaseMessage[]; conversationId: string }) => void;
+        const resultPromise = new Promise<{ finalMessages: BaseMessage[]; conversationId: string }>((resolve) => {
+            resolveResult = resolve;
+        });
+
+        // Collect final messages as stream processes
+        const finalMessages: BaseMessage[] = [];
+        const outputStream = (async function* (this: StreamingOrchestrator) {
+            for await (const event of sequencer.sequence) {
+                if (event.type === "delta" && event.finishReason) {
+                    const content = this.accumulatedDeltas.get(event.messageId) || "";
+                    finalMessages.push(new AIMessage({ content, id: event.messageId }));
+                }
+                yield event;
+            }
+
+            resolveResult({
+                finalMessages,
+                conversationId
+            });
+        }).bind(this)();
+
+        return {
+            stream: outputStream,
+            result: resultPromise
+        };
+    }
+
+    private async identifyConversation(providedId: string | undefined): Promise<{
+        conversationId: string;
+        isNewConversation: boolean;
+        existingHistory?: MessageRecord[];
+    }> {
+        if (providedId) {
+            const existing = await this.recordKeeper.getConversation(providedId);
+            if (existing) {
+                const history = await this.recordKeeper.getMessages(providedId);
+                return {
+                    conversationId: providedId,
+                    isNewConversation: false,
+                    existingHistory: history
+                };
+            }
+        }
+
+        // Create new conversation
+        const newId = uniqueId("conv");
+        return {
+            conversationId: newId,
+            isNewConversation: true
+        };
+    }
+
+    private async mergeHistory(
+        _conversationId: string,
+        newMessages: BaseMessage[],
+        existingHistory: MessageRecord[]
+    ): Promise<BaseMessage[]> {
+        // This is a simplified merge.
+        return [
+            ...existingHistory.map((msg) => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null),
+            ...newMessages
+        ];
+    }
+
+    private async recordEvent(
+        recorder: Recorder,
+        conversationId: string,
+        event: AgentOutputItem,
+        requestId?: string,
+        turnId?: string
+    ): Promise<void> {
+        switch (event.type) {
+            case "llm_call":
+                this.currentLLMCallMessageId = uniqueId("msg");
+                await recorder.recordLLMCallStart(conversationId, {
+                    messageId: this.currentLLMCallMessageId,
+                    model: "router", // Could be dynamic
+                    context: event.context as BaseMessage[],
+                    ...(requestId ? { requestId } : {}),
+                    ...(turnId ? { turnId } : {}),
+                });
+                break;
+
+            case "llm_call_complete":
+                if (this.currentLLMCallMessageId) {
+                    await recorder.recordLLMCallComplete(conversationId, {
+                        messageId: this.currentLLMCallMessageId,
+                        result: new AIMessage({ content: event.result }),
+                    });
+                }
+                break;
+
+            case "tool_call":
+                await recorder.recordToolCallStart(conversationId, {
+                    toolCallId: event.toolCall.id,
+                    toolName: event.toolCall.function.name,
+                    arguments: event.toolCall.function.arguments,
+                    ...(this.currentLLMCallMessageId ? { messageId: this.currentLLMCallMessageId } : {})
+                });
+                break;
+
+            case "tool_call_complete":
+                await recorder.recordToolCallComplete(conversationId, {
+                    toolCallId: event.toolCall.id,
+                    result: event.result
+                });
+                break;
+
+            case "delta":
+                const current = this.accumulatedDeltas.get(event.messageId) || "";
+                const next = current + event.delta;
+                this.accumulatedDeltas.set(event.messageId, next);
+
+                if (event.finishReason) {
+                    await recorder.recordMessage(conversationId, new AIMessage({
+                        content: next,
+                        id: event.messageId
+                    }));
+                }
+                break;
+        }
+    }
+
+    private shouldEmitEvent(event: AgentOutputItem, trace: boolean): boolean {
+        if (event.type === "delta" || event.type === "error") {
+            return true;
+        }
+
+        if (trace) {
+            return (
+                event.type === "llm_call" ||
+                event.type === "llm_call_complete" ||
+                event.type === "tool_call" ||
+                event.type === "tool_call_complete"
+            );
+        }
+
+        return false;
+    }
+}

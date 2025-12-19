@@ -4,7 +4,7 @@ This document identifies and documents the TypeScript libraries needed for SearX
 
 ## Current Implementation Analysis
 
-The existing web search implementation in [`web-search.ts`](bernard/agent/harness/intent/tools/web-search.ts) uses:
+The existing web search implementation in [`web-search.ts`](bernard/agent/harness/router/tools/web-search.ts) uses:
 - Native `fetch` API for HTTP requests (line 169)
 - `zod` for validation (already in package.json)
 - Environment-based configuration
@@ -184,7 +184,7 @@ logger.info('SearXNG request: %s', query);
 
 ### Configuration Approach
 
-Based on existing patterns in [`web-search.ts`](bernard/agent/harness/intent/tools/web-search.ts):
+Based on existing patterns in [`web-search.ts`](bernard/agent/harness/router/tools/web-search.ts):
 
 ```typescript
 // Environment variables (via Next.js)

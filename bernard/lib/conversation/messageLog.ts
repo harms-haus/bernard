@@ -27,7 +27,10 @@ export function mapMessageRole(type: string | undefined): MessageRecord["role"] 
  */
 export function normalizeMessageContent(content: unknown): MessageRecord["content"] {
   if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.filter((part) => typeof part === "object") as Array<Record<string, unknown>>;
+  if (Array.isArray(content)) {
+    if (content.length === 0) return "";
+    return content.filter((part) => typeof part === "object") as Array<Record<string, unknown>>;
+  }
   if (content && typeof content === "object") return content as Record<string, unknown>;
   return "";
 }
@@ -157,7 +160,7 @@ export function snapshotMessageForTrace(message: BaseMessage | MessageRecord) {
  * Persists conversation messages to Redis while maintaining lightweight counters.
  */
 export class MessageLog {
-  constructor(private readonly redis: Redis, private readonly key: (suffix: string) => string) {}
+  constructor(private readonly redis: Redis, private readonly key: (suffix: string) => string) { }
 
   private listKey(conversationId: string) {
     return this.key(`conv:${conversationId}:msgs`);

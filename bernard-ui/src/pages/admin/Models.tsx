@@ -16,7 +16,7 @@ import type { ProviderType, ModelsSettings, ModelInfo } from '../../services/adm
 import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
 import { useToast } from '../../components/ToastManager';
 
-type ModelCategory = 'response' | 'intent' | 'memory' | 'utility' | 'aggregation';
+type ModelCategory = 'response' | 'router' | 'memory' | 'utility' | 'aggregation';
 
 interface ProviderForm {
   name: string;
@@ -39,7 +39,7 @@ export default function Models() {
   const [providerModels, setProviderModels] = useState<Record<string, ModelInfo[]>>({});
   const [selectedModels, setSelectedModels] = useState<Record<ModelCategory, string>>({
     response: '',
-    intent: '',
+    router: '',
     memory: '',
     utility: '',
     aggregation: ''
@@ -52,7 +52,7 @@ export default function Models() {
 
   const categories: { key: ModelCategory; label: string; description: string }[] = [
     { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
-    { key: 'intent', label: 'Intent', description: 'Routing and tool selection model.' },
+    { key: 'router', label: 'router', description: 'Routing and tool selection model.' },
     { key: 'memory', label: 'Memory', description: 'Utility model used for memory dedupe and search.' },
     { key: 'utility', label: 'Utility', description: 'Helper model for tools and misc tasks.' },
     { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' }
@@ -88,7 +88,7 @@ export default function Models() {
       // Initialize selected models from settings
       const initialSelections: Record<ModelCategory, string> = {
         response: settingsData.response?.primary || '',
-        intent: settingsData.intent?.primary || '',
+        router: settingsData.router?.primary || '',
         memory: settingsData.memory?.primary || '',
         utility: settingsData.utility?.primary || '',
         aggregation: settingsData.aggregation?.primary || ''
@@ -246,7 +246,7 @@ export default function Models() {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
       
       // Check if backend is returning different model names
-      const categories: ModelCategory[] = ['response', 'intent', 'memory', 'utility', 'aggregation'];
+      const categories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation'];
       categories.forEach(category => {
         const frontendModel = settings[category]?.primary;
         const backendModel = updatedSettings[category]?.primary;

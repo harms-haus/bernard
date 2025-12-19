@@ -50,7 +50,7 @@ const baseCtx: HarnessContext = {
     recent: (n?: number) => (typeof n === "number" ? [new HumanMessage("hello")].slice(-n) : [new HumanMessage("hello")])
   },
   config: {
-    intentModel: "intent-model",
+    routerModel: "router-model",
     responseModel: "response-model"
   },
   conversationId: "conv-123",
@@ -61,7 +61,7 @@ const baseCtx: HarnessContext = {
 
 function buildInput(memories?: ResponseInput["memories"]): ResponseInput {
   return {
-    intent: {} as any,
+    router: {} as any,
     memories: memories ?? { memories: [] }
   };
 }

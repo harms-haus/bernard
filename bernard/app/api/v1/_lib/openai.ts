@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage, MessageStructure, MessageType } from "@langchain/core/messages";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
 import { validateAccessToken } from "@/lib/auth";
@@ -45,7 +45,7 @@ export type AgentScaffolding = {
   requestId: string;
   turnId: string;
   responseModelName: string;
-  intentModelName: string;
+  routerModelName: string;
   isNewConversation: boolean;
 };
 
@@ -66,7 +66,7 @@ export async function createScaffolding(opts: {
   await keeper.closeIfIdle();
 
   const responseModelName = opts.responseModelOverride ?? (await getPrimaryModel("response"));
-  const intentModelName = await getPrimaryModel("intent", { fallback: [responseModelName] });
+  const routerModelName = await getPrimaryModel("router", { fallback: [responseModelName] });
 
   const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {
     conversationId: opts.conversationId,
@@ -74,7 +74,7 @@ export async function createScaffolding(opts: {
   });
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
 
-  return { keeper, conversationId, requestId, turnId, responseModelName, intentModelName, isNewConversation } satisfies AgentScaffolding;
+  return { keeper, conversationId, requestId, turnId, responseModelName, routerModelName, isNewConversation } satisfies AgentScaffolding;
 }
 
 export function isBernardModel(model?: string | null) {
@@ -184,7 +184,7 @@ export function extractMessagesFromChunk(chunk: unknown): BaseMessage[] | null {
   return null;
 }
 
-export function mapChatMessages(input: OpenAIMessage[]) {
+export function mapChatMessages(input: OpenAIMessage[]): BaseMessage<MessageStructure, MessageType>[] {
   return mapOpenAIToMessages(input);
 }
 
@@ -263,7 +263,7 @@ function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
   return a.seq - b.seq;
 }
 
-async function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage[]): BaseMessage[] {
+async function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage<MessageStructure, MessageType>[]): Promise<BaseMessage<MessageStructure, MessageType>[]> {
   const historyEntries = history
     .map((record, index) => toTimelineEntry(record, index))
     .filter((entry): entry is TimelineEntry => Boolean(entry));
@@ -300,8 +300,8 @@ async function mergeHistoryWithIncoming(history: MessageRecord[], incoming: Base
 export async function hydrateMessagesWithHistory(opts: {
   keeper: RecordKeeper;
   conversationId: string;
-  incoming: BaseMessage[];
-}): Promise<BaseMessage[]> {
+  incoming: BaseMessage<MessageStructure, MessageType>[];
+}): Promise<BaseMessage<MessageStructure, MessageType>[]> {
   const history = await opts.keeper.getMessages(opts.conversationId);
   if (!history.length) return opts.incoming;
   return mergeHistoryWithIncoming(history, opts.incoming);

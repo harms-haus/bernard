@@ -36,7 +36,7 @@ export const ModelCategorySchema = z.object({
 export const ModelsSettingsSchema = z.object({
   providers: z.array(ProviderSchema).default([]),
   response: ModelCategorySchema,
-  intent: ModelCategorySchema,
+  router: ModelCategorySchema,
   memory: ModelCategorySchema,
   utility: ModelCategorySchema,
   aggregation: ModelCategorySchema.optional()
@@ -180,8 +180,8 @@ export function defaultModels(): ModelsSettings {
     options: { temperature: 0.5 }
   };
 
-  const intent: ModelCategorySettings = {
-    primary: process.env["INTENT_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
+  const router: ModelCategorySettings = {
+    primary: process.env["ROUTER_MODELS"]?.split(",")[0]?.trim() ?? response.primary,
     providerId: defaultProvider.id,
     options: { temperature: 0 }
   };
@@ -207,7 +207,7 @@ export function defaultModels(): ModelsSettings {
   return {
     providers: [defaultProvider],
     response,
-    intent,
+    router,
     memory,
     utility,
     aggregation
@@ -396,7 +396,7 @@ export class SettingsStore {
     // Update any model categories that reference this provider
     const models = await this.getModels();
     const updatedModels = { ...models };
-    const categories: Array<keyof Omit<ModelsSettings, "providers">> = ["response", "intent", "memory", "utility", "aggregation"];
+    const categories: Array<keyof Omit<ModelsSettings, "providers">> = ["response", "router", "memory", "utility", "aggregation"];
 
     for (const category of categories) {
       if (updatedModels[category] && updatedModels[category]!.providerId === id) {

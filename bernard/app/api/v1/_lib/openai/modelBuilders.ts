@@ -13,19 +13,19 @@ export type ResponseTuning = {
 };
 
 /**
- * Build an intent LLM client using the configured intent model, falling back to the response model for keys.
+ * Build an router LLM client using the configured router model, falling back to the response model for keys.
  */
-export function buildIntentLLM(intentModelConfig: ResolvedModel, responseModelConfig: ResolvedModel) {
-  const intentModel = splitModelAndProvider(intentModelConfig.id);
-  const intentApiKey =
-    resolveApiKey(undefined, intentModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
-  const intentBaseURL = resolveBaseUrl(undefined, intentModelConfig.options);
+export function buildRouterLLM(routerModelConfig: ResolvedModel, responseModelConfig: ResolvedModel) {
+  const routerModel = splitModelAndProvider(routerModelConfig.id);
+  const routerApiKey =
+    resolveApiKey(undefined, routerModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
+  const routerBaseURL = resolveBaseUrl(undefined, routerModelConfig.options);
   return new ChatOpenAI({
-    model: intentModel.model,
-    apiKey: intentApiKey,
-    configuration: { baseURL: intentBaseURL },
-    temperature: intentModelConfig.options?.temperature ?? 0,
-    ...(intentModel.providerOnly ? { modelKwargs: { provider: { only: intentModel.providerOnly } } } : {})
+    model: routerModel.model,
+    apiKey: routerApiKey,
+    configuration: { baseURL: routerBaseURL },
+    temperature: routerModelConfig.options?.temperature ?? 0,
+    ...(routerModel.providerOnly ? { modelKwargs: { provider: { only: routerModel.providerOnly } } } : {})
   });
 }
 

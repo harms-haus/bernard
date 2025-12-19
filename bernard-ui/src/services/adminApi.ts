@@ -32,7 +32,7 @@ export interface ModelCategorySettings {
 export interface ModelsSettings {
   providers: ProviderType[];
   response: ModelCategorySettings;
-  intent: ModelCategorySettings;
+  router: ModelCategorySettings;
   memory: ModelCategorySettings;
   utility: ModelCategorySettings;
   aggregation: ModelCategorySettings;

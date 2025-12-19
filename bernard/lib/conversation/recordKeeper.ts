@@ -9,6 +9,7 @@ import { MessageLog, snapshotMessageForTrace } from "./messageLog";
 import { messageRecordToOpenAI } from "./messages";
 import type { OpenAIMessage } from "./messages";
 import type {
+  Archivist,
   Conversation,
   ConversationIndexingStatus,
   ConversationStatus,
@@ -18,8 +19,10 @@ import type {
   OpenRouterResult,
   RecallConversation,
   RecallQuery,
+  Recorder,
   RecordKeeperStatus,
   Request,
+  SummaryFlags,
   ToolCallEntry,
   ToolResult,
   Turn,
@@ -92,7 +95,7 @@ function formatError(err: unknown): string {
 /**
  * Facade for logging conversation state, requests, turns, and messages in Redis.
  */
-export class RecordKeeper {
+export class RecordKeeper implements Archivist, Recorder {
   private readonly namespace: string;
   private readonly metricsNamespace: string;
   private readonly idleMs: number;
@@ -115,6 +118,15 @@ export class RecordKeeper {
   }
 
   private conversationQueue: Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null = null;
+
+  // Factory methods to get interface views
+  asArchivist(): Archivist {
+    return this;
+  }
+
+  asRecorder(): Recorder {
+    return this;
+  }
 
   /**
    * Start or reopen a conversation and record a new request.
@@ -407,6 +419,157 @@ export class RecordKeeper {
     await this.appendMessages(conversationId, [message]);
   }
 
+  // Recorder interface implementation
+  async recordMessage(conversationId: string, message: BaseMessage | MessageRecord): Promise<void> {
+    await this.appendMessages(conversationId, [message]);
+  }
+
+  async recordLLMCallStart(
+    conversationId: string,
+    details: {
+      messageId: string;
+      model: string;
+      context: BaseMessage[];
+      requestId?: string;
+      turnId?: string;
+      stage?: string;
+    }
+  ): Promise<void> {
+    const traceContent: Record<string, unknown> = {
+      type: "llm_call",
+      model: details.model,
+      at: nowIso(),
+      stage: details.stage,
+      context: details.context.map((msg) => snapshotMessageForTrace(msg)).slice(-12)
+    };
+    if (details.requestId) traceContent["requestId"] = details.requestId;
+    if (details.turnId) traceContent["turnId"] = details.turnId;
+
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: details.stage ? `llm_call.${details.stage}` : "llm_call",
+      content: traceContent,
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "llm_call",
+        model: details.model,
+        messageId: details.messageId,
+        ...(details.stage ? { traceStage: details.stage } : {}),
+        ...(details.requestId ? { requestId: details.requestId } : {}),
+        ...(details.turnId ? { turnId: details.turnId } : {})
+      }
+    };
+
+    await this.appendMessages(conversationId, [message]);
+  }
+
+  async recordLLMCallComplete(
+    conversationId: string,
+    details: {
+      messageId: string;
+      result: BaseMessage | MessageRecord;
+      latencyMs?: number;
+      tokens?: { in?: number; out?: number };
+    }
+  ): Promise<void> {
+    const resultMessage = Array.isArray(details.result) ? details.result[0] : details.result;
+    const resultSnapshot = snapshotMessageForTrace(resultMessage);
+
+    // Find the original LLM call to update it?
+    // Actually, following the plan, we just record another message or some trace.
+    // The previous recordLLMCall did it all at once.
+    // For now, let's record completion as a separate trace message or update.
+    // Let's stick to recording a separate "completion" trace for now as it's simpler in Redis.
+    const traceContent: Record<string, unknown> = {
+      type: "llm_call_complete",
+      at: nowIso(),
+      result: [resultSnapshot]
+    };
+    if (details.latencyMs) traceContent["latencyMs"] = details.latencyMs;
+    if (details.tokens) traceContent["tokens"] = details.tokens;
+
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: "llm_call_complete",
+      content: traceContent,
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "llm_call_complete",
+        messageId: details.messageId,
+        ...(details.tokens ? { tokens: details.tokens } : {}),
+        ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {})
+      }
+    };
+
+    await this.appendMessages(conversationId, [message]);
+  }
+
+  async recordToolCallStart(
+    conversationId: string,
+    details: {
+      toolCallId: string;
+      toolName: string;
+      arguments: string;
+      messageId?: string;
+    }
+  ): Promise<void> {
+    const traceContent = {
+      type: "tool_call",
+      toolCallId: details.toolCallId,
+      toolName: details.toolName,
+      arguments: details.arguments,
+      at: nowIso()
+    };
+
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: "tool_call",
+      content: traceContent,
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "tool_call",
+        toolCallId: details.toolCallId,
+        messageId: details.messageId
+      }
+    };
+
+    await this.appendMessages(conversationId, [message]);
+  }
+
+  async recordToolCallComplete(
+    conversationId: string,
+    details: {
+      toolCallId: string;
+      result: string;
+      latencyMs?: number;
+    }
+  ): Promise<void> {
+    const traceContent = {
+      type: "tool_call_complete",
+      toolCallId: details.toolCallId,
+      result: details.result,
+      latencyMs: details.latencyMs,
+      at: nowIso()
+    };
+
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: "tool_call_complete",
+      content: traceContent,
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "tool_call_complete",
+        toolCallId: details.toolCallId
+      }
+    };
+
+    await this.appendMessages(conversationId, [message]);
+  }
+
   async getFullConversation(conversationId: string): Promise<{ records: MessageRecord[]; messages: OpenAIMessage[] }> {
     const records = await this.getMessages(conversationId);
     const messages = records
@@ -547,10 +710,10 @@ export class RecordKeeper {
     const convKey = this.key(`conv:${conversationId}`);
     const updates: Record<string, string> = { indexingStatus: status };
     if (error !== undefined) {
-      updates.indexingError = error;
+      updates["indexingError"] = error;
     }
     if (attempts !== undefined) {
-      updates.indexingAttempts = String(attempts);
+      updates["indexingAttempts"] = String(attempts);
     }
     await this.redis.hset(convKey, updates);
   }
@@ -661,20 +824,20 @@ export class RecordKeeper {
             if (job) {
               this.log.debug({ event: "indexing.job.found", conversationId, jobId, jobName: job.name });
               await job.remove();
-              return 1;
+              return 1 as number;
             } else {
               this.log.debug({ event: "indexing.job.not_found", conversationId, jobId });
-              return 0;
+              return 0 as number;
             }
           } catch (removeErr) {
             // Ignore errors if job doesn't exist
             this.log.debug({ event: "indexing.job.remove.failed", conversationId, jobId, err: toErrorObject(removeErr) });
-            return 0;
+            return 0 as number;
           }
         })
       );
 
-      const removedCount = removeResults.reduce((sum, count) => sum + count, 0);
+      const removedCount = removeResults.reduce((sum: number, count: number) => sum + count, 0);
 
       this.log.info({
         event: "indexing.jobs.removed",
@@ -706,13 +869,13 @@ export class RecordKeeper {
         event: "queue.enqueue.start",
         conversationId
       });
-      
+
       const jobs = await Promise.all([
         queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
         queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
         queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
       ]);
-      
+
       this.log.info({
         event: "queue.enqueue",
         conversationId,
@@ -814,7 +977,8 @@ export class RecordKeeper {
     if (query.conversationId) {
       const conversation = await this.getConversation(query.conversationId);
       if (!conversation) return [];
-      const messages = query.includeMessages ? await this.getMessages(query.conversationId, query.messageLimit) : undefined;
+      const { messageLimit } = query;
+      const messages = query.includeMessages ? await this.getMessages(query.conversationId, { ...(messageLimit ? { limit: messageLimit } : {}) }) : undefined;
       const payload: RecallConversation = { conversation };
       if (messages) payload.messages = messages;
       return [payload];
@@ -854,7 +1018,8 @@ export class RecordKeeper {
         if (!hasKeyword) continue;
       }
 
-      const messages = query.includeMessages ? await this.getMessages(id, query.messageLimit) : undefined;
+      const { messageLimit } = query;
+      const messages = query.includeMessages ? await this.getMessages(id, { ...(messageLimit ? { limit: messageLimit } : {}) }) : undefined;
       const payload: RecallConversation = { conversation };
       if (messages) payload.messages = messages;
       results.push(payload);
@@ -978,8 +1143,26 @@ export class RecordKeeper {
     return conversation;
   }
 
-  async getMessages(conversationId: string, limit?: number): Promise<MessageRecord[]> {
-    return this.messageLog.getMessages(conversationId, limit);
+  async getMessages(
+    conversationId: string,
+    options?: {
+      limit?: number;
+      role?: "user" | "assistant" | "system" | "tool";
+      since?: string;
+    }
+  ): Promise<MessageRecord[]> {
+    let messages = await this.messageLog.getMessages(conversationId, options?.limit);
+
+    if (options?.role) {
+      messages = messages.filter((m) => m.role === options.role);
+    }
+
+    if (options?.since) {
+      const sinceTime = new Date(options.since).getTime();
+      messages = messages.filter((m) => new Date(m.createdAt).getTime() >= sinceTime);
+    }
+
+    return messages;
   }
 
   private async getUserAssistantCount(conversationId: string): Promise<number> {
@@ -1051,7 +1234,7 @@ export class RecordKeeper {
     const conversation = await this.getConversation(conversationId);
     if (!conversation) return null;
     const [messages, withStats] = await Promise.all([
-      this.getMessages(conversationId, messageLimit),
+      this.getMessages(conversationId, { ...(messageLimit ? { limit: messageLimit } : {}) }),
       this.conversationWithStats(conversation)
     ]);
     return { conversation: withStats, messages };
@@ -1068,17 +1251,17 @@ export class RecordKeeper {
   private async conversationWithStats(conversation: Conversation): Promise<ConversationWithStats> {
     const [messageCount, userAssistantCount, toolCallCount, requestCount, lastRequestAt, maxTurnLatencyMs] =
       await Promise.all([
-      typeof conversation.messageCount === "number" ? conversation.messageCount : this.getMessageCount(conversation.id),
-      typeof conversation.userAssistantCount === "number"
-        ? conversation.userAssistantCount
-        : this.getUserAssistantCount(conversation.id),
-      typeof conversation.toolCallCount === "number" ? conversation.toolCallCount : this.countToolCalls(conversation.id),
-      typeof conversation.requestCount === "number"
-        ? conversation.requestCount
-        : this.redis.zcard(this.key(`conv:${conversation.id}:requests`)),
-      conversation.lastRequestAt ?? this.getLastRequestAt(conversation.id),
-      typeof conversation.maxTurnLatencyMs === "number" ? conversation.maxTurnLatencyMs : this.getMaxTurnLatency(conversation.id)
-    ]);
+        typeof conversation.messageCount === "number" ? conversation.messageCount : this.getMessageCount(conversation.id),
+        typeof conversation.userAssistantCount === "number"
+          ? conversation.userAssistantCount
+          : this.getUserAssistantCount(conversation.id),
+        typeof conversation.toolCallCount === "number" ? conversation.toolCallCount : this.countToolCalls(conversation.id),
+        typeof conversation.requestCount === "number"
+          ? conversation.requestCount
+          : this.redis.zcard(this.key(`conv:${conversation.id}:requests`)),
+        conversation.lastRequestAt ?? this.getLastRequestAt(conversation.id),
+        typeof conversation.maxTurnLatencyMs === "number" ? conversation.maxTurnLatencyMs : this.getMaxTurnLatency(conversation.id)
+      ]);
 
     return {
       ...conversation,

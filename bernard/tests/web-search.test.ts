@@ -15,7 +15,7 @@ import {
   setSettingsFetcher,
   verifySearchConfigured,
   webSearchTool
-} from "../agent/harness/intent/tools/web-search";
+} from "../agent/harness/router/tools/web-search";
 
 const TEST_TIMEOUT = 2_000;
 const originalEnv = { ...process.env };

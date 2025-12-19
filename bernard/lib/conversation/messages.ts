@@ -235,7 +235,10 @@ type MessageContentLike = string | Array<{ type: string; text?: string }>;
 
 function normalizeRecordContent(content: MessageRecord["content"]): MessageContentLike {
   if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content as Array<{ type: string; text?: string }>;
+  if (Array.isArray(content)) {
+    if (content.length === 0) return "";
+    return content as Array<{ type: string; text?: string }>;
+  }
   if (content && typeof content === "object") return safeStringify(content);
   return "";
 }

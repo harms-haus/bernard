@@ -17,8 +17,8 @@ todos:
   - id: llm-streaming-wrapper
     content: Add a streaming-capable LLM wrapper built on ChatOpenAI.stream().
     status: pending
-  - id: rewrite-intent-harness
-    content: Reimplement intent harness as async generator emitting llm_prompt trace + tool_calls/tool_outputs whole, excluding respond() from stream.
+  - id: rewrite-router-harness
+    content: Reimplement router harness as async generator emitting llm_prompt trace + tool_calls/tool_outputs whole, excluding respond() from stream.
     status: pending
   - id: rewrite-response-harness
     content: Reimplement response harness as async generator that streams tokens in real time.
@@ -41,8 +41,8 @@ todos:
 
 - **Real-time streaming** for `/api/v1/chat/completions` using a DelegateStream-style async-iterable sequencer (no buffering `streamEvents.push(...)` then replay).
 - **Harnesses are async generators**: they `yield` output chunks as they are created; the API route re-emits yields **immediately**.
-- **Intent phase**:
-  - Emit **LLM prompt context** (system + user + history) as **one chunk** at each intent-model call.
+- **router phase**:
+  - Emit **LLM prompt context** (system + user + history) as **one chunk** at each router-model call.
   - Emit **tool calls** and **tool results** **whole** (one chunk per call/result) at execution time.
   - Do **not** emit the internal `respond()` tool-call marker (still recorded in transcript/recordKeeper).
 - **Response phase**:
@@ -78,11 +78,11 @@ We’ll build a new streaming spine:
 
 - **Harnesses** become async generators that yield **semantic output items** (`AgentOutputItem`) which the route encodes into SSE.
 
-- **Turn runner** spawns the intent/memory/response work in an async task and chains each produced stream into the sequencer.
+- **Turn runner** spawns the router/memory/response work in an async task and chains each produced stream into the sequencer.
 
 ### Why a sequencer (vs a simple `yield*`)
 
-A plain orchestrator generator can do `yield* intent()` then `yield* response()`. That streams sequentially, but doesn’t satisfy the “DelegateStream injection” requirement.
+A plain orchestrator generator can do `yield* router()` then `yield* response()`. That streams sequentially, but doesn’t satisfy the “DelegateStream injection” requirement.
 
 The sequencer explicitly models the “inject new iterables while streaming is in progress” capability, matching the article’s core concept. Even if we don’t exploit parallelism heavily on day 1, the abstraction is the correct foundation.
 
@@ -131,7 +131,7 @@ Used for “LLM system prompt + user prompt + history (emitted whole…)”.
   choices: [],
   bernard: {
     type: "llm_prompt",
-    stage: "intent" | "response",
+    stage: "router" | "response",
     model: string,
     messages: Array<{ role: string; content: unknown; name?: string }>,
   }
@@ -148,11 +148,11 @@ Used for “LLM system prompt + user prompt + history (emitted whole…)”.
 We will enforce the following ordering (each bullet is one or more yielded SSE payloads):
 
 1. **User prompt**: recorded by recordKeeper (no stream chunk required).
-2. **Intent LLM prompt context**: emit one `bernard.type="llm_prompt"` chunk; record via `recordLLMCall`.
-3. **Intent tool call**: emit one `delta.tool_calls=[...]` chunk; record as part of transcript append.
-4. Repeat (2)-(3) for additional intent iterations.
-5. **Intent tool results**: emit one `delta.tool_outputs=[{id,content}]` per tool result as each tool finishes; record tool result metrics + transcript tool messages.
-6. **Intent respond() marker**: recorded in transcript, **NOT emitted**.
+2. **router LLM prompt context**: emit one `bernard.type="llm_prompt"` chunk; record via `recordLLMCall`.
+3. **router tool call**: emit one `delta.tool_calls=[...]` chunk; record as part of transcript append.
+4. Repeat (2)-(3) for additional router iterations.
+5. **router tool results**: emit one `delta.tool_outputs=[{id,content}]` per tool result as each tool finishes; record tool result metrics + transcript tool messages.
+6. **router respond() marker**: recorded in transcript, **NOT emitted**.
 7. **Response LLM prompt context**: emit one `bernard.type="llm_prompt"` chunk; record via `recordLLMCall` at completion.
 8. **Response streaming**: emit `delta.content` chunks in real time from the model’s async iterator.
 
@@ -169,7 +169,7 @@ These will be removed at the start of implementation (then rebuilt in new locati
 - [`bernard/agent/orchestrator/factory.ts`](bernard/agent/orchestrator/factory.ts)
 - [`bernard/agent/orchestrator/config.ts`](bernard/agent/orchestrator/config.ts)
 - [`bernard/agent/harness/lib/types.ts`](bernard/agent/harness/lib/types.ts) (replaced with streaming-first types)
-- [`bernard/agent/harness/intent/intent.harness.ts`](bernard/agent/harness/intent/intent.harness.ts)
+- [`bernard/agent/harness/router/router.harness.ts`](bernard/agent/harness/router/router.harness.ts)
 - [`bernard/agent/harness/respond/respond.harness.ts`](bernard/agent/harness/respond/respond.harness.ts)
 - [`bernard/agent/harness/memory/memory.harness.ts`](bernard/agent/harness/memory/memory.harness.ts) (rewritten stub)
 
@@ -252,7 +252,7 @@ Implementation uses LangChain’s streaming API:
 
 ### D) Harnesses as async generators
 
-- [`bernard/agent/harness/intent/intentHarness.ts`](bernard/agent/harness/intent/intentHarness.ts)
+- [`bernard/agent/harness/router/routerHarness.ts`](bernard/agent/harness/router/routerHarness.ts)
 - [`bernard/agent/harness/respond/responseHarness.ts`](bernard/agent/harness/respond/responseHarness.ts)
 - [`bernard/agent/harness/memory/memoryHarness.ts`](bernard/agent/harness/memory/memoryHarness.ts)
 
@@ -264,7 +264,7 @@ export interface StreamingHarness<TIn, TOut> {
 }
 ```
 
-#### Intent harness streaming behavior
+#### router harness streaming behavior
 
 - On each model call:
   - `yield { type:"bernard_trace", bernard:{ type:"llm_prompt", ... } }` once.
@@ -288,7 +288,7 @@ Responsibilities:
 
 - Build initial conversation snapshot (from merged messages).
 - Append user/persistable messages to recordKeeper.
-- Run intent + memory (memory can remain a stub initially).
+- Run router + memory (memory can remain a stub initially).
 - Update conversation thread with tool messages.
 - Run response and persist the final assistant message.
 
@@ -305,7 +305,7 @@ Internally:
 
 - create `const { sequence, chain } = createDelegateSequencer<AgentOutputItem>()`
 - start an async task that chains:
-  - intent harness generator
+  - router harness generator
   - response harness generator
   - then `chain(null)`
 - return `{ stream: sequence, result: taskPromise }`
@@ -412,7 +412,7 @@ We will rewrite/replace tests that cover deleted modules, and add new tests for 
   - keep expectations about role chunk, tool_calls, content, usage, [DONE]
   - add assertions for bernard trace chunks (optional, behind feature flag if desired)
 
-- Update/replace `bernard/tests/harness.intent.test.ts` and `bernard/tests/harness.respond.test.ts`
+- Update/replace `bernard/tests/harness.router.test.ts` and `bernard/tests/harness.respond.test.ts`
   - move from callback-style `onStreamEvent` to consuming async generators
 
 - Update/replace `bernard/tests/agent.test.ts` and `bernard/tests/orchestrator.test.ts`
@@ -430,13 +430,13 @@ Use a fake LLM stream that yields one token, then awaits a deferred promise. In 
 flowchart TD
   httpReq[HTTP_POST_/chat/completions] --> runner[runChatCompletionTurn]
   runner --> seq[DelegateSequencer]
-  intent[IntentHarness_stream] -->|chain()| seq
+  router[routerHarness_stream] -->|chain()| seq
   response[ResponseHarness_stream] -->|chain()| seq
   seq --> sse[SSE_Encoder]
   sse --> httpRes[HTTP_SSE_Response]
 
   runner --> rk[RecordKeeper]
-  intent --> rk
+  router --> rk
   response --> rk
 ```
 
@@ -448,7 +448,7 @@ flowchart TD
 - **delegate-sequencer**: Implement `createDelegateSequencer` and unit tests.
 - **streaming-types**: Define `AgentOutputItem` + SSE encoding helpers.
 - **llm-streaming**: Implement `ChatOpenAI` streaming wrapper using `ChatOpenAI.stream(...)` and add tests with a fake async iterable.
-- **intent-harness**: Rebuild intent harness as an async generator; ensure tool calls/results are emitted whole; recordKeeper integration preserved.
+- **router-harness**: Rebuild router harness as an async generator; ensure tool calls/results are emitted whole; recordKeeper integration preserved.
 - **response-harness**: Rebuild response harness to stream token deltas from the LLM async iterator.
 - **turn-runner**: Implement `runChatCompletionTurn` returning `{ stream, result }`.
 - **route-chat-completions**: Rewrite streaming path to `for await` over `turn.stream` and write SSE per item.

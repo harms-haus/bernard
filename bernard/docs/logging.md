@@ -10,7 +10,7 @@
 - **Major events:**
   - LLM calls: `llm.call.start/success/error` with model, duration, tool counts, usage.
   - Tools: `tool.success/error/exception` with durations and arg keys.
-  - Orchestrator: `orchestrator.run.start/success/error` with response preview and intent turns.
+  - Orchestrator: `orchestrator.run.start/success/error` with response preview and router turns.
   - Queue: enqueue/start/complete/fail events with job metadata.
   - Admin actions: settings changes (diffed keys), token/user/memory actions, conversation views/close/delete with actor IDs.
   - Requests: `api.request.start/success/error` via request logger (adds correlation IDs).

@@ -91,7 +91,7 @@ export type ModelCategorySettings = {
 export type ModelsSettings = {
   providers: ProviderType[];
   response: ModelCategorySettings;
-  intent: ModelCategorySettings;
+  router: ModelCategorySettings;
   memory: ModelCategorySettings;
   utility: ModelCategorySettings;
   aggregation?: ModelCategorySettings;

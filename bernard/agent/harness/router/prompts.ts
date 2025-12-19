@@ -6,14 +6,14 @@ import { renderTextDescriptionAndArgs } from "langchain/tools/render";
 
 type ToolLikeForPrompt = { name: string; description?: string; schema?: unknown };
 
-export const intentSystemPrompt = [
-  "You are Bernard's intent router. Your job is to pick the tool calls needed to complete the user's request.",
+export const routerSystemPrompt = [
+  "You are Bernard's router. Your job is to pick the tool calls needed to complete the user's request.",
 ].join("\n");
 
-export const intentHardStopSystemPrompt =
+export const routerHardStopSystemPrompt =
   "NEVER RESPOND TO THE USER: Do not make conversation, do not answer questions, do not create, collate, or analyze data, ONLY respond to the system with TOOL CALLS.";
 
-export function buildIntentSystemPrompt(
+export function buildRouterSystemPrompt(
   now: Date = new Date(),
   tools: ToolLikeForPrompt[] = [],
   disabledTools?: Array<{ name: string; reason?: string | undefined }>
@@ -34,10 +34,10 @@ export function buildIntentSystemPrompt(
 
   const sections: Array<string | null> = [
     currentDateTime,
-    intentSystemPrompt,
+    routerSystemPrompt,
     buildLangChainToolSystemPrompt(tools),
     buildUnavailableToolsPrompt(disabledTools),
-    intentHardStopSystemPrompt
+    routerHardStopSystemPrompt
   ];
 
   return sections.filter((section): section is string => Boolean(section)).join("\n\n");

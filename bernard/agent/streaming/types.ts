@@ -1,41 +1,5 @@
-/**
- * Agent output items that harnesses yield to be streamed to the client.
- * These represent the granular events that occur during agent execution.
- */
-export type AgentOutputItem =
-  | {
-    type: "llm_prompt";
-    prompt: string;
-    model: string;
-  }
-  | {
-    type: "tool_call";
-    toolCall: {
-      id: string;
-      function: {
-        name: string;
-        arguments: string;
-      };
-    };
-  }
-  | {
-    type: "tool_output";
-    toolCallId: string;
-    output: string;
-  }
-  | {
-    type: "delta";
-    content: string;
-    finishReason?: "stop" | "length" | "content_filter";
-  }
-  | {
-    type: "error";
-    error: string;
-  }
-  | {
-    type: "context_update";
-    context: any[]; // Use any[] to avoid complex import cycles here, will be BaseMessage[] in practice
-  };
+import { BaseMessage, MessageStructure } from "@langchain/core/messages";
+
 
 /**
  * OpenAI-compatible streaming chunk format.
@@ -90,3 +54,57 @@ export type BernardTraceChunk = {
  * Union type for all possible streaming chunks.
  */
 export type StreamingChunk = OpenAIStreamingChunk | BernardTraceChunk;
+
+export type MessageEventType = "llm_call" | "llm_call_complete" | "tool_call" | "tool_call_complete" | "delta" | "error";
+
+export type LLMCallEvent = {
+  type: "llm_call";
+  context: BaseMessage<MessageStructure, MessageEventType>[];
+}
+
+export type LLMCallCompleteEvent = {
+  type: "llm_call_complete";
+  context: BaseMessage<MessageStructure, MessageEventType>[];
+  result: string;
+}
+
+export type ToolCallEvent = {
+  type: "tool_call";
+  toolCall: {
+    id: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  };
+}
+
+export type ToolCallCompleteEvent = {
+  type: "tool_call_complete";
+  toolCall: {
+    id: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  };
+  result: string;
+}
+
+export type DeltaEvent = {
+  type: "delta";
+  messageId: string;
+  delta: string;
+  finishReason?: "stop" | "length" | "content_filter";
+}
+
+export type ErrorEvent<D = unknown> = {
+  type: "error";
+  data?: D;
+  error: string;
+}
+/**
+ * Agent output items that harnesses yield to be streamed to the client.
+ * These represent the granular events that occur during agent execution.
+ */
+export type AgentOutputItem = LLMCallEvent | LLMCallCompleteEvent | ToolCallEvent | ToolCallCompleteEvent | DeltaEvent | ErrorEvent;

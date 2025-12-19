@@ -301,7 +301,7 @@ node -e "console.log(process.env)" | grep SEARXNG
 
 # Test configuration resolution
 node -e "
-  const {verifySearchConfigured} = require('./agent/harness/intent/tools/web-search.ts');
+  const {verifySearchConfigured} = require('./agent/harness/router/tools/web-search.ts');
   console.log('Search config:', verifySearchConfigured());
 "
 ```

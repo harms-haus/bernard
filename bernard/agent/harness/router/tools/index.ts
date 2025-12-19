@@ -12,7 +12,7 @@ import { createExecuteServicesToolInstance } from "./ha-execute-services";
 import type { HomeAssistantContextManager } from "./ha-context";
 
 /**
- * Respond tool - signals that intent harness is complete and ready for response generation.
+ * Respond tool - signals that router harness is complete and ready for response generation.
  * This is a no-op tool that the LLM calls to indicate it's done with tool calling.
  */
 const respondTool = tool(
@@ -26,14 +26,14 @@ const respondTool = tool(
   }
 );
 
-export function getIntentTools(haContextManager?: HomeAssistantContextManager): StructuredToolInterface[] {
+export function getRouterTools(haContextManager?: HomeAssistantContextManager): StructuredToolInterface[] {
   const baseTools: StructuredToolInterface[] = [
-    webSearchTool,
+    // webSearchTool,
     enhancedGeocodeSearchTool,
-    memorizeTool,
+    // memorizeTool,
     getWeatherCurrentTool,
     getWeatherForecastTool,
-    getWeatherHistoricalTool,
+    // getWeatherHistoricalTool,
     respondTool, // Add respond tool at the end
   ];
 

@@ -1,4 +1,4 @@
-import { RedisVectorStore } from "@langchain/community/vectorstores/redis";
+import { RedisVectorStore } from "@langchain/redis";
 import { Document } from "@langchain/core/documents";
 import type { Job } from "bullmq";
 import type Redis from "ioredis";
@@ -45,11 +45,11 @@ const messageLimit = parseInt(process.env["CONVERSATION_INDEX_MESSAGE_LIMIT"] ??
  */
 export class ConversationIndexer {
   private cachedStore: Promise<RedisVectorStore> | null = null;
-  private cachedClient: RedisClientType | null = null;
+  private cachedClient: any = null;
 
-  constructor(private readonly redis: Redis = getRedis()) {}
+  constructor(private readonly redis: Redis = getRedis()) { }
 
-  private async vectorClient(): Promise<RedisClientType> {
+  private async vectorClient(): Promise<any> {
     if (this.cachedClient) return this.cachedClient;
     const client = createClient({ url: redisUrl });
     await client.connect();
@@ -74,16 +74,16 @@ export class ConversationIndexer {
   async indexConversation(conversationId: string, chunks: string[]): Promise<{ chunks: number; pruned: number }> {
     try {
       debugLog(undefined, "Starting conversation indexing", { conversationId, chunkCount: chunks.length });
-      
+
       const store = await this.vectorStore();
       debugLog(undefined, "Vector store initialized", { conversationId });
-      
+
       const chunkIds = chunks.map((_, idx) => `${conversationId}:chunk:${idx}`);
       debugLog(undefined, "Generated chunk IDs", { conversationId, chunkIds });
-      
+
       const previousIds = await this.redis.smembers(this.idsKey(conversationId));
       debugLog(undefined, "Retrieved previous chunk IDs", { conversationId, previousCount: previousIds.length });
-      
+
       const docs = chunks.map(
         (content, idx) =>
           new Document({
@@ -92,16 +92,16 @@ export class ConversationIndexer {
           })
       );
       debugLog(undefined, "Created documents", { conversationId, documentCount: docs.length });
-      
+
       if (docs.length) {
         debugLog(undefined, "Adding documents to vector store", { conversationId, count: docs.length });
-        await store.addDocuments(docs, { ids: chunkIds });
+        await store.addDocuments(docs, { keys: chunkIds });
         debugLog(undefined, "Documents added successfully", { conversationId });
       }
 
       const stale = previousIds.filter((id) => !chunkIds.includes(id));
       debugLog(undefined, "Identified stale chunks", { conversationId, staleCount: stale.length });
-      
+
       if (stale.length) {
         debugLog(undefined, "Removing stale chunks", { conversationId, staleCount: stale.length });
         await store.delete({ ids: stale });
@@ -146,8 +146,8 @@ function filterMessages(messages: MessageRecord[]): MessageRecord[] {
   const filtered = messages.filter(
     (message) => (message.metadata as { traceType?: string } | undefined)?.traceType !== "llm_call"
   );
-  debugLog(undefined, "Message filtering", { 
-    originalCount: messages.length, 
+  debugLog(undefined, "Message filtering", {
+    originalCount: messages.length,
     filteredCount: filtered.length,
     removedCount: messages.length - filtered.length
   });
@@ -158,7 +158,7 @@ function toEntry(message: MessageRecord): string {
   const content =
     typeof message.content === "string" ? message.content : JSON.stringify(message.content, null, 2).slice(0, chunkChars);
   const entry = `[${message.role}] ${content}`;
-  debugLog(undefined, "Message entry created", { 
+  debugLog(undefined, "Message entry created", {
     messageId: message.id,
     role: message.role,
     entryLength: entry.length,
@@ -168,28 +168,28 @@ function toEntry(message: MessageRecord): string {
 }
 
 function chunkMessages(entries: string[]): string[] {
-  debugLog(undefined, "Starting message chunking", { 
+  debugLog(undefined, "Starting message chunking", {
     entryCount: entries.length,
     chunkChars,
     maxChunks
   });
-  
+
   const chunks: string[] = [];
   let current = "";
   let chunkIndex = 0;
-  
+
   for (const entry of entries) {
     const trimmedEntry = entry.length > chunkChars ? entry.slice(0, chunkChars) : entry;
-    debugLog(undefined, "Processing entry for chunking", { 
+    debugLog(undefined, "Processing entry for chunking", {
       entryLength: entry.length,
       trimmedLength: trimmedEntry.length,
       currentLength: current.length
     });
-    
+
     if ((current + "\n" + trimmedEntry).length > chunkChars && current.length) {
       const chunk = current.trim();
       chunks.push(chunk);
-      debugLog(undefined, "Completed chunk", { 
+      debugLog(undefined, "Completed chunk", {
         chunkIndex: chunkIndex++,
         chunkLength: chunk.length,
         totalChunks: chunks.length
@@ -201,7 +201,7 @@ function chunkMessages(entries: string[]): string[] {
     if (current.length >= chunkChars) {
       const chunk = current.slice(0, chunkChars);
       chunks.push(chunk);
-      debugLog(undefined, "Completed chunk (size limit)", { 
+      debugLog(undefined, "Completed chunk (size limit)", {
         chunkIndex: chunkIndex++,
         chunkLength: chunk.length,
         totalChunks: chunks.length
@@ -212,21 +212,21 @@ function chunkMessages(entries: string[]): string[] {
   if (current.trim()) {
     const chunk = current.trim();
     chunks.push(chunk);
-    debugLog(undefined, "Completed final chunk", { 
+    debugLog(undefined, "Completed final chunk", {
       chunkIndex: chunkIndex,
       chunkLength: chunk.length,
       totalChunks: chunks.length
     });
   }
-  
+
   const finalChunks = chunks.slice(-maxChunks);
-  debugLog(undefined, "Chunking completed", { 
+  debugLog(undefined, "Chunking completed", {
     originalChunks: chunks.length,
     finalChunks: finalChunks.length,
     maxChunks,
     chunkSizes: finalChunks.map(c => c.length)
   });
-  
+
   return finalChunks;
 }
 
@@ -249,33 +249,33 @@ async function runIndexTask(
 ): Promise<ConversationTaskResult> {
   try {
     debugLog(deps.logger, "Starting index task", { conversationId, messageCount: messages.length });
-    
+
     const filtered = filterMessages(messages).slice(-messageLimit);
-    debugLog(deps.logger, "Filtered messages", { 
-      conversationId, 
-      originalCount: messages.length, 
-      filteredCount: filtered.length 
+    debugLog(deps.logger, "Filtered messages", {
+      conversationId,
+      originalCount: messages.length,
+      filteredCount: filtered.length
     });
-    
+
     const entries = filtered.map(toEntry);
-    debugLog(deps.logger, "Converted to entries", { 
-      conversationId, 
+    debugLog(deps.logger, "Converted to entries", {
+      conversationId,
       entryCount: entries.length,
       totalChars: entries.reduce((sum, entry) => sum + entry.length, 0)
     });
-    
+
     const chunks = chunkMessages(entries);
-    debugLog(deps.logger, "Created chunks", { 
-      conversationId, 
+    debugLog(deps.logger, "Created chunks", {
+      conversationId,
       chunkCount: chunks.length,
       chunkSizes: chunks.map(c => c.length)
     });
-    
+
     if (!chunks.length) {
       debugLog(deps.logger, "No chunks to index", { conversationId });
       return { ok: true, meta: { chunks: 0 } };
     }
-    
+
     debugLog(deps.logger, "Indexing chunks", { conversationId, chunks: chunks.length });
     const result = await deps.indexer.indexConversation(conversationId, chunks);
     log(deps.logger, "conversation.indexed", { conversationId, ...result });
@@ -305,17 +305,17 @@ async function runSummaryTask(
 ): Promise<ConversationTaskResult> {
   try {
     debugLog(deps.logger, "Starting summary task", { conversationId, messageCount: messages.length });
-    
+
     const result = await deps.summarizer.summarize(conversationId, messages);
-    debugLog(deps.logger, "Summary generated", { 
-      conversationId, 
+    debugLog(deps.logger, "Summary generated", {
+      conversationId,
       hasSummary: Boolean(result.summary),
       summaryLength: result.summary?.length ?? 0,
       tags: result.tags?.length ?? 0,
       keywords: result.keywords?.length ?? 0,
       places: result.places?.length ?? 0
     });
-    
+
     await deps.recordKeeper.updateConversationSummary(conversationId, result);
     log(deps.logger, "conversation.summarized", {
       conversationId,
@@ -337,10 +337,10 @@ async function runFlagTask(
 ): Promise<ConversationTaskResult> {
   try {
     debugLog(deps.logger, "Starting flag task", { conversationId, messageCount: messages.length });
-    
+
     const flags = detectFlags(messages);
     debugLog(deps.logger, "Flags detected", { conversationId, ...flags });
-    
+
     await deps.recordKeeper.updateConversationFlags(conversationId, flags);
     log(deps.logger, "conversation.flagged", { conversationId, ...flags });
     return { ok: true, meta: { ...flags } };
@@ -369,42 +369,42 @@ export function buildConversationTaskProcessor(deps: ConversationTaskDeps = {}) 
     job: Job<ConversationTaskPayload, unknown, ConversationTaskName>
   ): Promise<ConversationTaskResult> {
     const conversationId = job.data.conversationId;
-    
-    debugLog(deps.logger, "Processing conversation task", { 
-      conversationId, 
+
+    debugLog(deps.logger, "Processing conversation task", {
+      conversationId,
       task: job.name,
-      jobId: job.id 
+      jobId: job.id
     });
-    
+
     if (!isConversationPayload(job.data)) {
       errorLog(deps.logger, "Invalid conversation payload", { conversationId, jobId: job.id });
       throw new Error("invalid conversation payload");
     }
-    
+
     const conversationWithMessages = await recordKeeper.getConversationWithMessages(conversationId);
     if (!conversationWithMessages) {
       debugLog(deps.logger, "Conversation not found", { conversationId, jobId: job.id });
       return { ok: false, reason: "conversation_missing" };
     }
-    
+
     const messages = conversationWithMessages.messages;
-    debugLog(deps.logger, "Retrieved messages for task", { 
-      conversationId, 
+    debugLog(deps.logger, "Retrieved messages for task", {
+      conversationId,
       task: job.name,
-      messageCount: messages.length 
+      messageCount: messages.length
     });
 
     switch (job.name) {
       case CONVERSATION_TASKS.index:
-        return runIndexTask(conversationId, messages, { indexer, logger: deps.logger, recordKeeper });
+        return runIndexTask(conversationId, messages, { indexer, logger: deps.logger as any, recordKeeper });
       case CONVERSATION_TASKS.summary:
         return runSummaryTask(conversationId, messages, {
           summarizer: await summarizer(),
           recordKeeper,
-          logger: deps.logger
+          logger: deps.logger as any
         });
       case CONVERSATION_TASKS.flag:
-        return runFlagTask(conversationId, messages, { recordKeeper, logger: deps.logger });
+        return runFlagTask(conversationId, messages, { recordKeeper, logger: deps.logger as any });
       default:
         errorLog(deps.logger, "Unknown conversation task", { conversationId, task: job.name, jobId: job.id });
         throw new Error(`unknown conversation task: ${job.name}`);

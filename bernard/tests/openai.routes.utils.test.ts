@@ -6,7 +6,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { NextRequest } from "next/server";
 
 import { chunkContent, buildToolChunks } from "../app/api/v1/_lib/openai/chatChunks";
-import { buildIntentLLM, buildResponseLLM } from "../app/api/v1/_lib/openai/modelBuilders";
+import { buildRouterLLM, buildResponseLLM } from "../app/api/v1/_lib/openai/modelBuilders";
 import {
   buildUsage,
   ensureBernardModel,
@@ -143,14 +143,14 @@ test("buildResponseLLM applies request overrides and stop list", () => {
   assert.deepEqual(anyLLM.logitBias, { foo: 1 });
 });
 
-test("buildIntentLLM falls back to response API key and base URL", () => {
-  const intentModelConfig = { id: "intent-model" };
+test("buildRouterLLM falls back to response API key and base URL", () => {
+  const routerModelConfig = { id: "router-model" };
   const responseModelConfig = { id: "resp-model", options: { apiKey: "resp-key", baseUrl: "https://resp-base" } };
-  const llm = buildIntentLLM(intentModelConfig as never, responseModelConfig as never);
+  const llm = buildRouterLLM(routerModelConfig as never, responseModelConfig as never);
   const anyLLM = llm as unknown as Record<string, unknown>;
   assert.equal(anyLLM.apiKey, "resp-key");
   const clientConfig = anyLLM.clientConfig as { baseURL?: string } | undefined;
-  assert.equal(clientConfig?.baseURL, resolveBaseUrl(undefined, intentModelConfig as never));
+  assert.equal(clientConfig?.baseURL, resolveBaseUrl(undefined, routerModelConfig as never));
 });
 
 

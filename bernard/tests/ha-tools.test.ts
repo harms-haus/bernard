@@ -8,10 +8,10 @@ import {
   validateEntityId,
   getDomainFromEntityId,
   formatEntitiesForDisplay
-} from "../agent/harness/intent/tools/ha-entities";
-import { createListHAServicesToolInstance } from "../agent/harness/intent/tools/ha-list-services";
-import { createExecuteServicesToolInstance } from "../agent/harness/intent/tools/ha-execute-services";
-import { HomeAssistantContextManager } from "../agent/harness/intent/tools/ha-context";
+} from "../agent/harness/router/tools/ha-entities";
+import { createListHAServicesToolInstance } from "../agent/harness/router/tools/ha-list-services";
+import { createExecuteServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
+import { HomeAssistantContextManager } from "../agent/harness/router/tools/ha-context";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 describe("Home Assistant Entities", () => {

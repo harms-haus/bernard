@@ -1,5 +1,108 @@
+import type { BaseMessage } from "@langchain/core/messages";
+import type { OpenAIMessage } from "./messages";
+
 export type ConversationStatus = "open" | "closed";
 export type ConversationIndexingStatus = "none" | "queued" | "indexing" | "indexed" | "failed";
+export type SummaryFlags = { explicit?: boolean; forbidden?: boolean };
+
+/**
+ * Archivist interface: Read-only access to conversation data
+ * Harnesses receive this interface to retrieve context
+ */
+export interface Archivist {
+  /**
+   * Get messages for a conversation, optionally filtered by role
+   */
+  getMessages(
+    conversationId: string,
+    options?: {
+      limit?: number;
+      role?: "user" | "assistant" | "system" | "tool";
+      since?: string; // ISO timestamp
+    }
+  ): Promise<MessageRecord[]>;
+
+  /**
+   * Get full conversation with messages
+   */
+  getFullConversation(conversationId: string): Promise<{
+    records: MessageRecord[];
+    messages: OpenAIMessage[];
+  }>;
+
+  /**
+   * Get conversation metadata
+   */
+  getConversation(conversationId: string): Promise<Conversation | null>;
+}
+
+/**
+ * Recorder interface: Write-only access to conversation data
+ * Orchestrator uses this to record events
+ */
+export interface Recorder {
+  /**
+   * Record user or assistant messages
+   */
+  recordMessage(
+    conversationId: string,
+    message: BaseMessage | MessageRecord
+  ): Promise<void>;
+
+  /**
+   * Record LLM call event (start)
+   */
+  recordLLMCallStart(
+    conversationId: string,
+    details: {
+      messageId: string;
+      model: string;
+      context: BaseMessage[];
+      requestId?: string;
+      turnId?: string;
+      stage?: string;
+    }
+  ): Promise<void>;
+
+  /**
+   * Record LLM call completion
+   */
+  recordLLMCallComplete(
+    conversationId: string,
+    details: {
+      messageId: string;
+      result: BaseMessage | MessageRecord;
+      latencyMs?: number;
+      tokens?: { in?: number; out?: number };
+    }
+  ): Promise<void>;
+
+  /**
+   * Record tool call event (start)
+   */
+  recordToolCallStart(
+    conversationId: string,
+    details: {
+      toolCallId: string;
+      toolName: string;
+      arguments: string;
+      messageId?: string; // Link to AI message that triggered this
+    }
+  ): Promise<void>;
+
+  /**
+   * Record tool call completion
+   */
+  recordToolCallComplete(
+    conversationId: string,
+    details: {
+      toolCallId: string;
+      result: string;
+      latencyMs?: number;
+    }
+  ): Promise<void>;
+}
+
 
 export type ToolCallEntry = {
   id?: string;

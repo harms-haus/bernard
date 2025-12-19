@@ -579,7 +579,7 @@ class MockApiClient implements ApiClient {
     models: {
       providers: [],
       response: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0.5 } },
-      intent: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
+      router: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
       memory: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
       utility: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } },
       aggregation: { primary: 'gpt-4o-mini', providerId: '', options: { temperature: 0 } }

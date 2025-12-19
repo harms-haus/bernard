@@ -2,15 +2,15 @@
 
 ## Objectives
 
-- Replace Bernard’s current intent gathering and response inner workings with harness-based modules.
-- Relocate intent-only tools and intent system prompt into the intent harness directory.
+- Replace Bernard’s current routing and response inner workings with harness-based modules.
+- Relocate router-only tools and router system prompt into the router harness directory.
 - Relocate BernardSystemPrompt (response system prompt) into the response harness directory.
 - Centralize model selection/config in the orchestrator; harnesses receive preconfigured LLM callers.
-- Preserve phase flow: Ingest → Gather (Intent + Memory) → Respond → Recover; Memory/Utility stay stubs for now.
+- Preserve phase flow: Ingest → Gather (router + Memory) → Respond → Recover; Memory/Utility stay stubs for now.
 
 ## Replacement & Migration Scope
 
-- Intent: retire existing intent gathering code; move its logic/tools/prompts into `agent/harness/intent/`.
+- router: retire existing routing code; move its logic/tools/prompts into `agent/harness/router/`.
 - Response: retire existing response generation code; move BernardSystemPrompt and response logic into `agent/harness/respond/`.
 - Model selection: refactor any model-choice logic from existing code into orchestrator config/factories.
 - RecordKeeper: refactor to fit within the new harness framework. Reuse what you can, but none of it is sacred as long as it still keeps an accurate representation of what happened and gathers statistics as it currently does.
@@ -26,10 +26,10 @@
   - `record-keeper.ts`, `types.ts` – conversation normalization/append
 - `bernard/agent/harness/lib/`
   - `types.ts`, `prompts.ts`, `errors.ts` – shared contracts/helpers
-- `bernard/agent/harness/intent/`
-  - `intent.harness.ts` – iterative intent harness (replacing old intent code)
-  - `prompts.ts` – intent system prompt (moved)
-  - `tools/` – intent-only tools (moved here)
+- `bernard/agent/harness/router/`
+  - `router.harness.ts` – iterative router harness (replacing old router code)
+  - `prompts.ts` – router system prompt (moved)
+  - `tools/` – router-only tools (moved here)
 - `bernard/agent/harness/memory/`
   - `memory.harness.ts` – stub
 - `bernard/agent/harness/respond/`
@@ -53,13 +53,13 @@ export interface HarnessResult<T> { output: T; done: boolean; trace?: HarnessTra
 ## Orchestrator (model selection here)
 
 - Holds config for per-phase model names/timeouts; builds/injects LLMCaller instances.
-- Flow: Ingest (RecordKeeper.ingest) → Gather (Intent + Memory in parallel) → Respond (single call) → Recover (append/log).
+- Flow: Ingest (RecordKeeper.ingest) → Gather (router + Memory in parallel) → Respond (single call) → Recover (append/log).
 ```ts
 // bernard/agent/orchestrator/orchestrator.ts
 export class Orchestrator {
   constructor(
     private readonly recordKeeper: RecordKeeper,
-    private readonly intent: IntentHarness,
+    private readonly router: RouterHarness,
     private readonly memory: MemoryHarness,
     private readonly respond: ResponseHarness,
     private readonly utility: UtilityHarness,
@@ -69,35 +69,35 @@ export class Orchestrator {
     const conversation = this.recordKeeper.ingest(raw);
     const ctx: HarnessContext = { conversation, config: buildConfig(), now: () => new Date() };
 
-    const [intentRes, memoryRes] = await Promise.all([
-      this.intent.run({ message: raw.latest }, ctx),
+    const [routerRes, memoryRes] = await Promise.all([
+      this.router.run({ message: raw.latest }, ctx),
       this.memory.run({ query: raw.latest }, ctx),
     ]);
 
-    const responseRes = await this.respond.run({ intent: intentRes.output, memories: memoryRes.output }, ctx);
-    await this.recover({ intentRes, memoryRes, responseRes }, ctx);
+    const responseRes = await this.respond.run({ router: routerRes.output, memories: memoryRes.output }, ctx);
+    await this.recover({ routerRes, memoryRes, responseRes }, ctx);
     return responseRes.output;
   }
 }
 ```
 
 
-## Intent Harness (replaces old intent code)
+## router harness (replaces old router code)
 
-- Iterative LLM loop; stop on blank/done/max iterations. Uses intent system prompt from `intent/prompts.ts`. Intent-only tools live in `intent/tools/`.
+- Iterative LLM loop; stop on blank/done/max iterations. Uses router system prompt from `router/prompts.ts`. router-only tools live in `router/tools/`.
 ```ts
-// bernard/agent/harness/intent/intent.harness.ts
-export class IntentHarness implements Harness<IntentInput, IntentOutput> {
+// bernard/agent/harness/router/router.harness.ts
+export class RouterHarness implements Harness<routerInput, routerOutput> {
   constructor(private llm: LLMCaller, private maxIters = 4) {}
   async run(input, ctx) {
-    let intent = defaultIntent();
+    let router = defaultrouter();
     for (let i = 0; i < this.maxIters; i++) {
-      const res = await this.llm.call({ model: ctx.config.intentModel, messages: buildIntentPrompt(input, ctx), temperature: 0 });
-      const parsed = parseIntent(res.text);
-      intent = parsed ?? intent;
+      const res = await this.llm.call({ model: ctx.config.routerModel, messages: buildrouterPrompt(input, ctx), temperature: 0 });
+      const parsed = parserouter(res.text);
+      router = parsed ?? router;
       if (!res.text.trim() || parsed?.done) break;
     }
-    return { output: intent, done: true };
+    return { output: router, done: true };
   }
 }
 ```
@@ -105,7 +105,7 @@ export class IntentHarness implements Harness<IntentInput, IntentOutput> {
 
 ## Response Harness (replaces old response code)
 
-- Single LLM call using BernardSystemPrompt from `respond/prompts.ts`; uses intent + memories.
+- Single LLM call using BernardSystemPrompt from `respond/prompts.ts`; uses router + memories.
 ```ts
 // bernard/agent/harness/respond/respond.harness.ts
 export class ResponseHarness implements Harness<ResponseInput, ResponseOutput> {
@@ -132,7 +132,7 @@ export class MemoryHarness implements Harness<MemoryInput, MemoryOutput> {
 
 ## Prompt Helpers & Placement
 
-- `intent/prompts.ts`: intent system prompt + builders; imports intent tools as needed.
+- `router/prompts.ts`: router system prompt + builders; imports router tools as needed.
 - `respond/prompts.ts`: BernardSystemPrompt + response prompt builder.
 - Shared small helpers in `harness/lib/prompts.ts` if generic (e.g., turn-to-message mapping), otherwise keep domain-local.
 
@@ -141,19 +141,19 @@ export class MemoryHarness implements Harness<MemoryInput, MemoryOutput> {
 - Only orchestrator coordinates harnesses; harnesses don’t import each other.
 - RecordKeeper is the single writer of conversation history; harnesses read snapshots.
 - Model selection/config lives in orchestrator config/factory; harnesses receive LLMCaller already bound to proper model.
-- Intent-only tools co-located in `intent/tools/` to keep domain boundaries clear.
+- router-only tools co-located in `router/tools/` to keep domain boundaries clear.
 
 ## Migration Notes
 
-- Remove/replace legacy intent gathering and response entry points with harness invocations through orchestrator.
-- Move existing intent tools and prompts into `intent/` and update imports.
+- Remove/replace legacy routing and response entry points with harness invocations through orchestrator.
+- Move existing router tools and prompts into `router/` and update imports.
 - Move BernardSystemPrompt into `respond/prompts.ts` and update imports.
 - Extract any model-choice logic from legacy code into `orchestrator/config.ts` and factories wiring LLMCaller.
 
 ## Testing Plan
 
-- Orchestrator sequencing: Intent + Memory parallel; Response awaits; Recover appends assistant turn.
-- Intent harness: stops on blank/done; respects max iterations (fake LLMCaller).
+- Orchestrator sequencing: router + Memory parallel; Response awaits; Recover appends assistant turn.
+- router harness: stops on blank/done; respects max iterations (fake LLMCaller).
 - RecordKeeper: ingestion normalization; append; recent(n) slicing.
 
 ## Deliverables (implementation phase)

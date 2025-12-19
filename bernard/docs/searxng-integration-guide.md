@@ -203,7 +203,7 @@ journalctl -u bernard -f
 curl -v "https://your-searxng-instance.com/search?q=bernard&format=json&language=en-US"
 
 # Check configuration resolution
-node -e "console.log(require('./agent/harness/intent/tools/web-search.ts').verifySearchConfigured())"
+node -e "console.log(require('./agent/harness/router/tools/web-search.ts').verifySearchConfigured())"
 ```
 
 ## API Reference

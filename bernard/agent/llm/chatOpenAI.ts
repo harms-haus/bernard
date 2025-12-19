@@ -1,5 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
-import type { BaseMessage, AIMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 
@@ -14,7 +15,6 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       throw new Error("API key is required for ChatOpenAILLMCaller");
     }
 
-
     this.client = new ChatOpenAI({
       model: model || "gpt-3.5-turbo", // Default fallback model
       apiKey: apiKey.trim(),
@@ -23,8 +23,80 @@ export class ChatOpenAILLMCaller implements LLMCaller {
     });
   }
 
+  /**
+   * Cleans messages to ensure they are compatible with OpenAI API and other strict providers.
+   * Maps LangChain message types to proper message classes and ensures tool_calls/IDs are consistent.
+   */
+  private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
+    return messages.map((msg, index) => {
+      const type = (msg as any).type || (msg as any)._getType?.() || "";
+
+      // Extract content - ensure it's never undefined or an empty array
+      let content = msg.content;
+      if (content === undefined || content === null || (Array.isArray(content) && content.length === 0)) {
+        content = "";
+      }
+
+      // Handle tool messages specifically to ensure tool_call_id is present
+      if (type === "tool" || (msg as any).role === "tool") {
+        const toolCallId = (msg as any).tool_call_id || (msg as any).additional_kwargs?.tool_call_id || `call_tool_${index}`;
+        return new ToolMessage({
+          content: typeof content === "string" ? content : JSON.stringify(content),
+          tool_call_id: toolCallId,
+          name: (msg as any).name,
+        });
+      }
+
+      // Handle assistant messages to ensure tool_calls are correctly formatted
+      if (type === "ai" || type === "assistant" || (msg as any).role === "assistant") {
+        const toolCalls = (msg as any).tool_calls || (msg as any).additional_kwargs?.tool_calls;
+
+        let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
+        // Some providers require content to be null or non-empty string when tool_calls are present.
+        // However, some LangChain versions/serializers convert null to [] which causes 400 errors.
+        // We'll stick to "" for maximum compatibility unless we specifically need null.
+        if (cleanedContent === "" && Array.isArray(toolCalls) && toolCalls.length > 0) {
+          // If we encounter issues with "", we might need to use null, 
+          // but for now let's ensure it's at least not an array.
+          cleanedContent = "";
+        }
+
+        const aiFields: any = {
+          content: cleanedContent,
+        };
+
+        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+          aiFields.tool_calls = toolCalls.map((tc: any, tcIdx: number) => {
+            const name = tc.name || tc.function?.name || "unknown";
+            return {
+              id: tc.id || tc.tool_call_id || `call_${index}_${tcIdx}_${name}`,
+              type: "function",
+              function: {
+                name,
+                arguments: tc.args
+                  ? (typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args))
+                  : (tc.function?.arguments || "{}")
+              }
+            };
+          });
+        }
+
+        return new AIMessage(aiFields);
+      }
+
+      // Handle system messages
+      if (type === "system" || (msg as any).role === "system") {
+        return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
+      }
+
+      // Default to HumanMessage for user/human
+      return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
+    });
+  }
+
   async complete(messages: BaseMessage[], config: LLMConfig): Promise<LLMResponse> {
     try {
+      const cleanedMessages = this.cleanMessages(messages);
       const invokeOptions: {
         signal?: AbortSignal;
         temperature?: number;
@@ -45,7 +117,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         invokeOptions.timeout = config.timeout;
       }
 
-      const response = await this.client.invoke(messages, invokeOptions);
+      const response = await this.client.invoke(cleanedMessages, invokeOptions);
 
       // Extract usage information if available
       const metadata = response.response_metadata as Record<string, unknown> | undefined;
@@ -59,7 +131,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       } else if (Array.isArray(response.content)) {
         // Concatenate text parts from content array
         contentStr = response.content
-          .filter((part): part is { type: 'text'; text: string } => 
+          .filter((part): part is { type: 'text'; text: string } =>
             typeof part === 'object' && part !== null && 'type' in part && part.type === 'text')
           .map(part => part.text)
           .join('');
@@ -122,15 +194,16 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         streamOptions.timeout = config.timeout;
       }
 
+      // const cleanedMessages = this.cleanMessages(messages);
       const stream = await this.client.stream(messages, streamOptions);
 
       try {
         for await (const chunk of stream) {
-          const content = typeof chunk.content === 'string' 
-            ? chunk.content 
-            : Array.isArray(chunk.content) 
-              ? chunk.content.filter((p): p is { type: 'text'; text: string } => 
-                  typeof p === 'object' && p !== null && 'type' in p && p.type === 'text')
+          const content = typeof chunk.content === 'string'
+            ? chunk.content
+            : Array.isArray(chunk.content)
+              ? chunk.content.filter((p): p is { type: 'text'; text: string } =>
+                typeof p === 'object' && p !== null && 'type' in p && p.type === 'text')
                 .map(p => p.text).join('')
               : String(chunk.content);
           if (content) {
@@ -139,11 +212,30 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         }
       } catch (streamError) {
         // If we get an error during iteration, it's likely a parsing error
-        console.error("❌ Error during stream iteration:", streamError);
+        console.error("❌ Error during stream iteration:", {
+          error: streamError,
+          messages: JSON.stringify(messages, null, 2),
+        });
         throw streamError;
       }
     } catch (error) {
-      console.error("❌ ChatOpenAI streaming failed:", error);
+      console.error("❌ ChatOpenAI streaming failed:", {
+        error,
+        messageCount: messages.length,
+        config,
+        // Log a summary of messages for quick debugging
+        messageSummary: messages.map(m => ({
+          type: (m as any).type || (m as any)._getType?.() || "unknown",
+          role: (m as any).role,
+          contentLength: typeof m.content === "string" ? m.content.length : "complex",
+          hasToolCalls: !!(m as any).tool_calls?.length
+        }))
+      });
+
+      // Log full messages for 400 errors or other provider errors
+      if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
+        console.error("DEBUG: Malformed messages sent to provider:", JSON.stringify(this.cleanMessages(messages), null, 2));
+      }
 
       // Handle specific LangChain/ChatOpenAI errors
       if (error instanceof Error) {
@@ -159,7 +251,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         if (error instanceof TypeError && (error.message.includes("Cannot use 'in' operator") || error.message.includes("output_version"))) {
           // This is a LangChain parsing bug - the API response format may not match what LangChain expects
           // This can happen with certain API providers or LangChain versions
-          console.error("LangChain streaming parser error:", {
+          console.error("LangChain streaming parser error details:", {
             message: error.message,
             stack: error.stack,
             name: error.name,
@@ -187,7 +279,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
 
   /**
    * Complete a prompt with tool binding support, returning the full AIMessage.
-   * This is used by the intent harness to extract tool_calls.
+   * This is used by the router harness to extract tool_calls.
    */
   async completeWithTools(
     messages: BaseMessage[],
@@ -220,11 +312,21 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         invokeOptions.timeout = config.timeout;
       }
 
-      const response = await boundClient.invoke(messages, invokeOptions);
+      const cleanedMessages = this.cleanMessages(messages);
+      const response = await boundClient.invoke(cleanedMessages, invokeOptions);
 
       return response as AIMessage;
     } catch (error) {
-      console.error("❌ ChatOpenAI API call with tools failed:", error);
+      console.error("❌ ChatOpenAI API call with tools failed:", {
+        error,
+        messageCount: messages.length,
+        config,
+      });
+
+      if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
+        console.error("DEBUG: Malformed messages sent to provider (with tools):", JSON.stringify(this.cleanMessages(messages), null, 2));
+      }
+
       if (error instanceof Error && error.message.includes("Missing credentials")) {
         throw new Error("Invalid API key or missing authentication. Please check your API key configuration.");
       }

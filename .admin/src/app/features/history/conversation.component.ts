@@ -394,7 +394,7 @@ export class ConversationComponent {
     if (text.includes('fetch failed') || text.includes('connect') || text.includes('enotfound') || text.includes('econnrefused')) {
       add('Confirm the target endpoint is reachable and DNS/SSL are configured correctly.');
     }
-    if (text.includes('intent halted')) {
+    if (text.includes('router halted')) {
       add('Check for repeated tool calls or invalid arguments; fix and retry the turn.');
     }
     if (text.includes('tool') && text.includes('failed')) {

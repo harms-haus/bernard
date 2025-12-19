@@ -11,7 +11,7 @@ const state = {
   summarizerBehavior: "ok" as "ok" | "throw",
   primaryModels: {
     response: "resp-model",
-    intent: "intent-model"
+    router: "router-model"
   },
   keeperHistory: [] as Array<Record<string, unknown>>
 };
@@ -61,9 +61,9 @@ vi.mock("@/lib/conversation/recordKeeper", () => ({
 }));
 
 vi.mock("@/lib/config/models", () => ({
-  getPrimaryModel: async (category: "response" | "intent", opts?: { fallback?: string[] }) => {
+  getPrimaryModel: async (category: "response" | "router", opts?: { fallback?: string[] }) => {
     if (category === "response") return state.primaryModels.response;
-    return state.primaryModels.intent ?? opts?.fallback?.[0] ?? "intent-fallback";
+    return state.primaryModels.router ?? opts?.fallback?.[0] ?? "router-fallback";
   }
 }));
 
@@ -121,7 +121,7 @@ test("createScaffolding uses models and keeper, handles summarizer success", asy
   state.summarizerBehavior = "ok";
   const result = await openai.createScaffolding({ token: "tok", responseModelOverride: "override-model" });
   assert.equal(result.responseModelName, "override-model");
-  assert.equal(result.intentModelName, state.primaryModels.intent);
+  assert.equal(result.routerModelName, state.primaryModels.router);
   assert.equal(result.requestId, "req-1");
   assert.equal(result.turnId, "turn-1");
   const keeper = result.keeper as StubRecordKeeper;
@@ -133,7 +133,7 @@ test("createScaffolding survives summarizer failure", async () => {
   state.summarizerBehavior = "throw";
   const result = await openai.createScaffolding({ token: "tok2" });
   assert.equal(result.responseModelName, state.primaryModels.response);
-  assert.equal(result.intentModelName, state.primaryModels.intent);
+  assert.equal(result.routerModelName, state.primaryModels.router);
 });
 
 test("isBernardModel matches bernard-v1 or undefined", () => {

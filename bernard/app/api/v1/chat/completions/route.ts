@@ -17,7 +17,9 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/conversation/messages";
 import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/config/models";
-import { runChatCompletionTurn } from "@/agent/loop/chatCompletionsTurn";
+import { StreamingOrchestrator } from "@/agent/loop/orchestrator";
+import { transformAgentOutputToChunks } from "@/agent/streaming/transform";
+import { createSSEStream } from "@/agent/streaming/sse";
 import { ChatOpenAILLMCaller } from "@/agent/llm/chatOpenAI";
 import type { AgentOutputItem } from "@/agent/streaming/types";
 
@@ -109,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   const responseModelConfig = await resolveModel("response");
-  const intentModelConfig = await resolveModel("intent", { fallback: [responseModelConfig.id] });
+  const routerModelConfig = await resolveModel("router", { fallback: [responseModelConfig.id] });
 
   const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
   const {
@@ -118,24 +120,26 @@ export async function POST(req: NextRequest) {
     requestId,
     turnId,
     responseModelName: scaffoldResponseModel,
-    intentModelName: scaffoldIntentModel,
+    routerModelName: scaffoldrouterModel,
     isNewConversation
   } = scaffold;
   const responseModelName = scaffoldResponseModel ?? responseModelConfig.id;
-  const intentModelName = scaffoldIntentModel ?? intentModelConfig.id;
+  const routerModelName = scaffoldrouterModel ?? routerModelConfig.id;
 
-  const mergedMessages = isNewConversation
+  // For streaming requests, don't block on history loading to preserve real-time streaming
+  // The router harness will work with available messages and can load history incrementally if needed
+  const mergedMessages = isNewConversation || shouldStream
     ? inputMessages
     : await hydrateMessagesWithHistory({
-        keeper,
-        conversationId,
-        incoming: inputMessages
-      });
+      keeper,
+      conversationId,
+      incoming: inputMessages
+    });
 
-  const intentModel = splitModelAndProvider(intentModelName);
-  const intentApiKey =
-    resolveApiKey(undefined, intentModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
-  const intentBaseURL = resolveBaseUrl(undefined, intentModelConfig.options);
+  const routerModel = splitModelAndProvider(routerModelName);
+  const routerApiKey =
+    resolveApiKey(undefined, routerModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
+  const routerBaseURL = resolveBaseUrl(undefined, routerModelConfig.options);
   const responseModel = splitModelAndProvider(responseModelName);
   const responseApiKey = resolveApiKey(undefined, responseModelConfig.options);
   const responseBaseURL = resolveBaseUrl(undefined, responseModelConfig.options);
@@ -146,50 +150,42 @@ export async function POST(req: NextRequest) {
     responseModel.model
   );
 
-  const intentLLMCaller = new ChatOpenAILLMCaller(
-    intentApiKey || process.env["OPENAI_API_KEY"] || "",
-    intentBaseURL || "https://api.openai.com/v1",
-    intentModel.model
+  const routerLLMCaller = new ChatOpenAILLMCaller(
+    routerApiKey || process.env["OPENAI_API_KEY"] || "",
+    routerBaseURL || "https://api.openai.com/v1",
+    routerModel.model
   );
 
-  let turnResult;
-  try {
-    turnResult = await runChatCompletionTurn({
-      conversationId,
-      requestId,
-      turnId,
-      model: BERNARD_MODEL_ID,
-      messages: mergedMessages,
-      intentLLMCaller,
-      responseLLMCaller,
-      recordKeeper: keeper,
-      includeUsage,
-    });
-  } catch (err) {
-    const latencyMs = Date.now() - start;
-    await keeper.endTurn(turnId, { status: "error", latencyMs, errorType: err instanceof Error ? err.name : "error" });
-    await keeper.completeRequest(requestId, latencyMs);
-    return new NextResponse(
-      JSON.stringify({ error: "Chat completion failed" }),
-      { status: 500, headers: getCorsHeaders(null) }
-    );
-  }
+  const orchestrator = new StreamingOrchestrator(
+    keeper,
+    routerLLMCaller,
+    responseLLMCaller
+  );
+
+  const turnResult = await orchestrator.run({
+    conversationId,
+    incoming: mergedMessages,
+    persistable: inputMessages,
+    requestId,
+    turnId,
+    trace: true // Enable trace by default
+  });
 
   if (!shouldStream) {
     try {
-      const messages = await turnResult.finalMessages;
-      const assistantMessage = findLastAssistantMessage(messages);
+      const { finalMessages } = await turnResult.result;
+      const assistantMessage = findLastAssistantMessage(finalMessages);
       const content = contentFromMessage(assistantMessage) ?? "";
-      const usageMeta = extractUsageFromMessages(messages);
+      const usageMeta = extractUsageFromMessages(finalMessages);
       const usage =
         typeof usageMeta.prompt_tokens === "number" || typeof usageMeta.completion_tokens === "number"
           ? {
-              prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
-              completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
-              total_tokens:
-                (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) +
-                (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
-            }
+            prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
+            completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
+            total_tokens:
+              (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) +
+              (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
+          }
           : undefined;
 
       const latencyMs = Date.now() - start;
@@ -224,10 +220,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // For streaming, we need to wrap the stream to record completion in keeper
-  const wrappedStream = new ReadableStream({
+  // Streaming response
+  const chunks = transformAgentOutputToChunks(turnResult.stream, {
+    model: BERNARD_MODEL_ID,
+    requestId,
+    conversationId
+  });
+
+  const sseStream = createSSEStream(chunks);
+
+  // Wrap the stream to record completion in keeper
+  const responseStream = new ReadableStream({
     async start(controller) {
-      const reader = turnResult.stream.getReader();
+      const reader = sseStream.getReader();
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -235,7 +240,7 @@ export async function POST(req: NextRequest) {
           controller.enqueue(value);
         }
         controller.close();
-        
+
         const latencyMs = Date.now() - start;
         await keeper.endTurn(turnId, { status: "ok", latencyMs });
         await keeper.completeRequest(requestId, latencyMs);
@@ -250,7 +255,7 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return new NextResponse(wrappedStream, {
+  return new NextResponse(responseStream, {
     headers: {
       "Content-Type": "text/event-stream",
       Connection: "keep-alive",

@@ -90,7 +90,7 @@ test("defaultModels cascades response primary to other categories", { timeout: T
   process.env["RESPONSE_MODELS"] = "resp-main";
   const models = defaultModels();
   assert.equal(models.response.primary, "resp-main");
-  assert.equal(models.intent.primary, "resp-main");
+  assert.equal(models.router.primary, "resp-main");
   assert.equal(models.memory.primary, "resp-main");
   assert.equal(models.utility.primary, "resp-main");
   assert.ok(models.aggregation);

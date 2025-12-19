@@ -43,7 +43,7 @@ vi.mock("@/app/api/v1/_lib/openai", () => ({
     requestId: "req",
     turnId: "turn",
     responseModelName: "resp-model",
-    intentModelName: "intent-model",
+    routerModelName: "router-model",
     isNewConversation: true
   }),
   extractMessagesFromChunk: (chunk: unknown) => (Array.isArray(chunk) ? (chunk as BaseMsg[]) : null),
@@ -56,7 +56,7 @@ vi.mock("@/app/api/v1/_lib/openai", () => ({
 }));
 
 vi.mock("@/app/api/v1/_lib/openai/modelBuilders", () => ({
-  buildIntentLLM: (cfg: unknown) => ({ intent: cfg }),
+  buildRouterLLM: (cfg: unknown) => ({ router: cfg }),
   buildResponseLLM: (cfg: unknown, request: unknown) => ({ response: cfg, request })
 }));
 
