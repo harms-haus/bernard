@@ -70,10 +70,12 @@ export class StreamingOrchestrator {
 
         // 2. Load HA REST configuration from settings
         const settings = await getSettings();
-        this.haRestConfig = settings.services.homeAssistant ? {
-            baseUrl: settings.services.homeAssistant.baseUrl,
-            accessToken: settings.services.homeAssistant.accessToken
-        } : undefined;
+        if (settings.services.homeAssistant) {
+            this.haRestConfig = {
+                baseUrl: settings.services.homeAssistant.baseUrl,
+                accessToken: settings.services.homeAssistant.accessToken
+            };
+        }
 
         // 3. Initialize RecordKeeper with conversation
         const recorder = this.recordKeeper.asRecorder();
@@ -83,7 +85,7 @@ export class StreamingOrchestrator {
         await recorder.syncHistory(conversationId, persistable);
 
         // 4. Get tool definitions
-        const { toolDefinitions } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig);
+        const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig);
 
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
@@ -133,7 +135,7 @@ export class StreamingOrchestrator {
                 llmCaller: this.responseLLMCaller,
                 archivist,
                 skipHistory: false, // Fetch the historical record including tool calls/results from this turn
-                toolDefinitions,
+                toolDefinitions: langChainTools,
                 usedTools: Array.from(this.usedTools),
                 ...(abortSignal ? { abortSignal } : {})
             });
@@ -234,6 +236,7 @@ export class StreamingOrchestrator {
                     context: event.context as BaseMessage[],
                     ...(requestId ? { requestId } : {}),
                     ...(turnId ? { turnId } : {}),
+                    ...(event.tools ? { tools: event.tools } : {}),
                 });
                 break;
 
@@ -241,7 +244,7 @@ export class StreamingOrchestrator {
                 if (this.currentLLMCallMessageId) {
                     await recorder.recordLLMCallComplete(conversationId, {
                         messageId: this.currentLLMCallMessageId,
-                        result: new AIMessage({ content: event.result }),
+                        result: event.result,
                     });
                 }
                 break;

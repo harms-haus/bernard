@@ -58,7 +58,7 @@ describe("runResponseHarness (Refactored)", () => {
         assert.equal(events[3].delta, "");
         assert.equal(events[3].finishReason, "stop");
         assert.equal(events[4].type, "llm_call_complete");
-        assert.equal(events[4].result, "Hello world");
+        assert.equal(events[4].result.content, "Hello world");
     });
 
     test("yields error event on LLM failure", async () => {

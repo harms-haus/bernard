@@ -7,7 +7,8 @@ import { createClient, type RedisClientType } from "redis";
 import { getEmbeddingModel } from "../config/embeddings";
 import { RecordKeeper } from "../conversation/recordKeeper";
 import { ConversationSummaryService } from "../conversation/summary";
-import type { MessageRecord, SummaryFlags } from "../conversation/types";
+import type { MessageRecord } from "../conversation/types";
+import type { SummaryFlags } from "../conversation/summary";
 import { getRedis } from "../infra/redis";
 import {
   CONVERSATION_TASKS,
@@ -419,3 +420,4 @@ export function buildConversationJobIds(conversationId: string) {
     flag: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
   };
 }
+

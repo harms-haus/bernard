@@ -31,6 +31,9 @@ type AdminConversation = {
   hasErrors?: boolean;
   userAssistantCount?: number;
   maxTurnLatencyMs?: number;
+  indexingStatus?: string;
+  indexingError?: string;
+  indexingAttempts?: number;
 };
 
 export async function GET(req: NextRequest) {

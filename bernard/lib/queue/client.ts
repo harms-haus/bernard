@@ -23,7 +23,7 @@ export const defaultConversationJobOptions: JobsOptions = {
   removeOnFail: parseInt(process.env["CONVERSATION_TASK_KEEP_FAILED"] ?? "1000", 10) || 1000
 };
 
-export function createConversationQueue(options: QueueOptions = {}): Queue<ConversationTaskPayload, unknown, ConversationTaskName> {
+export function createConversationQueue(options: Partial<QueueOptions> = {}): Queue<ConversationTaskPayload, unknown, ConversationTaskName> {
   return new Queue<ConversationTaskPayload, unknown, ConversationTaskName>(conversationQueueName, {
     ...baseQueueOptions(),
     ...options,
@@ -34,13 +34,13 @@ export function createConversationQueue(options: QueueOptions = {}): Queue<Conve
   });
 }
 
-export function createConversationQueueEvents(options: QueueOptions = {}): QueueEvents {
+export function createConversationQueueEvents(options: Partial<QueueOptions> = {}): QueueEvents {
   return new QueueEvents(conversationQueueName, { ...baseQueueOptions(), ...options });
 }
 
 export function createConversationWorker(
   processor: (job: Job<ConversationTaskPayload, unknown, ConversationTaskName>) => Promise<unknown>,
-  options: WorkerOptions<ConversationTaskPayload, unknown, ConversationTaskName> = {}
+  options: Partial<WorkerOptions> = {}
 ): Worker<ConversationTaskPayload, unknown, ConversationTaskName> {
   const concurrency = parseInt(process.env["CONVERSATION_TASK_CONCURRENCY"] ?? "3", 10) || 3;
   return new Worker<ConversationTaskPayload, unknown, ConversationTaskName>(conversationQueueName, processor, {
@@ -49,3 +49,4 @@ export function createConversationWorker(
     ...options
   });
 }
+

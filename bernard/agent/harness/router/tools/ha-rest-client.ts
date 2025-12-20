@@ -59,7 +59,7 @@ export async function fetchHAEntities(
 
     const filteredStates = states.filter(state => {
       const domain = state.entity_id.split('.')[0];
-      return exposedDomains.has(domain);
+      return domain && exposedDomains.has(domain);
     });
 
     // Transform HA state objects to HomeAssistantEntity format (matching CSV structure)

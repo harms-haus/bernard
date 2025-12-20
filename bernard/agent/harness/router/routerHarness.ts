@@ -176,6 +176,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
 
   // 1. Get available tools
   const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig);
+  const toolNames = toolDefinitions.map(tool => tool.name);
 
   // 2. Prepare initial context
   let currentMessages = await prepareInitialContext(
@@ -196,6 +197,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     yield {
       type: "llm_call",
       context: [...currentMessages] as any, // Yield a copy to avoid mutation issues
+      tools: toolNames,
     };
 
     // 5. Call LLM with tools
@@ -224,11 +226,10 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     }
 
     // 6. Emit LLM_CALL_COMPLETE event
-    const content = typeof aiMessage.content === "string" ? aiMessage.content : JSON.stringify(aiMessage.content);
     yield {
       type: "llm_call_complete",
       context: [...currentMessages] as any, // Yield a copy
-      result: content,
+      result: aiMessage as any,
     };
 
     // 7. Extract tool calls

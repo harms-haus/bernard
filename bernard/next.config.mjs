@@ -12,6 +12,7 @@ const nextConfig = {
     // Pin the project root so Turbopack ignores stray lockfiles outside this app.
     root: projectRoot
   },
+  serverExternalPackages: ['pino', 'thread-stream'],
   async rewrites() {
     return [
       {

@@ -55,7 +55,7 @@ export function parseHomeAssistantEntities(systemPrompt: string): HomeAssistantE
   
   // Skip header line and parse each entity
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i]?.trim();
     if (!line) continue;
     
     try {
@@ -84,14 +84,14 @@ function parseEntityFromCSVLine(line: string): HomeAssistantEntity | null {
   }
   
   const [entity_id, name, state, aliasesStr] = fields;
-  
-  // Validate entity_id format (should start with domain)
-  if (!entity_id || !entity_id.includes('.')) {
+
+  // Validate required fields
+  if (!entity_id || !entity_id.includes('.') || !name || !state) {
     return null;
   }
-  
+
   const aliases = aliasesStr ? aliasesStr.split('/').map(a => a.trim()).filter(Boolean) : [];
-  
+
   return {
     entity_id: entity_id.trim(),
     name: name.trim(),
@@ -220,7 +220,7 @@ export function validateEntityId(entityId: string): boolean {
  */
 export function getDomainFromEntityId(entityId: string): string | null {
   const parts = entityId.split('.');
-  return parts.length >= 2 ? parts[0] : null;
+  return parts.length >= 2 && parts[0] ? parts[0] : null;
 }
 
 /**

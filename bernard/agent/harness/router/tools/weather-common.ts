@@ -372,7 +372,9 @@ export function formatHourlyTable(hourly: HourlyWeather, units: UnitChoice, time
   const time = hourly.time ?? [];
   for (let i = 0; i < time.length; i++) {
     const row: string[] = [];
-    row.push(time[i].slice(11, 16)); // HH:MM
+    const timeValue = time[i];
+    if (!timeValue) continue;
+    row.push(timeValue.slice(11, 16)); // HH:MM
     row.push(formatNumber(maybeNumber(hourly.temperature_2m?.[i])));
     row.push(formatNumber(maybeNumber(hourly.apparent_temperature?.[i])));
     row.push(maybeNumber(hourly.precipitation_probability?.[i]) !== null ? `${formatNumber(maybeNumber(hourly.precipitation_probability?.[i]), 0)}%` : "?");
@@ -391,7 +393,9 @@ export function formatDailyTable(daily: DailyWeather, units: UnitChoice, timezon
   const time = daily.time ?? [];
   for (let i = 0; i < time.length; i++) {
     const row: string[] = [];
-    row.push(time[i]);
+    const timeValue = time[i];
+    if (!timeValue) continue;
+    row.push(timeValue);
     row.push(formatNumber(maybeNumber(daily.temperature_2m_max?.[i])));
     row.push(formatNumber(maybeNumber(daily.temperature_2m_min?.[i])));
     row.push(formatNumber(maybeNumber(daily.apparent_temperature_max?.[i])));
@@ -421,12 +425,15 @@ export function formatAverageTable(averages: ReturnType<typeof calculateAverages
 function formatMarkdownTable(rows: string[][]): string {
   if (rows.length === 0) return "";
 
-  const colWidths = rows[0].map((_, colIdx) =>
+  const headerRow = rows[0];
+  if (!headerRow) return "";
+
+  const colWidths = headerRow.map((_, colIdx) =>
     Math.max(...rows.map(row => row[colIdx]?.length ?? 0))
   );
 
   const formattedRows = rows.map((row, rowIdx) => {
-    const formattedCells = row.map((cell, colIdx) => cell.padEnd(colWidths[colIdx]));
+    const formattedCells = row.map((cell, colIdx) => cell.padEnd(colWidths[colIdx] ?? 0));
     const line = "| " + formattedCells.join(" | ") + " |";
 
     // Add separator after header

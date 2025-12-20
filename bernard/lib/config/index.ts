@@ -6,7 +6,6 @@ export {
   defaultServices,
   defaultBackups,
   defaultOauth,
-  defaultModelCategory,
   ensureDirectory,
   parseJson,
   normalizeList as normalizeSettingsList

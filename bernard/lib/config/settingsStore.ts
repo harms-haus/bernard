@@ -99,7 +99,7 @@ const HomeAssistantServiceSchema = z.object({
 export const ServicesSettingsSchema = z.object({
   memory: MemoryServiceSchema.default({}),
   search: SearchServiceSchema.default({}),
-  weather: WeatherServiceSchema.default({}),
+  weather: WeatherServiceSchema.default({ provider: "open-meteo" }),
   geocoding: GeocodingServiceSchema.default({}),
   homeAssistant: HomeAssistantServiceSchema.optional()
 });
@@ -417,7 +417,7 @@ export class SettingsStore {
       ...providers[index],
       ...updates,
       updatedAt: new Date().toISOString()
-    };
+    } as Provider;
     providers[index] = updatedProvider;
     await this.setProviders(providers);
     return updatedProvider;

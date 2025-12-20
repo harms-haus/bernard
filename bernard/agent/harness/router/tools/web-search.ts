@@ -200,7 +200,7 @@ export function parseSearXNGResults(data: unknown): SearchResultItem[] {
       description: result.content || result.engine
     }));
   } catch (error) {
-    logger.error('SearXNG response parsing failed: %s', error.message);
+    logger.error('SearXNG response parsing failed: %s', error instanceof Error ? error.message : String(error));
     return [];
   }
 }
@@ -264,7 +264,7 @@ async function executeSearch(query: string, count?: number): Promise<string> {
     const res = await fetchSearXNGSearch(url, config.apiKey);
     return handleSearchResponse(res, count);
   } catch (error) {
-    logger.error('Search request failed: %s', error.message);
+    logger.error('Search request failed: %s', error instanceof Error ? error.message : String(error));
     return 'Search service unavailable, please try again later';
   }
 }

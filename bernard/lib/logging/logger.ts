@@ -14,6 +14,7 @@ export type LogContext = {
   route?: string;
   stage?: string;
   component?: string;
+  queue?: string;
 };
 
 export const redactionPaths = [
@@ -32,13 +33,8 @@ export const redactionPaths = [
   "*.authorization"
 ];
 
-const bundlerOverrides = globalThis as unknown as { __bundlerPathsOverrides?: Record<string, string> };
-const threadStreamWorkerPath = path.join(process.cwd(), "node_modules/thread-stream/lib/worker.js");
-
-// Turbopack can rewrite __dirname inside CJS deps (like thread-stream) to /ROOT,
-// which breaks the worker path. Override the worker location to the real file.
-bundlerOverrides.__bundlerPathsOverrides ??= {};
-bundlerOverrides.__bundlerPathsOverrides["thread-stream-worker"] ??= threadStreamWorkerPath;
+// Note: Removed manual thread-stream worker path override due to Turbopack build issues.
+// If logging breaks in production, we may need to find an alternative solution.
 
 function parseJsonOption(raw: string | undefined): Record<string, unknown> | undefined {
   if (!raw) return undefined;
@@ -69,7 +65,7 @@ function buildTransport(): TransportSingleOptions | undefined {
   }
 
   if (customTarget) {
-    return { target: customTarget, options: customOptions };
+    return { target: customTarget, options: customOptions ?? {} };
   }
 
   return undefined;
@@ -79,6 +75,7 @@ const service = process.env["SERVICE_NAME"] ?? "bernard";
 const env = process.env["NODE_ENV"] ?? "development";
 const version = process.env["VERCEL_GIT_COMMIT_SHA"] ?? process.env["npm_package_version"];
 
+const transport = buildTransport();
 const options: LoggerOptions = {
   level: process.env["LOG_LEVEL"] ?? "info",
   base: { service, env, ...(version ? { version } : {}) },
@@ -89,7 +86,7 @@ const options: LoggerOptions = {
     }
   },
   timestamp: stdTimeFunctions.isoTime,
-  transport: buildTransport()
+  ...(transport ? { transport } : {})
 };
 
 export const logger = pino(options);
@@ -116,8 +113,13 @@ export function startTimer() {
 
 export function toErrorObject(err: unknown): { message: string; stack?: string; name?: string } {
   if (err instanceof Error) {
-    return { message: err.message, stack: err.stack, name: err.name };
+    return {
+      message: err.message,
+      ...(err.stack ? { stack: err.stack } : {}),
+      ...(err.name ? { name: err.name } : {})
+    };
   }
   if (typeof err === "string") return { message: err };
   return { message: JSON.stringify(err) };
 }
+

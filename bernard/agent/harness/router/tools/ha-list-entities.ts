@@ -13,7 +13,7 @@ import { getHAConnection } from "./ha-websocket-client";
  */
 export interface HARestConfig {
   baseUrl: string;
-  accessToken?: string;
+  accessToken?: string | undefined;
 }
 
 /**
@@ -46,7 +46,7 @@ function filterEntitiesByDomain(entities: HomeAssistantEntity[], domain: string)
   const normalizedDomain = domain.toLowerCase();
   return entities.filter(entity => {
     const entityDomain = entity.entity_id.split('.')[0];
-    return entityDomain.toLowerCase() === normalizedDomain;
+    return entityDomain && entityDomain.toLowerCase() === normalizedDomain;
   });
 }
 
@@ -108,7 +108,7 @@ async function fetchHAEntitiesWebSocket(baseUrl: string, accessToken: string): P
 
     const filteredStates = states.filter(state => {
       const domain = state.entity_id.split('.')[0];
-      return exposedDomains.has(domain);
+      return domain && exposedDomains.has(domain);
     });
 
     // Transform HA state objects to HomeAssistantEntity format (matching CSV structure)

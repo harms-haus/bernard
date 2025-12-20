@@ -5,24 +5,26 @@ import { settingsStore } from "@/app/api/settings/_common";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdminRequest(req, { route: `/api/providers/${params.id}` });
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  const auth = await requireAdminRequest(req, { route: `/api/providers/${resolvedParams.id}` });
   if ("error" in auth) return auth.error;
 
   const store = settingsStore();
   const providers = await store.getProviders();
-  const provider = providers.find(p => p.id === params.id);
+  const provider = providers.find(p => p.id === resolvedParams.id);
 
   if (!provider) {
     return new Response(JSON.stringify({ error: "Provider not found" }), { status: 404 });
   }
 
-  auth.reqLog.success(200, { action: "providers.read", adminId: auth.admin.user.id, providerId: params.id });
+  auth.reqLog.success(200, { action: "providers.read", adminId: auth.admin.user.id, providerId: resolvedParams.id });
   return Response.json(provider);
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdminRequest(req, { route: `/api/providers/${params.id}` });
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  const auth = await requireAdminRequest(req, { route: `/api/providers/${resolvedParams.id}` });
   if ("error" in auth) return auth.error;
 
   try {
@@ -42,7 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       updatedAt: ""
     });
 
-    const updatedProvider = await store.updateProvider(params.id, {
+    const updatedProvider = await store.updateProvider(resolvedParams.id, {
       ...body,
       lastTestedAt: new Date().toISOString(),
       testStatus: testResult.status,
@@ -56,25 +58,26 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     auth.reqLog.success(200, {
       action: "providers.update",
       adminId: auth.admin.user.id,
-      providerId: params.id,
+      providerId: resolvedParams.id,
       testStatus: testResult.status
     });
 
     return Response.json(updatedProvider);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    auth.reqLog.failure(400, err, { action: "providers.update", providerId: params.id });
+    auth.reqLog.failure(400, err, { action: "providers.update", providerId: resolvedParams.id });
     return new Response(JSON.stringify({ error: "Invalid provider payload", reason }), { status: 400 });
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdminRequest(req, { route: `/api/providers/${params.id}` });
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  const auth = await requireAdminRequest(req, { route: `/api/providers/${resolvedParams.id}` });
   if ("error" in auth) return auth.error;
 
   try {
     const store = settingsStore();
-    const deleted = await store.deleteProvider(params.id);
+    const deleted = await store.deleteProvider(resolvedParams.id);
 
     if (!deleted) {
       return new Response(JSON.stringify({ error: "Provider not found" }), { status: 404 });
@@ -83,13 +86,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     auth.reqLog.success(200, {
       action: "providers.delete",
       adminId: auth.admin.user.id,
-      providerId: params.id
+      providerId: resolvedParams.id
     });
 
     return Response.json({ success: true });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    auth.reqLog.failure(400, err, { action: "providers.delete", providerId: params.id });
+    auth.reqLog.failure(400, err, { action: "providers.delete", providerId: resolvedParams.id });
     return new Response(JSON.stringify({ error: "Failed to delete provider", reason }), { status: 400 });
   }
 }

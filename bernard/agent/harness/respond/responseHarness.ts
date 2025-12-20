@@ -1,4 +1,4 @@
-import { SystemMessage } from "@langchain/core/messages";
+import { SystemMessage, AIMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
@@ -56,10 +56,14 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     ...contextMessages,
   ];
 
-  // 3. Emit LLM_CALL event
+  // 3. Extract tool names for the event
+  const toolNames = toolDefinitions?.map(tool => tool.name) ?? [];
+
+  // 4. Emit LLM_CALL event
   yield {
     type: "llm_call",
-    context: promptMessages,
+    context: promptMessages as any,
+    tools: toolNames,
   };
 
   // 4. Stream Tokens
@@ -106,10 +110,14 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   };
 
   // 7. Emit LLM_CALL_COMPLETE event
+  const aiMessage = new AIMessage({
+    content: responseContent,
+    id: messageId,
+  });
   yield {
     type: "llm_call_complete",
-    context: promptMessages,
-    result: responseContent,
+    context: promptMessages as any,
+    result: aiMessage as any,
   };
 }
 

@@ -673,3 +673,30 @@ test("status reporting, recall, reopening, and listing", { timeout: 5000 }, asyn
   });
 });
 
+test("recordLLMCallStart includes tools when provided", async () => {
+  const { keeper } = createKeeper();
+  const conversationId = "conv-tools-test";
+  const messageId = "msg-tools-test";
+
+  const tools = ["list_home_assistant_entities", "execute_home_assistant_service"];
+
+  await keeper.recordLLMCallStart(conversationId, {
+    messageId,
+    model: "router",
+    context: [],
+    tools
+  });
+
+  const messages = await keeper.getMessages(conversationId);
+  assert.equal(messages.length, 1);
+
+  const trace = messages[0];
+  assert.equal(trace.role, "system");
+  assert.equal(trace.name, "llm_call");
+
+  const content = trace.content as any;
+  assert.equal(content.type, "llm_call");
+  assert.equal(content.model, "router");
+  assert.deepEqual(content.tools, tools);
+});
+

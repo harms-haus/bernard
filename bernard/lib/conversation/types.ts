@@ -3,7 +3,7 @@ import type { OpenAIMessage } from "./messages";
 
 export type ConversationStatus = "open" | "closed";
 export type ConversationIndexingStatus = "none" | "queued" | "indexing" | "indexed" | "failed";
-export type SummaryFlags = { explicit?: boolean; forbidden?: boolean };
+// SummaryFlags moved to summary.ts to avoid export conflict
 
 /**
  * Archivist interface: Read-only access to conversation data
@@ -61,6 +61,7 @@ export interface Recorder {
       requestId?: string;
       turnId?: string;
       stage?: string;
+      tools?: unknown;
     }
   ): Promise<void>;
 

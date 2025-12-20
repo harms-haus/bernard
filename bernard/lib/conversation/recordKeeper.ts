@@ -4,7 +4,7 @@ import type Redis from "ioredis";
 
 import type { Queue } from "bullmq";
 
-import type { ConversationSummaryService, SummaryResult } from "./summary";
+import type { ConversationSummaryService, SummaryResult, SummaryFlags } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
 import { messageRecordToOpenAI } from "./messages";
 import type { OpenAIMessage } from "./messages";
@@ -22,7 +22,6 @@ import type {
   Recorder,
   RecordKeeperStatus,
   Request,
-  SummaryFlags,
   ToolCallEntry,
   ToolResult,
   Turn,
@@ -438,6 +437,7 @@ export class RecordKeeper implements Archivist, Recorder {
       requestId?: string;
       turnId?: string;
       stage?: string;
+      tools?: unknown;
     }
   ): Promise<void> {
     const traceContent: Record<string, unknown> = {
@@ -449,6 +449,7 @@ export class RecordKeeper implements Archivist, Recorder {
     };
     if (details.requestId) traceContent["requestId"] = details.requestId;
     if (details.turnId) traceContent["turnId"] = details.turnId;
+    if (details.tools) traceContent["tools"] = details.tools;
 
     const message: MessageRecord = {
       id: uniqueId("msg"),

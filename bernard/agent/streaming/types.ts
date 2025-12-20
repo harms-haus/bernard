@@ -60,12 +60,13 @@ export type MessageEventType = "llm_call" | "llm_call_complete" | "tool_call" | 
 export type LLMCallEvent = {
   type: "llm_call";
   context: BaseMessage<MessageStructure, MessageEventType>[];
+  tools?: string[];
 }
 
 export type LLMCallCompleteEvent = {
   type: "llm_call_complete";
   context: BaseMessage<MessageStructure, MessageEventType>[];
-  result: string;
+  result: BaseMessage<MessageStructure, MessageEventType>;
 }
 
 export type ToolCallEvent = {

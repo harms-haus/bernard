@@ -116,7 +116,7 @@ describe("runrouterHarness (Refactored)", () => {
         assert.equal(events.length, 2);
         assert.equal(events[0].type, "llm_call");
         assert.equal(events[1].type, "llm_call_complete");
-        assert.equal(events[1].result, "Hello there");
+        assert.equal(events[1].result.content, "Hello there");
     });
 
     test("yields tool_call and tool_call_complete for tool use", async () => {

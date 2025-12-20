@@ -221,15 +221,15 @@ async function fetchDailyWeather(
 
   for (let i = 0; i < daily.time.length; i++) {
     const date = daily.time[i];
-    if (date >= dateRange.start.date && date <= dateRange.end.date) {
+    if (date && date >= dateRange.start.date && date <= dateRange.end.date) {
       filteredDaily.time.push(date);
-      if (daily.temperature_2m_max) filteredDaily.temperature_2m_max.push(daily.temperature_2m_max[i]);
-      if (daily.temperature_2m_min) filteredDaily.temperature_2m_min.push(daily.temperature_2m_min[i]);
-      if (daily.apparent_temperature_max) filteredDaily.apparent_temperature_max.push(daily.apparent_temperature_max[i]);
-      if (daily.apparent_temperature_min) filteredDaily.apparent_temperature_min.push(daily.apparent_temperature_min[i]);
-      if (daily.precipitation_sum) filteredDaily.precipitation_sum.push(daily.precipitation_sum[i]);
-      if (daily.precipitation_probability_max) filteredDaily.precipitation_probability_max.push(daily.precipitation_probability_max[i]);
-      if (daily.wind_speed_10m_max) filteredDaily.wind_speed_10m_max.push(daily.wind_speed_10m_max[i]);
+      if (daily.temperature_2m_max && filteredDaily.temperature_2m_max) filteredDaily.temperature_2m_max.push(daily.temperature_2m_max[i] ?? null);
+      if (daily.temperature_2m_min && filteredDaily.temperature_2m_min) filteredDaily.temperature_2m_min.push(daily.temperature_2m_min[i] ?? null);
+      if (daily.apparent_temperature_max && filteredDaily.apparent_temperature_max) filteredDaily.apparent_temperature_max.push(daily.apparent_temperature_max[i] ?? null);
+      if (daily.apparent_temperature_min && filteredDaily.apparent_temperature_min) filteredDaily.apparent_temperature_min.push(daily.apparent_temperature_min[i] ?? null);
+      if (daily.precipitation_sum && filteredDaily.precipitation_sum) filteredDaily.precipitation_sum.push(daily.precipitation_sum[i] ?? null);
+      if (daily.precipitation_probability_max && filteredDaily.precipitation_probability_max) filteredDaily.precipitation_probability_max.push(daily.precipitation_probability_max[i] ?? null);
+      if (daily.wind_speed_10m_max && filteredDaily.wind_speed_10m_max) filteredDaily.wind_speed_10m_max.push(daily.wind_speed_10m_max[i] ?? null);
     }
   }
 
@@ -281,13 +281,13 @@ async function fetchHourlyWeather(
 
   for (let i = 0; i < hourly.time.length; i++) {
     const time = hourly.time[i];
-    if (time >= startDateTime && time <= endDateTime) {
+    if (time && time >= startDateTime && time <= endDateTime) {
       filteredHourly.time.push(time);
-      if (hourly.temperature_2m) filteredHourly.temperature_2m.push(hourly.temperature_2m[i]);
-      if (hourly.apparent_temperature) filteredHourly.apparent_temperature.push(hourly.apparent_temperature[i]);
-      if (hourly.precipitation_probability) filteredHourly.precipitation_probability.push(hourly.precipitation_probability[i]);
-      if (hourly.wind_speed_10m) filteredHourly.wind_speed_10m.push(hourly.wind_speed_10m[i]);
-      if (hourly.precipitation) filteredHourly.precipitation.push(hourly.precipitation[i]);
+      if (hourly.temperature_2m && filteredHourly.temperature_2m) filteredHourly.temperature_2m.push(hourly.temperature_2m[i] ?? null);
+      if (hourly.apparent_temperature && filteredHourly.apparent_temperature) filteredHourly.apparent_temperature.push(hourly.apparent_temperature[i] ?? null);
+      if (hourly.precipitation_probability && filteredHourly.precipitation_probability) filteredHourly.precipitation_probability.push(hourly.precipitation_probability[i] ?? null);
+      if (hourly.wind_speed_10m && filteredHourly.wind_speed_10m) filteredHourly.wind_speed_10m.push(hourly.wind_speed_10m[i] ?? null);
+      if (hourly.precipitation && filteredHourly.precipitation) filteredHourly.precipitation.push(hourly.precipitation[i] ?? null);
     }
   }
 
