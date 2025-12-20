@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "type-check": "tsc --noEmit",
+    "type-check:src": "tsc --noEmit --project tsconfig.check.json",
     "tests": "vitest run",
     "tests:coverage": "vitest run --coverage",
     "queues:worker": "tsx agent/queueWorker.ts"

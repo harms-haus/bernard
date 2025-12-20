@@ -8,6 +8,7 @@ export interface HomeAssistantEntity {
   name: string;
   state: string;
   aliases: string[];
+  attributes?: Record<string, unknown>;
 }
 
 /**
@@ -16,7 +17,7 @@ export interface HomeAssistantEntity {
 export interface HomeAssistantServiceCall {
   domain: string;
   service: string;
-  service_data: {
+  service_data: Record<string, unknown> & {
     entity_id: string | string[];
   };
 }

@@ -1,5 +1,5 @@
 import { SystemMessage, AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage, MessageStructure, MessageType } from "@langchain/core/messages";
 import { ToolMessage as LangChainToolMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
@@ -13,6 +13,8 @@ import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";
 import crypto from "node:crypto";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { ToolWithInterpretation } from "./tools";
+import { runResponseHarness } from "../respond/responseHarness";
 
 // Define the tool definition type for system prompts
 type ToolLikeForPrompt = {
@@ -26,11 +28,14 @@ export type RouterHarnessContext = {
   conversationId: string;
   messages: BaseMessage[];
   llmCaller: LLMCaller;
+  responseLLMCaller: LLMCaller;
   archivist: Archivist;
   haContextManager?: HomeAssistantContextManager;
   haRestConfig?: HARestConfig;
   abortSignal?: AbortSignal;
   skipHistory?: boolean;
+  toolDefinitions?: ToolWithInterpretation[];
+  usedTools?: string[];
 };
 
 /**
@@ -172,10 +177,11 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Yields standardized streaming events.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { messages, llmCaller, archivist, haContextManager, haRestConfig, abortSignal } = context;
+  const { messages, llmCaller, responseLLMCaller, archivist, haContextManager, haRestConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
 
   // 1. Get available tools
   const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig);
+  const usedTools = initialUsedTools || [];
   const toolNames = toolDefinitions.map(tool => tool.name);
 
   // 2. Prepare initial context
@@ -235,15 +241,13 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     // 7. Extract tool calls
     const toolCalls = extractToolCallsFromAIMessage(aiMessage);
 
-    // 8. Add AI message to context
-    currentMessages.push(aiMessage);
-
-    // 9. If no tool calls, break
+    // 8. If no tool calls, add AI message to context and break
     if (toolCalls.length === 0) {
+      currentMessages.push(aiMessage);
       break;
     }
 
-    // 10. Emit TOOL_CALL events
+    // 9. Emit TOOL_CALL events (for streaming, but not added to recorded context)
     for (const toolCall of toolCalls) {
       yield {
         type: "tool_call",
@@ -257,15 +261,33 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       };
     }
 
-    // 11. Execute tools sequentially
+    // 10. Execute tools sequentially
     const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
+    let respondCalled = false;
+
     for (const toolCall of toolCalls) {
+      if (toolCall.function.name === "respond") {
+        respondCalled = true;
+        // Add a placeholder result for respond() tool
+        toolResults.push({
+          toolCallId: toolCall.id,
+          toolName: "respond",
+          output: "Ready to respond"
+        });
+        continue;
+      }
+
       const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
       const result = await executeTool(tool, toolCall, currentMessages);
       toolResults.push(result);
+
+      // Track used tools (exclude respond tool)
+      if (!usedTools.includes(toolCall.function.name)) {
+        usedTools.push(toolCall.function.name);
+      }
     }
 
-    // 12. Emit TOOL_CALL_COMPLETE events
+    // 11. Emit TOOL_CALL_COMPLETE events (for streaming, but not added to recorded context)
     for (const result of toolResults) {
       yield {
         type: "tool_call_complete",
@@ -280,18 +302,58 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       };
     }
 
-    // 13. Add tool messages to context
-    const toolMessages = toolResults.map(result =>
-      new LangChainToolMessage({
-        content: result.output,
-        tool_call_id: result.toolCallId,
-        name: result.toolName,
-      })
-    );
-    currentMessages.push(...toolMessages);
+    // 12. Create combined assistant message with tool calls and results
+    let combinedContent = "";
+
+    // Include original AI message content if it exists
+    const aiContent = typeof aiMessage.content === 'string' ? aiMessage.content : '';
+    if (aiContent && aiContent.trim()) {
+      combinedContent += aiContent.trim() + "\n\n";
+    }
+
+    // Add formatted tool calls and results
+    const toolContent = toolCalls.map((toolCall, index) => {
+      const result = toolResults.find(r => r.toolCallId === toolCall.id);
+      if (!result) return null;
+
+      // Parse the arguments JSON and format as map without quotes
+      let formattedArgs: string;
+      try {
+        const args = JSON.parse(toolCall.function.arguments);
+        formattedArgs = Object.entries(args)
+          .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+          .join(", ");
+      } catch {
+        formattedArgs = toolCall.function.arguments;
+      }
+
+      return new SystemMessage<MessageStructure>({
+        content: `${toolCall.function.name}({${formattedArgs}})\n${result?.output ?? ""}`,
+        name: toolCall.function.name,
+      });
+    });
+
+    currentMessages.push(...toolContent.filter(tc => tc !== null));
 
     // 14. Check if respond() was called
-    if (toolCalls.some(call => call.function.name === "respond")) {
+    if (respondCalled) {
+      // Execute response harness with accumulated context
+      const responseHarness = runResponseHarness({
+        conversationId: context.conversationId,
+        messages: currentMessages, // Full context including tool calls/results
+        llmCaller: responseLLMCaller,
+        archivist,
+        skipHistory: false, // Use the full history including tool calls/results from this turn
+        ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+        ...(usedTools.length > 0 ? { usedTools } : {}),
+        ...(abortSignal ? { abortSignal } : {})
+      });
+
+      // Yield all response harness events
+      for await (const event of responseHarness) {
+        yield event;
+      }
+
       break;
     }
   }

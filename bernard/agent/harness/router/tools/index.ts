@@ -8,6 +8,7 @@ import { getWeatherDataTool } from "./get-weather-data";
 import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-entities";
 import { createExecuteHomeAssistantServicesToolInstance } from "./ha-execute-services";
 import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
+import { createToggleLightToolInstance } from "./ha-toggle-light";
 import type { HomeAssistantContextManager } from "./ha-context";
 
 /**
@@ -46,6 +47,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
   if (haContextManager || haRestConfig) {
     haTools.push(createListHAEntitiesToolInstance(haContextManager, haRestConfig));
     haTools.push(createExecuteHomeAssistantServicesToolInstance(haContextManager, haRestConfig));
+    haTools.push(createToggleLightToolInstance(haContextManager, haRestConfig));
   }
 
   if (haRestConfig) {
@@ -62,7 +64,8 @@ export {
   getWeatherDataTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
-  createGetHistoricalStateToolInstance
+  createGetHistoricalStateToolInstance,
+  createToggleLightToolInstance
 };
 
 

@@ -147,6 +147,18 @@ ensure_redis() {
 ensure_redis
 export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
+echo "Running type-check..."
+if ! npm run type-check:src --prefix "${ROOT_DIR}/bernard"; then
+  echo "Type-check failed. Aborting startup." >&2
+  exit 1
+fi
+
+echo "Building bernard..."
+if ! npm run build --prefix "${ROOT_DIR}/bernard"; then
+  echo "Build failed. Aborting startup." >&2
+  exit 1
+fi
+
 echo "Starting bernard dev server on port ${BERNARD_PORT}..."
 kill_port_processes "${BERNARD_PORT}"
 

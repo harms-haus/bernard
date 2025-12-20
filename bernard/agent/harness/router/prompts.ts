@@ -55,7 +55,7 @@ WORKFLOW:
 2. After getting tool results, immediately call action tools to perform the user's requested operations
 3. After all action tools have been called and executed, call the "respond" tool to complete the request
 
-IMPORTANT: Never call "respond" until you have executed all necessary actions. For example, if the user asks to turn off lights, you must call the execute_home_assistant_services tool before calling "respond".`
+IMPORTANT: Never call "respond" until you have executed all necessary actions.`
   ]
     .filter(Boolean)
     .join("\n");

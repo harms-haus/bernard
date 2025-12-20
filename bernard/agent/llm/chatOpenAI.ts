@@ -29,68 +29,83 @@ export class ChatOpenAILLMCaller implements LLMCaller {
    */
   private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
     return messages.map((msg, index) => {
-      const type = (msg as any).type || (msg as any)._getType?.() || "";
+      // Check if this is a serialized LangChain message
+      const isSerialized = (msg as any).lc === 1 &&
+                          (msg as any).type === "constructor" &&
+                          Array.isArray((msg as any).id) &&
+                          (msg as any).id.length >= 3 &&
+                          (msg as any).id[0] === "langchain_core" &&
+                          (msg as any).id[1] === "messages";
 
-      // Extract content - ensure it's never undefined or an empty array
+      let actualType: string;
+      let kwargs: any;
       let content = msg.content;
+
+      if (isSerialized) {
+        // Extract type from serialized format
+        actualType = (msg as any).id[2]; // e.g., "ToolMessage", "AIMessage", etc.
+        kwargs = (msg as any).kwargs || {};
+        content = kwargs.content || content;
+      } else {
+        // Live LangChain message object
+        actualType = (msg as any).type || (msg as any)._getType?.() || "";
+        kwargs = {};
+      }
+
+      // Ensure content is never undefined or empty array
       if (content === undefined || content === null || (Array.isArray(content) && content.length === 0)) {
         content = "";
       }
 
-      // Handle tool messages specifically to ensure tool_call_id is present
-      if (type === "tool" || (msg as any).role === "tool") {
-        const toolCallId = (msg as any).tool_call_id || (msg as any).additional_kwargs?.tool_call_id || `call_tool_${index}`;
-        return new ToolMessage({
-          content: typeof content === "string" ? content : JSON.stringify(content),
-          tool_call_id: toolCallId,
-          name: (msg as any).name,
-        });
-      }
-
-      // Handle assistant messages to ensure tool_calls are correctly formatted
-      if (type === "ai" || type === "assistant" || (msg as any).role === "assistant") {
-        const toolCalls = (msg as any).tool_calls || (msg as any).additional_kwargs?.tool_calls;
-
-        let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
-        // Some providers require content to be null or non-empty string when tool_calls are present.
-        // However, some LangChain versions/serializers convert null to [] which causes 400 errors.
-        // We'll stick to "" for maximum compatibility unless we specifically need null.
-        if (cleanedContent === "" && Array.isArray(toolCalls) && toolCalls.length > 0) {
-          // If we encounter issues with "", we might need to use null, 
-          // but for now let's ensure it's at least not an array.
-          cleanedContent = "";
-        }
-
-        const aiFields: any = {
-          content: cleanedContent,
-        };
-
-        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-          aiFields.tool_calls = toolCalls.map((tc: any, tcIdx: number) => {
-            const name = tc.name || tc.function?.name || "unknown";
-            return {
-              id: tc.id || tc.tool_call_id || `call_${index}_${tcIdx}_${name}`,
-              type: "function",
-              function: {
-                name,
-                arguments: tc.args
-                  ? (typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args))
-                  : (tc.function?.arguments || "{}")
-              }
-            };
+      // Convert based on actual message type
+      switch (actualType) {
+        case "ToolMessage":
+          const toolCallId = kwargs.tool_call_id || (msg as any).tool_call_id || `call_tool_${index}`;
+          return new ToolMessage({
+            content: typeof content === "string" ? content : JSON.stringify(content),
+            tool_call_id: toolCallId,
+            name: kwargs.name || (msg as any).name,
           });
-        }
 
-        return new AIMessage(aiFields);
+        case "AIMessage":
+          const toolCalls = kwargs.tool_calls || (msg as any).tool_calls || (msg as any).additional_kwargs?.tool_calls;
+          let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
+
+          // Some providers require content to be non-empty string when tool_calls are present
+          if (cleanedContent === "" && Array.isArray(toolCalls) && toolCalls.length > 0) {
+            cleanedContent = "";
+          }
+
+          const aiFields: any = { content: cleanedContent };
+
+          if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+            aiFields.tool_calls = toolCalls.map((tc: any, tcIdx: number) => {
+              const name = tc.name || tc.function?.name || "unknown";
+              return {
+                id: tc.id || tc.tool_call_id || `call_${index}_${tcIdx}_${name}`,
+                type: "function",
+                function: {
+                  name,
+                  arguments: tc.args
+                    ? (typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args))
+                    : (tc.function?.arguments || "{}")
+                }
+              };
+            });
+          }
+
+          return new AIMessage(aiFields);
+
+        case "SystemMessage":
+          return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
+
+        case "HumanMessage":
+          return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
+
+        default:
+          // Fallback for unknown types - assume HumanMessage
+          return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
       }
-
-      // Handle system messages
-      if (type === "system" || (msg as any).role === "system") {
-        return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
-      }
-
-      // Default to HumanMessage for user/human
-      return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
     });
   }
 

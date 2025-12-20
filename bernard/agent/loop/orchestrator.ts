@@ -90,14 +90,17 @@ export class StreamingOrchestrator {
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
 
-        // 6. Run Router Harness
+        // 6. Run Router Harness (now includes response harness execution)
         const routerStream = (async function* (this: StreamingOrchestrator) {
             const routerHarness = runRouterHarness({
                 conversationId,
                 messages: persistable, // Pass the full incoming context as the "history"
                 llmCaller: this.routerLLMCaller,
+                responseLLMCaller: this.responseLLMCaller,
                 archivist,
                 skipHistory: true, // Don't fetch the historical record from the database
+                toolDefinitions: langChainTools,
+                usedTools: [],
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
                 ...(this.haRestConfig ? { haRestConfig: this.haRestConfig } : {}),
                 ...(abortSignal ? { abortSignal } : {})
@@ -115,43 +118,6 @@ export class StreamingOrchestrator {
         }).bind(this)();
 
         sequencer.chain(routerStream);
-
-        // 6. Run Response Harness (after router completes)
-        const responseStream = (async function* (this: StreamingOrchestrator) {
-            // router harness might have added messages to the conversation
-            // We don't necessarily need to pass all of them, but runResponseHarness
-            // will fetch history from archivist anyway.
-            // We just need to pass the newly arrived messages (which are already in history now).
-            // Wait, the harnesses take `messages` as context.
-            // In the plan, it says:
-            // const finalContext = await this.getFinalContext(archivist, conversationId);
-            // Wait, let's just pass empty messages or the same ones.
-            // Actually, if we pass persistable again, it might duplicate if not careful.
-            // But harnesses typically only add them to history anyway.
-
-            const responseHarness = runResponseHarness({
-                conversationId,
-                messages: persistable, // Pass the full incoming context as the "history"
-                llmCaller: this.responseLLMCaller,
-                archivist,
-                skipHistory: false, // Fetch the historical record including tool calls/results from this turn
-                toolDefinitions: langChainTools,
-                usedTools: Array.from(this.usedTools),
-                ...(abortSignal ? { abortSignal } : {})
-            });
-
-            for await (const event of responseHarness) {
-                // Record events via Recorder
-                await this.recordEvent(recorder, conversationId, event, requestId, turnId);
-
-                // Yield filtered events
-                if (this.shouldEmitEvent(event, trace)) {
-                    yield event;
-                }
-            }
-        }).bind(this)();
-
-        sequencer.chain(responseStream);
         sequencer.done();
 
         // 7. Build result promise
