@@ -10,6 +10,8 @@ import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
 import type { ToolWithInterpretation } from "../harness/router/tools";
+import type { HARestConfig } from "../harness/router/tools/ha-list-services";
+import { getSettings } from "@/lib/config/settingsCache";
 import crypto from "node:crypto";
 
 function uniqueId(prefix: string) {
@@ -38,6 +40,7 @@ export class StreamingOrchestrator {
     private currentLLMCallMessageId: string | undefined;
     private accumulatedDeltas: Map<string, string> = new Map();
     private usedTools: Set<string> = new Set();
+    private haRestConfig?: HARestConfig;
 
     constructor(
         private recordKeeper: RecordKeeper,
@@ -65,6 +68,13 @@ export class StreamingOrchestrator {
         const { conversationId, isNewConversation, existingHistory } =
             await this.identifyConversation(providedId);
 
+        // 2. Load HA REST configuration from settings
+        const settings = await getSettings();
+        this.haRestConfig = settings.services.homeAssistant ? {
+            baseUrl: settings.services.homeAssistant.baseUrl,
+            accessToken: settings.services.homeAssistant.accessToken
+        } : undefined;
+
         // 3. Initialize RecordKeeper with conversation
         const recorder = this.recordKeeper.asRecorder();
         const archivist = this.recordKeeper.asArchivist();
@@ -73,7 +83,7 @@ export class StreamingOrchestrator {
         await recorder.syncHistory(conversationId, persistable);
 
         // 4. Get tool definitions
-        const { toolDefinitions } = getRouterToolDefinitions(this.haContextManager);
+        const { toolDefinitions } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig);
 
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
@@ -87,6 +97,7 @@ export class StreamingOrchestrator {
                 archivist,
                 skipHistory: true, // Don't fetch the historical record from the database
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
+                ...(this.haRestConfig ? { haRestConfig: this.haRestConfig } : {}),
                 ...(abortSignal ? { abortSignal } : {})
             });
 

@@ -72,11 +72,17 @@ const GeocodingServiceSchema = z.object({
   referer: z.string().optional()
 });
 
+const HomeAssistantServiceSchema = z.object({
+  baseUrl: z.string().url(),
+  accessToken: z.string().optional()
+});
+
 export const ServicesSettingsSchema = z.object({
   memory: MemoryServiceSchema.default({}),
   search: SearchServiceSchema.default({}),
   weather: WeatherServiceSchema.default({}),
-  geocoding: GeocodingServiceSchema.default({})
+  geocoding: GeocodingServiceSchema.default({}),
+  homeAssistant: HomeAssistantServiceSchema.optional()
 });
 
 const OAuthClientSchema = z.object({
@@ -218,7 +224,7 @@ export function defaultModels(): ModelsSettings {
  * Default third-party service configuration sourced from environment variables.
  */
 export function defaultServices(): ServicesSettings {
-  return {
+  const services: ServicesSettings = {
     memory: {
       embeddingModel: process.env["EMBEDDING_MODEL"],
       embeddingBaseUrl: process.env["EMBEDDING_BASE_URL"],
@@ -244,6 +250,18 @@ export function defaultServices(): ServicesSettings {
       referer: process.env["NOMINATIM_REFERER"]
     }
   };
+
+  // Add Home Assistant configuration if environment variables are present
+  const haBaseUrl = process.env["HA_BASE_URL"];
+  const haAccessToken = process.env["HA_ACCESS_TOKEN"];
+  if (haBaseUrl) {
+    services.homeAssistant = {
+      baseUrl: haBaseUrl,
+      accessToken: haAccessToken
+    };
+  }
+
+  return services;
 }
 
 /**

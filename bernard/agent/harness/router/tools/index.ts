@@ -5,7 +5,7 @@ import { enhancedGeocodeSearchTool } from "./geocode-enhanced";
 import { memorizeTool } from "./memorize";
 import { webSearchTool } from "./web-search";
 import { getWeatherDataTool } from "./get-weather-data";
-import { createListHAServicesToolInstance } from "./ha-list-services";
+import { createListHAServicesToolInstance, type HARestConfig } from "./ha-list-services";
 import { createExecuteServicesToolInstance } from "./ha-execute-services";
 import type { HomeAssistantContextManager } from "./ha-context";
 
@@ -31,7 +31,7 @@ const respondTool = tool(
   }
 );
 
-export function getRouterTools(haContextManager?: HomeAssistantContextManager): ToolWithInterpretation[] {
+export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig): ToolWithInterpretation[] {
   const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
     enhancedGeocodeSearchTool,
@@ -41,8 +41,8 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager): 
   ];
 
   const haTools: ToolWithInterpretation[] = haContextManager ? [
-    createListHAServicesToolInstance(haContextManager),
-    createExecuteServicesToolInstance(haContextManager)
+    createListHAServicesToolInstance(haContextManager, haRestConfig),
+    createExecuteServicesToolInstance(haContextManager, haRestConfig)
   ] : [];
 
   return [...baseTools, ...haTools];

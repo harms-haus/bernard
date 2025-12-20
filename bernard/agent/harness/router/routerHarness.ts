@@ -7,6 +7,7 @@ import { ChatOpenAILLMCaller } from "../../llm/chatOpenAI";
 import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
 import type { HomeAssistantContextManager } from "./tools/ha-context";
+import type { HARestConfig } from "./tools/ha-list-services";
 import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
 import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";
@@ -27,6 +28,7 @@ export type RouterHarnessContext = {
   llmCaller: LLMCaller;
   archivist: Archivist;
   haContextManager?: HomeAssistantContextManager;
+  haRestConfig?: HARestConfig;
   abortSignal?: AbortSignal;
   skipHistory?: boolean;
 };
@@ -34,8 +36,8 @@ export type RouterHarnessContext = {
 /**
  * Get router tool definitions for the system prompt
  */
-export function getRouterToolDefinitions(haContextManager?: HomeAssistantContextManager) {
-  const langChainTools = getRouterTools(haContextManager);
+export function getRouterToolDefinitions(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig) {
+  const langChainTools = getRouterTools(haContextManager, haRestConfig);
   const toolDefinitions: ToolLikeForPrompt[] = langChainTools.map(tool => ({
     name: tool.name,
     description: tool.description || "",
@@ -170,10 +172,10 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Yields standardized streaming events.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { messages, llmCaller, archivist, haContextManager, abortSignal } = context;
+  const { messages, llmCaller, archivist, haContextManager, haRestConfig, abortSignal } = context;
 
   // 1. Get available tools
-  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager);
+  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig);
 
   // 2. Prepare initial context
   let currentMessages = await prepareInitialContext(

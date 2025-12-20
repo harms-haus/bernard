@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import type { HomeAssistantEntity, HomeAssistantServiceCall } from "./ha-entities";
+import type { HomeAssistantServiceCall } from "./ha-entities";
 import type { HomeAssistantContextManager } from "./ha-context";
 import {
   extractHomeAssistantContext,
@@ -9,6 +9,8 @@ import {
   validateEntityId,
   getDomainFromEntityId
 } from "./ha-entities";
+import { callHAService } from "./ha-rest-client";
+import type { HARestConfig } from "./ha-list-services";
 
 /**
  * Dependencies for the execute services tool
@@ -19,6 +21,7 @@ export type ExecuteServicesDependencies = {
   validateEntityIdImpl: typeof validateEntityId;
   getDomainFromEntityIdImpl: typeof getDomainFromEntityId;
   recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
+  callHAServiceImpl?: typeof callHAService;
 };
 
 const defaultDeps: ExecuteServicesDependencies = {
@@ -28,7 +31,8 @@ const defaultDeps: ExecuteServicesDependencies = {
   getDomainFromEntityIdImpl: getDomainFromEntityId,
   recordServiceCallImpl: () => {
     throw new Error("recordServiceCallImpl must be provided via dependencies");
-  }
+  },
+  callHAServiceImpl: callHAService
 };
 
 /**
@@ -36,6 +40,7 @@ const defaultDeps: ExecuteServicesDependencies = {
  */
 export function createExecuteServicesTool(
   haContextManager: HomeAssistantContextManager,
+  restConfig?: HARestConfig,
   overrides: Partial<ExecuteServicesDependencies> = {}
 ) {
   const deps: ExecuteServicesDependencies = {
@@ -56,7 +61,7 @@ export function createExecuteServicesTool(
       
       for (const serviceCall of list) {
         try {
-          const result = await executeSingleServiceCall(serviceCall, deps);
+          const result = await executeSingleServiceCall(serviceCall, deps, haContextManager, restConfig);
           results.push(result);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -96,7 +101,9 @@ export function createExecuteServicesTool(
  */
 async function executeSingleServiceCall(
   serviceCall: { domain: string; service: string; service_data: { entity_id: string | string[] } },
-  deps: ExecuteServicesDependencies
+  deps: ExecuteServicesDependencies,
+  haContextManager: HomeAssistantContextManager,
+  restConfig?: HARestConfig
 ): Promise<string> {
   const { domain, service, service_data } = serviceCall;
   
@@ -124,25 +131,39 @@ async function executeSingleServiceCall(
     }
   }
   
-  // Record the service call for Home Assistant to process
-  const haServiceCall: HomeAssistantServiceCall = {
-    domain,
-    service,
-    service_data: {
-      entity_id: entityIds
+  // Check if Home Assistant context is available
+  if (haContextManager.hasContext()) {
+    // Primary behavior: Record the service call for Home Assistant to process
+    const haServiceCall: HomeAssistantServiceCall = {
+      domain,
+      service,
+      service_data: {
+        entity_id: entityIds
+      }
+    };
+
+    await deps.recordServiceCallImpl(haServiceCall);
+
+    return `Service ${domain}.${service} scheduled for execution on entities: ${entityIdsArray.join(', ')}`;
+  } else if (restConfig && deps.callHAServiceImpl) {
+    // Fallback behavior: Call REST API directly
+    try {
+      await deps.callHAServiceImpl(restConfig.baseUrl, restConfig.accessToken || "", domain, service, service_data);
+      return `Service ${domain}.${service} executed successfully on entities: ${entityIdsArray.join(', ')}`;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to execute Home Assistant service: ${errorMessage}`);
     }
-  };
-  
-  await deps.recordServiceCallImpl(haServiceCall);
-  
-  return `Service ${domain}.${service} scheduled for execution on entities: ${entityIdsArray.join(', ')}`;
+  } else {
+    throw new Error("Home Assistant context is not available and REST API configuration is missing. Please provide Home Assistant entity information in the system prompt or configure REST API settings.");
+  }
 }
 
 /**
  * The execute services tool instance factory
  */
-export function createExecuteServicesToolInstance(haContextManager: HomeAssistantContextManager) {
-  return createExecuteServicesTool(haContextManager);
+export function createExecuteServicesToolInstance(haContextManager: HomeAssistantContextManager, restConfig?: HARestConfig) {
+  return createExecuteServicesTool(haContextManager, restConfig);
 }
 
 /**
