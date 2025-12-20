@@ -185,11 +185,12 @@ export function parseTarget(
   if (!target) return null;
   const normalized = target.trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized === "today" || normalized === "now") return { date: anchorDate };
+  if (normalized === "today") return { date: anchorDate };
   if (normalized === "tomorrow") return { date: addDays(anchorDate, 1) };
   if (normalized === "day after tomorrow" || normalized === "day-after-tomorrow")
     return { date: addDays(anchorDate, 2) };
   if (normalized === "yesterday") return { date: addDays(anchorDate, -1) };
+  if (normalized === "now") return { date: anchorDate, time: new Date().toISOString().slice(11, 16) };
 
   if (/^\d{4}-\d{2}-\d{2}(t.*)?/.test(normalized)) {
     const [datePartRaw] = normalized.split(/[t ]/);
@@ -208,6 +209,28 @@ export function parseTarget(
   }
 
   return null;
+}
+
+export function parseDateRange(
+  startDateTime: string | undefined,
+  endDateTime: string | undefined,
+  anchorDate: string
+): { start: { date: string; time?: string }; end: { date: string; time?: string } } | null {
+  const start = parseTarget(startDateTime, anchorDate);
+  const end = parseTarget(endDateTime, anchorDate);
+
+  if (!start || !end) return null;
+
+  return { start, end };
+}
+
+export function isHistoricalDate(date: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return date < today;
+}
+
+export function getImperialUnits(): UnitChoice {
+  return resolveUnits("imperial");
 }
 
 export function nearestIndex(target: string, times: string[]): number {
@@ -281,4 +304,128 @@ export function buildWeatherUrl(
   url.searchParams.set("timezone", timezone);
   applyUnitParams(url, units);
   return url;
+}
+
+export function calculateAverages(hourly: HourlyWeather): {
+  temperature_2m: number | null;
+  apparent_temperature: number | null;
+  precipitation: number | null;
+  precipitation_probability: number | null;
+  wind_speed_10m: number | null;
+} {
+  const count = hourly.time?.length ?? 0;
+  if (!count) return {
+    temperature_2m: null,
+    apparent_temperature: null,
+    precipitation: null,
+    precipitation_probability: null,
+    wind_speed_10m: null
+  };
+
+  let tempSum = 0, tempCount = 0;
+  let feelsSum = 0, feelsCount = 0;
+  let precipSum = 0, precipCount = 0;
+  let precipProbSum = 0, precipProbCount = 0;
+  let windSum = 0, windCount = 0;
+
+  for (let i = 0; i < count; i++) {
+    const temp = maybeNumber(hourly.temperature_2m?.[i]);
+    if (temp !== null) { tempSum += temp; tempCount++; }
+
+    const feels = maybeNumber(hourly.apparent_temperature?.[i]);
+    if (feels !== null) { feelsSum += feels; feelsCount++; }
+
+    const precip = maybeNumber(hourly.precipitation?.[i]);
+    if (precip !== null) { precipSum += precip; precipCount++; }
+
+    const precipProb = maybeNumber(hourly.precipitation_probability?.[i]);
+    if (precipProb !== null) { precipProbSum += precipProb; precipProbCount++; }
+
+    const wind = maybeNumber(hourly.wind_speed_10m?.[i]);
+    if (wind !== null) { windSum += wind; windCount++; }
+  }
+
+  return {
+    temperature_2m: tempCount > 0 ? tempSum / tempCount : null,
+    apparent_temperature: feelsCount > 0 ? feelsSum / feelsCount : null,
+    precipitation: precipCount > 0 ? precipSum / precipCount : null,
+    precipitation_probability: precipProbCount > 0 ? precipProbSum / precipProbCount : null,
+    wind_speed_10m: windCount > 0 ? windSum / windCount : null
+  };
+}
+
+export function formatHourlyTable(hourly: HourlyWeather, units: UnitChoice, timezone: string): string {
+  const headers = ["Time", "Temp (°F)", "Feels (°F)", "Precip Chance", "Precip (in)", "Wind (mph)"];
+  const rows: string[][] = [headers];
+
+  const time = hourly.time ?? [];
+  for (let i = 0; i < time.length; i++) {
+    const row: string[] = [];
+    row.push(time[i].slice(11, 16)); // HH:MM
+    row.push(formatNumber(maybeNumber(hourly.temperature_2m?.[i])));
+    row.push(formatNumber(maybeNumber(hourly.apparent_temperature?.[i])));
+    row.push(maybeNumber(hourly.precipitation_probability?.[i]) !== null ? `${formatNumber(maybeNumber(hourly.precipitation_probability?.[i]), 0)}%` : "?");
+    row.push(formatPrecip(maybeNumber(hourly.precipitation?.[i]), units));
+    row.push(formatNumber(maybeNumber(hourly.wind_speed_10m?.[i])));
+    rows.push(row);
+  }
+
+  return formatMarkdownTable(rows) + `\n\n*Timezone: ${timezone}*`;
+}
+
+export function formatDailyTable(daily: DailyWeather, units: UnitChoice, timezone: string): string {
+  const headers = ["Date", "High (°F)", "Low (°F)", "Feels High (°F)", "Feels Low (°F)", "Precip Chance", "Precip (in)", "Max Wind (mph)"];
+  const rows: string[][] = [headers];
+
+  const time = daily.time ?? [];
+  for (let i = 0; i < time.length; i++) {
+    const row: string[] = [];
+    row.push(time[i]);
+    row.push(formatNumber(maybeNumber(daily.temperature_2m_max?.[i])));
+    row.push(formatNumber(maybeNumber(daily.temperature_2m_min?.[i])));
+    row.push(formatNumber(maybeNumber(daily.apparent_temperature_max?.[i])));
+    row.push(formatNumber(maybeNumber(daily.apparent_temperature_min?.[i])));
+    row.push(maybeNumber(daily.precipitation_probability_max?.[i]) !== null ? `${formatNumber(maybeNumber(daily.precipitation_probability_max?.[i]), 0)}%` : "?");
+    row.push(formatPrecip(maybeNumber(daily.precipitation_sum?.[i]), units));
+    row.push(formatNumber(maybeNumber(daily.wind_speed_10m_max?.[i])));
+    rows.push(row);
+  }
+
+  return formatMarkdownTable(rows) + `\n\n*Timezone: ${timezone}*`;
+}
+
+export function formatAverageTable(averages: ReturnType<typeof calculateAverages>, units: UnitChoice, timezone: string): string {
+  const headers = ["Metric", "Average Value"];
+  const rows: string[][] = [headers];
+
+  rows.push(["Temperature", `${formatNumber(averages.temperature_2m)}${units.tempLabel}`]);
+  rows.push(["Feels Like", `${formatNumber(averages.apparent_temperature)}${units.tempLabel}`]);
+  rows.push(["Precipitation Chance", averages.precipitation_probability !== null ? `${formatNumber(averages.precipitation_probability, 0)}%` : "?"]);
+  rows.push(["Precipitation", `${formatPrecip(averages.precipitation, units)} ${units.precipLabel}`]);
+  rows.push(["Wind Speed", `${formatNumber(averages.wind_speed_10m)} ${units.windLabel}`]);
+
+  return formatMarkdownTable(rows) + `\n\n*Timezone: ${timezone}*`;
+}
+
+function formatMarkdownTable(rows: string[][]): string {
+  if (rows.length === 0) return "";
+
+  const colWidths = rows[0].map((_, colIdx) =>
+    Math.max(...rows.map(row => row[colIdx]?.length ?? 0))
+  );
+
+  const formattedRows = rows.map((row, rowIdx) => {
+    const formattedCells = row.map((cell, colIdx) => cell.padEnd(colWidths[colIdx]));
+    const line = "| " + formattedCells.join(" | ") + " |";
+
+    // Add separator after header
+    if (rowIdx === 0) {
+      const separator = "|" + colWidths.map(w => "-".repeat(w + 2)).join("|") + "|";
+      return line + "\n" + separator;
+    }
+
+    return line;
+  });
+
+  return formattedRows.join("\n");
 }

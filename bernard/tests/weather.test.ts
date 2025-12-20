@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 
-import {
-  getWeatherCurrentTool,
-  getWeatherForecastTool,
-  getWeatherHistoricalTool
-} from "../agent/harness/router/tools";
-import { chooseUnits, parseTarget } from "../agent/harness/router/tools/weather-common";
+import { getWeatherDataTool } from "../agent/harness/router/tools";
+import { chooseUnits, parseTarget, parseDateRange, getImperialUnits } from "../agent/harness/router/tools/weather-common";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;
@@ -35,6 +31,16 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
   });
 }
 
+test("getImperialUnits returns imperial units", () => {
+  const units = getImperialUnits();
+  assert.equal(units.temperatureUnit, "fahrenheit");
+  assert.equal(units.windSpeedUnit, "mph");
+  assert.equal(units.precipUnit, "inch");
+  assert.equal(units.tempLabel, "°F");
+  assert.equal(units.windLabel, "mph");
+  assert.equal(units.precipLabel, "in");
+});
+
 test("chooseUnits infers units from country and coordinates", () => {
   const usUnits = chooseUnits(undefined, "US");
   assert.equal(usUnits.temperatureUnit, "fahrenheit");
@@ -51,9 +57,22 @@ test("parseTarget handles relative words and ISO dates", () => {
   assert.deepEqual(parseTarget("tomorrow", anchor), { date: "2025-02-02" });
   assert.deepEqual(parseTarget("2025-03-05", anchor), { date: "2025-03-05" });
   assert.deepEqual(parseTarget("2025-03-05T15:00Z", anchor), { date: "2025-03-05", time: "15:00z" });
+  const nowResult = parseTarget("now", anchor);
+  assert.ok(nowResult);
+  assert.equal(nowResult.date, anchor);
+  assert.ok(nowResult.time);
+  assert.match(nowResult.time, /^\d{2}:\d{2}$/);
 });
 
-test("get_weather_current returns a formatted snapshot", { timeout: TEST_TIMEOUT }, async () => {
+test("parseDateRange handles date range parsing", () => {
+  const anchor = "2025-02-01";
+  const range = parseDateRange("today", "tomorrow", anchor);
+  assert.ok(range);
+  assert.equal(range.start.date, anchor);
+  assert.equal(range.end.date, "2025-02-02");
+});
+
+test("get_weather_data current weather with 'now'", { timeout: TEST_TIMEOUT }, async () => {
   const calls = mockFetchSequence([
     jsonResponse({
       current: {
@@ -61,15 +80,20 @@ test("get_weather_current returns a formatted snapshot", { timeout: TEST_TIMEOUT
         temperature_2m: 68,
         apparent_temperature: 66,
         precipitation: 0,
-        wind_speed_10m: 8,
-        relative_humidity_2m: 40,
-        weather_code: 2
+        precipitation_probability: 10,
+        wind_speed_10m: 8
       },
       timezone: "America/New_York"
     })
   ]);
 
-  const result = await getWeatherCurrentTool.invoke({ lat: 40.7128, lon: -74.006, country: "US" });
+  const result = await getWeatherDataTool.invoke({
+    lat: 40.7128,
+    lon: -74.006,
+    startDateTime: "now",
+    endDateTime: "now",
+    period: "hourly"
+  });
   const output = String(result);
 
   const firstCall = calls[0];
@@ -82,66 +106,130 @@ test("get_weather_current returns a formatted snapshot", { timeout: TEST_TIMEOUT
         ? rawInput
         : new URL((rawInput as Request).url);
   assert.equal(url.searchParams.get("temperature_unit"), "fahrenheit");
-  assert.match(output, /Current @ 2024-04-01T12:00/);
-  assert.match(output, /Temp 68.0°F/);
-  assert.match(output, /Conditions: clear/);
+  assert.match(output, /## Current Weather/);
+  assert.match(output, /\*\*Temperature:\*\* 68°F/);
 });
 
-test("get_weather_forecast returns today/tomorrow summaries when target is missing", { timeout: TEST_TIMEOUT }, async () => {
+test("get_weather_data daily forecast with date range", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
     jsonResponse({
       daily: {
         time: ["2025-02-01", "2025-02-02"],
-        temperature_2m_max: [20, 22],
-        temperature_2m_min: [10, 12],
-        apparent_temperature_max: [19, 21],
-        apparent_temperature_min: [9, 11],
-        precipitation_sum: [5, 1],
-        precipitation_probability_max: [60, 30],
-        wind_speed_10m_max: [15, 12]
+        temperature_2m_max: [68, 70],
+        temperature_2m_min: [50, 52],
+        apparent_temperature_max: [66, 68],
+        apparent_temperature_min: [48, 50],
+        precipitation_sum: [0, 0.1],
+        precipitation_probability_max: [10, 20],
+        wind_speed_10m_max: [10, 12]
       },
-      hourly: { time: [], temperature_2m: [], apparent_temperature: [], precipitation_probability: [], wind_speed_10m: [] },
-      timezone: "UTC"
+      hourly: { time: [], temperature_2m: [], apparent_temperature: [], precipitation_probability: [], wind_speed_10m: [], precipitation: [] },
+      timezone: "America/New_York"
     })
   ]);
 
-  const result = await getWeatherForecastTool.invoke({ lat: 48.8566, lon: 2.3522, units: "metric" });
+  const result = await getWeatherDataTool.invoke({
+    lat: 40.7128,
+    lon: -74.006,
+    startDateTime: "2025-02-01",
+    endDateTime: "2025-02-02",
+    period: "daily"
+  });
   const output = String(result);
 
-  assert.match(output, /Today \(2025-02-01\):/);
-  assert.match(output, /Tomorrow \(2025-02-02\):/);
+  assert.match(output, /\| Date/);
+  assert.match(output, /\| High \(°F\)/);
+  assert.match(output, /2025-02-01/);
+  assert.match(output, /2025-02-02/);
 });
 
-test("get_weather_historical supports targeted datetime lookups", { timeout: TEST_TIMEOUT }, async () => {
+test("get_weather_data hourly data", { timeout: TEST_TIMEOUT }, async () => {
+  mockFetchSequence([
+    jsonResponse({
+      hourly: {
+        time: ["2025-02-01T12:00", "2025-02-01T15:00"],
+        temperature_2m: [68, 72],
+        apparent_temperature: [66, 70],
+        precipitation_probability: [10, 20],
+        wind_speed_10m: [8, 10],
+        precipitation: [0, 0]
+      },
+      timezone: "America/New_York"
+    })
+  ]);
+
+  const result = await getWeatherDataTool.invoke({
+    lat: 40.7128,
+    lon: -74.006,
+    startDateTime: "2025-02-01T10:00",
+    endDateTime: "2025-02-01T16:00",
+    period: "hourly"
+  });
+  const output = String(result);
+
+  assert.match(output, /\| Time/);
+  assert.match(output, /\| Temp \(°F\)/);
+  assert.match(output, /12:00/);
+  assert.match(output, /15:00/);
+});
+
+test("get_weather_data average calculation", { timeout: TEST_TIMEOUT }, async () => {
+  mockFetchSequence([
+    jsonResponse({
+      hourly: {
+        time: ["2025-02-01T12:00", "2025-02-01T15:00"],
+        temperature_2m: [68, 72],
+        apparent_temperature: [66, 70],
+        precipitation_probability: [10, 20],
+        wind_speed_10m: [8, 10],
+        precipitation: [0, 0.1]
+      },
+      timezone: "America/New_York"
+    })
+  ]);
+
+  const result = await getWeatherDataTool.invoke({
+    lat: 40.7128,
+    lon: -74.006,
+    startDateTime: "2025-02-01T10:00",
+    endDateTime: "2025-02-01T16:00",
+    period: "average"
+  });
+  const output = String(result);
+
+  assert.match(output, /\| Metric/);
+  assert.match(output, /\| Average Value/);
+  assert.match(output, /Temperature/);
+  assert.match(output, /70\.0°F/); // Average of 68 and 72
+});
+
+test("get_weather_data historical data", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
     jsonResponse({
       daily: {
         time: ["2024-01-10"],
-        temperature_2m_max: [5],
-        temperature_2m_min: [-1],
-        apparent_temperature_max: [3],
-        apparent_temperature_min: [-2],
-        precipitation_sum: [2],
-        wind_speed_10m_max: [12]
+        temperature_2m_max: [32],
+        temperature_2m_min: [20],
+        apparent_temperature_max: [30],
+        apparent_temperature_min: [18],
+        precipitation_sum: [0.2],
+        precipitation_probability_max: [50],
+        wind_speed_10m_max: [15]
       },
-      hourly: {
-        time: ["2024-01-10T03:00", "2024-01-10T06:00"],
-        temperature_2m: [1, 2],
-        apparent_temperature: [-1, 0],
-        precipitation_probability: [40, 20],
-        wind_speed_10m: [10, 8]
-      },
-      timezone: "UTC"
+      hourly: { time: [], temperature_2m: [], apparent_temperature: [], precipitation_probability: [], wind_speed_10m: [], precipitation: [] },
+      timezone: "America/New_York"
     })
   ]);
 
-  const result = await getWeatherHistoricalTool.invoke({
-    lat: 51.5072,
-    lon: -0.1276,
-    target: "2024-01-10T04:30"
+  const result = await getWeatherDataTool.invoke({
+    lat: 40.7128,
+    lon: -74.006,
+    startDateTime: "2024-01-10",
+    endDateTime: "2024-01-10",
+    period: "daily"
   });
   const output = String(result);
 
-  assert.match(output, /Historical for 2024-01-10/);
-  assert.match(output, /2024-01-10T03:00: temp 1.0°C/);
+  assert.match(output, /\| Date/);
+  assert.match(output, /32/); // Should show Fahrenheit temperatures
 });

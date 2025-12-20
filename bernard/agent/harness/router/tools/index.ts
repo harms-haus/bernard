@@ -4,10 +4,8 @@ import { z } from "zod";
 import { enhancedGeocodeSearchTool } from "./geocode-enhanced";
 import { memorizeTool } from "./memorize";
 import { webSearchTool } from "./web-search";
-import { getWeatherCurrentTool } from "./weather-current";
-import { getWeatherForecastTool } from "./weather-forecast";
-import { getWeatherHistoricalTool } from "./weather-historical";
-import { createListHAServicesToolInstance } from "./ha-execute-services";
+import { getWeatherDataTool } from "./get-weather-data";
+import { createListHAServicesToolInstance } from "./ha-list-services";
 import { createExecuteServicesToolInstance } from "./ha-execute-services";
 import type { HomeAssistantContextManager } from "./ha-context";
 
@@ -38,9 +36,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager): 
     webSearchTool,
     enhancedGeocodeSearchTool,
     // memorizeTool,
-    getWeatherCurrentTool,
-    getWeatherForecastTool,
-    getWeatherHistoricalTool,
+    getWeatherDataTool,
     respondTool, // Add respond tool at the end
   ];
 
@@ -56,9 +52,7 @@ export {
   enhancedGeocodeSearchTool,
   memorizeTool,
   webSearchTool,
-  getWeatherCurrentTool,
-  getWeatherForecastTool,
-  getWeatherHistoricalTool,
+  getWeatherDataTool,
   createListHAServicesToolInstance,
   createExecuteServicesToolInstance
 };
