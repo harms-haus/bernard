@@ -69,8 +69,8 @@ export async function createScaffolding(opts: {
   const routerModelName = await getPrimaryModel("router", { fallback: [responseModelName] });
 
   const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {
-    conversationId: opts.conversationId,
-    userId: opts.userId
+    ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
+    ...(opts.userId ? { userId: opts.userId } : {})
   });
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
 

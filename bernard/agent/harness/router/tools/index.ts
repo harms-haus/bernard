@@ -28,12 +28,12 @@ const respondTool = tool(
 
 export function getRouterTools(haContextManager?: HomeAssistantContextManager): StructuredToolInterface[] {
   const baseTools: StructuredToolInterface[] = [
-    // webSearchTool,
+    webSearchTool,
     enhancedGeocodeSearchTool,
     // memorizeTool,
     getWeatherCurrentTool,
     getWeatherForecastTool,
-    // getWeatherHistoricalTool,
+    getWeatherHistoricalTool,
     respondTool, // Add respond tool at the end
   ];
 

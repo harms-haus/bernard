@@ -424,6 +424,11 @@ export class RecordKeeper implements Archivist, Recorder {
     await this.appendMessages(conversationId, [message]);
   }
 
+  async syncHistory(conversationId: string, messages: BaseMessage[]): Promise<void> {
+    const convKey = this.key(`conv:${conversationId}`);
+    await this.messageLog.sync(conversationId, messages, convKey);
+  }
+
   async recordLLMCallStart(
     conversationId: string,
     details: {

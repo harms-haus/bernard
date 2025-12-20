@@ -101,6 +101,14 @@ export interface Recorder {
       latencyMs?: number;
     }
   ): Promise<void>;
+
+  /**
+   * Deduplicate and add messages to the historical record in proper placement.
+   */
+  syncHistory(
+    conversationId: string,
+    messages: BaseMessage[]
+  ): Promise<void>;
 }
 
 

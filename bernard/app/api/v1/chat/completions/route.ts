@@ -54,6 +54,7 @@ type ChatCompletionBody = {
   service_tier?: unknown;
   store?: unknown;
   seed?: unknown;
+  chatId?: string;
 };
 
 const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
@@ -113,7 +114,11 @@ export async function POST(req: NextRequest) {
   const responseModelConfig = await resolveModel("response");
   const routerModelConfig = await resolveModel("router", { fallback: [responseModelConfig.id] });
 
-  const scaffold = await createScaffolding({ token: auth.token, responseModelOverride: responseModelConfig.id });
+  const scaffold = await createScaffolding({
+    token: auth.token,
+    responseModelOverride: responseModelConfig.id,
+    ...(body.chatId ? { conversationId: body.chatId } : {})
+  });
   const {
     keeper,
     conversationId,
@@ -126,15 +131,7 @@ export async function POST(req: NextRequest) {
   const responseModelName = scaffoldResponseModel ?? responseModelConfig.id;
   const routerModelName = scaffoldrouterModel ?? routerModelConfig.id;
 
-  // For streaming requests, don't block on history loading to preserve real-time streaming
-  // The router harness will work with available messages and can load history incrementally if needed
-  const mergedMessages = isNewConversation || shouldStream
-    ? inputMessages
-    : await hydrateMessagesWithHistory({
-      keeper,
-      conversationId,
-      incoming: inputMessages
-    });
+  const mergedMessages = inputMessages;
 
   const routerModel = splitModelAndProvider(routerModelName);
   const routerApiKey =

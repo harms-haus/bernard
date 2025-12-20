@@ -63,23 +63,11 @@ export class StreamingOrchestrator {
             await this.identifyConversation(providedId);
 
         // 3. Initialize RecordKeeper with conversation
-
-        // 3. Initialize RecordKeeper with conversation
         const recorder = this.recordKeeper.asRecorder();
         const archivist = this.recordKeeper.asArchivist();
 
-        // Record only new messages that aren't already in history
-        const historyMessages = (existingHistory || [])
-            .map((msg) => messageRecordToBaseMessage(msg))
-            .filter((m): m is BaseMessage => m !== null);
-
-        const historyUnique = deduplicateMessages(historyMessages);
-        const uniqueMessages = deduplicateMessages([...historyMessages, ...persistable]);
-        const newPersistable = uniqueMessages.slice(historyUnique.length);
-
-        for (const msg of newPersistable) {
-            await recorder.recordMessage(conversationId, msg);
-        }
+        // Sync history with deduplication and proper placement
+        await recorder.syncHistory(conversationId, persistable);
 
         // 4. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
@@ -88,9 +76,10 @@ export class StreamingOrchestrator {
         const routerStream = (async function* (this: StreamingOrchestrator) {
             const routerHarness = runRouterHarness({
                 conversationId,
-                messages: newPersistable, // Pass only the truly new messages to the harness
+                messages: persistable, // Pass the full incoming context as the "history"
                 llmCaller: this.routerLLMCaller,
                 archivist,
+                skipHistory: true, // Don't fetch the historical record from the database
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
                 ...(abortSignal ? { abortSignal } : {})
             });
@@ -123,9 +112,10 @@ export class StreamingOrchestrator {
 
             const responseHarness = runResponseHarness({
                 conversationId,
-                messages: [], // History will be fetched by the harness
+                messages: persistable, // Pass the full incoming context as the "history"
                 llmCaller: this.responseLLMCaller,
                 archivist,
+                skipHistory: true, // Don't fetch the historical record from the database
                 ...(abortSignal ? { abortSignal } : {})
             });
 

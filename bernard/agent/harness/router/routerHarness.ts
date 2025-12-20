@@ -1,4 +1,5 @@
-import type { BaseMessage, AIMessage } from "@langchain/core/messages";
+import { SystemMessage, AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 import { ToolMessage as LangChainToolMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
@@ -6,8 +7,7 @@ import { ChatOpenAILLMCaller } from "../../llm/chatOpenAI";
 import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
 import type { HomeAssistantContextManager } from "./tools/ha-context";
-import { SystemMessage } from "@langchain/core/messages";
-import type { Archivist } from "../../../lib/conversation/types";
+import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
 import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";
 import crypto from "node:crypto";
@@ -28,6 +28,7 @@ export type RouterHarnessContext = {
   archivist: Archivist;
   haContextManager?: HomeAssistantContextManager;
   abortSignal?: AbortSignal;
+  skipHistory?: boolean;
 };
 
 /**
@@ -50,11 +51,19 @@ export async function prepareInitialContext(
   conversationId: string,
   messages: BaseMessage[],
   archivist: Archivist,
-  toolDefinitions: ToolLikeForPrompt[]
+  toolDefinitions: ToolLikeForPrompt[],
+  options: { skipHistory?: boolean } = {}
 ): Promise<BaseMessage[]> {
-  const history = await archivist.getMessages(conversationId, {
-    limit: 20
-  });
+  // 1. Get conversation history
+  let history: MessageRecord[];
+  try {
+    history = options.skipHistory ? [] : await archivist.getMessages(conversationId, {
+      limit: 20
+    });
+  } catch (error) {
+    console.error("Error fetching conversation history:", error);
+    history = []; // Proceed with empty history on error
+  }
 
   const systemPrompt = buildRouterSystemPrompt(new Date(), toolDefinitions);
   const systemMessage = new SystemMessage(systemPrompt);
@@ -171,7 +180,8 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     context.conversationId,
     messages,
     archivist,
-    toolDefinitions
+    toolDefinitions,
+    { ...(context.skipHistory !== undefined ? { skipHistory: context.skipHistory } : {}) }
   );
 
   const MAX_TURNS = 5;

@@ -267,4 +267,62 @@ export class MessageLog {
     const messages = await this.getMessages(conversationId);
     return countToolCallsInMessages(messages);
   }
+
+  /**
+   * Sync messages by merging, deduplicating, sorting by timestamp, and overwriting.
+   */
+  async sync(conversationId: string, incoming: BaseMessage[], convKey: string) {
+    const existing = await this.getMessages(conversationId);
+    const serializedIncoming = incoming.map((msg) => this.serializeMessage(msg));
+
+    // Deduplicate and sort
+    const { deduplicateMessageRecords } = await import("./dedup");
+    const combined = [...existing, ...serializedIncoming];
+    const unique = deduplicateMessageRecords(combined);
+
+    unique.sort((a, b) => {
+      const ta = Date.parse(a.createdAt);
+      const tb = Date.parse(b.createdAt);
+      if (Number.isFinite(ta) && Number.isFinite(tb)) {
+        return ta - tb;
+      }
+      return 0;
+    });
+
+    const listKey = this.listKey(conversationId);
+    const messageIncrement = unique.length - existing.length;
+    const toolCallIncrement = countToolCallsInMessages(unique) - countToolCallsInMessages(existing);
+    const errorIncrement = unique.filter(isErrorRecord).length - existing.filter(isErrorRecord).length;
+    const userAssistantIncrement = countUserAssistantMessages(unique) - countUserAssistantMessages(existing);
+
+    const now = Date.now();
+    const nowISO = nowIso();
+
+    const multi = this.redis.multi();
+    multi.del(listKey);
+    unique.forEach((item) => {
+      multi.rpush(listKey, JSON.stringify(item));
+    });
+
+    multi
+      .hincrby(convKey, "messageCount", messageIncrement)
+      .hincrby(convKey, "userAssistantCount", userAssistantIncrement)
+      .hincrby(convKey, "toolCallCount", toolCallIncrement)
+      .hincrby(convKey, "errorCount", errorIncrement)
+      .hset(convKey, { lastTouchedAt: nowISO })
+      .zadd(this.key("convs:active"), now, conversationId);
+
+    // Note: the zadd call above is tricky because RecordKeeper.key() includes namespace.
+    // However, MessageLog.key is passed from RecordKeeper which already knows how to format it.
+    // Wait, RecordKeeper.key(suffix) returns `${this.namespace}:${suffix}`.
+    // MessageLog.key is `(suffix: string) => this.key(suffix)`.
+    // So this.key("convs:active") is already the full key. 
+    // But Redis.zadd shouldn't have the prefix twice if Redis instance is already prefixed. 
+    // In our case, RecordKeeper manages prefixes manually.
+
+    // Let's look at how MessageLog.append handles it:
+    // .zadd(this.key("convs:active"), now, conversationId);
+
+    await multi.exec();
+  }
 }

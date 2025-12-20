@@ -21,10 +21,11 @@ import {
   Clock,
   MessageSquare,
   MoreVertical,
-  Database
+  Database,
+  Copy
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
-import type { ConversationListItem } from '../../services/adminApi';
+import type { ConversationListItem, ConversationDetailResponse } from '../../services/adminApi';
 import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
 import { useToast } from '../../components/ToastManager';
 
@@ -34,6 +35,7 @@ export default function History() {
   const [stats, setStats] = useState({ total: 0, active: 0, closed: 0 });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   
   // Hook calls - must be at the top level of the component function
   const confirmDialog = useConfirmDialog();
@@ -185,6 +187,59 @@ export default function History() {
     });
   };
 
+  const handleCopyConversationToClipboard = async (conversationId: string) => {
+    if (copyingId) return; // Prevent multiple copy actions
+
+    setCopyingId(conversationId);
+    try {
+      // Fetch the full conversation details
+      const response = await adminApiClient.getConversation(conversationId, 1000); // Get up to 1000 messages
+      
+      // Format the conversation for clipboard
+      const formattedConversation = formatConversationForClipboard(response);
+      
+      // Copy to clipboard
+      await navigator.clipboard.writeText(formattedConversation);
+      
+      toast.success("Conversation copied to clipboard");
+    } catch (error) {
+      console.error("Failed to copy conversation:", error);
+      toast.error("Failed to copy conversation to clipboard");
+    } finally {
+      setCopyingId(null);
+    }
+  };
+
+  const formatConversationForClipboard = (conversationData: ConversationDetailResponse): string => {
+    const { conversation, messages } = conversationData;
+    
+    // Format conversation metadata
+    let result = `Conversation ID: ${conversation.id}\n`;
+    result += `Status: ${conversation.status}\n`;
+    result += `Started: ${new Date(conversation.startedAt).toLocaleString()}\n`;
+    if (conversation.closedAt) {
+      result += `Closed: ${new Date(conversation.closedAt).toLocaleString()}\n`;
+    }
+    result += `Messages: ${conversation.messageCount}\n`;
+    result += `User: ${conversation.tokenNames?.[0] || "Unknown"}\n`;
+    result += `Source: ${conversation.source}\n`;
+    result += `\n`;
+    
+    // Add each message
+    messages.forEach((message, index) => {
+      const timestamp = new Date(message.createdAt).toLocaleTimeString();
+      const role = message.role.toUpperCase();
+      const content = typeof message.content === "string" 
+        ? message.content 
+        : JSON.stringify(message.content, null, 2);
+      
+      result += `${role} [${timestamp}]:\n`;
+      result += `${content}\n\n`;
+    });
+    
+    return result;
+  };
+
   const canRetryIndexing = (conversation: ConversationListItem): boolean => {
     const status = conversation.indexingStatus || 'none';
     return status === 'none' || status === 'failed';
@@ -327,6 +382,10 @@ export default function History() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleCopyConversationToClipboard(conversation.id)} disabled={copyingId === conversation.id}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              {copyingId === conversation.id ? "Copying..." : "Copy to Clipboard"}
+                            </DropdownMenuItem>
                             {conversation.indexingStatus === 'indexed' && (
                               <DropdownMenuItem onClick={() => handleDeleteIndex(conversation.id)}>
                                 <Database className="mr-2 h-4 w-4" />

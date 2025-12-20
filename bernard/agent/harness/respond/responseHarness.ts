@@ -3,7 +3,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
 import { buildResponseSystemPrompt } from "./prompts";
-import type { Archivist } from "@/lib/conversation/types";
+import type { Archivist, MessageRecord } from "@/lib/conversation/types";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
 import crypto from "node:crypto";
@@ -21,6 +21,7 @@ export type ResponseHarnessContext = {
   llmCaller: LLMCaller;
   archivist: Archivist;
   abortSignal?: AbortSignal;
+  skipHistory?: boolean;
 };
 
 /**
@@ -31,17 +32,14 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   const { messages, llmCaller, archivist, conversationId, abortSignal } = context;
 
   // 1. Get conversation history
-  let history;
+  let history: MessageRecord[];
   try {
-    history = await archivist.getMessages(conversationId, {
+    history = context.skipHistory ? [] : await archivist.getMessages(conversationId, {
       limit: 20
     });
   } catch (error) {
-    yield {
-      type: "error",
-      error: error instanceof Error ? error.message : String(error),
-    };
-    return;
+    console.error("Error fetching conversation history:", error);
+    history = [];
   }
 
   // 2. Build context
