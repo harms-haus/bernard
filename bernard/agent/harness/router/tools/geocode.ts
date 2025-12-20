@@ -268,7 +268,13 @@ const createGeocodeTool = (deps: GeocodeDeps = {}) => {
   });
 };
 
-const geocodeSearchTool = createGeocodeTool();
+const geocodeSearchToolBase = createGeocodeTool();
+
+const geocodeSearchTool = Object.assign(geocodeSearchToolBase, {
+  interpretationPrompt: `# Geocode Search Tool Results
+Unless specifically requested, do not describe the results from this tool.
+It is generally used to get the coordinates of a location for use in other queries.`
+});
 
 export {
   createGeocodeTool,

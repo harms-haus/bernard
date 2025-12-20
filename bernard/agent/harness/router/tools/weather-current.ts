@@ -29,7 +29,7 @@ type CurrentResponse = {
 const CURRENT_FIELDS =
   "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,relative_humidity_2m,weather_code";
 
-export const getWeatherCurrentTool = tool(
+const weatherCurrentTool = tool(
   async ({ lat, lon, units, country }) => {
     const unitChoice = chooseUnits(units, country, lat, lon);
     const baseUrl = await getForecastApiUrl();
@@ -71,3 +71,13 @@ export const getWeatherCurrentTool = tool(
     })
   }
 );
+
+export const getWeatherCurrentTool = {
+  ...weatherCurrentTool,
+  interpretationPrompt: `# Weather Current Tool Results
+
+When interpreting weather data from get_weather_current:
+- Use Fahrenheit for temperatures if it is available.
+- Do not include the wind speed directly, but do describe the day as windy or calm and the direction if included.`
+
+};

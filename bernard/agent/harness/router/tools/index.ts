@@ -7,9 +7,16 @@ import { webSearchTool } from "./web-search";
 import { getWeatherCurrentTool } from "./weather-current";
 import { getWeatherForecastTool } from "./weather-forecast";
 import { getWeatherHistoricalTool } from "./weather-historical";
-import { createListHAServicesToolInstance } from "./ha-list-services";
+import { createListHAServicesToolInstance } from "./ha-execute-services";
 import { createExecuteServicesToolInstance } from "./ha-execute-services";
 import type { HomeAssistantContextManager } from "./ha-context";
+
+/**
+ * Extended tool interface that includes interpretation prompts for response generation
+ */
+export type ToolWithInterpretation = StructuredToolInterface & {
+  interpretationPrompt?: string;
+};
 
 /**
  * Respond tool - signals that router harness is complete and ready for response generation.
@@ -26,8 +33,8 @@ const respondTool = tool(
   }
 );
 
-export function getRouterTools(haContextManager?: HomeAssistantContextManager): StructuredToolInterface[] {
-  const baseTools: StructuredToolInterface[] = [
+export function getRouterTools(haContextManager?: HomeAssistantContextManager): ToolWithInterpretation[] {
+  const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
     enhancedGeocodeSearchTool,
     // memorizeTool,
@@ -37,7 +44,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager): 
     respondTool, // Add respond tool at the end
   ];
 
-  const haTools: StructuredToolInterface[] = haContextManager ? [
+  const haTools: ToolWithInterpretation[] = haContextManager ? [
     createListHAServicesToolInstance(haContextManager),
     createExecuteServicesToolInstance(haContextManager)
   ] : [];

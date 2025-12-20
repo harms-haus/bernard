@@ -12,6 +12,8 @@ function uniqueId(prefix: string) {
   return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
 }
 
+import type { ToolWithInterpretation } from "../router/tools";
+
 /**
  * Context passed to the response harness
  */
@@ -22,6 +24,8 @@ export type ResponseHarnessContext = {
   archivist: Archivist;
   abortSignal?: AbortSignal;
   skipHistory?: boolean;
+  toolDefinitions?: ToolWithInterpretation[];
+  usedTools?: string[]; // Tool names that were executed in this conversation
 };
 
 /**
@@ -29,7 +33,7 @@ export type ResponseHarnessContext = {
  * Yields standardized streaming events.
  */
 export async function* runResponseHarness(context: ResponseHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { messages, llmCaller, archivist, conversationId, abortSignal } = context;
+  const { messages, llmCaller, archivist, conversationId, abortSignal, toolDefinitions, usedTools } = context;
 
   // 1. Get conversation history
   let history: MessageRecord[];
@@ -43,7 +47,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   }
 
   // 2. Build context
-  const systemPrompt = buildResponseSystemPrompt();
+  const systemPrompt = buildResponseSystemPrompt(new Date(), undefined, undefined, toolDefinitions, usedTools);
   const historyMessages = history.map(msg => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null);
   const contextMessages = deduplicateMessages([...historyMessages, ...messages.filter(msg => msg.type !== "system")]);
 
@@ -55,7 +59,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 3. Emit LLM_CALL event
   yield {
     type: "llm_call",
-    context: promptMessages as any,
+    context: promptMessages,
   };
 
   // 4. Stream Tokens
@@ -104,7 +108,8 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 7. Emit LLM_CALL_COMPLETE event
   yield {
     type: "llm_call_complete",
-    context: promptMessages as any,
+    context: promptMessages,
     result: responseContent,
   };
 }
+

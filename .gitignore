@@ -12,3 +12,4 @@ node_modules
 .npm
 bernard/coverage
 bernard/backups
+agents.config.json

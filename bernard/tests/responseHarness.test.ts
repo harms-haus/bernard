@@ -24,16 +24,18 @@ describe("runResponseHarness (Refactored)", () => {
     });
 
     test("yields llm_call, then deltas, then llm_call_complete", async () => {
-        mockLLMCaller.streamText = (async function* () {
+        mockLLMCaller.streamText.mockImplementation(async function* () {
             yield "Hello";
             yield " world";
-        }) as any;
+        });
 
         const context = {
             conversationId: "test-conv",
             messages: [new HumanMessage("Hi")],
             llmCaller: mockLLMCaller,
             archivist: mockArchivist,
+            toolDefinitions: [],
+            usedTools: [],
         };
 
         const events: any[] = [];
@@ -60,15 +62,17 @@ describe("runResponseHarness (Refactored)", () => {
     });
 
     test("yields error event on LLM failure", async () => {
-        mockLLMCaller.streamText = (async function* () {
+        mockLLMCaller.streamText.mockImplementation(async function* () {
             throw new Error("Stream Failed");
-        }) as any;
+        });
 
         const context = {
             conversationId: "test-conv",
             messages: [new HumanMessage("Hi")],
             llmCaller: mockLLMCaller,
             archivist: mockArchivist,
+            toolDefinitions: [],
+            usedTools: [],
         };
 
         const events: any[] = [];
@@ -80,3 +84,4 @@ describe("runResponseHarness (Refactored)", () => {
         assert.equal(events.find(e => e.type === "error").error, "Stream Failed");
     });
 });
+

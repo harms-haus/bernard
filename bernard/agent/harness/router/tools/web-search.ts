@@ -297,5 +297,6 @@ const webSearchToolImpl = tool(
 );
 
 export const webSearchTool = Object.assign(webSearchToolImpl, {
-  verifyConfiguration: verifySearchConfigured
+  verifyConfiguration: verifySearchConfigured,
+  interpretationPrompt: ``
 });

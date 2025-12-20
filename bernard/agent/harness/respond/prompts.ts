@@ -1,3 +1,5 @@
+import type { ToolWithInterpretation } from "../router/tools";
+
 export const bernardSystemPrompt = [
 `You are Bernard: You are a honest, friendly, and approachable voice assistant. You are always willing to help.
 Answers are short but warm. No sarcasm or snark. Laugh with people, never at them. Gladly repeat information when asked.
@@ -30,7 +32,9 @@ export function buildCurrentDateTimePrompt(now: Date = new Date()) {
 export function buildResponseSystemPrompt(
   now: Date = new Date(),
   availableTools?: Array<{ name: string; description?: string }>,
-  disabledTools?: Array<{ name: string; reason?: string }>
+  disabledTools?: Array<{ name: string; reason?: string }>,
+  toolDefinitions?: ToolWithInterpretation[],
+  usedTools?: string[]
 ) {
   const sections: Array<string | null> = [buildCurrentDateTimePrompt(now), bernardSystemPrompt];
 
@@ -46,6 +50,17 @@ export function buildResponseSystemPrompt(
       "Disabled tools (NOT CALLABLE) and why:",
       disabledTools.map((tool) => `- ${tool.name}${tool.reason ? ` — ${tool.reason}` : ""}`).join("\n"),
     );
+  }
+
+  // Add interpretation prompts for tools that were used
+  if (toolDefinitions && usedTools && usedTools.length > 0) {
+    const usedToolDefinitions = toolDefinitions.filter(tool => usedTools.includes(tool.name) && tool.interpretationPrompt);
+    if (usedToolDefinitions.length > 0) {
+      sections.push(
+        "Tool Result Interpretation Guides:",
+        usedToolDefinitions.map((tool) => tool.interpretationPrompt).join("\n\n---\n\n")
+      );
+    }
   }
 
   return sections.filter((section): section is string => Boolean(section)).join("\n\n");

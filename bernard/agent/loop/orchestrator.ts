@@ -1,7 +1,7 @@
 import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import type { AgentOutputItem } from "../streaming/types";
-import { runRouterHarness } from "../harness/router/routerHarness";
+import { runRouterHarness, getRouterToolDefinitions } from "../harness/router/routerHarness";
 import { runResponseHarness } from "../harness/respond/responseHarness";
 import type { LLMCaller } from "../llm/llm";
 import { AIMessage, BaseMessage } from "@langchain/core/messages";
@@ -9,6 +9,7 @@ import { createDelegateSequencer } from "../streaming/delegateSequencer";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
+import type { ToolWithInterpretation } from "../harness/router/tools";
 import crypto from "node:crypto";
 
 function uniqueId(prefix: string) {
@@ -36,6 +37,7 @@ export type OrchestratorResult = {
 export class StreamingOrchestrator {
     private currentLLMCallMessageId: string | undefined;
     private accumulatedDeltas: Map<string, string> = new Map();
+    private usedTools: Set<string> = new Set();
 
     constructor(
         private recordKeeper: RecordKeeper,
@@ -57,6 +59,7 @@ export class StreamingOrchestrator {
         // Reset instance fields to prevent state leakage between runs
         this.currentLLMCallMessageId = undefined;
         this.accumulatedDeltas.clear();
+        this.usedTools.clear();
 
         // 1. Identify or create conversation
         const { conversationId, isNewConversation, existingHistory } =
@@ -69,10 +72,13 @@ export class StreamingOrchestrator {
         // Sync history with deduplication and proper placement
         await recorder.syncHistory(conversationId, persistable);
 
-        // 4. Create event sequencer
+        // 4. Get tool definitions
+        const { toolDefinitions } = getRouterToolDefinitions(this.haContextManager);
+
+        // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
 
-        // 5. Run Router Harness
+        // 6. Run Router Harness
         const routerStream = (async function* (this: StreamingOrchestrator) {
             const routerHarness = runRouterHarness({
                 conversationId,
@@ -116,6 +122,8 @@ export class StreamingOrchestrator {
                 llmCaller: this.responseLLMCaller,
                 archivist,
                 skipHistory: true, // Don't fetch the historical record from the database
+                toolDefinitions,
+                usedTools: Array.from(this.usedTools),
                 ...(abortSignal ? { abortSignal } : {})
             });
 
@@ -228,6 +236,7 @@ export class StreamingOrchestrator {
                 break;
 
             case "tool_call":
+                this.usedTools.add(event.toolCall.function.name);
                 await recorder.recordToolCallStart(conversationId, {
                     toolCallId: event.toolCall.id,
                     toolName: event.toolCall.function.name,
