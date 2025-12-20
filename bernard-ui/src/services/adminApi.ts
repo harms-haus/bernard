@@ -168,17 +168,22 @@ export interface ServicesSettings {
     apiUrl: string;
   };
   weather: {
-    apiKey: string;
-    apiUrl: string;
-    forecastUrl: string;
-    historicalUrl: string;
-    units: string;
+    provider: "open-meteo" | "openweathermap" | "weatherapi";
+    apiKey?: string; // Only for openweathermap and weatherapi
+    apiUrl?: string; // Only for openweathermap and weatherapi
+    forecastUrl?: string; // Only for open-meteo
+    historicalUrl?: string; // Only for open-meteo
+    timeoutMs?: number;
   };
   geocoding: {
     url: string;
     userAgent: string;
     email: string;
     referer: string;
+  };
+  homeAssistant?: {
+    baseUrl: string;
+    accessToken?: string;
   };
 }
 

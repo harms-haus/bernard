@@ -9,6 +9,7 @@ import {
   Settings,
   MessagesSquare,
   Users as UsersIcon,
+  Server,
   X,
   Home
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { UserBadge } from './UserBadge';
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Models', href: '/admin/models', icon: Settings },
+  { name: 'Services', href: '/admin/services', icon: Server },
   { name: 'History', href: '/admin/history', icon: MessagesSquare },
   { name: 'Users', href: '/admin/users', icon: UsersIcon },
 ];

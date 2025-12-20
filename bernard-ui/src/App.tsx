@@ -13,6 +13,7 @@ import { DarkModeProvider } from './hooks/useDarkMode'
 import Dashboard from './pages/admin/Dashboard'
 import History from './pages/admin/History'
 import Models from './pages/admin/Models'
+import Services from './pages/admin/Services'
 import Users from './pages/admin/Users'
 import ConversationDetail from './pages/admin/ConversationDetail'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
@@ -63,6 +64,7 @@ function App() {
               >
                 <Route index element={<Dashboard />} />
                 <Route path="models" element={<Models />} />
+                <Route path="services" element={<Services />} />
                 <Route path="history" element={<History />} />
                 <Route path="history/:id" element={<ConversationDetail />} />
                 <Route path="users" element={<Users />} />

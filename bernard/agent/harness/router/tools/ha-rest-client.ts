@@ -50,12 +50,24 @@ export async function fetchHAEntities(
 
     const states = await response.json() as HAStateObject[];
 
-    // Transform HA state objects to HomeAssistantEntity format
-    return states.map(state => ({
+    // Filter to only commonly exposed entity domains (matching HA assistant pipeline)
+    const exposedDomains = new Set([
+      'light', 'switch', 'sensor', 'binary_sensor', 'climate', 'media_player',
+      'cover', 'lock', 'fan', 'vacuum', 'camera', 'alarm_control_panel',
+      'humidifier', 'water_heater', 'remote', 'siren'
+    ]);
+
+    const filteredStates = states.filter(state => {
+      const domain = state.entity_id.split('.')[0];
+      return exposedDomains.has(domain);
+    });
+
+    // Transform HA state objects to HomeAssistantEntity format (matching CSV structure)
+    return filteredStates.map(state => ({
       entity_id: state.entity_id,
       name: state.attributes.friendly_name || state.entity_id,
       state: state.state,
-      aliases: [] // Could be enhanced later to extract aliases from attributes
+      aliases: [] // HA REST API doesn't provide aliases, keep empty array
     }));
 
   } catch (error) {

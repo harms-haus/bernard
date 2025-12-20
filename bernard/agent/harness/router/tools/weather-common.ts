@@ -24,19 +24,30 @@ export async function getForecastApiUrl(): Promise<string> {
   const envUrl = process.env["OPEN_METEO_FORECAST_URL"];
   if (envUrl) return envUrl;
   const settings = await getSettingsWithTimeout();
-  return settings?.services.weather?.forecastUrl ?? DEFAULT_FORECAST_API_URL;
+  const weatherSvc = settings?.services.weather;
+  // Only use forecastUrl if provider is open-meteo
+  if (weatherSvc?.provider === "open-meteo" && weatherSvc.forecastUrl) {
+    return weatherSvc.forecastUrl;
+  }
+  return DEFAULT_FORECAST_API_URL;
 }
 
 export async function getHistoricalApiUrl(): Promise<string> {
   const envUrl = process.env["OPEN_METEO_HISTORICAL_URL"];
   if (envUrl) return envUrl;
   const settings = await getSettingsWithTimeout();
-  return settings?.services.weather?.historicalUrl ?? DEFAULT_HISTORICAL_API_URL;
+  const weatherSvc = settings?.services.weather;
+  // Only use historicalUrl if provider is open-meteo
+  if (weatherSvc?.provider === "open-meteo" && weatherSvc.historicalUrl) {
+    return weatherSvc.historicalUrl;
+  }
+  return DEFAULT_HISTORICAL_API_URL;
 }
 
 export async function getWeatherTimeoutMs(): Promise<number> {
   const settings = await getSettingsWithTimeout();
-  const fromSettings = settings?.services.weather?.timeoutMs;
+  const weatherSvc = settings?.services.weather;
+  const fromSettings = weatherSvc?.timeoutMs;
   if (typeof fromSettings === "number" && fromSettings > 0) return fromSettings;
   return DEFAULT_WEATHER_TIMEOUT_MS;
 }

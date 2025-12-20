@@ -7,8 +7,8 @@ import {
   formatEntitiesForDisplay
 } from "../agent/harness/router/tools/ha-entities";
 import { HomeAssistantContextManager } from "../agent/harness/router/tools/ha-context";
-import { createListHAServicesToolInstance } from "../agent/harness/router/tools/ha-list-services";
-import { createExecuteServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
+import { createListHAEntitiesToolInstance } from "../agent/harness/router/tools/ha-list-entities";
+import { createExecuteHomeAssistantServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
 
 describe("Home Assistant Simple Integration", () => {
   let scopedContextManager: HomeAssistantContextManager;
@@ -55,14 +55,14 @@ Please assist the user with controlling these devices.
     expect(scopedContextManager.getEntities()).toHaveLength(3);
 
     // 4. List services tool should work
-    const listTool = createListHAServicesToolInstance(scopedContextManager);
+    const listTool = createListHAEntitiesToolInstance(scopedContextManager);
     const listResult = await listTool.invoke({});
     expect(listResult).toContain("light.living_room");
     expect(listResult).toContain("switch.kitchen");
     expect(listResult).toContain("sensor.temperature");
 
     // 5. Execute services tool should work
-    const executeTool = createExecuteServicesToolInstance(scopedContextManager);
+    const executeTool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
     const executeResult = await executeTool.invoke({
       list: [
         {

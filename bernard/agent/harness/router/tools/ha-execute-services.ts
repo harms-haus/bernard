@@ -1,5 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import { callService } from "home-assistant-js-websocket";
 
 import type { HomeAssistantServiceCall } from "./ha-entities";
 import type { HomeAssistantContextManager } from "./ha-context";
@@ -9,22 +10,22 @@ import {
   validateEntityId,
   getDomainFromEntityId
 } from "./ha-entities";
-import { callHAService } from "./ha-rest-client";
-import type { HARestConfig } from "./ha-list-services";
+import { getHAConnection } from "./ha-websocket-client";
+import type { HARestConfig } from "./ha-list-entities";
 
 /**
- * Dependencies for the execute services tool
+ * Dependencies for the execute home assistant services tool
  */
-export type ExecuteServicesDependencies = {
+export type ExecuteHomeAssistantServicesDependencies = {
   extractContextImpl: typeof extractHomeAssistantContext;
   findEntityImpl: typeof findEntity;
   validateEntityIdImpl: typeof validateEntityId;
   getDomainFromEntityIdImpl: typeof getDomainFromEntityId;
   recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
-  callHAServiceImpl?: typeof callHAService;
+  callHAServiceWebSocketImpl?: typeof callHAServiceWebSocket;
 };
 
-const defaultDeps: ExecuteServicesDependencies = {
+const defaultDeps: ExecuteHomeAssistantServicesDependencies = {
   extractContextImpl: extractHomeAssistantContext,
   findEntityImpl: findEntity,
   validateEntityIdImpl: validateEntityId,
@@ -32,22 +33,24 @@ const defaultDeps: ExecuteServicesDependencies = {
   recordServiceCallImpl: () => {
     throw new Error("recordServiceCallImpl must be provided via dependencies");
   },
-  callHAServiceImpl: callHAService
+  callHAServiceWebSocketImpl: callHAServiceWebSocket
 };
 
 /**
- * Create the execute services tool
+ * Create the execute home assistant services tool
  */
-export function createExecuteServicesTool(
-  haContextManager: HomeAssistantContextManager,
+export function createExecuteHomeAssistantServicesTool(
+  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig,
-  overrides: Partial<ExecuteServicesDependencies> = {}
+  overrides: Partial<ExecuteHomeAssistantServicesDependencies> = {}
 ) {
-  const deps: ExecuteServicesDependencies = {
+  const deps: ExecuteHomeAssistantServicesDependencies = {
     ...defaultDeps,
     ...overrides,
-    recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => {
+    recordServiceCallImpl: haContextManager ? (serviceCall: HomeAssistantServiceCall) => {
       haContextManager.recordServiceCall(serviceCall);
+    } : () => {
+      throw new Error("Home Assistant context manager not available for recording service calls");
     }
   };
   
@@ -76,8 +79,8 @@ export function createExecuteServicesTool(
       return results.join('\n\n');
     },
     {
-      name: "execute_services",
-      description: "Execute services of devices in Home Assistant. Returns true immediately but records service calls for Home Assistant to manage.",
+      name: "execute_home_assistant_services",
+      description: "Execute services on Home Assistant entities to control your smart home devices. Common tasks include turning lights on/off, adjusting light brightness and color, playing/pausing media players, and controlling other smart home entities. Service calls are scheduled for execution by Home Assistant.",
       schema: z.object({
         list: z.array(
           z.object({
@@ -97,12 +100,31 @@ export function createExecuteServicesTool(
 }
 
 /**
+ * Call a Home Assistant service via WebSocket API
+ */
+async function callHAServiceWebSocket(
+  baseUrl: string,
+  accessToken: string,
+  domain: string,
+  service: string,
+  serviceData: Record<string, unknown>
+): Promise<void> {
+  try {
+    const connection = await getHAConnection(baseUrl, accessToken);
+    await callService(connection, domain, service, serviceData);
+  } catch (error) {
+    console.error('[HA WebSocket] Failed to call service:', error);
+    throw error;
+  }
+}
+
+/**
  * Execute a single service call
  */
 async function executeSingleServiceCall(
   serviceCall: { domain: string; service: string; service_data: { entity_id: string | string[] } },
-  deps: ExecuteServicesDependencies,
-  haContextManager: HomeAssistantContextManager,
+  deps: ExecuteHomeAssistantServicesDependencies,
+  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig
 ): Promise<string> {
   const { domain, service, service_data } = serviceCall;
@@ -131,9 +153,18 @@ async function executeSingleServiceCall(
     }
   }
   
-  // Check if Home Assistant context is available
-  if (haContextManager.hasContext()) {
-    // Primary behavior: Record the service call for Home Assistant to process
+  // Priority logic: Prefer WebSocket API over tool calls
+  if (restConfig && deps.callHAServiceWebSocketImpl) {
+    // Primary behavior: Execute directly via WebSocket API
+    try {
+      await deps.callHAServiceWebSocketImpl(restConfig.baseUrl, restConfig.accessToken || "", domain, service, service_data);
+      return `Service ${domain}.${service} executed successfully on entities: ${entityIdsArray.join(', ')}`;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to execute Home Assistant service via WebSocket: ${errorMessage}`);
+    }
+  } else if (haContextManager?.hasContext()) {
+    // Fallback behavior: Record the service call for Home Assistant to process
     const haServiceCall: HomeAssistantServiceCall = {
       domain,
       service,
@@ -145,25 +176,16 @@ async function executeSingleServiceCall(
     await deps.recordServiceCallImpl(haServiceCall);
 
     return `Service ${domain}.${service} scheduled for execution on entities: ${entityIdsArray.join(', ')}`;
-  } else if (restConfig && deps.callHAServiceImpl) {
-    // Fallback behavior: Call REST API directly
-    try {
-      await deps.callHAServiceImpl(restConfig.baseUrl, restConfig.accessToken || "", domain, service, service_data);
-      return `Service ${domain}.${service} executed successfully on entities: ${entityIdsArray.join(', ')}`;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to execute Home Assistant service: ${errorMessage}`);
-    }
   } else {
-    throw new Error("Home Assistant context is not available and REST API configuration is missing. Please provide Home Assistant entity information in the system prompt or configure REST API settings.");
+    throw new Error("Home Assistant WebSocket configuration is missing and context is not available. Please configure Home Assistant WebSocket API settings or provide Home Assistant entity information in the system prompt.");
   }
 }
 
 /**
- * The execute services tool instance factory
+ * The execute home assistant services tool instance factory
  */
-export function createExecuteServicesToolInstance(haContextManager: HomeAssistantContextManager, restConfig?: HARestConfig) {
-  return createExecuteServicesTool(haContextManager, restConfig);
+export function createExecuteHomeAssistantServicesToolInstance(haContextManager?: HomeAssistantContextManager, restConfig?: HARestConfig) {
+  return createExecuteHomeAssistantServicesTool(haContextManager, restConfig);
 }
 
 /**

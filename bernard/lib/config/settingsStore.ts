@@ -56,13 +56,32 @@ const SearchServiceSchema = z.object({
   apiUrl: z.string().url().optional()
 });
 
-const WeatherServiceSchema = z.object({
-  apiKey: z.string().optional(),
-  apiUrl: z.string().url().optional(),
-  forecastUrl: z.string().url().optional(),
-  historicalUrl: z.string().url().optional(),
-  units: z.enum(["metric", "imperial"]).optional(),
-  timeoutMs: z.number().int().positive().optional()
+const WeatherServiceSchema = z.discriminatedUnion("provider", [
+  // Open-Meteo: Free, no API key required
+  z.object({
+    provider: z.literal("open-meteo"),
+    forecastUrl: z.string().url().optional(),
+    historicalUrl: z.string().url().optional(),
+    timeoutMs: z.number().int().positive().optional()
+  }),
+  // OpenWeatherMap: Requires API key
+  z.object({
+    provider: z.literal("openweathermap"),
+    apiKey: z.string().min(1),
+    apiUrl: z.string().url(),
+    timeoutMs: z.number().int().positive().optional()
+  }),
+  // WeatherAPI.com: Requires API key
+  z.object({
+    provider: z.literal("weatherapi"),
+    apiKey: z.string().min(1),
+    apiUrl: z.string().url(),
+    timeoutMs: z.number().int().positive().optional()
+  })
+]).default({
+  provider: "open-meteo",
+  forecastUrl: "https://api.open-meteo.com/v1/forecast",
+  historicalUrl: "https://archive-api.open-meteo.com/v1/archive"
 });
 
 const GeocodingServiceSchema = z.object({
@@ -238,10 +257,10 @@ export function defaultServices(): ServicesSettings {
       apiUrl: process.env["SEARCH_API_URL"]
     },
     weather: {
-      apiKey: process.env["WEATHER_API_KEY"],
-      apiUrl: process.env["WEATHER_API_URL"],
-      forecastUrl: process.env["OPEN_METEO_FORECAST_URL"],
-      historicalUrl: process.env["OPEN_METEO_HISTORICAL_URL"]
+      provider: "open-meteo",
+      forecastUrl: process.env["OPEN_METEO_FORECAST_URL"] || "https://api.open-meteo.com/v1/forecast",
+      historicalUrl: process.env["OPEN_METEO_HISTORICAL_URL"] || "https://archive-api.open-meteo.com/v1/archive",
+      timeoutMs: process.env["WEATHER_TIMEOUT_MS"] ? parseInt(process.env["WEATHER_TIMEOUT_MS"]) : undefined
     },
     geocoding: {
       url: process.env["NOMINATIM_URL"],

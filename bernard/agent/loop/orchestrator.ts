@@ -10,7 +10,7 @@ import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
 import type { ToolWithInterpretation } from "../harness/router/tools";
-import type { HARestConfig } from "../harness/router/tools/ha-list-services";
+import type { HARestConfig } from "../harness/router/tools/ha-list-entities";
 import { getSettings } from "@/lib/config/settingsCache";
 import crypto from "node:crypto";
 
@@ -132,7 +132,7 @@ export class StreamingOrchestrator {
                 messages: persistable, // Pass the full incoming context as the "history"
                 llmCaller: this.responseLLMCaller,
                 archivist,
-                skipHistory: true, // Don't fetch the historical record from the database
+                skipHistory: false, // Fetch the historical record including tool calls/results from this turn
                 toolDefinitions,
                 usedTools: Array.from(this.usedTools),
                 ...(abortSignal ? { abortSignal } : {})
@@ -293,5 +293,23 @@ export class StreamingOrchestrator {
         }
 
         return false;
+    }
+
+    /**
+     * Cleanup resources when shutting down the orchestrator
+     */
+    async shutdown(): Promise<void> {
+        console.log('[StreamingOrchestrator] Shutting down...');
+
+        // Close all Home Assistant WebSocket connections
+        try {
+            const { closeAllHAConnections } = await import('../harness/router/tools/ha-websocket-client');
+            closeAllHAConnections();
+            console.log('[StreamingOrchestrator] Closed all HA WebSocket connections');
+        } catch (error) {
+            console.warn('[StreamingOrchestrator] Error closing HA connections:', error);
+        }
+
+        // Note: Other cleanup logic (LLM callers, record keepers, etc.) should be handled by their respective owners
     }
 }

@@ -5,8 +5,9 @@ import { enhancedGeocodeSearchTool } from "./geocode-enhanced";
 import { memorizeTool } from "./memorize";
 import { webSearchTool } from "./web-search";
 import { getWeatherDataTool } from "./get-weather-data";
-import { createListHAServicesToolInstance, type HARestConfig } from "./ha-list-services";
-import { createExecuteServicesToolInstance } from "./ha-execute-services";
+import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-entities";
+import { createExecuteHomeAssistantServicesToolInstance } from "./ha-execute-services";
+import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
 import type { HomeAssistantContextManager } from "./ha-context";
 
 /**
@@ -21,7 +22,7 @@ export type ToolWithInterpretation = StructuredToolInterface & {
  * This is a no-op tool that the LLM calls to indicate it's done with tool calling.
  */
 const respondTool = tool(
-  async () => {
+  () => {
     return { status: "ready_to_respond" };
   },
   {
@@ -40,10 +41,16 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     respondTool, // Add respond tool at the end
   ];
 
-  const haTools: ToolWithInterpretation[] = haContextManager ? [
-    createListHAServicesToolInstance(haContextManager, haRestConfig),
-    createExecuteServicesToolInstance(haContextManager, haRestConfig)
-  ] : [];
+  const haTools: ToolWithInterpretation[] = [];
+
+  if (haContextManager || haRestConfig) {
+    haTools.push(createListHAEntitiesToolInstance(haContextManager, haRestConfig));
+    haTools.push(createExecuteHomeAssistantServicesToolInstance(haContextManager, haRestConfig));
+  }
+
+  if (haRestConfig) {
+    haTools.push(createGetHistoricalStateToolInstance(haRestConfig));
+  }
 
   return [...baseTools, ...haTools];
 }
@@ -53,8 +60,9 @@ export {
   memorizeTool,
   webSearchTool,
   getWeatherDataTool,
-  createListHAServicesToolInstance,
-  createExecuteServicesToolInstance
+  createListHAEntitiesToolInstance,
+  createExecuteHomeAssistantServicesToolInstance,
+  createGetHistoricalStateToolInstance
 };
 
 

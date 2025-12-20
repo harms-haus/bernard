@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { tool } from "@langchain/core/tools";
 
 import {
@@ -9,8 +9,9 @@ import {
   getDomainFromEntityId,
   formatEntitiesForDisplay
 } from "../agent/harness/router/tools/ha-entities";
-import { createListHAServicesToolInstance } from "../agent/harness/router/tools/ha-list-services";
-import { createExecuteServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
+import { createListHAEntitiesToolInstance } from "../agent/harness/router/tools/ha-list-entities";
+import { createExecuteHomeAssistantServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
+import { createGetHistoricalStateToolInstance } from "../agent/harness/router/tools/ha-historical-state";
 import { HomeAssistantContextManager } from "../agent/harness/router/tools/ha-context";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 
@@ -193,11 +194,32 @@ light.living_room,Living Room Light,on,main light
   });
 });
 
+// Mock the WebSocket client
+vi.mock("../agent/harness/router/tools/ha-websocket-client", () => ({
+  getHAConnection: vi.fn(),
+  closeHAConnection: vi.fn(),
+  closeAllHAConnections: vi.fn(),
+  getHAConnectionStats: vi.fn()
+}));
+
+// Mock the home-assistant-js-websocket library
+vi.mock("home-assistant-js-websocket", () => ({
+  getStates: vi.fn(),
+  callService: vi.fn(),
+  createLongLivedTokenAuth: vi.fn(),
+  createConnection: vi.fn()
+}));
+
 describe("Home Assistant Tools", () => {
   let scopedContextManager: HomeAssistantContextManager;
 
   beforeEach(() => {
     scopedContextManager = new HomeAssistantContextManager();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   describe("listHAServicesTool", () => {
@@ -216,7 +238,7 @@ switch.kitchen,Kitchen Switch,off,light switch
         })
       ]);
 
-      const tool = createListHAServicesToolInstance(scopedContextManager);
+      const tool = createListHAEntitiesToolInstance(scopedContextManager);
       const result = await tool.invoke({});
 
       expect(result).toContain("Available Home Assistant entities:");
@@ -225,16 +247,66 @@ switch.kitchen,Kitchen Switch,off,light switch
     });
 
     it("should handle no entities available", async () => {
-      const tool = createListHAServicesToolInstance(scopedContextManager);
+      const tool = createListHAEntitiesToolInstance(scopedContextManager);
       const result = await tool.invoke({});
 
-      expect(result).toBe("No Home Assistant entities are currently available. Please ensure the system prompt contains Home Assistant entity information.");
+      expect(result).toBe("No Home Assistant entities are currently available. Please ensure the system prompt contains Home Assistant entity information or configure Home Assistant WebSocket API settings.");
     });
   });
 
   describe("executeServicesTool", () => {
-    it("should execute a service call", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
+    it("should execute a service call via WebSocket API when configured", async () => {
+      // Mock WebSocket connection and callService
+      const mockConnection = { connected: true };
+      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+      const { callService } = await import("home-assistant-js-websocket");
+
+      vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
+      vi.mocked(callService).mockResolvedValue(undefined);
+
+      const haRestConfig = {
+        baseUrl: "http://localhost:8123",
+        accessToken: "test-token"
+      };
+
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager, haRestConfig);
+      const result = await tool.invoke({
+        list: [
+          {
+            domain: "light",
+            service: "turn_on",
+            service_data: {
+              entity_id: "light.living_room"
+            }
+          }
+        ]
+      });
+
+      expect(result).toContain("Service light.turn_on executed successfully");
+      expect(result).toContain("light.living_room");
+      expect(callService).toHaveBeenCalledWith(
+        mockConnection,
+        "light",
+        "turn_on",
+        { entity_id: "light.living_room" }
+      );
+    });
+
+    it("should fallback to recording service calls when WebSocket not configured", async () => {
+      // Set up context with entities
+      scopedContextManager.updateFromMessages([
+        new SystemMessage({
+          content: `
+Available Devices:
+\`\`\`csv
+entity_id,name,state,aliases
+light.living_room,Living Room Light,on,main light
+\`\`\`
+          `
+        })
+      ]);
+
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
       const result = await tool.invoke({
         list: [
           {
@@ -249,10 +321,21 @@ switch.kitchen,Kitchen Switch,off,light switch
 
       expect(result).toContain("Service light.turn_on scheduled for execution");
       expect(result).toContain("light.living_room");
+
+      // Verify service call was recorded
+      const recordedCalls = scopedContextManager.getRecordedServiceCalls();
+      expect(recordedCalls).toHaveLength(1);
+      expect(recordedCalls[0]).toEqual({
+        domain: "light",
+        service: "turn_on",
+        service_data: {
+          entity_id: "light.living_room"
+        }
+      });
     });
 
     it("should validate entity ID format", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
       
       await expect(
         tool.invoke({
@@ -270,7 +353,7 @@ switch.kitchen,Kitchen Switch,off,light switch
     });
 
     it("should validate domain match", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
       
       await expect(
         tool.invoke({
@@ -288,7 +371,21 @@ switch.kitchen,Kitchen Switch,off,light switch
     });
 
     it("should handle multiple service calls", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
+      // Set up context with entities
+      scopedContextManager.updateFromMessages([
+        new SystemMessage({
+          content: `
+Available Devices:
+\`\`\`csv
+entity_id,name,state,aliases
+light.living_room,Living Room Light,on,main light
+switch.kitchen,Kitchen Switch,off,light switch
+\`\`\`
+          `
+        })
+      ]);
+
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
       const result = await tool.invoke({
         list: [
           {
@@ -313,7 +410,21 @@ switch.kitchen,Kitchen Switch,off,light switch
     });
 
     it("should handle array of entity IDs", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
+      // Set up context with entities
+      scopedContextManager.updateFromMessages([
+        new SystemMessage({
+          content: `
+Available Devices:
+\`\`\`csv
+entity_id,name,state,aliases
+light.living_room,Living Room Light,on,main light
+light.kitchen,Kitchen Light,off,kitchen light
+\`\`\`
+          `
+        })
+      ]);
+
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
       const result = await tool.invoke({
         list: [
           {
@@ -332,8 +443,21 @@ switch.kitchen,Kitchen Switch,off,light switch
 
   describe("Service Call Recording", () => {
     it("should record service calls in context manager", async () => {
-      const tool = createExecuteServicesToolInstance(scopedContextManager);
-      
+      // Set up context with entities
+      scopedContextManager.updateFromMessages([
+        new SystemMessage({
+          content: `
+Available Devices:
+\`\`\`csv
+entity_id,name,state,aliases
+light.living_room,Living Room Light,on,main light
+\`\`\`
+          `
+        })
+      ]);
+
+      const tool = createExecuteHomeAssistantServicesToolInstance(scopedContextManager);
+
       await tool.invoke({
         list: [
           {
@@ -370,6 +494,93 @@ switch.kitchen,Kitchen Switch,off,light switch
       
       scopedContextManager.clearServiceCalls();
       expect(scopedContextManager.getRecordedServiceCalls()).toHaveLength(0);
+    });
+  });
+
+  describe("getHistoricalStateTool", () => {
+    it("should fetch historical state data", async () => {
+      // Mock WebSocket connection and sendMessagePromise
+      const mockConnection = {
+        connected: true,
+        sendMessagePromise: vi.fn()
+      };
+      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+
+      vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
+      mockConnection.sendMessagePromise.mockResolvedValue({
+        'sensor.temperature': [
+          {
+            entity_id: 'sensor.temperature',
+            state: '22.5',
+            attributes: { unit_of_measurement: '°C' },
+            last_changed: '2024-01-01T12:00:00Z',
+            last_updated: '2024-01-01T12:00:00Z'
+          }
+        ]
+      });
+
+      const haRestConfig = {
+        baseUrl: "http://localhost:8123",
+        accessToken: "test-token"
+      };
+
+      const tool = createGetHistoricalStateToolInstance(haRestConfig);
+      const result = await tool.invoke({
+        entity_ids: ["sensor.temperature"],
+        start_time: "2024-01-01T00:00:00Z",
+        end_time: "2024-01-02T00:00:00Z"
+      });
+
+      expect(result).toContain("Historical data for sensor.temperature");
+      expect(result).toContain("22.5");
+      expect(result).toContain("2024-01-01T12:00:00.000Z");
+      expect(mockConnection.sendMessagePromise).toHaveBeenCalledWith({
+        type: 'history/history_during_period',
+        start_time: expect.any(String),
+        end_time: expect.any(String),
+        entity_ids: ["sensor.temperature"],
+        include_start_time_state: true,
+        significant_changes_only: false
+      });
+    });
+
+    it("should handle no historical data", async () => {
+      const mockConnection = {
+        connected: true,
+        sendMessagePromise: vi.fn()
+      };
+      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+
+      vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
+      mockConnection.sendMessagePromise.mockResolvedValue({
+        'sensor.temperature': []
+      });
+
+      const haRestConfig = {
+        baseUrl: "http://localhost:8123",
+        accessToken: "test-token"
+      };
+
+      const tool = createGetHistoricalStateToolInstance(haRestConfig);
+      const result = await tool.invoke({
+        entity_ids: ["sensor.temperature"],
+        start_time: "2024-01-01T00:00:00Z",
+        end_time: "2024-01-02T00:00:00Z"
+      });
+
+      expect(result).toContain("Historical data for sensor.temperature");
+      expect(result).toContain("No state changes found in the specified time range");
+    });
+
+    it("should require WebSocket configuration", async () => {
+      const tool = createGetHistoricalStateToolInstance();
+      const result = await tool.invoke({
+        entity_ids: ["sensor.temperature"],
+        start_time: "2024-01-01T00:00:00Z",
+        end_time: "2024-01-02T00:00:00Z"
+      });
+
+      expect(result).toContain("Home Assistant WebSocket configuration is required");
     });
   });
 });

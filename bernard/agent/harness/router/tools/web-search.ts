@@ -110,23 +110,23 @@ export function resolveSearXNGConfigFromEnv(opts: { allowMissing?: boolean } = {
  */
 async function resolveSearchConfigFromSettings(): Promise<SearchConfigResult> {
   const settings = await fetchSettingsWithTimeout(SETTINGS_TIMEOUT_MS);
-  
-  // Try SearXNG settings first
-  const searxngSvc = settings?.services?.searxng;
-  if (searxngSvc?.apiUrl) {
-    const urlResult = normalizeApiUrl(searxngSvc.apiUrl);
+
+  // Try search settings (which supports SearXNG)
+  const searchSvc = settings?.services?.search;
+  if (searchSvc?.apiUrl) {
+    const urlResult = normalizeApiUrl(searchSvc.apiUrl);
     if (!urlResult.ok) return urlResult;
-    
-    if (searxngSvc.apiKey) {
-      const keyResult = normalizeApiKey(searxngSvc.apiKey);
+
+    if (searchSvc.apiKey) {
+      const keyResult = normalizeApiKey(searchSvc.apiKey);
       if (!keyResult.ok) return keyResult;
       return { ok: true, apiKey: keyResult.apiKey, apiUrl: urlResult.apiUrl, provider: "searxng" };
     }
-    
+
     // SearXNG without API key
     return { ok: true, apiKey: "", apiUrl: urlResult.apiUrl, provider: "searxng" };
   }
-  
+
   return { ok: false, reason: MISSING_KEY_REASON };
 }
 

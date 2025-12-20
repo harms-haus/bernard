@@ -28,6 +28,7 @@
     "@langchain/openai": "^1.2.0",
     "@langchain/redis": "^1.0.1",
     "bullmq": "^5.66.0",
+    "home-assistant-js-websocket": "^9.6.0",
     "ioredis": "^5.8.2",
     "jsonrepair": "^3.13.1",
     "next": "^16.0.7",

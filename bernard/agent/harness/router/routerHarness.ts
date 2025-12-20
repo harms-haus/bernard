@@ -7,7 +7,7 @@ import { ChatOpenAILLMCaller } from "../../llm/chatOpenAI";
 import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
 import type { HomeAssistantContextManager } from "./tools/ha-context";
-import type { HARestConfig } from "./tools/ha-list-services";
+import type { HARestConfig } from "./tools/ha-list-entities";
 import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
 import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";

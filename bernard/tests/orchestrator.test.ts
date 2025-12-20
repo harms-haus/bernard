@@ -23,6 +23,7 @@ const mockRecorder = {
     recordLLMCallComplete: vi.fn(),
     recordToolCallStart: vi.fn(),
     recordToolCallComplete: vi.fn(),
+    syncHistory: vi.fn(),
 };
 
 // Mock Harnesses
@@ -30,7 +31,8 @@ vi.mock("../agent/harness/router/routerHarness", () => ({
     runRouterHarness: vi.fn().mockImplementation(async function* () {
         yield { type: "llm_call", context: [] };
         yield { type: "llm_call_complete", result: "router Done" };
-    })
+    }),
+    getRouterToolDefinitions: vi.fn().mockReturnValue({ toolDefinitions: [] })
 }));
 
 vi.mock("../agent/harness/respond/responseHarness", () => ({
@@ -110,4 +112,5 @@ describe("StreamingOrchestrator", () => {
         assert(!events.some(e => e.type === "llm_call"));
         assert(events.some(e => e.type === "delta"));
     });
+
 });
