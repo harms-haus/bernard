@@ -6,11 +6,13 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Send, Loader2, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard } from 'lucide-react';
+import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { UserMessage } from './chat-messages/UserMessage';
 import { AssistantMessage } from './chat-messages/AssistantMessage';
 import { ToolUseMessage } from './chat-messages/ToolUseMessage';
+import { LLMCallMessage } from './chat-messages/LLMCallMessage';
+import { ToolCallMessage } from './chat-messages/ToolCallMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
@@ -24,10 +26,20 @@ interface ToolCall {
   };
 }
 
+interface TraceEvent {
+  id: string;
+  type: 'llm_call' | 'tool_call';
+  data: any;
+  timestamp: Date;
+  status: 'loading' | 'completed';
+  result?: any;
+}
+
 export function ChatInterface() {
   const { state } = useAuth();
   const { isDarkMode } = useDarkMode();
   const [messages, setMessages] = React.useState<MessageRecord[]>([]);
+  const [traceEvents, setTraceEvents] = React.useState<TraceEvent[]>([]);
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
@@ -89,17 +101,7 @@ export function ChatInterface() {
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let assistantMessage: MessageRecord = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: '',
-        createdAt: new Date().toISOString()
-      };
-
-      // Store current assistant message ID for cleanup
-      currentAssistantIdRef.current = assistantMessage.id;
-
-      setMessages(prev => [...prev, assistantMessage]);
+      let assistantMessage: MessageRecord | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -124,16 +126,64 @@ export function ChatInterface() {
 
           try {
             const chunk = JSON.parse(payload);
-            
-            // Handle tool calls
+
+            // Handle Bernard trace chunks (llm_call, tool_call events)
+            if (chunk.bernard && chunk.bernard.type === 'trace') {
+              const traceData = chunk.bernard.data;
+
+              if (traceData.type === 'llm_call' || traceData.type === 'tool_call') {
+                // Add new call event with loading status
+                const traceEvent: TraceEvent = {
+                  id: `trace-${Date.now()}-${Math.random()}`,
+                  type: traceData.type,
+                  data: traceData,
+                  timestamp: new Date(),
+                  status: 'loading'
+                };
+
+                setTraceEvents(prev => [...prev, traceEvent]);
+              } else if (traceData.type === 'llm_call_complete') {
+                // Update the most recent loading llm_call event to completed
+                setTraceEvents(prev => {
+                  const events = [...prev];
+                  // Find the last (most recent) loading llm_call event
+                  for (let i = events.length - 1; i >= 0; i--) {
+                    if (events[i].type === 'llm_call' && events[i].status === 'loading') {
+                      events[i] = {
+                        ...events[i],
+                        status: 'completed' as const,
+                        result: traceData.result
+                      };
+                      break;
+                    }
+                  }
+                  return events;
+                });
+              } else if (traceData.type === 'tool_call_complete') {
+                // Update matching tool_call event to completed
+                setTraceEvents(prev => prev.map(event => {
+                  if (event.type === 'tool_call' && event.status === 'loading' &&
+                      event.data.toolCall.id === traceData.toolCall.id) {
+                    return {
+                      ...event,
+                      status: 'completed' as const,
+                      result: traceData.result
+                    };
+                  }
+                  return event;
+                }));
+              }
+            }
+
+            // Handle OpenAI-compatible tool calls (legacy format)
             if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta && chunk.choices[0].delta.tool_calls) {
               const toolCalls: ToolCall[] = chunk.choices[0].delta.tool_calls;
-              
+
               for (const toolCall of toolCalls) {
                 try {
                   // Handle streaming tool call arguments
                   const toolArgs = parseToolCallArguments(toolCall.function.arguments, toolCall.id);
-                  
+
                   // Only create message if we have valid arguments
                   if (toolArgs !== null) {
                     // Create tool use message
@@ -148,7 +198,7 @@ export function ChatInterface() {
                       },
                       createdAt: new Date().toISOString()
                     };
-                    
+
                     // Insert tool message above the thinking message (if streaming)
                     setMessages(prev => {
                       if (isStreaming) {
@@ -169,31 +219,50 @@ export function ChatInterface() {
               }
             }
             
-            // Handle regular text content
+            // Handle regular text content and role deltas
             const text = extractTextFromChunk(chunk);
-            if (text) {
-              assistantMessage = {
-                ...assistantMessage,
-                content: assistantMessage.content + text
-              };
-              
-              setMessages(prev => {
-                // Update the assistant message in place
-                const updatedMessages = prev.map(msg =>
-                  msg.id === assistantMessage.id ? assistantMessage : msg
-                );
-                
-                // If streaming and assistant message is not at the end, move it to the end
-                if (isStreaming && updatedMessages.length > 0 &&
-                    updatedMessages[updatedMessages.length - 1].id !== assistantMessage.id) {
-                  // Remove the assistant message from its current position
-                  const filteredMessages = updatedMessages.filter(msg => msg.id !== assistantMessage.id);
-                  // Add it back at the end
-                  return [...filteredMessages, assistantMessage];
-                }
-                
-                return updatedMessages;
-              });
+            const hasRole = chunk.choices?.[0]?.delta?.role === 'assistant';
+
+            if (text || hasRole) {
+              // Create assistant message if it doesn't exist yet
+              if (!assistantMessage) {
+                assistantMessage = {
+                  id: `assistant-${Date.now()}`,
+                  role: 'assistant',
+                  content: text || '',
+                  createdAt: new Date().toISOString()
+                };
+                // Store current assistant message ID for cleanup
+                currentAssistantIdRef.current = assistantMessage.id;
+                setMessages(prev => [...prev, assistantMessage!]);
+              }
+
+              // Update content if we have text
+              if (text && assistantMessage) {
+                const updatedMessage: MessageRecord = {
+                  ...assistantMessage,
+                  content: assistantMessage.content + text
+                };
+                assistantMessage = updatedMessage;
+
+                setMessages(prev => {
+                  // Update the assistant message in place
+                  const updatedMessages = prev.map(msg =>
+                    msg.id === updatedMessage.id ? updatedMessage : msg
+                  );
+
+                  // If streaming and assistant message is not at the end, move it to the end
+                  if (isStreaming && updatedMessages.length > 0 &&
+                      updatedMessages[updatedMessages.length - 1].id !== updatedMessage.id) {
+                    // Remove the assistant message from its current position
+                    const filteredMessages = updatedMessages.filter(msg => msg.id !== updatedMessage.id);
+                    // Add it back at the end
+                    return [...filteredMessages, updatedMessage];
+                  }
+
+                  return updatedMessages;
+                });
+              }
             }
           } catch {
             // Ignore malformed chunks
@@ -208,7 +277,7 @@ export function ChatInterface() {
     } finally {
       // Clear tool call buffers when stream ends
       toolCallBufferRef.current = {};
-      
+
       // Move assistant message to the end after all tool messages
       const assistantId = currentAssistantIdRef.current;
       if (assistantId) {
@@ -222,7 +291,7 @@ export function ChatInterface() {
         });
         currentAssistantIdRef.current = null;
       }
-      
+
       setIsStreaming(false);
     }
   };
@@ -320,7 +389,25 @@ export function ChatInterface() {
 
   const handleNewChat = () => {
     setMessages([]);
+    setTraceEvents([]);
     setCurrentConversationId(null);
+  };
+
+  // Calculate how many tool calls were initiated by each LLM call
+  const getToolCallCountForLLMCall = (llmCallIndex: number) => {
+    let count = 0;
+    // Count tool_call events after this LLM call until the next llm_call
+    for (let i = llmCallIndex + 1; i < traceEvents.length; i++) {
+      const event = traceEvents[i];
+      if (event.type === 'llm_call') {
+        // Stop when we reach the next LLM call
+        break;
+      }
+      if (event.type === 'tool_call') {
+        count++;
+      }
+    }
+    return count;
   };
 
   const handlePrivateChat = () => {
@@ -485,47 +572,95 @@ export function ChatInterface() {
               </div>
             ) : (
               <div className="space-y-2">
-                {messages.map((message) => (
-                  <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    {message.role === 'assistant' && (
-                      <div className="w-8 flex justify-center">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>B</AvatarFallback>
-                        </Avatar>
-                      </div>
-                    )}
-                    {message.role === 'user' ? (
-                      <UserMessage
-                        content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
-                      />
-                    ) : message.role === 'tool' ? (
-                      <ToolUseMessage
-                        toolName={typeof message.content === 'object' && message.content ? (message.content as any).toolName || '' : ''}
-                        arguments={typeof message.content === 'object' && message.content ? (message.content as any).arguments || {} : {}}
-                        status={typeof message.content === 'object' && message.content ? (message.content as any).status || 'in-progress' : 'in-progress'}
-                        response={typeof message.content === 'object' && message.content ? (message.content as any).response || '' : ''}
-                        error={typeof message.content === 'object' && message.content ? (message.content as any).error || '' : ''}
-                      />
-                    ) : (
-                      <AssistantMessage
-                        content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
-                        toolsUsed={[]}
-                        showToolDetails={showToolDetails[message.id]}
-                        onCopy={() => copyToClipboard(typeof message.content === 'string' ? message.content : JSON.stringify(message.content))}
-                        onToggleToolDetails={() => toggleToolDetails(message.id)}
-                      />
-                    )}
-                    {message.role === 'user' && (
-                      <div className="w-8 flex justify-center">
-                        <Avatar className="h-8 w-8 bg-blue-500">
-                          <AvatarFallback className="text-white">
-                            {state.user ? state.user.displayName.charAt(0).toUpperCase() : 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {/* Render messages and trace events in chronological order */}
+                {(() => {
+                  // Combine messages and trace events, sorted by timestamp
+                  const allItems = [
+                    ...messages.map(msg => ({ type: 'message' as const, item: msg, timestamp: new Date(msg.createdAt) })),
+                    ...traceEvents.map(event => ({ type: 'trace' as const, item: event, timestamp: event.timestamp }))
+                  ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+                  return allItems.map(({ type, item }) => {
+                    if (type === 'message') {
+                      const message = item as MessageRecord;
+                      return (
+                        <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {message.role === 'assistant' && (
+                            <div className="w-8 flex justify-center">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>B</AvatarFallback>
+                              </Avatar>
+                            </div>
+                          )}
+                          {message.role === 'user' ? (
+                            <UserMessage
+                              content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
+                            />
+                          ) : message.role === 'tool' ? (
+                            <ToolUseMessage
+                              toolName={typeof message.content === 'object' && message.content ? (message.content as any).toolName || '' : ''}
+                              arguments={typeof message.content === 'object' && message.content ? (message.content as any).arguments || {} : {}}
+                              status={typeof message.content === 'object' && message.content ? (message.content as any).status || 'in-progress' : 'in-progress'}
+                              response={typeof message.content === 'object' && message.content ? (message.content as any).response || '' : ''}
+                              error={typeof message.content === 'object' && message.content ? (message.content as any).error || '' : ''}
+                            />
+                          ) : (
+                            <AssistantMessage
+                              content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
+                              toolsUsed={[]}
+                              showToolDetails={showToolDetails[message.id]}
+                              onCopy={() => copyToClipboard(typeof message.content === 'string' ? message.content : JSON.stringify(message.content))}
+                              onToggleToolDetails={() => toggleToolDetails(message.id)}
+                            />
+                          )}
+                          {message.role === 'user' && (
+                            <div className="w-8 flex justify-center">
+                              <Avatar className="h-8 w-8 bg-blue-500">
+                                <AvatarFallback className="text-white">
+                                  {state.user ? state.user.displayName.charAt(0).toUpperCase() : 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      const traceEvent = item as TraceEvent;
+                      const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
+                      return (
+                        <div key={traceEvent.id} className="flex justify-start">
+                          <div className="w-8 flex justify-center">
+                            <Avatar className="h-6 w-6 mt-1">
+                              <AvatarFallback className="text-xs">T</AvatarFallback>
+                            </Avatar>
+                          </div>
+                          <div className="flex-1">
+                            {traceEvent.type === 'llm_call' ? (
+                              <LLMCallMessage
+                                model={traceEvent.data?.model}
+                                context={traceEvent.data?.context || []}
+                                tools={traceEvent.data?.tools}
+                                toolCallCount={getToolCallCountForLLMCall(traceEventIndex)}
+                                status={traceEvent.status}
+                                result={traceEvent.result}
+                              />
+                            ) : traceEvent.type === 'tool_call' ? (
+                              <ToolCallMessage
+                                toolCall={traceEvent.data?.toolCall || { id: '', function: { name: 'Unknown', arguments: '{}' } }}
+                                status={traceEvent.status}
+                                result={traceEvent.result}
+                              />
+                            ) : (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {traceEvent.type}: {JSON.stringify(traceEvent.data)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                  });
+                })()}
                 {isStreaming && (
                   <div className="flex justify-start">
                     <div className="w-8 flex justify-center">
