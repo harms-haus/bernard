@@ -9,6 +9,7 @@ import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
 import { createToggleLightToolInstance } from "./ha-toggle-light";
 import { wikipediaSearchTool, wikipediaEntryTool } from "./wikipedia";
 import type { HomeAssistantContextManager } from "./ha-context";
+import { createPlayPlexMediaToolInstance, type PlexConfig } from "./plex-play-media";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation
@@ -32,7 +33,7 @@ const respondTool = tool(
   }
 );
 
-export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig): ToolWithInterpretation[] {
+export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig, plexConfig?: PlexConfig): ToolWithInterpretation[] {
   const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
     // memorizeTool,
@@ -54,6 +55,10 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     haTools.push(createGetHistoricalStateToolInstance(haRestConfig));
   }
 
+  if (plexConfig) {
+    haTools.push(createPlayPlexMediaToolInstance(haRestConfig, plexConfig));
+  }
+
   return [...baseTools, ...haTools];
 }
 
@@ -65,7 +70,8 @@ export {
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,
-  createToggleLightToolInstance
+  createToggleLightToolInstance,
+  createPlayPlexMediaToolInstance
 };
 
 

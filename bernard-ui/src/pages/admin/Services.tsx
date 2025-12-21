@@ -74,6 +74,17 @@ export default function Services() {
     });
   };
 
+  const updatePlexSettings = (plexUpdates: Partial<NonNullable<ServicesSettings['plex']>>) => {
+    setSettings(prev => {
+      if (!prev) return null;
+      const currentPlex = prev.plex || { baseUrl: '', token: '' };
+      return {
+        ...prev,
+        plex: { ...currentPlex, ...plexUpdates }
+      };
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -123,6 +134,54 @@ export default function Services() {
                 placeholder="Long-lived access token"
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Plex Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Plex Media Server</CardTitle>
+          <CardDescription>Connect Bernard to your Plex Media Server for voice-controlled media playback</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="plex-baseUrl">Server URL *</Label>
+              <Input
+                id="plex-baseUrl"
+                type="url"
+                value={settings?.plex?.baseUrl || ''}
+                onChange={(e) => updatePlexSettings({ baseUrl: e.target.value })}
+                placeholder="http://your-plex-server.local:32400"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="plex-token">Access Token *</Label>
+              <Input
+                id="plex-token"
+                type="password"
+                value={settings?.plex?.token || ''}
+                onChange={(e) => updatePlexSettings({ token: e.target.value })}
+                placeholder="Your Plex token"
+                required
+              />
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+            <p>
+              Get your Plex token from{' '}
+              <a
+                href="https://www.plex.tv/claim"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Plex.tv
+              </a>
+              {' '}or your Plex server settings.
+            </p>
           </div>
         </CardContent>
       </Card>

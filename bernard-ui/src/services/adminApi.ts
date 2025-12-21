@@ -187,6 +187,10 @@ export interface ServicesSettings {
     baseUrl: string;
     accessToken?: string;
   };
+  plex?: {
+    baseUrl: string;
+    token: string;
+  };
 }
 
 export interface OAuthSettings {

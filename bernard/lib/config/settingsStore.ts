@@ -99,12 +99,18 @@ const HomeAssistantServiceSchema = z.object({
   accessToken: z.string().optional()
 });
 
+const PlexServiceSchema = z.object({
+  baseUrl: z.string().url(),
+  token: z.string().min(1)
+});
+
 export const ServicesSettingsSchema = z.object({
   memory: MemoryServiceSchema.default({}),
   search: SearchServiceSchema.default({}),
   weather: WeatherServiceSchema.default({ provider: "open-meteo" }),
   geocoding: GeocodingServiceSchema.default({}),
-  homeAssistant: HomeAssistantServiceSchema.optional()
+  homeAssistant: HomeAssistantServiceSchema.optional(),
+  plex: PlexServiceSchema.optional()
 });
 
 const OAuthClientSchema = z.object({
@@ -288,6 +294,16 @@ export function defaultServices(): ServicesSettings {
     services.homeAssistant = {
       baseUrl: haBaseUrl,
       accessToken: haAccessToken
+    };
+  }
+
+  // Add Plex configuration if environment variables are present
+  const plexUrl = process.env["PLEX_URL"];
+  const plexToken = process.env["PLEX_TOKEN"];
+  if (plexUrl && plexToken) {
+    services.plex = {
+      baseUrl: plexUrl,
+      token: plexToken
     };
   }
 

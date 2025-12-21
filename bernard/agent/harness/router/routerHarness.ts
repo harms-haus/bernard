@@ -8,6 +8,7 @@ import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
 import type { HomeAssistantContextManager } from "./tools/ha-context";
 import type { HARestConfig } from "./tools/ha-list-entities";
+import type { PlexConfig } from "./tools/plex-play-media";
 import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
 import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";
@@ -244,6 +245,7 @@ export type RouterHarnessContext = {
   archivist: Archivist;
   haContextManager?: HomeAssistantContextManager;
   haRestConfig?: HARestConfig;
+  plexConfig?: PlexConfig;
   abortSignal?: AbortSignal;
   skipHistory?: boolean;
   toolDefinitions?: ToolWithInterpretation[];
@@ -253,8 +255,8 @@ export type RouterHarnessContext = {
 /**
  * Get router tool definitions for the system prompt
  */
-export function getRouterToolDefinitions(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig) {
-  const langChainTools = getRouterTools(haContextManager, haRestConfig);
+export function getRouterToolDefinitions(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig, plexConfig?: PlexConfig) {
+  const langChainTools = getRouterTools(haContextManager, haRestConfig, plexConfig);
   const toolDefinitions: ToolLikeForPrompt[] = langChainTools.map(tool => ({
     name: tool.name,
     description: tool.description || "",
@@ -389,10 +391,10 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Yields standardized streaming events.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { messages, llmCaller, responseLLMCaller, archivist, haContextManager, haRestConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
+  const { messages, llmCaller, responseLLMCaller, archivist, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
 
   // 1. Get available tools
-  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig);
+  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig, plexConfig);
   const usedTools = initialUsedTools || [];
   const toolNames = toolDefinitions.map(tool => tool.name);
 

@@ -11,6 +11,7 @@ import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
 import type { ToolWithInterpretation } from "../harness/router/tools";
 import type { HARestConfig } from "../harness/router/tools/ha-list-entities";
+import type { PlexConfig } from "../harness/router/tools/plex-play-media";
 import { getSettings } from "@/lib/config/settingsCache";
 import crypto from "node:crypto";
 
@@ -41,6 +42,7 @@ export class StreamingOrchestrator {
     private accumulatedDeltas: Map<string, string> = new Map();
     private usedTools: Set<string> = new Set();
     private haRestConfig?: HARestConfig;
+    private plexConfig?: PlexConfig;
 
     constructor(
         private recordKeeper: RecordKeeper,
@@ -77,6 +79,14 @@ export class StreamingOrchestrator {
             };
         }
 
+        // Load Plex configuration from settings
+        if (settings.services.plex) {
+            this.plexConfig = {
+                baseUrl: settings.services.plex.baseUrl,
+                token: settings.services.plex.token
+            };
+        }
+
         // 3. Initialize RecordKeeper with conversation
         const recorder = this.recordKeeper.asRecorder();
         const archivist = this.recordKeeper.asArchivist();
@@ -85,7 +95,7 @@ export class StreamingOrchestrator {
         await recorder.syncHistory(conversationId, persistable);
 
         // 4. Get tool definitions
-        const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig);
+        const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig, this.plexConfig);
 
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
@@ -103,6 +113,7 @@ export class StreamingOrchestrator {
                 usedTools: [],
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
                 ...(this.haRestConfig ? { haRestConfig: this.haRestConfig } : {}),
+                ...(this.plexConfig ? { plexConfig: this.plexConfig } : {}),
                 ...(abortSignal ? { abortSignal } : {})
             });
 

@@ -51,12 +51,15 @@ Mark the end of tool calling with the \"respond\" tool call. It may be added to 
 Do not add conversational text. Only tool calls.
 
 WORKFLOW:
-1. If you need information to complete the user's request, call information-gathering tools first
-2. After getting tool results, immediately call action tools to perform the user's requested operations
-3. After all action tools have been called and executed, call the "respond" tool to complete the request
-
-IMPORTANT: Never call "respond" until you have executed all necessary actions.`
-  ]
+1. If you need information to complete the user's request, call information-gathering tools
+   a. For narrow topics, prioritize tools that give the most correct and complete information where possible.
+   b. For wide topics, prioritize tools that can get the quickest summary answer.
+2. If you are asked to perform an action, call action tools that you have available.
+   a. Prioritize specialized tools that can perform the action quickly and efficiently.
+   b. Use generalized tools where specialized tools are not available.
+3. After all information is gathered and all action tools have been called and executed, call the "respond" tool to complete the request.
+   a. Do not respond to the user yourself.
+   b. IMPORTANT: Never call "respond" until you have executed all necessary actions.`]
     .filter(Boolean)
     .join("\n");
 }
