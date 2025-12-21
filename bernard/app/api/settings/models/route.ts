@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/app/api/_lib/admin";
+import { clearEmbeddingIndex } from "@/app/api/_lib/embeddingIndex";
 import { settingsStore } from "@/app/api/settings/_common";
 import { ModelsSettingsSchema } from "@/lib/config/settingsStore";
 
@@ -42,26 +43,9 @@ export async function PUT(req: NextRequest) {
       });
 
       try {
-        // Call the clear embedding index endpoint
-        const clearResponse = await fetch(`${req.nextUrl.origin}/api/admin/clear-embedding-index`, {
-          method: 'POST',
-          headers: {
-            'Authorization': req.headers.get('authorization') || '',
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!clearResponse.ok) {
-          const errorText = await clearResponse.text();
-          auth.reqLog.log.warn({
-            event: "settings.models.clear_index_failed",
-            status: clearResponse.status,
-            error: errorText
-          });
-        } else {
-          const result = await clearResponse.json();
-          auth.reqLog.log.info({ event: "settings.models.clear_index_success", ...result });
-        }
+        // Call the clear embedding index service directly
+        const result = await clearEmbeddingIndex(auth);
+        auth.reqLog.log.info({ event: "settings.models.clear_index_success", ...result });
       } catch (clearErr) {
         const errorMessage = clearErr instanceof Error ? clearErr.message : String(clearErr);
         auth.reqLog.log.error({ event: "settings.models.clear_index_exception", error: errorMessage });

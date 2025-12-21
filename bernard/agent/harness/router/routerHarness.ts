@@ -2,7 +2,7 @@ import { SystemMessage, AIMessage, HumanMessage, ToolMessage } from "@langchain/
 import type { BaseMessage, MessageStructure, MessageType } from "@langchain/core/messages";
 import { ToolMessage as LangChainToolMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
-import type { LLMCaller } from "../../llm/llm";
+import type { LLMCaller, LLMConfig } from "../../llm/llm";
 import { ChatOpenAILLMCaller } from "../../llm/chatOpenAI";
 import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
@@ -15,6 +15,184 @@ import crypto from "node:crypto";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { ToolWithInterpretation } from "./tools";
 import { runResponseHarness } from "../respond/responseHarness";
+
+/**
+ * Validate tool calls from an AIMessage
+ * Returns error only if there are tool calls and they are invalid
+ */
+function validateToolCalls(aiMessage: AIMessage, availableTools: string[]): { valid: boolean; error?: string } {
+  const toolCalls = extractToolCallsFromAIMessage(aiMessage);
+
+  // If no tool calls, response is valid (router will handle it by adding to context)
+  if (toolCalls.length === 0) {
+    return { valid: true };
+  }
+
+  // Check each tool call for validity
+  for (const toolCall of toolCalls) {
+    // Check if tool name is valid
+    if (!availableTools.includes(toolCall.function.name)) {
+      return { valid: false, error: `Invalid tool name: ${toolCall.function.name}. Available tools: ${availableTools.join(', ')}` };
+    }
+
+    // Check if parameters are valid JSON
+    try {
+      JSON.parse(toolCall.function.arguments);
+    } catch (error) {
+      return { valid: false, error: `Invalid JSON parameters for tool ${toolCall.function.name}: ${error}` };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Check if an error is a rate limit error
+ */
+function isRateLimitError(error: unknown): boolean {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit');
+}
+
+/**
+ * Check if an error is retryable (excludes auth errors and abort signals)
+ */
+function isRetryableError(error: unknown, abortSignal?: AbortSignal): boolean {
+  // Don't retry on abort
+  if (abortSignal?.aborted) {
+    return false;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  // Don't retry auth errors
+  if (errorMessage.includes('401') || errorMessage.includes('403')) {
+    return false;
+  }
+
+  // Don't retry abort signals
+  if (error instanceof Error && error.name === 'AbortError') {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Result of LLM call with retry logic
+ */
+type LLMRetryResult = {
+  aiMessage: AIMessage;
+  errorEvents: AgentOutputItem[];
+};
+
+/**
+ * Call LLM with retry logic, returning the final AIMessage and any error events to yield
+ */
+export async function callLLMWithRetry(
+  llmCaller: LLMCaller,
+  messages: BaseMessage[],
+  config: LLMConfig,
+  langChainTools: StructuredToolInterface[],
+  availableToolNames: string[],
+  abortSignal?: AbortSignal
+): Promise<LLMRetryResult> {
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+  let lastError: unknown;
+  const errorEvents: AgentOutputItem[] = [];
+
+  while (attempt < MAX_RETRIES) {
+    attempt++;
+
+    try {
+      const aiMessage = await llmCaller.completeWithTools(
+        messages,
+        config,
+        langChainTools
+      );
+
+      // Validate the response
+      const validation = validateToolCalls(aiMessage, availableToolNames);
+
+      if (!validation.valid) {
+        // Invalid response - retry if we have attempts left
+        if (attempt < MAX_RETRIES) {
+          // Add error message to context for next attempt
+          const errorMessage = new SystemMessage(`Error: ${validation.error}`);
+          messages.push(errorMessage);
+
+          // Record retry error event
+          errorEvents.push({
+            type: "error",
+            error: `Retry ${attempt}/${MAX_RETRIES}: ${validation.error}`
+          });
+
+          // Wait 1 second before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        } else {
+          // Max retries reached, return the invalid message anyway
+          return { aiMessage, errorEvents };
+        }
+      }
+
+      // Valid response
+      return { aiMessage, errorEvents };
+
+    } catch (error) {
+      lastError = error;
+
+      // Check if this is a retryable error
+      if (!isRetryableError(error, abortSignal)) {
+        // Non-retryable error - record error event and re-throw
+        errorEvents.push({
+          type: "error",
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
+
+      // Check if this is a rate limit error
+      const isRateLimit = isRateLimitError(error);
+
+      if (attempt < MAX_RETRIES) {
+        // Add error message to context for next attempt
+        const errorDescription = error instanceof Error ? error.message : String(error);
+        const errorMessage = new SystemMessage(`Error: ${errorDescription}`);
+        messages.push(errorMessage);
+
+        // Record retry error event
+        errorEvents.push({
+          type: "error",
+          error: `Retry ${attempt}/${MAX_RETRIES}: ${errorDescription}`
+        });
+
+        // Wait appropriate time based on error type
+        if (isRateLimit) {
+          // Exponential backoff for rate limits: 10s, 20s, 30s
+          const waitTime = attempt * 10 * 1000;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        } else {
+          // 1 second wait for other errors
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        continue;
+      }
+
+      // Max retries reached - record final error and re-throw
+      const errorDescription = error instanceof Error ? error.message : String(error);
+      errorEvents.push({
+        type: "error",
+        error: `Max retries (${MAX_RETRIES}) exceeded: ${errorDescription}`
+      });
+      throw error;
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError || new Error("Retry logic failed unexpectedly");
+}
 
 // Define the tool definition type for system prompts
 type ToolLikeForPrompt = {
@@ -206,21 +384,36 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       tools: toolNames,
     };
 
-    // 5. Call LLM with tools
+    // 5. Call LLM with tools (with retry logic)
+    const llmConfig = {
+      model: "router",
+      temperature: 0,
+      maxTokens: 1000,
+      timeout: 30000, // 30 second timeout
+      ...(abortSignal ? { abortSignal } : {}),
+    };
+
     let aiMessage: AIMessage;
+
     try {
-      aiMessage = await llmCaller.completeWithTools(
+      // Use the retry wrapper - it returns the final AIMessage and any error events to yield
+      const retryResult = await callLLMWithRetry(
+        llmCaller,
         currentMessages,
-        {
-          model: "router",
-          temperature: 0,
-          maxTokens: 1000,
-          timeout: 30000, // 30 second timeout
-          ...(abortSignal ? { abortSignal } : {}),
-        },
-        langChainTools
+        llmConfig,
+        langChainTools,
+        toolNames,
+        abortSignal
       );
+
+      // Yield any error events from retries
+      for (const errorEvent of retryResult.errorEvents) {
+        yield errorEvent;
+      }
+
+      aiMessage = retryResult.aiMessage;
     } catch (error) {
+      // Final error after retries exhausted
       yield {
         type: "error",
         error: error instanceof Error ? error.message : String(error),
