@@ -23,7 +23,52 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = ModelsSettingsSchema.parse(body);
+
+    // Check if embedding dimension has changed
+    const currentSettings = await settingsStore().getModels();
+    const embeddingDimensionChanged =
+      currentSettings.embedding?.dimension !== parsed.embedding?.dimension &&
+      parsed.embedding?.dimension !== undefined;
+
+    // Save the new settings
     const saved = await settingsStore().setModels(parsed);
+
+    // If embedding dimension changed, clear index and requeue conversations
+    if (embeddingDimensionChanged) {
+      auth.reqLog.log.info({
+        event: "settings.models.embedding_dimension_changed",
+        oldDimension: currentSettings.embedding?.dimension,
+        newDimension: parsed.embedding?.dimension
+      });
+
+      try {
+        // Call the clear embedding index endpoint
+        const clearResponse = await fetch(`${req.nextUrl.origin}/api/admin/clear-embedding-index`, {
+          method: 'POST',
+          headers: {
+            'Authorization': req.headers.get('authorization') || '',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!clearResponse.ok) {
+          const errorText = await clearResponse.text();
+          auth.reqLog.log.warn({
+            event: "settings.models.clear_index_failed",
+            status: clearResponse.status,
+            error: errorText
+          });
+        } else {
+          const result = await clearResponse.json();
+          auth.reqLog.log.info({ event: "settings.models.clear_index_success", ...result });
+        }
+      } catch (clearErr) {
+        const errorMessage = clearErr instanceof Error ? clearErr.message : String(clearErr);
+        auth.reqLog.log.error({ event: "settings.models.clear_index_exception", error: errorMessage });
+        // Don't fail the entire request, just log the error
+      }
+    }
+
     return Response.json(saved);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

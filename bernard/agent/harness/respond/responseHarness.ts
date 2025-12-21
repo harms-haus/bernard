@@ -76,6 +76,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
       model: "response-generator",
       temperature: 0.7,
       maxTokens: 1000,
+      timeout: 60000, // 60 second timeout for streaming responses
       ...(abortSignal ? { abortSignal } : {}),
     })) {
       responseContent += token;

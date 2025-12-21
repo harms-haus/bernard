@@ -4,19 +4,35 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
-import { 
-  Plus, 
-  Save, 
-  Trash2, 
-  TestTube, 
-  RefreshCw
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import {
+  Plus,
+  Save,
+  Trash2,
+  TestTube,
+  RefreshCw,
+  MoreVertical,
+  Edit
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ProviderType, ModelsSettings, ModelInfo } from '../../services/adminApi';
 import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
 import { useToast } from '../../components/ToastManager';
 
-type ModelCategory = 'response' | 'router' | 'memory' | 'utility' | 'aggregation';
+type ModelCategory = 'response' | 'router' | 'memory' | 'utility' | 'aggregation' | 'embedding';
 
 interface ProviderForm {
   name: string;
@@ -29,7 +45,8 @@ export default function Models() {
   const [saving, setSaving] = useState(false);
   const [providers, setProviders] = useState<ProviderType[]>([]);
   const [settings, setSettings] = useState<ModelsSettings | null>(null);
-  const [showProviderForm, setShowProviderForm] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<ProviderType | null>(null);
   const [providerForm, setProviderForm] = useState<ProviderForm>({
     name: '',
     baseUrl: '',
@@ -37,13 +54,8 @@ export default function Models() {
   });
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [providerModels, setProviderModels] = useState<Record<string, ModelInfo[]>>({});
-  const [selectedModels, setSelectedModels] = useState<Record<ModelCategory, string>>({
-    response: '',
-    router: '',
-    memory: '',
-    utility: '',
-    aggregation: ''
-  });
+  const [embeddingDimensionChanged, setEmbeddingDimensionChanged] = useState(false);
+  const [embeddingDimension, setEmbeddingDimension] = useState<string>('');
 
   // Hook calls - must be at the top level of the component function
   const confirm = useConfirmDialog();
@@ -52,10 +64,11 @@ export default function Models() {
 
   const categories: { key: ModelCategory; label: string; description: string }[] = [
     { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
-    { key: 'router', label: 'router', description: 'Routing and tool selection model.' },
+    { key: 'router', label: 'Router', description: 'Routing and tool selection model.' },
     { key: 'memory', label: 'Memory', description: 'Utility model used for memory dedupe and search.' },
     { key: 'utility', label: 'Utility', description: 'Helper model for tools and misc tasks.' },
-    { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' }
+    { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' },
+    { key: 'embedding', label: 'Embedding', description: 'Model used for text embeddings and indexing.' }
   ];
 
   useEffect(() => {
@@ -84,16 +97,9 @@ export default function Models() {
       ]);
       setSettings(settingsData);
       setProviders(providersData);
-      
-      // Initialize selected models from settings
-      const initialSelections: Record<ModelCategory, string> = {
-        response: settingsData.response?.primary || '',
-        router: settingsData.router?.primary || '',
-        memory: settingsData.memory?.primary || '',
-        utility: settingsData.utility?.primary || '',
-        aggregation: settingsData.aggregation?.primary || ''
-      };
-      setSelectedModels(initialSelections);
+
+      // Initialize embedding dimension
+      setEmbeddingDimension(settingsData.embedding?.dimension?.toString() || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -113,24 +119,45 @@ export default function Models() {
     }
 
     try {
-      const newProvider = await adminApiClient.createProvider(providerForm);
-      setProviders([...providers, newProvider]);
+      if (editingProvider) {
+        // Update existing provider
+        const updatedProvider = await adminApiClient.updateProvider(editingProvider.id, providerForm);
+        setProviders(providers.map(p => p.id === updatedProvider.id ? updatedProvider : p));
+        // Also update the provider in settings
+        setSettings(prev => prev ? {
+          ...prev,
+          providers: prev.providers.map(p => p.id === updatedProvider.id ? updatedProvider : p)
+        } : prev);
+        toast.success('Provider updated successfully');
+      } else {
+        // Create new provider
+        const newProvider = await adminApiClient.createProvider(providerForm);
+        setProviders([...providers, newProvider]);
+        // Also add the provider to settings
+        setSettings(prev => prev ? {
+          ...prev,
+          providers: [...prev.providers, newProvider]
+        } : prev);
+        // Fetch models for the new provider
+        await loadProviderModels(newProvider.id);
+        toast.success('Provider created successfully');
+      }
+
+      setDialogOpen(false);
+      setEditingProvider(null);
       setProviderForm({ name: '', baseUrl: '', apiKey: '' });
-      setShowProviderForm(false);
-      // Fetch models for the new provider
-      await loadProviderModels(newProvider.id);
     } catch (error) {
-      console.error('Failed to create provider:', error);
+      console.error('Failed to save provider:', error);
       alert({
-        title: 'Failed to Create Provider',
-        description: 'Failed to create provider',
+        title: `Failed to ${editingProvider ? 'Update' : 'Create'} Provider`,
+        description: `Failed to ${editingProvider ? 'update' : 'create'} provider`,
         variant: 'error'
       });
     }
   };
 
   const handleDeleteProvider = async (providerId: string) => {
-    const closeDialog = confirm({
+    confirm({
       title: 'Delete Provider',
       description: 'Delete this provider? This will also remove it from any model configurations.',
       confirmVariant: 'destructive',
@@ -138,18 +165,23 @@ export default function Models() {
         try {
           await adminApiClient.deleteProvider(providerId);
           setProviders(providers.filter(p => p.id !== providerId));
-          // Clear any selected models from this provider
-          const updatedSettings = { ...settings! };
-          categories.forEach(categoryObj => {
-            const category = categoryObj.key;
-            const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
-            if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
-              if (categorySettings.providerId === providerId) {
-                updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
+          // Clear any selected models from this provider and remove provider from settings
+          setSettings(prev => {
+            if (!prev) return prev;
+            const updatedSettings = { ...prev };
+            const allCategories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation', 'embedding'];
+            allCategories.forEach(category => {
+              const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
+              if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
+                if (categorySettings.providerId === providerId) {
+                  updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
+                }
               }
-            }
+            });
+            // Remove the provider from settings.providers
+            updatedSettings.providers = updatedSettings.providers.filter(p => p.id !== providerId);
+            return updatedSettings;
           });
-          setSettings(updatedSettings);
           toast.success('Provider deleted successfully');
         } catch (error) {
           console.error('Failed to delete provider:', error);
@@ -202,9 +234,27 @@ export default function Models() {
     }
   };
 
+  const handleEditProvider = async (provider: ProviderType) => {
+    try {
+      const fullProvider = await adminApiClient.getProvider(provider.id);
+      setProviderForm({
+        name: fullProvider.name,
+        baseUrl: fullProvider.baseUrl,
+        apiKey: fullProvider.apiKey
+      });
+      setEditingProvider(fullProvider);
+      setDialogOpen(true);
+    } catch (error) {
+      console.error('Failed to load provider for editing:', error);
+      alert({
+        title: 'Failed to Load Provider',
+        description: 'Failed to load provider details for editing',
+        variant: 'error'
+      });
+    }
+  };
+
   const handleModelChange = (category: ModelCategory, modelId: string, providerId: string) => {
-    setSelectedModels(prev => ({ ...prev, [category]: modelId }));
-    
     setSettings(prev => {
       if (!prev) return prev;
       const newSettings = {
@@ -222,7 +272,7 @@ export default function Models() {
   const handleProviderChange = (category: ModelCategory, providerId: string) => {
     // When provider changes, keep the existing model selection
     // Users should be able to select a provider and type any model name
-    
+
     setSettings(prev => {
       if (!prev) return prev;
       return {
@@ -236,25 +286,56 @@ export default function Models() {
     });
   };
 
+  const handleEmbeddingDimensionChange = (dimension: string) => {
+    setEmbeddingDimension(dimension);
+
+    const numericDimension = dimension ? parseInt(dimension, 10) : undefined;
+
+    // Check if the dimension has changed from the original value
+    const originalDimension = settings?.embedding?.dimension;
+    const hasChanged = numericDimension !== originalDimension;
+    setEmbeddingDimensionChanged(hasChanged);
+
+    setSettings(prev => {
+      if (!prev) return prev;
+      const updatedSettings: ModelsSettings = {
+        ...prev,
+        embedding: {
+          ...(prev.embedding || {}),
+          dimension: numericDimension
+        }
+      };
+      return updatedSettings;
+    });
+  };
+
+  const dismissDimensionWarning = () => {
+    setEmbeddingDimensionChanged(false);
+  };
+
   const handleSave = async () => {
     if (!settings) {
       return;
     }
-    
+
     setSaving(true);
     try {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
-      
+
       // Check if backend is returning different model names
-      const categories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation'];
+      const categories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation', 'embedding'];
       categories.forEach(category => {
         const frontendModel = settings[category]?.primary;
         const backendModel = updatedSettings[category]?.primary;
         if (frontendModel !== backendModel) {
         }
       });
-      
+
       setSettings(updatedSettings);
+
+      // Reset the embedding dimension warning after successful save
+      setEmbeddingDimensionChanged(false);
+
       toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -492,7 +573,11 @@ export default function Models() {
               <CardTitle>Providers</CardTitle>
               <CardDescription>Manage AI service providers</CardDescription>
             </div>
-            <Button onClick={() => setShowProviderForm(true)}>
+            <Button onClick={() => {
+              setEditingProvider(null);
+              setProviderForm({ name: '', baseUrl: '', apiKey: '' });
+              setDialogOpen(true);
+            }}>
               <Plus className="mr-2 h-4 w-4" />
               Add Provider
             </Button>
@@ -507,7 +592,7 @@ export default function Models() {
                   <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API URL</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API Key</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Number of Models</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300"></th>
                 </tr>
               </thead>
               <tbody>
@@ -531,33 +616,31 @@ export default function Models() {
                         </Badge>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleTestProvider(provider.id)}
-                            disabled={testingProvider === provider.id}
-                            title="Test Provider"
-                          >
-                            <TestTube className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => loadProviderModels(provider.id)}
-                            title="Load Models"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteProvider(provider.id)}
-                            title="Delete Provider"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleTestProvider(provider.id)} disabled={testingProvider === provider.id}>
+                              <TestTube className="mr-2 h-4 w-4" />
+                              {testingProvider === provider.id ? 'Testing...' : 'Test Provider'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => loadProviderModels(provider.id)}>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Load Models
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditProvider(provider)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteProvider(provider.id)} className="text-red-600 dark:text-red-400">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );
@@ -614,6 +697,41 @@ export default function Models() {
                           placeholder="Select or type any model name..."
                         />
                       </div>
+
+                      {category.key === 'embedding' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="embedding-dimension">Dimension</Label>
+                          <Input
+                            id="embedding-dimension"
+                            type="number"
+                            value={embeddingDimension}
+                            onChange={(e) => handleEmbeddingDimensionChange(e.target.value)}
+                            placeholder="e.g., 1536"
+                            className={embeddingDimensionChanged ? "border-orange-500 focus:border-orange-500" : ""}
+                          />
+                          {embeddingDimensionChanged && (
+                            <div className="flex items-start space-x-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md">
+                              <div className="text-orange-500 dark:text-orange-400 mt-0.5">⚠️</div>
+                              <div className="flex-1 space-y-1">
+                                <div className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                                  Dimension Change Warning
+                                </div>
+                                <p className="text-sm text-orange-700 dark:text-orange-300">
+                                  Changing the embedding dimension will clear the existing index and queue all historical conversations to be re-indexed.
+                                  This may take some time and temporarily affect search functionality.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={dismissDimensionWarning}
+                                className="text-orange-600 hover:text-orange-800 dark:text-orange-300 dark:hover:text-orange-100 text-sm font-medium"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -623,58 +741,64 @@ export default function Models() {
         </CardContent>
       </Card>
 
-      {/* Add Provider Form */}
-      {showProviderForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Provider</CardTitle>
-            <CardDescription>Configure a new AI service provider</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleProviderSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Provider Name</Label>
-                  <Input
-                    id="name"
-                    value={providerForm.name}
-                    onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
-                    placeholder="e.g., OpenRouter, OpenAI"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="baseUrl">Base URL</Label>
-                  <Input
-                    id="baseUrl"
-                    value={providerForm.baseUrl}
-                    onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
-                    placeholder="https://api.example.com/v1"
-                  />
-                </div>
-              </div>
+      {/* Provider Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) {
+          setEditingProvider(null);
+          setProviderForm({ name: '', baseUrl: '', apiKey: '' });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingProvider ? 'Edit Provider' : 'Add Provider'}</DialogTitle>
+            <DialogDescription>
+              {editingProvider ? 'Update the AI service provider configuration' : 'Configure a new AI service provider'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleProviderSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="apiKey">API Key</Label>
+                <Label htmlFor="name">Provider Name</Label>
                 <Input
-                  id="apiKey"
-                  type="password"
-                  value={providerForm.apiKey}
-                  onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
-                  placeholder="sk-..."
+                  id="name"
+                  value={providerForm.name}
+                  onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
+                  placeholder="e.g., OpenRouter, OpenAI"
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setShowProviderForm(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Provider
-                </Button>
+              <div className="space-y-2">
+                <Label htmlFor="baseUrl">Base URL</Label>
+                <Input
+                  id="baseUrl"
+                  value={providerForm.baseUrl}
+                  onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
+                  placeholder="https://api.example.com/v1"
+                />
               </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="apiKey">API Key</Label>
+              <Input
+                id="apiKey"
+                type="password"
+                value={providerForm.apiKey}
+                onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                placeholder="sk-..."
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                <Plus className="mr-2 h-4 w-4" />
+                {editingProvider ? 'Update Provider' : 'Add Provider'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

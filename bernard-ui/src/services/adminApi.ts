@@ -27,6 +27,7 @@ export interface ModelCategorySettings {
   primary: string;
   providerId: string;
   options?: ModelCallOptions;
+  dimension?: number;
 }
 
 export interface ModelsSettings {
@@ -36,6 +37,7 @@ export interface ModelsSettings {
   memory: ModelCategorySettings;
   utility: ModelCategorySettings;
   aggregation: ModelCategorySettings;
+  embedding: ModelCategorySettings;
 }
 
 export interface ConversationListItem {
@@ -608,6 +610,17 @@ class AdminApiClient {
 
   async logout(): Promise<void> {
     return this.request<void>('/auth/logout', {
+      method: 'POST'
+    });
+  }
+
+  async clearEmbeddingIndex(): Promise<{
+    success: boolean;
+    deletedChunks: number;
+    conversationsQueued: number;
+    conversationsSkipped: number;
+  }> {
+    return this.request('/admin/clear-embedding-index', {
       method: 'POST'
     });
   }

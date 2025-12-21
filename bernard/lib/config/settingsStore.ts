@@ -31,7 +31,8 @@ export const ModelCategorySchema = z.object({
       topP: z.number().min(0).max(1).optional(),
       maxTokens: z.number().int().positive().optional()
     })
-    .optional()
+    .optional(),
+  dimension: z.number().int().positive().optional()
 });
 
 export const ModelsSettingsSchema = z.object({
@@ -40,7 +41,8 @@ export const ModelsSettingsSchema = z.object({
   router: ModelCategorySchema,
   memory: ModelCategorySchema,
   utility: ModelCategorySchema,
-  aggregation: ModelCategorySchema.optional()
+  aggregation: ModelCategorySchema.optional(),
+  embedding: ModelCategorySchema.optional()
 });
 
 const MemoryServiceSchema = z.object({
@@ -231,13 +233,20 @@ export function defaultModels(): ModelsSettings {
     options: { temperature: 0 }
   };
 
+  const embedding: ModelCategorySettings = {
+    primary: process.env["EMBEDDING_MODELS"]?.split(",")[0]?.trim() ?? "text-embedding-ada-002",
+    providerId: defaultProvider.id,
+    options: {}
+  };
+
   return {
     providers: [defaultProvider],
     response,
     router,
     memory,
     utility,
-    aggregation
+    aggregation,
+    embedding
   };
 }
 

@@ -11,8 +11,11 @@ export class ChatOllamaLLMCaller implements LLMCaller {
   private client: ChatOllama;
 
   constructor(baseURL?: string, model?: string) {
+    if (!model) {
+      throw new Error("Model must be specified for Ollama LLM caller");
+    }
     this.client = new ChatOllama({
-      model: model || "llama2", // Default fallback model
+      model: model,
       ...(baseURL && { baseUrl: baseURL }),
       verbose: false,
     });
@@ -105,29 +108,33 @@ export class ChatOllamaLLMCaller implements LLMCaller {
   }
 
   async complete(messages: BaseMessage[], config: LLMConfig): Promise<LLMResponse> {
-    try {
-      const cleanedMessages = this.cleanMessages(messages);
-      const invokeOptions: {
-        signal?: AbortSignal;
-        temperature?: number;
-        maxTokens?: number;
-        timeout?: number;
-      } = {};
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-      if (config.abortSignal) {
-        invokeOptions.signal = config.abortSignal;
-      }
-      if (config.temperature !== undefined) {
-        invokeOptions.temperature = config.temperature;
-      }
-      if (config.maxTokens !== undefined) {
-        invokeOptions.maxTokens = config.maxTokens;
-      }
-      if (config.timeout !== undefined) {
-        invokeOptions.timeout = config.timeout;
-      }
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const cleanedMessages = this.cleanMessages(messages);
+        const invokeOptions: {
+          signal?: AbortSignal;
+          temperature?: number;
+          maxTokens?: number;
+          timeout?: number;
+        } = {};
 
-      const response = await this.client.invoke(cleanedMessages, invokeOptions);
+        if (config.abortSignal) {
+          invokeOptions.signal = config.abortSignal;
+        }
+        if (config.temperature !== undefined) {
+          invokeOptions.temperature = config.temperature;
+        }
+        if (config.maxTokens !== undefined) {
+          invokeOptions.maxTokens = config.maxTokens;
+        }
+        if (config.timeout !== undefined) {
+          invokeOptions.timeout = config.timeout;
+        }
+
+        const response = await this.client.invoke(cleanedMessages, invokeOptions);
 
       // Extract usage information if available
       const metadata = response.response_metadata as Record<string, unknown> | undefined;
@@ -166,11 +173,23 @@ export class ChatOllamaLLMCaller implements LLMCaller {
         result.finishReason = finishReason;
       }
 
-      return result;
-    } catch (error) {
-      console.error("❌ ChatOllama API call failed:", error);
-      throw error;
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`❌ ChatOllama API call failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+
+        // Don't retry on abort signals or the last attempt
+        if (attempt === maxRetries || config.abortSignal?.aborted) {
+          throw lastError;
+        }
+
+        // Wait before retry (exponential backoff)
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
+
+    throw lastError || new Error("All retry attempts failed");
   }
 
   async *streamText(messages: BaseMessage[], config: LLMConfig): AsyncIterable<string> {
@@ -195,7 +214,8 @@ export class ChatOllamaLLMCaller implements LLMCaller {
         streamOptions.timeout = config.timeout;
       }
 
-      const stream = await this.client.stream(messages, streamOptions);
+      const cleanedMessages = this.cleanMessages(messages);
+      const stream = await this.client.stream(cleanedMessages, streamOptions);
 
       try {
         for await (const chunk of stream) {

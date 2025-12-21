@@ -126,6 +126,49 @@ export class ConversationIndexer {
     }
   }
 
+  async clearIndex(): Promise<{ deleted: number }> {
+    try {
+      debugLog(undefined, "Starting index clearing");
+
+      const store = await this.vectorStore();
+      debugLog(undefined, "Vector store initialized for clearing");
+
+      // Get all conversation IDs that have been indexed
+      const pattern = `${indexPrefix}:ids:*`;
+      const keys = await this.redis.keys(pattern);
+      debugLog(undefined, "Found indexed conversation keys", { count: keys.length });
+
+      let totalDeleted = 0;
+
+      // For each conversation, delete all its chunks and clear metadata
+      for (const key of keys) {
+        const conversationId = key.replace(`${indexPrefix}:ids:`, '');
+        debugLog(undefined, "Clearing conversation", { conversationId });
+
+        // Get all chunk IDs for this conversation
+        const chunkIds = await this.redis.smembers(key);
+        debugLog(undefined, "Found chunk IDs for conversation", { conversationId, chunkCount: chunkIds.length });
+
+        if (chunkIds.length > 0) {
+          // Delete all chunks from vector store
+          await store.delete({ ids: chunkIds });
+          totalDeleted += chunkIds.length;
+          debugLog(undefined, "Deleted chunks from vector store", { conversationId, deletedCount: chunkIds.length });
+        }
+
+        // Delete the metadata key
+        await this.redis.del(key);
+        debugLog(undefined, "Deleted metadata key", { conversationId });
+      }
+
+      debugLog(undefined, "Index clearing completed", { totalDeleted });
+      return { deleted: totalDeleted };
+    } catch (err) {
+      errorLog(undefined, "Index clearing failed", { error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  }
+
   private idsKey(conversationId: string) {
     return `${indexPrefix}:ids:${conversationId}`;
   }

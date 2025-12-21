@@ -215,6 +215,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
           model: "router",
           temperature: 0,
           maxTokens: 1000,
+          timeout: 30000, // 30 second timeout
           ...(abortSignal ? { abortSignal } : {}),
         },
         langChainTools
