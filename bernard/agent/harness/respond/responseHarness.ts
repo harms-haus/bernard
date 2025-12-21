@@ -1,4 +1,5 @@
 import { SystemMessage, AIMessage } from "@langchain/core/messages";
+import type { SystemMessage as SystemMessageType } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
@@ -6,10 +7,57 @@ import { buildResponseSystemPrompt } from "./prompts";
 import type { Archivist, MessageRecord } from "@/lib/conversation/types";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
+import { formatToolResultsForContext } from "../router/routerHarness";
 import crypto from "node:crypto";
 
 function uniqueId(prefix: string) {
   return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
+}
+
+/**
+ * Extract tool_call and tool_call_complete messages from history and merge them into single system messages.
+ */
+function mergeToolCallMessages(messages: BaseMessage[]): {
+  mergedToolMessages: SystemMessageType[];
+  otherMessages: BaseMessage[];
+} {
+  const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
+  const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
+  const otherMessages: BaseMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.name === "tool_call" && typeof msg.content === "object" && msg.content !== null) {
+      const content = msg.content as any;
+      toolCalls.push({
+        id: content.toolCallId,
+        function: {
+          name: content.toolName,
+          arguments: content.arguments,
+        },
+      });
+    } else if (msg.name === "tool_call_complete" && typeof msg.content === "object" && msg.content !== null) {
+      const content = msg.content as any;
+      toolResults.push({
+        toolCallId: content.toolCallId,
+        toolName: "", // Will be filled from toolCalls
+        output: content.result,
+      });
+    } else {
+      otherMessages.push(msg);
+    }
+  }
+
+  // Fill in tool names from toolCalls
+  for (const result of toolResults) {
+    const toolCall = toolCalls.find(tc => tc.id === result.toolCallId);
+    if (toolCall) {
+      result.toolName = toolCall.function.name;
+    }
+  }
+
+  const mergedToolMessages = formatToolResultsForContext(toolCalls, toolResults);
+
+  return { mergedToolMessages, otherMessages };
 }
 
 import type { ToolWithInterpretation } from "../router/tools";
@@ -49,11 +97,18 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 2. Build context
   const systemPrompt = buildResponseSystemPrompt(new Date(), undefined, undefined, toolDefinitions, usedTools);
   const historyMessages = history.map(msg => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null);
-  const contextMessages = deduplicateMessages([...historyMessages, ...messages.filter(msg => msg.type !== "system")]);
+
+  // Extract and merge tool_call/tool_call_complete pairs from history into single system messages
+  const { mergedToolMessages, otherMessages } = mergeToolCallMessages(historyMessages);
+
+  const contextMessages = deduplicateMessages([...otherMessages, ...mergedToolMessages, ...messages.filter(msg => msg.type !== "system")]);
+
+  // Filter out llm_call, llm_call_complete, and respond messages from context
+  const filteredMessages = contextMessages.filter(msg => msg.name !== "llm_call" && msg.name !== "llm_call_complete" && msg.name !== "respond");
 
   const promptMessages: BaseMessage[] = [
     new SystemMessage(systemPrompt),
-    ...contextMessages,
+    ...filteredMessages,
   ];
 
   // 3. Extract tool names for the event
@@ -62,6 +117,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 4. Emit LLM_CALL event
   yield {
     type: "llm_call",
+    model: "response",
     context: promptMessages as any,
     tools: toolNames,
   };

@@ -198,7 +198,7 @@ export class StreamingOrchestrator {
                 this.currentLLMCallMessageId = uniqueId("msg");
                 await recorder.recordLLMCallStart(conversationId, {
                     messageId: this.currentLLMCallMessageId,
-                    model: "router", // Could be dynamic
+                    model: event.model || "unknown",
                     context: event.context as BaseMessage[],
                     ...(requestId ? { requestId } : {}),
                     ...(turnId ? { turnId } : {}),

@@ -31,6 +31,11 @@ vi.mock("../agent/harness/router/routerHarness", () => ({
     runRouterHarness: vi.fn().mockImplementation(async function* () {
         yield { type: "llm_call", context: [] };
         yield { type: "llm_call_complete", result: { content: "router Done" } };
+        // Simulate calling response harness
+        yield { type: "llm_call", context: [] };
+        yield { type: "delta", messageId: "msg1", delta: "Hello" };
+        yield { type: "delta", messageId: "msg1", delta: " world", finishReason: "stop" };
+        yield { type: "llm_call_complete", result: { content: "Hello world" } };
     }),
     getRouterToolDefinitions: vi.fn().mockReturnValue({ toolDefinitions: [] })
 }));

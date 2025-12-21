@@ -17,6 +17,40 @@ import type { ToolWithInterpretation } from "./tools";
 import { runResponseHarness } from "../respond/responseHarness";
 
 /**
+ * Format tool calls and results into SystemMessage objects for LLM context.
+ * This merges tool_call and tool_call_complete information into single context messages.
+ */
+export function formatToolResultsForContext(
+  toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>,
+  toolResults: Array<{ toolCallId: string; toolName: string; output: string }>,
+  excludeToolNames: string[] = []
+): SystemMessage<MessageStructure>[] {
+  return toolCalls
+    .filter(toolCall => !excludeToolNames.includes(toolCall.function.name))
+    .map((toolCall) => {
+      const result = toolResults.find(r => r.toolCallId === toolCall.id);
+      if (!result) return null;
+
+      // Parse the arguments JSON and format as map without quotes
+      let formattedArgs: string;
+      try {
+        const args = JSON.parse(toolCall.function.arguments);
+        formattedArgs = Object.entries(args)
+          .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+          .join(", ");
+      } catch {
+        formattedArgs = toolCall.function.arguments;
+      }
+
+      return new SystemMessage<MessageStructure>({
+        content: `${toolCall.function.name}({${formattedArgs}})\n${result?.output ?? ""}`,
+        name: toolCall.function.name,
+      });
+    })
+    .filter((msg): msg is SystemMessage<MessageStructure> => msg !== null);
+}
+
+/**
  * Validate tool calls from an AIMessage
  * Returns error only if there are tool calls and they are invalid
  */
@@ -256,7 +290,7 @@ export async function prepareInitialContext(
   const historyMessages = history.map(msg => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null);
   const contextMessages = deduplicateMessages([...historyMessages, ...messages]);
 
-  const filteredMessages = contextMessages.filter(msg => msg.name !== "llm_call" && msg.name !== "llm_call_complete");
+  const filteredMessages = contextMessages.filter(msg => msg.name !== "llm_call" && msg.name !== "llm_call_complete" && msg.name !== "respond");
 
   return [
     systemMessage,
@@ -380,6 +414,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     // 4. Emit LLM_CALL event
     yield {
       type: "llm_call",
+      model: "router",
       context: [...currentMessages] as any, // Yield a copy to avoid mutation issues
       tools: toolNames,
     };
@@ -501,39 +536,20 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       combinedContent += aiContent.trim() + "\n\n";
     }
 
-    // Add formatted tool calls and results
-    const toolContent = toolCalls.map((toolCall, index) => {
-      const result = toolResults.find(r => r.toolCallId === toolCall.id);
-      if (!result) return null;
-
-      // Parse the arguments JSON and format as map without quotes
-      let formattedArgs: string;
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        formattedArgs = Object.entries(args)
-          .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-          .join(", ");
-      } catch {
-        formattedArgs = toolCall.function.arguments;
-      }
-
-      return new SystemMessage<MessageStructure>({
-        content: `${toolCall.function.name}({${formattedArgs}})\n${result?.output ?? ""}`,
-        name: toolCall.function.name,
-      });
-    });
-
-    currentMessages.push(...toolContent.filter(tc => tc !== null));
+    // Add formatted tool calls and results (excluding respond tool)
+    const currentTurnToolMessages = formatToolResultsForContext(toolCalls, toolResults, ["respond"]);
+    currentMessages.push(...currentTurnToolMessages);
 
     // 14. Check if respond() was called
     if (respondCalled) {
-      // Execute response harness with accumulated context
+      // Execute response harness with only the current turn's tool results
+      // The response harness will fetch conversation history separately
       const responseHarness = runResponseHarness({
         conversationId: context.conversationId,
-        messages: currentMessages, // Full context including tool calls/results
+        messages: currentTurnToolMessages, // Only tool results from current turn
         llmCaller: responseLLMCaller,
         archivist,
-        skipHistory: false, // Use the full history including tool calls/results from this turn
+        skipHistory: false, // Fetch full conversation history
         ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
         ...(usedTools.length > 0 ? { usedTools } : {}),
         ...(abortSignal ? { abortSignal } : {})

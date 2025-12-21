@@ -59,6 +59,7 @@ export type MessageEventType = "llm_call" | "llm_call_complete" | "tool_call" | 
 
 export type LLMCallEvent = {
   type: "llm_call";
+  model?: string;
   context: BaseMessage<MessageStructure, MessageEventType>[];
   tools?: string[];
 }
