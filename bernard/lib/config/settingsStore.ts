@@ -12,6 +12,7 @@ const SETTINGS_NAMESPACE = "bernard:settings";
 export const ProviderSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  type: z.enum(["openai", "ollama"]).default("openai"),
   baseUrl: z.string().url(),
   apiKey: z.string().min(1),
   createdAt: z.string(),
@@ -190,6 +191,7 @@ export function defaultModels(): ModelsSettings {
   const defaultProvider: Provider = {
     id: "default-provider",
     name: "Default Provider",
+    type: "openai",
     baseUrl: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1",
     apiKey: process.env["OPENROUTER_API_KEY"] ?? "",
     createdAt: new Date().toISOString(),
@@ -401,7 +403,8 @@ export class SettingsStore {
       ...provider,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      type: provider.type || "openai"
     };
     const updatedProviders = [...providers, newProvider];
     await this.setProviders(updatedProviders);

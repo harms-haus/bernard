@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
 
     const provider = await store.addProvider({
       name: body.name,
+      type: body.type || "openai",
       baseUrl: body.baseUrl,
       apiKey: body.apiKey,
       lastTestedAt: new Date().toISOString(),

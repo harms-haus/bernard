@@ -1,4 +1,5 @@
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage, AIMessage } from "@langchain/core/messages";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 
 /**
  * Configuration for LLM calls
@@ -37,4 +38,15 @@ export interface LLMCaller {
    * Stream text completion as an async iterable of text chunks
    */
   streamText(messages: BaseMessage[], config: LLMConfig): AsyncIterable<string>;
+
+  /**
+   * Complete a prompt with tool binding support, returning the full AIMessage.
+   * This is used by the router harness to extract tool_calls.
+   */
+  completeWithTools(
+    messages: BaseMessage[],
+    config: LLMConfig,
+    tools?: StructuredToolInterface[]
+  ): Promise<AIMessage>;
 }
+

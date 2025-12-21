@@ -209,20 +209,16 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     // 5. Call LLM with tools
     let aiMessage: AIMessage;
     try {
-      if (llmCaller instanceof ChatOpenAILLMCaller) {
-        aiMessage = await llmCaller.completeWithTools(
-          currentMessages,
-          {
-            model: "router",
-            temperature: 0,
-            maxTokens: 1000,
-            ...(abortSignal ? { abortSignal } : {}),
-          },
-          langChainTools
-        );
-      } else {
-        throw new Error("Router harness requires ChatOpenAILLMCaller");
-      }
+      aiMessage = await llmCaller.completeWithTools(
+        currentMessages,
+        {
+          model: "router",
+          temperature: 0,
+          maxTokens: 1000,
+          ...(abortSignal ? { abortSignal } : {}),
+        },
+        langChainTools
+      );
     } catch (error) {
       yield {
         type: "error",

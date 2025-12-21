@@ -27,6 +27,7 @@
     "@langchain/community": "^1.1.0",
     "@langchain/core": "^1.1.6",
     "@langchain/langgraph": "^1.0.7",
+    "@langchain/ollama": "^1.0.1",
     "@langchain/openai": "^1.2.0",
     "@langchain/redis": "^1.0.1",
     "bullmq": "^5.66.0",

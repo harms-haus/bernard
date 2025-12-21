@@ -17,10 +17,11 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/conversation/messages";
 import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/config/models";
+import { getSettings } from "@/lib/config/settingsCache";
 import { StreamingOrchestrator } from "@/agent/loop/orchestrator";
 import { transformAgentOutputToChunks } from "@/agent/streaming/transform";
 import { createSSEStream } from "@/agent/streaming/sse";
-import { ChatOpenAILLMCaller } from "@/agent/llm/chatOpenAI";
+import { createLLMCaller } from "@/agent/llm/factory";
 import type { AgentOutputItem } from "@/agent/streaming/types";
 
 export const runtime = "nodejs";
@@ -134,24 +135,28 @@ export async function POST(req: NextRequest) {
   const mergedMessages = inputMessages;
 
   const routerModel = splitModelAndProvider(routerModelName);
-  const routerApiKey =
-    resolveApiKey(undefined, routerModelConfig.options) ?? resolveApiKey(undefined, responseModelConfig.options);
-  const routerBaseURL = resolveBaseUrl(undefined, routerModelConfig.options);
   const responseModel = splitModelAndProvider(responseModelName);
-  const responseApiKey = resolveApiKey(undefined, responseModelConfig.options);
-  const responseBaseURL = resolveBaseUrl(undefined, responseModelConfig.options);
 
-  const responseLLMCaller = new ChatOpenAILLMCaller(
-    responseApiKey || process.env["OPENAI_API_KEY"] || "",
-    responseBaseURL || "https://api.openai.com/v1",
-    responseModel.model
-  );
+  // Get provider information from settings
+  const settings = await getSettings();
 
-  const routerLLMCaller = new ChatOpenAILLMCaller(
-    routerApiKey || process.env["OPENAI_API_KEY"] || "",
-    routerBaseURL || "https://api.openai.com/v1",
-    routerModel.model
-  );
+  // Get the router provider from model settings
+  const routerModelSettings = settings.models.router;
+  const routerProvider = settings.models.providers?.find(p => p.id === routerModelSettings.providerId);
+
+  // Get the response provider from model settings
+  const responseModelSettings = settings.models.response;
+  const responseProvider = settings.models.providers?.find(p => p.id === responseModelSettings.providerId);
+
+  if (!routerProvider) {
+    return new NextResponse(JSON.stringify({ error: "Router provider not found" }), { status: 500, headers: getCorsHeaders(null) });
+  }
+  if (!responseProvider) {
+    return new NextResponse(JSON.stringify({ error: "Response provider not found" }), { status: 500, headers: getCorsHeaders(null) });
+  }
+
+  const routerLLMCaller = createLLMCaller(routerProvider, routerModel.model);
+  const responseLLMCaller = createLLMCaller(responseProvider, responseModel.model);
 
   const orchestrator = new StreamingOrchestrator(
     keeper,
