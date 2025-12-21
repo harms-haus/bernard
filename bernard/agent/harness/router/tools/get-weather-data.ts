@@ -8,6 +8,7 @@ import {
   formatAverageTable,
   formatDailyTable,
   formatHourlyTable,
+  geocodeLocation,
   getForecastApiUrl,
   getHistoricalApiUrl,
   getImperialUnits,
@@ -59,7 +60,20 @@ const HOURLY_FIELDS = [
 const CURRENT_FIELDS = "temperature_2m,apparent_temperature,precipitation,precipitation_probability,wind_speed_10m";
 
 export const getWeatherDataTool = tool(
-  async ({ lat, lon, startDateTime, endDateTime, period }) => {
+  async ({ area_search, startDateTime, endDateTime, period }) => {
+    // Geocode the area_search to get lat/lon coordinates
+    let coordinates: { lat: number; lon: number } | null = null;
+    try {
+      coordinates = await geocodeLocation(area_search);
+    } catch (error) {
+      return error instanceof Error ? error.message : `Geocoding failed: ${String(error)}`;
+    }
+
+    if (!coordinates) {
+      return `Could not find coordinates for location: ${area_search}. Please try a different location name or provide more specific details.`;
+    }
+    const { lat, lon } = coordinates;
+
     const units = getImperialUnits();
     const anchorDate = new Date().toISOString().slice(0, 10);
 
@@ -92,7 +106,7 @@ export const getWeatherDataTool = tool(
   },
   {
     name: "get_weather_data",
-    description: `Get weather data for coordinates with flexible date/time ranges and periods.
+    description: `Get weather data for a location with flexible date/time ranges and periods.
 
 **Relative date words:**
 - "today" (daily: returns today and tomorrow's forecast)
@@ -107,8 +121,7 @@ export const getWeatherDataTool = tool(
 
 All data returned in imperial units (Fahrenheit, mph, inches).`,
     schema: z.object({
-      lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
-      lon: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
+      area_search: z.string().min(3).describe("Location name or address to get weather for (e.g., 'New York', 'London, UK', '1600 Pennsylvania Avenue NW, Washington, DC')."),
       startDateTime: z
         .string()
         .describe("Start date/time: ISO format (YYYY-MM-DDTHH:mmZ) or 'today', 'tomorrow', 'yesterday', 'now'."),

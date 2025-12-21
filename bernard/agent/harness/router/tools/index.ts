@@ -1,8 +1,6 @@
 import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { enhancedGeocodeSearchTool } from "./geocode-enhanced";
-import { memorizeTool } from "./memorize";
 import { webSearchTool } from "./web-search";
 import { getWeatherDataTool } from "./get-weather-data";
 import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-entities";
@@ -36,7 +34,6 @@ const respondTool = tool(
 export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig): ToolWithInterpretation[] {
   const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
-    enhancedGeocodeSearchTool,
     // memorizeTool,
     getWeatherDataTool,
     respondTool, // Add respond tool at the end
@@ -58,8 +55,6 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
 }
 
 export {
-  enhancedGeocodeSearchTool,
-  memorizeTool,
   webSearchTool,
   getWeatherDataTool,
   createListHAEntitiesToolInstance,

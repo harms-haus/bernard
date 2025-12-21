@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
+import { afterEach, beforeEach, test } from "vitest";
 
 import { getWeatherDataTool } from "../agent/harness/router/tools";
 import { chooseUnits, parseTarget, parseDateRange, getImperialUnits } from "../agent/harness/router/tools/weather-common";
@@ -7,8 +7,25 @@ import { chooseUnits, parseTarget, parseDateRange, getImperialUnits } from "../a
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;
 
+// Mock geocoding functionality - returns coordinates for "New York, NY"
+const mockGeocodeResponse = {
+  ok: true,
+  json: async () => [{
+    lat: "40.7128",
+    lon: "-74.0060",
+    display_name: "New York, New York",
+    importance: 0.8
+  }]
+};
+
+beforeEach(() => {
+  // Set environment variable for geocoding
+  process.env["NOMINATIM_USER_AGENT"] = "test-agent";
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  delete process.env["NOMINATIM_USER_AGENT"];
 });
 
 function mockFetchSequence(responses: Array<Response | Error>) {
@@ -74,6 +91,7 @@ test("parseDateRange handles date range parsing", () => {
 
 test("get_weather_data current weather with 'now'", { timeout: TEST_TIMEOUT }, async () => {
   const calls = mockFetchSequence([
+    mockGeocodeResponse,
     jsonResponse({
       current: {
         time: "2024-04-01T12:00",
@@ -88,17 +106,16 @@ test("get_weather_data current weather with 'now'", { timeout: TEST_TIMEOUT }, a
   ]);
 
   const result = await getWeatherDataTool.invoke({
-    lat: 40.7128,
-    lon: -74.006,
+    area_search: "New York, NY",
     startDateTime: "now",
     endDateTime: "now",
     period: "hourly"
   });
   const output = String(result);
 
-  const firstCall = calls[0];
-  assert.ok(firstCall);
-  const rawInput = firstCall.input;
+  const weatherCall = calls[1]; // Second call is the weather API call
+  assert.ok(weatherCall);
+  const rawInput = weatherCall.input;
   const url =
     typeof rawInput === "string"
       ? new URL(rawInput)
@@ -112,6 +129,7 @@ test("get_weather_data current weather with 'now'", { timeout: TEST_TIMEOUT }, a
 
 test("get_weather_data daily forecast with date range", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
+    mockGeocodeResponse,
     jsonResponse({
       daily: {
         time: ["2025-02-01", "2025-02-02"],
@@ -129,8 +147,7 @@ test("get_weather_data daily forecast with date range", { timeout: TEST_TIMEOUT 
   ]);
 
   const result = await getWeatherDataTool.invoke({
-    lat: 40.7128,
-    lon: -74.006,
+    area_search: "New York, NY",
     startDateTime: "2025-02-01",
     endDateTime: "2025-02-02",
     period: "daily"
@@ -145,6 +162,7 @@ test("get_weather_data daily forecast with date range", { timeout: TEST_TIMEOUT 
 
 test("get_weather_data hourly data", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
+    mockGeocodeResponse,
     jsonResponse({
       hourly: {
         time: ["2025-02-01T12:00", "2025-02-01T15:00"],
@@ -159,8 +177,7 @@ test("get_weather_data hourly data", { timeout: TEST_TIMEOUT }, async () => {
   ]);
 
   const result = await getWeatherDataTool.invoke({
-    lat: 40.7128,
-    lon: -74.006,
+    area_search: "New York, NY",
     startDateTime: "2025-02-01T10:00",
     endDateTime: "2025-02-01T16:00",
     period: "hourly"
@@ -175,6 +192,7 @@ test("get_weather_data hourly data", { timeout: TEST_TIMEOUT }, async () => {
 
 test("get_weather_data average calculation", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
+    mockGeocodeResponse,
     jsonResponse({
       hourly: {
         time: ["2025-02-01T12:00", "2025-02-01T15:00"],
@@ -189,8 +207,7 @@ test("get_weather_data average calculation", { timeout: TEST_TIMEOUT }, async ()
   ]);
 
   const result = await getWeatherDataTool.invoke({
-    lat: 40.7128,
-    lon: -74.006,
+    area_search: "New York, NY",
     startDateTime: "2025-02-01T10:00",
     endDateTime: "2025-02-01T16:00",
     period: "average"
@@ -203,8 +220,34 @@ test("get_weather_data average calculation", { timeout: TEST_TIMEOUT }, async ()
   assert.match(output, /70\.0°F/); // Average of 68 and 72
 });
 
+test("get_weather_data rejects low confidence geocoding", { timeout: TEST_TIMEOUT }, async () => {
+  const calls = mockFetchSequence([
+    {
+      ok: true,
+      json: async () => [{
+        lat: "40.7128",
+        lon: "-74.0060",
+        display_name: "Ambiguous Location",
+        importance: 0.1  // Low confidence
+      }]
+    }
+  ]);
+
+  const result = await getWeatherDataTool.invoke({
+    area_search: "ambiguous location",
+    startDateTime: "now",
+    endDateTime: "now",
+    period: "hourly"
+  });
+  const output = String(result);
+
+  assert.match(output, /low confidence \(0\.100\)/);
+  assert.match(output, /check the spelling/);
+});
+
 test("get_weather_data historical data", { timeout: TEST_TIMEOUT }, async () => {
   mockFetchSequence([
+    mockGeocodeResponse,
     jsonResponse({
       daily: {
         time: ["2024-01-10"],
@@ -222,8 +265,7 @@ test("get_weather_data historical data", { timeout: TEST_TIMEOUT }, async () => 
   ]);
 
   const result = await getWeatherDataTool.invoke({
-    lat: 40.7128,
-    lon: -74.006,
+    area_search: "New York, NY",
     startDateTime: "2024-01-10",
     endDateTime: "2024-01-10",
     period: "daily"

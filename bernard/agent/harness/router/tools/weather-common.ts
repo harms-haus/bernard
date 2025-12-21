@@ -1,5 +1,9 @@
 import { getSettings } from "@/lib/config/settingsCache";
 
+const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
+const MISSING_USER_AGENT_REASON =
+  "Missing NOMINATIM_USER_AGENT (required by Nominatim usage policy).";
+
 const DEFAULT_FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast";
 const DEFAULT_HISTORICAL_API_URL = "https://archive-api.open-meteo.com/v1/archive";
 
@@ -446,4 +450,145 @@ function formatMarkdownTable(rows: string[][]): string {
   });
 
   return formattedRows.join("\n");
+}
+
+// Geocoding utility functions for weather tool
+type GeocodeConfig = {
+  apiUrl: string;
+  userAgent?: string;
+  email?: string;
+  referer?: string;
+};
+
+type NominatimPlace = {
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+  class?: string;
+  type?: string;
+  importance?: number;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    hamlet?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+    country_code?: string;
+  };
+};
+
+async function loadGeocodeConfig(): Promise<GeocodeConfig> {
+  const settings = await getSettingsWithTimeout();
+  const svc = settings?.services.geocoding;
+  const userAgent = svc?.userAgent ?? process.env["NOMINATIM_USER_AGENT"];
+  const email = svc?.email ?? process.env["NOMINATIM_EMAIL"];
+  const referer = svc?.referer ?? process.env["NOMINATIM_REFERER"];
+
+  return {
+    apiUrl: svc?.url ?? process.env["NOMINATIM_URL"] ?? DEFAULT_GEOCODE_API_URL,
+    ...(userAgent ? { userAgent } : {}),
+    ...(email ? { email } : {}),
+    ...(referer ? { referer } : {})
+  };
+}
+
+function buildGeocodeUrl(
+  params: { query: string; limit?: number },
+  config: GeocodeConfig
+): URL {
+  const url = new URL(config.apiUrl);
+  url.searchParams.set("q", params.query);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("limit", String(params.limit ?? 3));
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("dedupe", "1");
+  url.searchParams.set("polygon_geojson", "0");
+  url.searchParams.set("extratags", "0");
+  return url;
+}
+
+function buildGeocodeHeaders(config: GeocodeConfig): HeadersInit {
+  return {
+    "User-Agent": config.userAgent ?? "",
+    ...(config.referer ? { Referer: config.referer } : {})
+  };
+}
+
+async function safeJsonGeocode(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    return { error: "Failed to parse JSON response", detail: String(err) };
+  }
+}
+
+function isNominatimPlace(value: unknown): value is NominatimPlace {
+  return typeof value === "object" && value !== null;
+}
+
+function parseGeocodePlaces(data: unknown): NominatimPlace[] {
+  return Array.isArray(data) ? data.filter(isNominatimPlace) : [];
+}
+
+function extractGeocodeJsonError(data: unknown): string | null {
+  if (data && typeof data === "object" && "error" in (data as Record<string, unknown>)) {
+    const payload = data as { error?: unknown; detail?: unknown };
+    const detail = payload.detail ? ` (${String(payload.detail)})` : "";
+    return `${String(payload.error)}${detail}`;
+  }
+  return null;
+}
+
+/**
+ * Geocode a location string and return the first matching lat/lon coordinates
+ */
+export async function geocodeLocation(query: string): Promise<{ lat: number; lon: number } | null> {
+  const config = await loadGeocodeConfig();
+  if (!config.userAgent) {
+    throw new Error(MISSING_USER_AGENT_REASON);
+  }
+
+  const url = buildGeocodeUrl({ query, limit: 1 }, config);
+  if (config.email) url.searchParams.set("email", config.email);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEFAULT_WEATHER_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: buildGeocodeHeaders(config)
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      const suffix = body ? ` ${body}` : "";
+      throw new Error(`Geocoding failed: ${res.status} ${res.statusText}${suffix}`);
+    }
+
+    const data = await safeJsonGeocode(res);
+    const jsonError = extractGeocodeJsonError(data);
+    if (jsonError) throw new Error(jsonError);
+
+    const places = parseGeocodePlaces(data);
+    if (!places.length) return null;
+
+    const place = places[0];
+    if (!place?.lat || !place?.lon) return null;
+
+    const lat = parseFloat(place.lat);
+    const lon = parseFloat(place.lon);
+
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+
+    return { lat, lon };
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Geocoding request timed out after ${DEFAULT_WEATHER_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
