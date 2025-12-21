@@ -7,6 +7,7 @@ import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-e
 import { createExecuteHomeAssistantServicesToolInstance } from "./ha-execute-services";
 import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
 import { createToggleLightToolInstance } from "./ha-toggle-light";
+import { wikipediaSearchTool, wikipediaEntryTool } from "./wikipedia";
 import type { HomeAssistantContextManager } from "./ha-context";
 
 /**
@@ -36,6 +37,8 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     webSearchTool,
     // memorizeTool,
     getWeatherDataTool,
+    wikipediaSearchTool,
+    wikipediaEntryTool,
     respondTool, // Add respond tool at the end
   ];
 
@@ -57,6 +60,8 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
 export {
   webSearchTool,
   getWeatherDataTool,
+  wikipediaSearchTool,
+  wikipediaEntryTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,
