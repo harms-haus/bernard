@@ -68,6 +68,9 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   const { countTokens } = await import("../../../lib/conversation/tokenCounter");
   const totalContextTokens = countTokens(promptMessages);
 
+  // Record start time for LLM call duration tracking
+  const llmStartTime = Date.now();
+
   // 6. Emit LLM_CALL event
   yield {
     type: "llm_call",
@@ -129,6 +132,9 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     totalTokens: totalContextTokens + outputTokens,
   };
 
+  // Calculate LLM call duration
+  const llmDurationMs = Date.now() - llmStartTime;
+
   // 11. Emit LLM_CALL_COMPLETE event
   const aiMessage = new AIMessage({
     content: responseContent,
@@ -139,6 +145,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     context: promptMessages as any,
     result: aiMessage as any,
     actualTokens,
+    latencyMs: llmDurationMs,
   };
 }
 

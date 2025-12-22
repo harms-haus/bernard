@@ -7,6 +7,7 @@ export interface TraceEvent {
   timestamp: Date;
   status: 'loading' | 'completed';
   result?: any;
+  durationMs?: number;
 }
 
 /**
@@ -93,7 +94,8 @@ export function extractTraceEventsFromMessages(messages: MessageRecord[]): Trace
                 completionTokens: content.tokens.out || 0,
                 totalTokens: (content.tokens.in || 0) + (content.tokens.out || 0)
               } : (content.result?.actualTokens || traceEvents[llmCallEventIndex].result?.actualTokens)
-            }
+            },
+            durationMs: content.latencyMs || message.metadata?.latencyMs
           };
         }
       }
@@ -122,6 +124,19 @@ export function extractTraceEventsFromMessages(messages: MessageRecord[]): Trace
           result: message.metadata?.result || content.result
         };
         traceEvents.push(traceEvent);
+      } else if (content.type === 'tool_call_complete') {
+        // Find the corresponding tool call event and update it with completion data
+        const toolCallEventIndex = traceEvents.findIndex(event =>
+          event.type === 'tool_call' && event.status === 'completed' &&
+          event.data.toolCall.id === content.toolCallId
+        );
+        if (toolCallEventIndex >= 0) {
+          traceEvents[toolCallEventIndex] = {
+            ...traceEvents[toolCallEventIndex],
+            result: content.result,
+            durationMs: content.latencyMs || message.metadata?.latencyMs
+          };
+        }
       }
     }
   }
@@ -151,7 +166,8 @@ export function updateTraceEventWithCompletion(
               completionTokens: completionData.tokens.out || 0,
               totalTokens: (completionData.tokens.in || 0) + (completionData.tokens.out || 0)
             } : (completionData.result?.actualTokens || events[i].result?.actualTokens))
-          }
+          },
+          durationMs: completionData.latencyMs
         };
         break;
       }
@@ -165,7 +181,8 @@ export function updateTraceEventWithCompletion(
         return {
           ...event,
           status: 'completed' as const,
-          result: completionData.result
+          result: completionData.result,
+          durationMs: completionData.latencyMs
         };
       }
       return event;

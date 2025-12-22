@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Cpu, ChevronDown, Loader2 } from 'lucide-react';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { formatDuration } from '../../utils/formatDuration';
 
 interface LLMCallMessageProps {
   model?: string;
@@ -15,6 +16,7 @@ interface LLMCallMessageProps {
     completionTokens: number;
     totalTokens: number;
   };
+  durationMs?: number;
 }
 
 export function LLMCallMessage({
@@ -25,7 +27,8 @@ export function LLMCallMessage({
   status,
   result,
   totalContextTokens,
-  actualTokens
+  actualTokens,
+  durationMs
 }: LLMCallMessageProps) {
   const { isDarkMode } = useDarkMode();
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -131,16 +134,25 @@ export function LLMCallMessage({
           )}
           <div className="text-xs font-mono break-words flex-1 opacity-75">
             LLM Call{model ? `: ${model}` : ''}{toolCallCount && toolCallCount > 0 ? ` • ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : ''}            {(() => {
+              let displayText = '';
+
+              // Token information
               if (actualTokens?.promptTokens && actualTokens?.completionTokens && totalContextTokens) {
-                return ` • ~${totalContextTokens} [${actualTokens.promptTokens}] → ${actualTokens.completionTokens} tokens`;
+                displayText += ` • ~${totalContextTokens} [${actualTokens.promptTokens}] → ${actualTokens.completionTokens} tokens`;
               } else if (actualTokens?.totalTokens && totalContextTokens) {
-                return ` • ~${totalContextTokens} → ${actualTokens.totalTokens} tokens`;
+                displayText += ` • ~${totalContextTokens} → ${actualTokens.totalTokens} tokens`;
               } else if (actualTokens?.totalTokens) {
-                return ` • ${actualTokens.totalTokens} tokens`;
+                displayText += ` • ${actualTokens.totalTokens} tokens`;
               } else if (totalContextTokens) {
-                return ` • ~${totalContextTokens} tokens`;
+                displayText += ` • ~${totalContextTokens} tokens`;
               }
-              return '';
+
+              // Duration information (only for completed calls)
+              if (status === 'completed' && durationMs !== undefined) {
+                displayText += ` • ${formatDuration(durationMs)}`;
+              }
+
+              return displayText;
             })()}
           </div>
         </div>

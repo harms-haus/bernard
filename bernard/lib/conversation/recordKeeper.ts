@@ -618,7 +618,8 @@ export class RecordKeeper implements Archivist, Recorder {
       createdAt: nowIso(),
       metadata: {
         traceType: "tool_call_complete",
-        toolCallId: details.toolCallId
+        toolCallId: details.toolCallId,
+        ...(typeof details.latencyMs === "number" ? { latencyMs: details.latencyMs } : {})
       }
     };
 

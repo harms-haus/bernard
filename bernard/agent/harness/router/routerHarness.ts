@@ -482,6 +482,9 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       // Add token info message to current messages for this LLM call only
       currentMessages = [...currentMessages, tokenInfoMessage];
 
+      // Record start time for LLM call duration tracking
+      const llmStartTime = Date.now();
+
       // 4d. Emit LLM_CALL event (exclude token_info message from recorded context)
       const contextForRecording = currentMessages.filter(msg => msg.name !== "token_info");
       yield {
@@ -530,6 +533,9 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         break;
       }
 
+      // Calculate LLM call duration
+      const llmDurationMs = Date.now() - llmStartTime;
+
       // 6. Extract actual token usage from the LLM response
       const responseMetadata = (aiMessage as any).response_metadata as Record<string, unknown> | undefined;
       const usage = responseMetadata?.["usage"] as
@@ -547,6 +553,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         type: "llm_call_complete",
         context: [...currentMessages] as any, // Yield a copy
         result: aiMessage as any,
+        latencyMs: llmDurationMs,
       };
       if (actualTokens) {
         event.actualTokens = actualTokens;
@@ -632,7 +639,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       }
 
       // 12. Execute tools sequentially
-      const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
+      const toolResults: Array<{ toolCallId: string; toolName: string; output: string; latencyMs?: number }> = [];
 
       for (const toolCall of validToolCalls) {
         if (toolCall.function.name === "respond") {
@@ -646,9 +653,19 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
           continue;
         }
 
+        // Record start time for tool call duration tracking
+        const toolStartTime = Date.now();
+
         const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
         const result = await executeTool(tool, toolCall, currentMessages);
-        toolResults.push(result);
+
+        // Calculate tool call duration
+        const toolDurationMs = Date.now() - toolStartTime;
+
+        toolResults.push({
+          ...result,
+          latencyMs: toolDurationMs
+        });
 
         // Track used tools (exclude respond tool)
         if (!usedTools.includes(toolCall.function.name)) {
@@ -658,7 +675,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
 
       // 11. Emit TOOL_CALL_COMPLETE events (for streaming, but not added to recorded context)
       for (const result of toolResults) {
-        yield {
+        const event: any = {
           type: "tool_call_complete",
           toolCall: {
             id: result.toolCallId,
@@ -669,6 +686,10 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
           },
           result: result.output,
         };
+        if (result.latencyMs !== undefined) {
+          event.latencyMs = result.latencyMs;
+        }
+        yield event;
       }
 
       // 13. Create combined assistant message with tool calls and results

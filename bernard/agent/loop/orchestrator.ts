@@ -240,7 +240,7 @@ export class StreamingOrchestrator {
 
             case "llm_call_complete":
                 if (this.currentLLMCallMessageId) {
-                    await recorder.recordLLMCallComplete(conversationId, {
+                    const llmCompleteDetails: any = {
                         messageId: this.currentLLMCallMessageId,
                         result: event.result,
                         ...(event.actualTokens ? {
@@ -249,7 +249,13 @@ export class StreamingOrchestrator {
                                 out: event.actualTokens.completionTokens
                             }
                         } : {}),
-                    });
+                    };
+
+                    if (event.type === "llm_call_complete" && event.latencyMs !== undefined) {
+                        llmCompleteDetails.latencyMs = event.latencyMs;
+                    }
+
+                    await recorder.recordLLMCallComplete(conversationId, llmCompleteDetails);
                 }
                 break;
 
@@ -264,10 +270,16 @@ export class StreamingOrchestrator {
                 break;
 
             case "tool_call_complete":
-                await recorder.recordToolCallComplete(conversationId, {
+                const toolCompleteDetails: any = {
                     toolCallId: event.toolCall.id,
                     result: event.result
-                });
+                };
+
+                if (event.type === "tool_call_complete" && event.latencyMs !== undefined) {
+                    toolCompleteDetails.latencyMs = event.latencyMs;
+                }
+
+                await recorder.recordToolCallComplete(conversationId, toolCompleteDetails);
                 break;
 
             case "delta":

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Wrench, ChevronDown, Loader2 } from 'lucide-react';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { formatDuration } from '../../utils/formatDuration';
 
 interface ToolCallMessageProps {
   toolCall: {
@@ -12,12 +13,14 @@ interface ToolCallMessageProps {
   };
   status: 'loading' | 'completed';
   result?: any;
+  durationMs?: number;
 }
 
 export function ToolCallMessage({
   toolCall,
   status,
-  result
+  result,
+  durationMs
 }: ToolCallMessageProps) {
   const { isDarkMode } = useDarkMode();
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -79,7 +82,7 @@ export function ToolCallMessage({
             <Wrench className="h-3 w-3 flex-shrink-0 opacity-60" />
           )}
           <div className="text-xs font-mono break-words flex-1 opacity-75">
-            Tool Call: {toolCall?.function?.name || 'Unknown Tool'}
+            Tool Call: {toolCall?.function?.name || 'Unknown Tool'}{status === 'completed' && durationMs !== undefined ? ` • ${formatDuration(durationMs)}` : ''}
           </div>
         </div>
         {status === 'completed' && (

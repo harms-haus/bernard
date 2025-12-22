@@ -698,12 +698,14 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                                 result={traceEvent.result}
                                 totalContextTokens={traceEvent.data?.totalContextTokens}
                                 actualTokens={traceEvent.result?.actualTokens}
+                                durationMs={traceEvent.durationMs}
                               />
                             ) : traceEvent.type === 'tool_call' ? (
                               <ToolCallMessage
                                 toolCall={traceEvent.data?.toolCall || { id: '', function: { name: 'Unknown', arguments: '{}' } }}
                                 status={traceEvent.status}
                                 result={traceEvent.result}
+                                durationMs={traceEvent.durationMs}
                               />
                             ) : (
                               <div className="text-xs text-gray-500 dark:text-gray-400">

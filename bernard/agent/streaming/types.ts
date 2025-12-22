@@ -74,6 +74,7 @@ export type LLMCallCompleteEvent = {
     completionTokens: number;
     totalTokens: number;
   };
+  latencyMs?: number;
 }
 
 export type ToolCallEvent = {
@@ -97,6 +98,7 @@ export type ToolCallCompleteEvent = {
     };
   };
   result: string;
+  latencyMs?: number;
 }
 
 export type DeltaEvent = {
