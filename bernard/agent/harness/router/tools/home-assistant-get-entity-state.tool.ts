@@ -1,6 +1,6 @@
 import { getStates } from "home-assistant-js-websocket";
-import { getHAConnection } from "./ha-websocket-client";
-import type { HARestConfig } from "./ha-list-entities";
+import { getHAConnection } from "./utility/home-assistant-websocket-client";
+import type { HARestConfig } from "./home-assistant-list-entities.tool";
 
 /**
  * Home Assistant entity state object

@@ -5,7 +5,7 @@ import { Readability } from "@mozilla/readability";
 
 import { logger } from "@/lib/logging";
 import { countTokensInText, sliceTokensFromText } from "@/lib/conversation/tokenCounter";
-import { get, set } from "./website-content-cache";
+import { get, set } from "./utility/website-content-cache";
 
 const FETCH_TIMEOUT_MS = 10000; // 10 seconds
 const DEFAULT_START_TOKENS = 0;

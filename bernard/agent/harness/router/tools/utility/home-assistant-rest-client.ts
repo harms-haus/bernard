@@ -1,4 +1,4 @@
-import type { HomeAssistantEntity } from "./ha-entities";
+import type { HomeAssistantEntity } from "./home-assistant-entities";
 
 const DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
 

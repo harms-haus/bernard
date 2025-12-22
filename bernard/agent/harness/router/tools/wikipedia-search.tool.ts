@@ -1,0 +1,73 @@
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
+import wiki from "wikipedia";
+
+// Set user agent for Wikipedia API requests (required by Wikipedia's policy)
+// Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures
+wiki.setUserAgent("Bernard-AI/1.0 (https://github.com/your-repo/bernard)");
+
+// Monkey patch the wikipedia library's request function to add User-Agent header
+// This is needed because Wikipedia now blocks requests that only have Api-User-Agent
+const axios = require('axios');
+const originalGet = axios.default.get;
+axios.default.get = function(url: string, config?: any) {
+  const newConfig = {
+    ...config,
+    headers: {
+      ...config?.headers,
+      'User-Agent': 'Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)'
+    }
+  };
+  return originalGet(url, newConfig);
+};
+
+type WikipediaSearchResult = {
+  page_id: number;
+  page_title: string;
+  description: string;
+  index: number;
+};
+
+/**
+ * Execute Wikipedia search using the wikipedia package
+ */
+async function executeWikipediaSearch(query: string, n_results: number = 10, starting_index: number = 0): Promise<string> {
+  try {
+    const searchResults = await wiki.search(query, {
+      limit: n_results + starting_index
+    });
+    const results: WikipediaSearchResult[] = searchResults.results
+      .slice(starting_index)
+      .map((result, index) => ({
+        page_id: result.pageid,
+        page_title: result.title,
+        description: result.snippet || '',
+        index: starting_index + index + 1
+      }));
+    return JSON.stringify(results);
+  } catch (error) {
+    return `Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+const wikipediaSearchToolImpl = tool(
+  async ({ query, n_results, starting_index }) => {
+    return executeWikipediaSearch(query, n_results, starting_index);
+  },
+  {
+    name: "wikipedia_search",
+    description: `Search Wikipedia for articles by title or topic.
+e.g. for finding information about a specific person, place, animal, event, category, etc.
+e.g. "What is the capital of France?" -> "France", "Who was the 8th president of the United States?" -> "United States Presidents`,
+    schema: z.object({
+      query: z.string().min(1),
+      n_results: z.number().int().min(1).max(50).optional().default(10),
+      starting_index: z.number().int().min(0).optional().default(0)
+    })
+  }
+);
+
+export const wikipediaSearchTool = Object.assign(wikipediaSearchToolImpl, {
+  interpretationPrompt: ``
+});

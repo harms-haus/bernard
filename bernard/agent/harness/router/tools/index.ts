@@ -1,16 +1,17 @@
 import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { z } from "zod";
 
-import { webSearchTool } from "./web-search";
-import { getWeatherDataTool } from "./get-weather-data";
-import { getWebsiteContentTool } from "./get-website-content";
-import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-entities";
-import { createExecuteHomeAssistantServicesToolInstance } from "./ha-execute-services";
-import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
-import { createToggleLightToolInstance } from "./ha-toggle-light";
-import { wikipediaSearchTool, wikipediaEntryTool } from "./wikipedia";
-import type { HomeAssistantContextManager } from "./ha-context";
-import { createPlayPlexMediaToolInstance, type PlexConfig } from "./plex-play-media";
+import { webSearchTool } from "./web-search.tool";
+import { getWeatherDataTool } from "./get-weather-data.tool";
+import { getWebsiteContentTool } from "./website-content.tool";
+import { createListHAEntitiesToolInstance, type HARestConfig } from "./home-assistant-list-entities.tool";
+import { createExecuteHomeAssistantServicesToolInstance } from "./home-assistant-execute-services.tool";
+import { createGetHistoricalStateToolInstance } from "./home-assistant-historical-state.tool";
+import { createToggleLightToolInstance } from "./home-assistant-toggle-light.tool";
+import { wikipediaSearchTool } from "./wikipedia-search.tool";
+import { wikipediaEntryTool } from "./wikipedia-entry.tool";
+import type { HomeAssistantContextManager } from "./utility/home-assistant-context";
+import { createPlayPlexMediaToolInstance, type PlexConfig } from "./play_media_tv.tool";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation

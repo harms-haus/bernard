@@ -2,16 +2,16 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall } from "./ha-entities";
-import type { HomeAssistantContextManager } from "./ha-context";
+import type { HomeAssistantServiceCall } from "./utility/home-assistant-entities";
+import type { HomeAssistantContextManager } from "./utility/home-assistant-context";
 import {
   extractHomeAssistantContext,
   findEntity,
   validateEntityId,
   getDomainFromEntityId
-} from "./ha-entities";
-import { getHAConnection } from "./ha-websocket-client";
-import type { HARestConfig } from "./ha-list-entities";
+} from "./utility/home-assistant-entities";
+import { getHAConnection } from "./utility/home-assistant-websocket-client";
+import type { HARestConfig } from "./home-assistant-list-entities.tool";
 
 /**
  * Dependencies for the execute home assistant services tool

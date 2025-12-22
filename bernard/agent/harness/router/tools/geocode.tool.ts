@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
-import { createGeocodeTool } from "./geocode";
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
 const MISSING_USER_AGENT_REASON =
@@ -101,6 +100,23 @@ function extractLocationFromContext(context: any[] = []): string | null {
   return null;
 }
 
+function buildGeocodeUrl(query: string, limit: number = 5, country?: string, language?: string): URL {
+  const url = new URL(DEFAULT_GEOCODE_API_URL);
+  url.searchParams.set("q", query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", String(Math.min(limit, 10))); // Nominatim allows max 10
+
+  if (country) {
+    url.searchParams.set("countrycodes", country.toUpperCase());
+  }
+
+  if (language) {
+    url.searchParams.set("accept-language", language);
+  }
+
+  return url;
+}
+
 const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
   const {
     fetchImpl = fetch,
@@ -108,19 +124,6 @@ const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
     jsonParser,
     conversationContext
   } = deps;
-
-  // Create the base geocode tool
-  const baseGeocodeTool = createGeocodeTool({
-    fetchImpl,
-    configLoader,
-    jsonParser: jsonParser ?? (async (res: Response): Promise<unknown> => {
-      try {
-        return await res.json();
-      } catch (err) {
-        return { error: "Failed to parse JSON response", detail: String(err) };
-      }
-    })
-  });
 
   const enhancedGeocodeTool = tool(
     async ({ query, limit, country, language }, runOpts?: unknown) => {
@@ -138,13 +141,56 @@ const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
         return "Error: No valid location provided for geocoding. Please specify a location.";
       }
 
-      // Use the base geocode tool with the extracted query
-      return baseGeocodeTool.invoke({
-        query: extractedQuery,
-        limit,
-        country,
-        language
-      });
+      // Perform geocoding directly
+      try {
+        const url = buildGeocodeUrl(extractedQuery, limit ?? 5, country, language);
+        if (config.email) url.searchParams.set("email", config.email);
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        try {
+          const res = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': config.userAgent
+            }
+          });
+
+          if (!res.ok) {
+            const body = await res.text().catch(() => "");
+            return `Geocoding failed: ${res.status} ${res.statusText}${body ? ` - ${body}` : ""}`;
+          }
+
+          const data = await res.json();
+
+          if (!Array.isArray(data) || data.length === 0) {
+            return `No geocoding results found for "${extractedQuery}".`;
+          }
+
+          // Format results
+          const results = data.slice(0, limit ?? 5).map((place: any, index: number) => {
+            const displayName = place.display_name || "Unknown location";
+            const lat = place.lat ? parseFloat(place.lat) : null;
+            const lon = place.lon ? parseFloat(place.lon) : null;
+
+            if (!lat || !lon || Number.isNaN(lat) || Number.isNaN(lon)) {
+              return `${index + 1}. ${displayName} (coordinates unavailable)`;
+            }
+
+            return `${index + 1}. ${displayName}\n   Coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          });
+
+          return `Geocoding results for "${extractedQuery}":\n\n${results.join("\n\n")}`;
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return "Geocoding request timed out.";
+        }
+        return `Geocoding error: ${error instanceof Error ? error.message : String(error)}`;
+      }
     },
     {
       name: "geocode_search",
@@ -179,7 +225,13 @@ const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
   );
 
   return Object.assign(enhancedGeocodeTool, {
-    verifyConfiguration: baseGeocodeTool.verifyConfiguration
+    verifyConfiguration: async () => {
+      const config = await configLoader();
+      return {
+        ok: !!config.userAgent,
+        reason: config.userAgent ? undefined : MISSING_USER_AGENT_REASON
+      };
+    }
   });
 };
 

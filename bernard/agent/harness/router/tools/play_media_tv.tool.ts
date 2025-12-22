@@ -1,16 +1,16 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
-import type { HomeAssistantServiceCall } from "./ha-entities";
-import { getHAConnection } from "./ha-websocket-client";
-import type { HARestConfig } from "./ha-list-entities";
+import type { HomeAssistantServiceCall } from "./utility/home-assistant-entities";
+import { getHAConnection } from "./utility/home-assistant-websocket-client";
+import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import {
   resolveDeviceConfig,
   resolveHAEntityId,
   resolvePlexClientId,
   getDeviceName,
   getSupportedLocations
-} from "./plex-device-mapping";
+} from "./utility/plex-device-mapping";
 
 /**
  * Plex configuration

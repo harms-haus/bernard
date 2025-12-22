@@ -1,6 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
-import type { HomeAssistantContext, HomeAssistantEntity, HomeAssistantServiceCall } from "./ha-entities";
-import { extractHomeAssistantContext, findEntity, validateEntityId, getDomainFromEntityId } from "./ha-entities";
+import type { HomeAssistantContext, HomeAssistantEntity, HomeAssistantServiceCall } from "./home-assistant-entities";
+import { extractHomeAssistantContext, findEntity, validateEntityId, getDomainFromEntityId } from "./home-assistant-entities";
 
 /**
  * Home Assistant context manager for maintaining state during conversation

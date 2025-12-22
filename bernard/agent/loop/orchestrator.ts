@@ -9,10 +9,10 @@ import { AIMessage, BaseMessage } from "@langchain/core/messages";
 import { createDelegateSequencer } from "../streaming/delegateSequencer";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
-import type { HomeAssistantContextManager } from "../harness/router/tools/ha-context";
+import type { HomeAssistantContextManager } from "../harness/router/tools/utility/home-assistant-context";
 import type { ToolWithInterpretation } from "../harness/router/tools";
-import type { HARestConfig } from "../harness/router/tools/ha-list-entities";
-import type { PlexConfig } from "../harness/router/tools/plex-play-media";
+import type { HARestConfig } from "../harness/router/tools/home-assistant-list-entities.tool";
+import type { PlexConfig } from "../harness/router/tools/play_media_tv.tool";
 import { getSettings } from "@/lib/config/settingsCache";
 import crypto from "node:crypto";
 
@@ -322,7 +322,7 @@ export class StreamingOrchestrator {
 
         // Close all Home Assistant WebSocket connections
         try {
-            const { closeAllHAConnections } = await import('../harness/router/tools/ha-websocket-client');
+            const { closeAllHAConnections } = await import('../harness/router/tools/utility/home-assistant-websocket-client');
             closeAllHAConnections();
             console.log('[StreamingOrchestrator] Closed all HA WebSocket connections');
         } catch (error) {

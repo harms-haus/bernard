@@ -3,10 +3,10 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { getStates } from "home-assistant-js-websocket";
 
-import type { HomeAssistantEntity } from "./ha-entities";
-import type { HomeAssistantContextManager } from "./ha-context";
-import { extractHomeAssistantContext, formatEntitiesForDisplay } from "./ha-entities";
-import { getHAConnection } from "./ha-websocket-client";
+import type { HomeAssistantEntity } from "./utility/home-assistant-entities";
+import type { HomeAssistantContextManager } from "./utility/home-assistant-context";
+import { extractHomeAssistantContext, formatEntitiesForDisplay } from "./utility/home-assistant-entities";
+import { getHAConnection } from "./utility/home-assistant-websocket-client";
 
 /**
  * Home Assistant API configuration (supports both WebSocket and REST)
