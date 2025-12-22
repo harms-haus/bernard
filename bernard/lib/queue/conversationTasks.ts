@@ -294,6 +294,15 @@ async function runIndexTask(
   try {
     debugLog(deps.logger, "Starting index task", { conversationId, messageCount: messages.length });
 
+    // Check if conversation is ghost - skip indexing
+    if (deps.recordKeeper) {
+      const conversation = await deps.recordKeeper.getConversation(conversationId);
+      if (conversation?.ghost === true) {
+        debugLog(deps.logger, "Skipping index task for ghost conversation", { conversationId });
+        return { ok: true, meta: { chunks: 0, skipped: true, reason: "ghost_conversation" } };
+      }
+    }
+
     const filtered = filterMessages(messages).slice(-messageLimit);
     debugLog(deps.logger, "Filtered messages", {
       conversationId,

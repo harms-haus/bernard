@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard } from 'lucide-react';
+import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard, MessageCircle } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { UserMessage } from './chat-messages/UserMessage';
 import { AssistantMessage } from './chat-messages/AssistantMessage';
@@ -45,6 +45,7 @@ export function ChatInterface() {
   const [isInputFocused, setIsInputFocused] = React.useState(false);
   const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
+  const [isGhostMode, setIsGhostMode] = React.useState(false);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
   
   // Buffer for streaming tool call arguments
@@ -95,7 +96,8 @@ export function ChatInterface() {
         messages.concat(userMessage).filter(msg => msg.role !== 'system').map(msg => ({
           role: msg.role as 'user' | 'assistant',
           content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-        }))
+        })),
+        isGhostMode
       );
 
       const reader = stream.getReader();
@@ -389,6 +391,25 @@ export function ChatInterface() {
     setMessages([]);
     setTraceEvents([]);
     setCurrentConversationId(null);
+    setIsGhostMode(false); // Reset ghost mode for new chat
+  };
+
+  const handleToggleGhostMode = async () => {
+    const newGhostMode = !isGhostMode;
+
+    // If we have a current conversation, update it via API
+    if (currentConversationId) {
+      try {
+        await apiClient.updateConversationGhostStatus(currentConversationId, newGhostMode);
+      } catch (error) {
+        console.error('Failed to toggle ghost mode:', error);
+        // Could show a toast here
+        return;
+      }
+    }
+
+    // Update local state
+    setIsGhostMode(newGhostMode);
   };
 
   // Calculate how many tool calls were initiated by each LLM call
@@ -406,11 +427,6 @@ export function ChatInterface() {
       }
     }
     return count;
-  };
-
-  const handlePrivateChat = () => {
-    // Admin only - mock implementation
-    setMessages([]);
   };
 
   const handleDeleteChat = () => {
@@ -516,6 +532,7 @@ export function ChatInterface() {
           </Avatar>
           <div className="flex items-center space-x-1">
             <span className="font-medium">Bernard</span>
+            {isGhostMode && <Ghost className="h-4 w-4 text-gray-500" />}
             <ChevronDown className="h-4 w-4 text-gray-500" />
           </div>
         </div>
@@ -541,15 +558,14 @@ export function ChatInterface() {
                 <Download className="mr-2 h-4 w-4" />
                 Download Chat History
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleToggleGhostMode}>
+                <Ghost className="mr-2 h-4 w-4" />
+                {isGhostMode ? 'Disable' : 'Enable'} Ghost Mode
+              </DropdownMenuItem>
               {state.user?.isAdmin && (
-                <>
-                  <DropdownMenuItem onClick={handlePrivateChat}>
-                    Private Chat
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDeleteChat}>
-                    Delete Chat
-                  </DropdownMenuItem>
-                </>
+                <DropdownMenuItem onClick={handleDeleteChat}>
+                  Delete Chat
+                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -562,7 +578,11 @@ export function ChatInterface() {
           <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
-                <Ghost className={`h-16 w-16 mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                {isGhostMode ? (
+                  <Ghost className={`h-16 w-16 mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                ) : (
+                  <MessageCircle className={`h-16 w-16 mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                )}
                 <div className={`text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <h3 className="text-lg font-medium mb-2">How can I help you today?</h3>
                   <p className="text-sm">Ask about the weather, set a timer, or search the web.</p>
@@ -585,9 +605,13 @@ export function ChatInterface() {
                         <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {message.role === 'assistant' && (
                             <div className="w-8 flex justify-center">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback>B</AvatarFallback>
-                              </Avatar>
+                              {isGhostMode ? (
+                                <Ghost className="h-8 w-8 text-gray-500" />
+                              ) : (
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback>B</AvatarFallback>
+                                </Avatar>
+                              )}
                             </div>
                           )}
                           {message.role === 'user' ? (

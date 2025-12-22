@@ -255,7 +255,7 @@ class APIClient {
     return response.json();
   }
 
-  async chatStream(messages: ConversationMessage[]): Promise<ReadableStream> {
+  async chatStream(messages: ConversationMessage[], ghost?: boolean): Promise<ReadableStream> {
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -268,7 +268,8 @@ class APIClient {
           role: msg.role,
           content: msg.content
         })),
-        stream: true
+        stream: true,
+        ...(ghost ? { ghost: true } : {})
       })
     });
 
@@ -301,6 +302,23 @@ class APIClient {
 
     const data = await response.json();
     return data.results || [];
+  }
+
+  async updateConversationGhostStatus(conversationId: string, ghost: boolean): Promise<{ conversationId: string; ghost: boolean; updated: boolean }> {
+    const response = await fetch(`${this.baseUrl}/api/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({ ghost })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update conversation ghost status');
+    }
+
+    return response.json();
   }
 }
 

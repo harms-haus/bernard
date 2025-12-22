@@ -54,6 +54,7 @@ export async function createScaffolding(opts: {
   responseModelOverride?: string;
   conversationId?: string;
   userId?: string;
+  ghost?: boolean;
 }) {
   const redis = getRedis();
   let summarizer: ConversationSummaryService | undefined;
@@ -70,7 +71,8 @@ export async function createScaffolding(opts: {
 
   const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {
     ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
-    ...(opts.userId ? { userId: opts.userId } : {})
+    ...(opts.userId ? { userId: opts.userId } : {}),
+    ...(opts.ghost !== undefined ? { ghost: opts.ghost } : {})
   });
   const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
 

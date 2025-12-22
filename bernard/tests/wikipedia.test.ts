@@ -27,8 +27,8 @@ test("wikipedia_search tool returns JSON array", async () => {
 test("wikipedia_entry tool returns JSON object", async () => {
   const result = await wikipediaEntryTool.invoke({
     page_identifier: "TypeScript",
-    char_offset: 0,
-    max_chars: 100
+    token_offset: 0,
+    max_tokens: 100
   });
 
   assert(typeof result === "string", "Result should be a string");
@@ -36,10 +36,10 @@ test("wikipedia_entry tool returns JSON object", async () => {
   // Parse the JSON result
   const parsed = JSON.parse(result);
   assert(typeof parsed === "object" && parsed !== null, "Result should parse to an object");
-  assert(typeof parsed.n_chars === "number", "Should have n_chars as number");
+  assert(typeof parsed.n_tokens === "number", "Should have n_tokens as number");
   assert(typeof parsed.content === "string", "Should have content as string");
-  assert(typeof parsed.n_next_chars === "number", "Should have n_next_chars as number");
-  assert(parsed.n_chars <= 100, "n_chars should not exceed max_chars");
+  assert(typeof parsed.n_next_tokens === "number", "Should have n_next_tokens as number");
+  assert(parsed.n_tokens <= 100, "n_tokens should not exceed max_tokens");
 });
 
 test("wikipedia_search tool supports starting_index parameter", async () => {
@@ -66,8 +66,8 @@ test("wikipedia tools handle invalid input gracefully", async () => {
   // Test with invalid page identifier
   const result = await wikipediaEntryTool.invoke({
     page_identifier: "ThisPageDoesNotExist12345",
-    char_offset: 0,
-    max_chars: 100
+    token_offset: 0,
+    max_tokens: 100
   });
 
   assert(typeof result === "string", "Result should be a string");

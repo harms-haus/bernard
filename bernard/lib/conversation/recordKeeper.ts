@@ -155,7 +155,7 @@ export class RecordKeeper implements Archivist, Recorder {
   async startRequest(
     token: string,
     model: string,
-    opts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string; userId?: string } = {}
+    opts: { place?: string; clientMeta?: Record<string, unknown>; conversationId?: string; userId?: string; ghost?: boolean } = {}
   ): Promise<{ requestId: string; conversationId: string; isNewConversation: boolean }> {
     const now = Date.now();
     const nowISO = nowIso();
@@ -188,7 +188,8 @@ export class RecordKeeper implements Archivist, Recorder {
         messageCount: 0,
         toolCallCount: 0,
         requestCount: 1,
-        lastRequestAt: nowISO
+        lastRequestAt: nowISO,
+        ...(opts.ghost !== undefined ? { ghost: opts.ghost.toString() } : {})
       });
     } else {
       const convUpdates: Record<string, string> = {
@@ -200,6 +201,13 @@ export class RecordKeeper implements Archivist, Recorder {
         convUpdates["closedAt"] = "";
         convUpdates["closeReason"] = "";
         multi.zrem(this.key("convs:closed"), finalConversationId);
+        // Allow toggling ghost mode when reopening
+        if (opts.ghost !== undefined) {
+          convUpdates["ghost"] = opts.ghost.toString();
+        }
+      } else if (opts.ghost !== undefined) {
+        // For active conversations, allow toggling ghost mode
+        convUpdates["ghost"] = opts.ghost.toString();
       }
       multi.hset(convKey, convUpdates).hincrby(convKey, "requestCount", 1);
     }
@@ -647,6 +655,8 @@ export class RecordKeeper implements Archivist, Recorder {
       return;
     }
 
+    const isGhost = convo["ghost"] === "true";
+
     this.log.info({
       event: "close.conversation.start",
       conversationId,
@@ -676,13 +686,19 @@ export class RecordKeeper implements Archivist, Recorder {
       conversationId
     });
 
-    const enqueued = await this.enqueueConversationTasks(conversationId);
+    const enqueued = isGhost ? false : await this.enqueueConversationTasks(conversationId);
     if (enqueued) {
       await this.updateIndexingStatus(conversationId, "queued", undefined, 1);
       this.log.info({
         event: "close.conversation.tasks_enqueued",
         conversationId,
         status: "queued"
+      });
+    } else if (isGhost) {
+      this.log.info({
+        event: "close.conversation.ghost_skipped_indexing",
+        conversationId,
+        reason: "ghost_conversation"
       });
     } else if (this.summarizer) {
       this.log.info({
@@ -911,17 +927,31 @@ export class RecordKeeper implements Archivist, Recorder {
   private async enqueueConversationTasks(conversationId: string): Promise<boolean> {
     const queue = await this.ensureConversationQueue();
     if (!queue) return false;
+
+    // Check if conversation is ghost - skip indexing but allow summary and flag tasks
+    const conversation = await this.getConversation(conversationId);
+    const isGhost = conversation?.ghost === true;
+
     try {
       this.log.info({
         event: "queue.enqueue.start",
-        conversationId
+        conversationId,
+        isGhost
       });
 
-      const jobs = await Promise.all([
-        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) }),
+      const jobPromises = [
         queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
         queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
-      ]);
+      ];
+
+      // Only add index task if not ghost
+      if (!isGhost) {
+        jobPromises.unshift(
+          queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) })
+        );
+      }
+
+      const jobs = await Promise.all(jobPromises);
 
       this.log.info({
         event: "queue.enqueue",
@@ -1185,6 +1215,11 @@ export class RecordKeeper implements Archivist, Recorder {
       if (typeof parsedAttempts === "number") {
         conversation.indexingAttempts = parsedAttempts;
       }
+    }
+
+    // Ghost mode field
+    if (data["ghost"]) {
+      conversation.ghost = data["ghost"] === "true";
     }
 
     return conversation;

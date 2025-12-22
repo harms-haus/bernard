@@ -56,6 +56,7 @@ type ChatCompletionBody = {
   store?: unknown;
   seed?: unknown;
   chatId?: string;
+  ghost?: boolean;
 };
 
 const UNSUPPORTED_KEYS: Array<keyof ChatCompletionBody> = [
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
 
   const includeUsage = body.stream_options?.include_usage === true;
   const shouldStream = body.stream === true;
+  const isGhostMode = body.ghost === true;
   const start = Date.now();
 
   let inputMessages: BaseMessage[];
@@ -118,7 +120,8 @@ export async function POST(req: NextRequest) {
   const scaffold = await createScaffolding({
     token: auth.token,
     responseModelOverride: responseModelConfig.id,
-    ...(body.chatId ? { conversationId: body.chatId } : {})
+    ...(body.chatId ? { conversationId: body.chatId } : {}),
+    ...(isGhostMode ? { ghost: true } : {})
   });
   const {
     keeper,

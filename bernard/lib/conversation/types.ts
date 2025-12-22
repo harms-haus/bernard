@@ -163,6 +163,7 @@ export type Conversation = {
   indexingStatus?: ConversationIndexingStatus;
   indexingError?: string;
   indexingAttempts?: number;
+  ghost?: boolean;
 };
 
 export type ConversationStats = {

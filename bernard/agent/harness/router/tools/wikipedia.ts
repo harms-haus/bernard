@@ -2,6 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import wiki from "wikipedia";
+import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "../../../../lib/conversation/tokenCounter";
 
 // Set user agent for Wikipedia API requests (required by Wikipedia's policy)
 // Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures
@@ -30,9 +31,9 @@ type WikipediaSearchResult = {
 };
 
 type WikipediaEntryResult = {
-  n_chars: number;
+  n_tokens: number;
   content: string;
-  n_next_chars: number;
+  n_next_tokens: number;
 };
 
 /**
@@ -62,22 +63,20 @@ async function executeWikipediaSearch(query: string, n_results: number = 10, sta
  */
 async function executeWikipediaEntry(
   page_identifier: string,
-  char_offset: number = 0,
-  max_chars: number = 1500
+  token_offset: number = 0,
+  max_tokens: number = 1500
 ): Promise<string> {
   try {
     const page = await wiki.page(page_identifier, { redirect: true });
     const fullContent = await page.content({ redirect: true });
 
-    // Ensure char_offset doesn't exceed content length
-    const startPos = Math.min(char_offset, fullContent.length);
-    const endPos = Math.min(startPos + max_chars, fullContent.length);
+    // Use token-based slicing instead of character-based slicing
+    const content = sliceTokensFromText(fullContent, token_offset, max_tokens, DEFAULT_ENCODING);
+    const n_tokens = countTokensInText(content, DEFAULT_ENCODING);
+    const totalTokens = countTokensInText(fullContent, DEFAULT_ENCODING);
+    const n_next_tokens = Math.max(0, totalTokens - token_offset - n_tokens);
 
-    const content = fullContent.slice(startPos, endPos);
-    const n_chars = content.length;
-    const n_next_chars = fullContent.length - endPos;
-
-    const result: WikipediaEntryResult = { n_chars, content, n_next_chars };
+    const result: WikipediaEntryResult = { n_tokens, content, n_next_tokens };
     return JSON.stringify(result);
   } catch (error) {
     return `Wikipedia entry failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -102,16 +101,16 @@ e.g. "What is the capital of France?" -> "France", "Who was the 8th president of
 );
 
 const wikipediaEntryToolImpl = tool(
-  async ({ page_identifier, char_offset, max_chars }) => {
-    return executeWikipediaEntry(page_identifier, char_offset, max_chars);
+  async ({ page_identifier, token_offset, max_tokens }) => {
+    return executeWikipediaEntry(page_identifier, token_offset, max_tokens);
   },
   {
     name: "wikipedia_entry",
-    description: "Retrieve text content from a specific Wikipedia article with character offset and length limits.",
+    description: "Retrieve text content from a specific Wikipedia article with token offset and length limits.",
     schema: z.object({
       page_identifier: z.string().min(1),
-      char_offset: z.number().int().min(0).optional().default(0),
-      max_chars: z.number().int().min(1).max(10000).optional().default(1500)
+      token_offset: z.number().int().min(0).optional().default(0),
+      max_tokens: z.number().int().min(1).max(10000).optional().default(1500)
     })
   }
 );
