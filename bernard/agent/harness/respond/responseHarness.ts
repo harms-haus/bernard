@@ -28,6 +28,7 @@ export type ResponseHarnessContext = {
   abortSignal?: AbortSignal;
   toolDefinitions?: ToolWithInterpretation[];
   usedTools?: string[]; // Tool names that were executed in this conversation
+  reason?: string; // Optional reason for why response was forced
 };
 
 /**
@@ -58,11 +59,16 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 3. Extract tool names for the event
   const toolNames = toolDefinitions?.map(tool => tool.name) ?? [];
 
-  // 4. Calculate total context tokens
+  // 4. Get response max tokens setting
+  const { getSettings } = await import("../../../lib/config/settingsCache");
+  const settings = await getSettings();
+  const responseMaxTokens = settings.limits.responseMaxTokens;
+
+  // 5. Calculate total context tokens
   const { countTokens } = await import("../../../lib/conversation/tokenCounter");
   const totalContextTokens = countTokens(promptMessages);
 
-  // 5. Emit LLM_CALL event
+  // 6. Emit LLM_CALL event
   yield {
     type: "llm_call",
     model: "response",
@@ -71,7 +77,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     totalContextTokens,
   };
 
-  // 4. Stream Tokens
+  // 7. Stream Tokens
   let responseContent = "";
   let finishReason: "stop" | "length" | "content_filter" | undefined;
   const messageId = uniqueId("msg");
@@ -80,13 +86,13 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     for await (const token of llmCaller.streamText(promptMessages, {
       model: "response-generator",
       temperature: 0.7,
-      maxTokens: 1000,
+      maxTokens: responseMaxTokens,
       timeout: 60000, // 60 second timeout for streaming responses
       ...(abortSignal ? { abortSignal } : {}),
     })) {
       responseContent += token;
 
-      // 5. Emit DELTA event
+      // 8. Emit DELTA event
       yield {
         type: "delta",
         messageId,
@@ -107,7 +113,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     }
   }
 
-  // 6. Emit final DELTA with finish_reason
+  // 9. Emit final DELTA with finish_reason
   yield {
     type: "delta",
     messageId,
@@ -115,7 +121,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     finishReason,
   };
 
-  // 7. Emit LLM_CALL_COMPLETE event
+  // 10. Emit LLM_CALL_COMPLETE event
   const aiMessage = new AIMessage({
     content: responseContent,
     id: messageId,

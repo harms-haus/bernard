@@ -34,9 +34,14 @@ export function buildResponseSystemPrompt(
   availableTools?: Array<{ name: string; description?: string }>,
   disabledTools?: Array<{ name: string; reason?: string }>,
   toolDefinitions?: ToolWithInterpretation[],
-  usedTools?: string[]
+  usedTools?: string[],
+  reason?: string
 ) {
   const sections: Array<string | null> = [buildCurrentDateTimePrompt(now), bernardSystemPrompt];
+
+  if (reason) {
+    sections.push(`Response forced due to: ${reason}`);
+  }
 
   if (availableTools && availableTools.length > 0) {
     sections.push(

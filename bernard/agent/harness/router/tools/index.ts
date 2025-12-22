@@ -23,13 +23,15 @@ export type ToolWithInterpretation = StructuredToolInterface & {
  * This is a no-op tool that the LLM calls to indicate it's done with tool calling.
  */
 const respondTool = tool(
-  () => {
-    return { status: "ready_to_respond" };
+  (args: { reason?: string }) => {
+    return { status: "ready_to_respond", reason: args.reason };
   },
   {
     name: "respond",
-    description: "Signal that you have completed all necessary tool calls and are ready to generate a response to the user. Call this when you have gathered all the information needed.",
-    schema: z.object({})
+    description: "Signal that you have completed all necessary tool calls and are ready to generate a response to the user. Call this when you have gathered all the information needed. Optionally provide a reason if the response is being forced.",
+    schema: z.object({
+      reason: z.string().optional().describe("Optional reason for responding (e.g., when forced due to limits)")
+    })
   }
 );
 

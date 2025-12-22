@@ -420,11 +420,12 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   // 3. Get current messages from router context
   let currentMessages = routerContext.getMessages();
 
-  const MAX_TURNS = 5;
+  const MAX_TURNS = 100; // Very high limit, effectively unlimited but prevents infinite loops
   let turnCount = 0;
   let respondCalled = false;
   let currentTurnToolMessages: BaseMessage[] = [];
   let harnessCompletedNormally = false;
+  const toolCallCounts: Map<string, number> = new Map(); // Track identical tool calls
 
   try {
     // Get token limit settings once for the harness execution
@@ -444,12 +445,16 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         // Force response harness call when token limit exceeded
         respondCalled = true;
 
+        // Set reason on response context
+        context.responseContext.setReason("ran out of tokens");
+
         // Create and execute response harness
         const responseHarness = runResponseHarness({
           conversationId: context.conversationId,
           responseContext: context.responseContext,
           messages: currentTurnToolMessages, // Only tool results from current turn
           llmCaller: responseLLMCaller,
+          reason: "ran out of tokens",
           ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
           ...(usedTools.length > 0 ? { usedTools } : {}),
           ...(abortSignal ? { abortSignal } : {})
@@ -551,15 +556,69 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       // 7. Extract tool calls
       const toolCalls = extractToolCallsFromAIMessage(aiMessage);
 
-      // 8. If no tool calls, add AI message to context and break
+      // 8. If no tool calls at all, add AI message to context and break normally
       if (toolCalls.length === 0) {
         currentMessages.push(aiMessage);
         harnessCompletedNormally = true;
         break;
       }
 
-      // 9. Emit TOOL_CALL events (for streaming, but not added to recorded context)
+      // 9. Check for identical tool call limit (max 2 identical calls)
+      const validToolCalls: typeof toolCalls = [];
       for (const toolCall of toolCalls) {
+        if (toolCall.function.name === "respond") {
+          // respond tool is always allowed
+          validToolCalls.push(toolCall);
+          continue;
+        }
+
+        // Create a key for identical calls: tool name + arguments
+        const callKey = `${toolCall.function.name}:${toolCall.function.arguments}`;
+        const currentCount = toolCallCounts.get(callKey) || 0;
+
+        if (currentCount >= 2) {
+          // Skip this tool call - it's exceeded the limit
+          yield {
+            type: "error",
+            error: `Identical tool call limit exceeded: ${toolCall.function.name} with arguments ${toolCall.function.arguments}`,
+          };
+          continue;
+        }
+
+        validToolCalls.push(toolCall);
+        toolCallCounts.set(callKey, currentCount + 1);
+      }
+
+      // 10. If no valid tool calls (all were filtered due to identical call limits), force response
+      if (validToolCalls.length === 0) {
+        respondCalled = true;
+
+        // Set reason on response context
+        context.responseContext.setReason("duplicate tool calls");
+
+        // Create and execute response harness
+        const responseHarness = runResponseHarness({
+          conversationId: context.conversationId,
+          responseContext: context.responseContext,
+          messages: currentTurnToolMessages, // Only tool results from current turn
+          llmCaller: responseLLMCaller,
+          reason: "duplicate tool calls",
+          ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+          ...(usedTools.length > 0 ? { usedTools } : {}),
+          ...(abortSignal ? { abortSignal } : {})
+        });
+
+        // Yield all response harness events
+        for await (const event of responseHarness) {
+          yield event;
+        }
+
+        harnessCompletedNormally = true;
+        return; // Exit successfully after response harness
+      }
+
+      // 11. Emit TOOL_CALL events (for streaming, but not added to recorded context)
+      for (const toolCall of validToolCalls) {
         yield {
           type: "tool_call",
           toolCall: {
@@ -572,10 +631,10 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         };
       }
 
-      // 10. Execute tools sequentially
+      // 12. Execute tools sequentially
       const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
 
-      for (const toolCall of toolCalls) {
+      for (const toolCall of validToolCalls) {
         if (toolCall.function.name === "respond") {
           respondCalled = true;
           // Add a placeholder result for respond() tool
@@ -612,7 +671,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         };
       }
 
-      // 12. Create combined assistant message with tool calls and results
+      // 13. Create combined assistant message with tool calls and results
       let combinedContent = "";
 
       // Include original AI message content if it exists
@@ -622,10 +681,10 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       }
 
       // Add formatted tool calls and results (excluding respond tool)
-      currentTurnToolMessages = formatToolResultsForContext(toolCalls, toolResults, ["respond"]);
+      currentTurnToolMessages = formatToolResultsForContext(validToolCalls, toolResults, ["respond"]);
       currentMessages.push(...currentTurnToolMessages);
 
-      // 14. Check if respond() was called
+      // 15. Check if respond() was called
       if (respondCalled) {
         // Execute response harness with only the current turn's tool results
         // The response harness will fetch conversation history separately
@@ -660,11 +719,15 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
     // Don't call it if the harness completed normally without calling respond
     if (!respondCalled && !harnessCompletedNormally) {
       try {
+        // Set reason on response context
+        context.responseContext.setReason("router harness failed or was interrupted");
+
         const responseHarness = runResponseHarness({
           conversationId: context.conversationId,
           responseContext: context.responseContext,
           messages: currentTurnToolMessages, // May be empty if we failed early
           llmCaller: responseLLMCaller,
+          reason: "router harness failed or was interrupted",
           ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
           ...(usedTools.length > 0 ? { usedTools } : {}),
           ...(abortSignal ? { abortSignal } : {})

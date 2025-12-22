@@ -137,7 +137,8 @@ export const BackupSettingsSchema = z.object({
 });
 
 const LimitsSettingsSchema = z.object({
-  currentRequestMaxTokens: z.number().int().positive().default(8000)
+  currentRequestMaxTokens: z.number().int().positive().default(8000),
+  responseMaxTokens: z.number().int().positive().default(8000)
 });
 
 export type Provider = z.infer<typeof ProviderSchema>;
@@ -323,6 +324,9 @@ export function defaultLimits(): LimitsSettings {
   return {
     currentRequestMaxTokens: process.env["CURRENT_REQUEST_MAX_TOKENS"]
       ? parseInt(process.env["CURRENT_REQUEST_MAX_TOKENS"])
+      : 8000,
+    responseMaxTokens: process.env["RESPONSE_MAX_TOKENS"]
+      ? parseInt(process.env["RESPONSE_MAX_TOKENS"])
       : 8000
   };
 }

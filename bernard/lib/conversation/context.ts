@@ -173,18 +173,27 @@ export class ResponseContext extends BaseContext {
   private disabledTools: Array<{ name: string; reason?: string }> | undefined;
   private toolDefinitions: ToolWithInterpretation[] | undefined;
   private usedTools: string[] | undefined;
+  private reason?: string;
 
   constructor(
     availableTools?: Array<{ name: string; description?: string }>,
     disabledTools?: Array<{ name: string; reason?: string }>,
     toolDefinitions?: ToolWithInterpretation[],
-    usedTools?: string[]
+    usedTools?: string[],
+    reason?: string
   ) {
     super();
     this.availableTools = availableTools;
     this.disabledTools = disabledTools;
     this.toolDefinitions = toolDefinitions;
     this.usedTools = usedTools;
+    if (reason !== undefined) {
+      this.reason = reason;
+    }
+  }
+
+  setReason(reason: string) {
+    this.reason = reason;
   }
 
   /**
@@ -207,7 +216,8 @@ export class ResponseContext extends BaseContext {
       this.availableTools,
       this.disabledTools,
       this.toolDefinitions,
-      this.usedTools
+      this.usedTools,
+      this.reason
     );
   }
 
