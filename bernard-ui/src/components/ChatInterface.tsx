@@ -235,10 +235,8 @@ export function ChatInterface() {
                 // Store current assistant message ID for cleanup
                 currentAssistantIdRef.current = assistantMessage.id;
                 setMessages(prev => [...prev, assistantMessage!]);
-              }
-
-              // Update content if we have text
-              if (text && assistantMessage) {
+              } else if (text && assistantMessage) {
+                // Only append text if assistant message already exists (avoid duplicating first token)
                 const updatedMessage: MessageRecord = {
                   ...assistantMessage,
                   content: assistantMessage.content + text
@@ -638,6 +636,8 @@ export function ChatInterface() {
                                 toolCallCount={getToolCallCountForLLMCall(traceEventIndex)}
                                 status={traceEvent.status}
                                 result={traceEvent.result}
+                                totalContextTokens={traceEvent.data?.totalContextTokens}
+                                actualTokens={traceEvent.result?.actualTokens}
                               />
                             ) : traceEvent.type === 'tool_call' ? (
                               <ToolCallMessage

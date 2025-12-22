@@ -58,12 +58,17 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   // 3. Extract tool names for the event
   const toolNames = toolDefinitions?.map(tool => tool.name) ?? [];
 
-  // 4. Emit LLM_CALL event
+  // 4. Calculate total context tokens
+  const { countTokens } = await import("../../../lib/conversation/tokenCounter");
+  const totalContextTokens = countTokens(promptMessages);
+
+  // 5. Emit LLM_CALL event
   yield {
     type: "llm_call",
     model: "response",
     context: promptMessages as any,
     tools: toolNames,
+    totalContextTokens,
   };
 
   // 4. Stream Tokens

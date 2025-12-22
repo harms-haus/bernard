@@ -136,18 +136,24 @@ export const BackupSettingsSchema = z.object({
   retentionCount: z.number().int().positive()
 });
 
+const LimitsSettingsSchema = z.object({
+  currentRequestMaxTokens: z.number().int().positive().default(8000)
+});
+
 export type Provider = z.infer<typeof ProviderSchema>;
 export type ModelCategorySettings = z.infer<typeof ModelCategorySchema>;
 export type ModelsSettings = z.infer<typeof ModelsSettingsSchema>;
 export type ServicesSettings = z.infer<typeof ServicesSettingsSchema>;
 export type OAuthSettings = z.infer<typeof OAuthSettingsSchema>;
 export type BackupSettings = z.infer<typeof BackupSettingsSchema>;
+export type LimitsSettings = z.infer<typeof LimitsSettingsSchema>;
 
 export type BernardSettings = {
   models: ModelsSettings;
   services: ServicesSettings;
   oauth: OAuthSettings;
   backups: BackupSettings;
+  limits: LimitsSettings;
 };
 
 export type Section = keyof BernardSettings;
@@ -308,6 +314,17 @@ export function defaultServices(): ServicesSettings {
   }
 
   return services;
+}
+
+/**
+ * Default limits configuration sourced from environment variables.
+ */
+export function defaultLimits(): LimitsSettings {
+  return {
+    currentRequestMaxTokens: process.env["CURRENT_REQUEST_MAX_TOKENS"]
+      ? parseInt(process.env["CURRENT_REQUEST_MAX_TOKENS"])
+      : 8000
+  };
 }
 
 /**
@@ -544,14 +561,23 @@ export class SettingsStore {
     return parsed;
   }
 
+  async getLimits(): Promise<LimitsSettings> {
+    return this.readSection("limits", LimitsSettingsSchema, defaultLimits);
+  }
+
+  async setLimits(limits: LimitsSettings): Promise<LimitsSettings> {
+    return this.writeSection("limits", LimitsSettingsSchema, limits);
+  }
+
   async getAll(): Promise<BernardSettings> {
-    const [models, services, oauth, backups] = await Promise.all([
+    const [models, services, oauth, backups, limits] = await Promise.all([
       this.getModels(),
       this.getServices(),
       this.getOAuth(),
-      this.getBackups()
+      this.getBackups(),
+      this.getLimits()
     ]);
-    return { models, services, oauth, backups };
+    return { models, services, oauth, backups, limits };
   }
 }
 

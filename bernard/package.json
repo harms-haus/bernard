@@ -33,6 +33,7 @@
     "bullmq": "^5.66.0",
     "home-assistant-js-websocket": "^9.6.0",
     "ioredis": "^5.8.2",
+    "js-tiktoken": "^1.0.15",
     "jsonrepair": "^3.13.1",
     "next": "^16.0.7",
     "pino": "^10.1.0",

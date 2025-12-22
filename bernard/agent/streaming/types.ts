@@ -62,12 +62,18 @@ export type LLMCallEvent = {
   model?: string;
   context: BaseMessage<MessageStructure, MessageEventType>[];
   tools?: string[];
+  totalContextTokens?: number;
 }
 
 export type LLMCallCompleteEvent = {
   type: "llm_call_complete";
   context: BaseMessage<MessageStructure, MessageEventType>[];
   result: BaseMessage<MessageStructure, MessageEventType>;
+  actualTokens?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 export type ToolCallEvent = {

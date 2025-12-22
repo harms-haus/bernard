@@ -17,6 +17,8 @@ import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { ToolWithInterpretation } from "./tools";
 import { runResponseHarness } from "../respond/responseHarness";
 import type { RouterContext, ResponseContext } from "@/lib/conversation/context";
+import { countTokens } from "@/lib/conversation/tokenCounter";
+import { getSettings } from "@/lib/config/settingsCache";
 
 /**
  * Format tool calls and results into SystemMessage objects for LLM context.
@@ -425,15 +427,64 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   let harnessCompletedNormally = false;
 
   try {
+    // Get token limit settings once for the harness execution
+    const settings = await getSettings();
+    const currentRequestMaxTokens = settings.limits.currentRequestMaxTokens;
+
     while (turnCount < MAX_TURNS) {
       turnCount++;
 
-      // 4. Emit LLM_CALL event
+      // 4a. Count tokens for current request only (exclude historical messages)
+      // Count tokens in messages that were passed to this router harness execution
+      const currentRequestTokens = countTokens(messages);
+      const routerContextTokens = countTokens(currentMessages);
+
+      // Check if current request exceeds maximum tokens
+      if (currentRequestTokens > currentRequestMaxTokens) {
+        // Force response harness call when token limit exceeded
+        respondCalled = true;
+
+        // Create and execute response harness
+        const responseHarness = runResponseHarness({
+          conversationId: context.conversationId,
+          responseContext: context.responseContext,
+          messages: currentTurnToolMessages, // Only tool results from current turn
+          llmCaller: responseLLMCaller,
+          ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+          ...(usedTools.length > 0 ? { usedTools } : {}),
+          ...(abortSignal ? { abortSignal } : {})
+        });
+
+        // Yield all response harness events
+        for await (const event of responseHarness) {
+          yield event;
+        }
+
+        harnessCompletedNormally = true;
+        return; // Exit successfully after response harness
+      }
+
+      // 4b. Calculate total context tokens (including system message and historical messages)
+      const totalContextTokens = countTokens(currentMessages);
+
+      // 4c. Create token info system message (not recorded in recordKeeper)
+      const tokenPercentage = ((currentRequestTokens / currentRequestMaxTokens) * 100).toFixed(2);
+      const tokenInfoMessage = new SystemMessage({
+        content: `Current request tokens: ${currentRequestTokens}/${currentRequestMaxTokens} (${tokenPercentage}%). Router context tokens: ${routerContextTokens}. Total context tokens: ${totalContextTokens}.`,
+        name: "token_info" // Special name to identify this as token info (not for recording)
+      });
+
+      // Add token info message to current messages for this LLM call only
+      currentMessages = [...currentMessages, tokenInfoMessage];
+
+      // 4d. Emit LLM_CALL event (exclude token_info message from recorded context)
+      const contextForRecording = currentMessages.filter(msg => msg.name !== "token_info");
       yield {
         type: "llm_call",
         model: "router",
-        context: [...currentMessages] as any, // Yield a copy to avoid mutation issues
+        context: [...contextForRecording] as any, // Yield a copy to avoid mutation issues
         tools: toolNames,
+        totalContextTokens,
       };
 
       // 5. Call LLM with tools (with retry logic)
@@ -474,12 +525,28 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         break;
       }
 
-      // 6. Emit LLM_CALL_COMPLETE event
-      yield {
+      // 6. Extract actual token usage from the LLM response
+      const responseMetadata = (aiMessage as any).response_metadata as Record<string, unknown> | undefined;
+      const usage = responseMetadata?.["usage"] as
+        | { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+        | undefined;
+
+      const actualTokens = usage ? {
+        promptTokens: usage.prompt_tokens,
+        completionTokens: usage.completion_tokens,
+        totalTokens: usage.total_tokens,
+      } : undefined;
+
+      // 7. Emit LLM_CALL_COMPLETE event
+      const event: any = {
         type: "llm_call_complete",
         context: [...currentMessages] as any, // Yield a copy
         result: aiMessage as any,
       };
+      if (actualTokens) {
+        event.actualTokens = actualTokens;
+      }
+      yield event;
 
       // 7. Extract tool calls
       const toolCalls = extractToolCallsFromAIMessage(aiMessage);

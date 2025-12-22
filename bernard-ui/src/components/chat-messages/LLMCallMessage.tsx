@@ -9,6 +9,12 @@ interface LLMCallMessageProps {
   toolCallCount?: number;
   status: 'loading' | 'completed';
   result?: any;
+  totalContextTokens?: number;
+  actualTokens?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 export function LLMCallMessage({
@@ -17,7 +23,9 @@ export function LLMCallMessage({
   tools,
   toolCallCount,
   status,
-  result
+  result,
+  totalContextTokens,
+  actualTokens
 }: LLMCallMessageProps) {
   const { isDarkMode } = useDarkMode();
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -122,7 +130,7 @@ export function LLMCallMessage({
             <Cpu className="h-3 w-3 flex-shrink-0 opacity-60" />
           )}
           <div className="text-xs font-mono break-words flex-1 opacity-75">
-            LLM Call{model ? `: ${model}` : ''} • {context.length} context{toolCallCount && toolCallCount > 0 ? ` • ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : ''}
+            LLM Call{model ? `: ${model}` : ''} • {context.length} context{toolCallCount && toolCallCount > 0 ? ` • ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : ''}{totalContextTokens ? ` • ~${totalContextTokens} tokens` : ''}
           </div>
         </div>
         {status === 'completed' && (
@@ -168,6 +176,18 @@ export function LLMCallMessage({
                 </div>
                 <div className="whitespace-pre-wrap break-words font-mono text-xs bg-black/10 dark:bg-white/10 p-2 rounded">
                   {getResultContent()}
+                </div>
+              </div>
+            )}
+            {status === 'completed' && actualTokens && (
+              <div className="text-sm">
+                <div className="font-medium text-xs mb-1 opacity-75">
+                  Token Usage:
+                </div>
+                <div className="text-xs font-mono bg-black/10 dark:bg-white/10 p-2 rounded">
+                  Prompt: {actualTokens.promptTokens} tokens<br />
+                  Completion: {actualTokens.completionTokens} tokens<br />
+                  Total: {actualTokens.totalTokens} tokens
                 </div>
               </div>
             )}
