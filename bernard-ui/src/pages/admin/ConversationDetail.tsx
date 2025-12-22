@@ -3,39 +3,54 @@ import { useParams, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { 
-  ArrowLeft, 
-  Eye, 
-  Trash2, 
-  Play, 
-  StopCircle, 
+import {
+  ArrowLeft,
+  Eye,
+  Trash2,
+  Play,
+  StopCircle,
   RefreshCw,
-  Calendar,
-  User,
-  Clock,
-  MessageCircle,
-  Database,
   Settings,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Download
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
+import { ChatInterface } from '../../components/ChatInterface';
 import type { ConversationDetail, ConversationMessage } from '../../services/adminApi';
+import type { MessageRecord } from '../../../../bernard/lib/conversation/types';
+import { extractTraceEventsFromMessages } from '../../utils/traceEventParser';
+import { useConfirmDialogPromise } from '../../hooks/useConfirmDialogPromise';
+import { useToast } from '../../components/ToastManager';
 
 const formatDateTime = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleString();
 };
 
-const formatDuration = (start: string, end: string) => {
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
-  const diffMs = endMs - startMs;
-  
-  if (diffMs < 1000) return `${diffMs}ms`;
-  if (diffMs < 60000) return `${Math.round(diffMs / 1000)}s`;
-  const minutes = Math.floor(diffMs / 60000);
-  const seconds = Math.round((diffMs % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
+// Convert ConversationMessage[] to MessageRecord[] for ChatInterface compatibility
+const convertMessagesForChatInterface = (messages: ConversationMessage[]): MessageRecord[] => {
+  return messages
+    .filter(message => {
+      // Filter out system messages that contain trace content - these are not meant to be displayed as regular messages
+      if (message.role === 'system' && typeof message.content === 'object' && message.content && 'type' in message.content) {
+        const content = message.content as any;
+        return !(content.type === 'llm_call' || content.type === 'llm_call_complete' ||
+                 content.type === 'tool_call' || content.type === 'tool_call_complete');
+      }
+      return true;
+    })
+    .map(message => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      name: message.name,
+      tool_call_id: message.tool_call_id,
+      tool_calls: message.tool_calls,
+      createdAt: message.createdAt,
+      tokenDeltas: message.tokenDeltas,
+      metadata: message.metadata
+    }));
 };
 
 export default function ConversationDetail() {
@@ -47,6 +62,26 @@ export default function ConversationDetail() {
   const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
   const [showDebug, setShowDebug] = useState(true);
 
+  // Hook calls - must be at the top level of the component function
+  const toast = useToast();
+  const confirmDialog = useConfirmDialogPromise();
+
+  // Calculate actual tool call count from messages
+  const actualToolCallCount = messages.reduce((count, message) => {
+    // Count tool messages
+    if (message.role === 'tool') {
+      return count + 1;
+    }
+    // Count system messages with tool_call type
+    if (message.role === 'system' && typeof message.content === 'object' && message.content && 'type' in message.content) {
+      const content = message.content as any;
+      if (content.type === 'tool_call') {
+        return count + 1;
+      }
+    }
+    return count;
+  }, 0);
+
   useEffect(() => {
     if (id) {
       loadConversation();
@@ -55,7 +90,7 @@ export default function ConversationDetail() {
 
   const loadConversation = async () => {
     if (!id) return;
-    
+
     setLoading(true);
     try {
       const response = await adminApiClient.getConversation(id, 100);
@@ -63,7 +98,7 @@ export default function ConversationDetail() {
       setMessages(response.messages);
     } catch (error) {
       console.error('Failed to load conversation:', error);
-      alert('Failed to load conversation');
+      toast.error('Load Failed', error instanceof Error ? error.message : 'Failed to load conversation');
     } finally {
       setLoading(false);
     }
@@ -71,20 +106,26 @@ export default function ConversationDetail() {
 
   const handleDeleteConversation = async () => {
     if (!id) return;
-    
-    if (!confirm('Delete this conversation? This action cannot be undone.')) {
-      return;
-    }
+
+    const confirmed = await confirmDialog({
+      title: 'Delete Conversation',
+      description: 'Are you sure you want to permanently delete this conversation? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmVariant: 'destructive'
+    });
+
+    if (!confirmed) return;
 
     setDeletingId(id);
     try {
       await adminApiClient.deleteConversation(id);
-      alert('Conversation deleted successfully');
+      toast.success('Success', 'Conversation deleted successfully');
       // Navigate back to history
       window.history.back();
     } catch (error) {
       console.error('Failed to delete conversation:', error);
-      alert('Failed to delete conversation');
+      toast.error('Delete Failed', error instanceof Error ? error.message : 'Failed to delete conversation');
     } finally {
       setDeletingId(null);
     }
@@ -92,14 +133,14 @@ export default function ConversationDetail() {
 
   const handleCloseConversation = async () => {
     if (!id) return;
-    
+
     try {
       await adminApiClient.closeConversation(id);
       setConversation(prev => prev ? { ...prev, status: 'closed' as const, closedAt: new Date().toISOString() } : null);
-      alert('Conversation closed successfully');
+      toast.success('Success', 'Conversation closed successfully');
     } catch (error) {
       console.error('Failed to close conversation:', error);
-      alert('Failed to close conversation');
+      toast.error('Close Failed', error instanceof Error ? error.message : 'Failed to close conversation');
     }
   };
 
@@ -110,19 +151,19 @@ export default function ConversationDetail() {
     try {
       const result = await adminApiClient.retryIndexing(id);
       if (result.success) {
-        setConversation(prev => prev ? { 
-          ...prev, 
-          indexingStatus: result.indexingStatus, 
-          indexingAttempts: (prev.indexingAttempts || 0) + 1, 
-          indexingError: undefined 
+        setConversation(prev => prev ? {
+          ...prev,
+          indexingStatus: result.indexingStatus,
+          indexingAttempts: (prev.indexingAttempts || 0) + 1,
+          indexingError: undefined
         } : null);
-        alert('Indexing queued successfully');
+        toast.success('Success', 'Indexing queued successfully');
       } else {
-        alert(result.message || 'Unable to retry indexing');
+        toast.error('Retry Failed', result.message || 'Unable to retry indexing');
       }
     } catch (error) {
       console.error('Failed to retry indexing:', error);
-      alert('Failed to retry indexing');
+      toast.error('Retry Failed', error instanceof Error ? error.message : 'Failed to retry indexing');
     } finally {
       setIndexingAction(null);
     }
@@ -135,31 +176,72 @@ export default function ConversationDetail() {
     try {
       const result = await adminApiClient.cancelIndexing(id);
       if (result.success) {
-        setConversation(prev => prev ? { 
-          ...prev, 
-          indexingStatus: result.indexingStatus, 
-          indexingError: undefined 
+        setConversation(prev => prev ? {
+          ...prev,
+          indexingStatus: result.indexingStatus,
+          indexingError: undefined
         } : null);
-        alert('Indexing cancelled successfully');
+        toast.success('Success', 'Indexing cancelled successfully');
       } else {
-        alert(result.message || 'Unable to cancel indexing');
+        toast.error('Cancel Failed', result.message || 'Unable to cancel indexing');
       }
     } catch (error) {
       console.error('Failed to cancel indexing:', error);
-      alert('Failed to cancel indexing');
+      toast.error('Cancel Failed', error instanceof Error ? error.message : 'Failed to cancel indexing');
     } finally {
       setIndexingAction(null);
     }
   };
 
+  const handleCopyConversationJson = async () => {
+    try {
+      const conversationData = {
+        conversation,
+        messages
+      };
+      const jsonContent = JSON.stringify(conversationData, null, 2);
+      await navigator.clipboard.writeText(jsonContent);
+      toast.success('Success', 'Conversation JSON copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy conversation JSON:', error);
+      toast.error('Copy Failed', error instanceof Error ? error.message : 'Failed to copy conversation JSON');
+    }
+  };
+
+  const handleDownloadConversationJson = async () => {
+    if (!conversation) return;
+
+    try {
+      const conversationData = {
+        conversation,
+        messages
+      };
+      const jsonContent = JSON.stringify(conversationData, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bernard-conversation-${conversation.id}-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download conversation JSON:', error);
+      toast.error('Download Failed', error instanceof Error ? error.message : 'Failed to download conversation JSON');
+    }
+  };
+
   const canRetryIndexing = (): boolean => {
     if (!conversation) return false;
+    if (conversation.ghost) return false; // Ghost conversations cannot be indexed
     const status = conversation.indexingStatus || 'none';
     return status === 'none' || status === 'failed';
   };
 
   const canCancelIndexing = (): boolean => {
     if (!conversation) return false;
+    if (conversation.ghost) return false; // Ghost conversations cannot be indexed
     const status = conversation.indexingStatus || 'none';
     return status === 'queued' || status === 'indexing';
   };
@@ -228,11 +310,17 @@ export default function ConversationDetail() {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          <Button onClick={handleCopyConversationJson} variant="outline" size="icon" title="Copy Conversation JSON">
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button onClick={handleDownloadConversationJson} variant="outline" size="icon" title="Download Conversation JSON">
+            <Download className="h-4 w-4" />
+          </Button>
           <Button onClick={loadConversation} variant="outline">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-          <Button 
+          <Button
             variant={showDebug ? "default" : "outline"}
             onClick={() => setShowDebug(!showDebug)}
           >
@@ -243,70 +331,22 @@ export default function ConversationDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chat Messages */}
+        {/* Chat Interface */}
         <div className="lg:col-span-2">
           <Card>
-            <CardHeader>
-              <CardTitle>Conversation</CardTitle>
-              <CardDescription>
-                Historical chat messages in chronological order
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4 max-h-96 overflow-y-auto p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        message.role === 'user'
-                          ? 'bg-blue-500 text-white'
-                          : message.role === 'assistant'
-                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                          : message.role === 'tool'
-                          ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        {message.role.toUpperCase()} • {formatDateTime(message.createdAt)}
-                      </div>
-                      {message.role === 'tool' ? (
-                        <div>
-                          <div className="font-semibold mb-1">
-                            Tool Call: {typeof message.content === 'object' && message.content && 'name' in message.content
-                              ? (message.content as any).name
-                              : 'Unknown'}
-                          </div>
-                          <pre className="text-sm whitespace-pre-wrap">
-                            {typeof message.content === 'object' && message.content
-                              ? JSON.stringify(message.content, null, 2)
-                              : message.content}
-                          </pre>
-                        </div>
-                      ) : (
-                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {messages.length === 0 && (
-                  <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                    No messages in this conversation.
-                  </p>
-                )}
-              </div>
+            <CardContent className="p-0 mt-6">
+              <ChatInterface
+                initialMessages={convertMessagesForChatInterface(messages)}
+                initialTraceEvents={extractTraceEventsFromMessages(messages)}
+                readOnly={true}
+                height="h-auto"
+              />
             </CardContent>
           </Card>
         </div>
 
         {/* Debug Information */}
-        <div className={showDebug ? 'block' : 'hidden lg:block'}>
+        <div className={showDebug ? 'block' : 'hidden'}>
           <Card>
             <CardHeader>
               <CardTitle>Debug Information</CardTitle>
@@ -315,6 +355,15 @@ export default function ConversationDetail() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Summary */}
+              {conversation.summary && (
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {conversation.summary}
+                  </p>
+                </div>
+              )}
+
               {/* Basic Info */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -350,7 +399,7 @@ export default function ConversationDetail() {
                   </div>
                   <div>
                     <span className="text-gray-500 dark:text-gray-400">Tool Calls</span>
-                    <p className="font-medium">{conversation.toolCallCount}</p>
+                    <p className="font-medium">{actualToolCallCount}</p>
                   </div>
                 </div>
               </div>
@@ -359,14 +408,32 @@ export default function ConversationDetail() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Indexing Status</span>
-                  <Badge variant={
-                    getIndexingStatusInfo(conversation.indexingStatus).color === 'success' ? 'default' :
-                    getIndexingStatusInfo(conversation.indexingStatus).color === 'warning' ? 'secondary' :
-                    getIndexingStatusInfo(conversation.indexingStatus).color === 'destructive' ? 'destructive' : 'secondary'
-                  }>
-                    {getIndexingStatusInfo(conversation.indexingStatus).label}
-                  </Badge>
+                  {conversation.ghost ? (
+                    <Badge variant="outline">
+                      Not Indexed (Ghost)
+                    </Badge>
+                  ) : (
+                    <Badge variant={
+                      getIndexingStatusInfo(conversation.indexingStatus).color === 'success' ? 'default' :
+                      getIndexingStatusInfo(conversation.indexingStatus).color === 'warning' ? 'secondary' :
+                      getIndexingStatusInfo(conversation.indexingStatus).color === 'destructive' ? 'destructive' : 'secondary'
+                    }>
+                      {getIndexingStatusInfo(conversation.indexingStatus).label}
+                    </Badge>
+                  )}
                 </div>
+
+                {conversation.ghost && (
+                  <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center space-x-2">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      <span className="font-medium">Ghost Conversation</span>
+                    </div>
+                    <p className="mt-1 text-xs">
+                      This conversation was created in ghost mode and cannot be indexed for privacy reasons.
+                    </p>
+                  </div>
+                )}
                 
                 {conversation.indexingAttempts && (
                   <div className="text-sm">
@@ -467,14 +534,15 @@ export default function ConversationDetail() {
 
               {/* Actions */}
               <div className="space-y-3">
-                <Button 
+                <Button
                   className="w-full"
                   onClick={() => window.open(`/admin/history/${conversation.id}`, '_blank')}
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   Open in New Tab
                 </Button>
-                
+
+
                 {conversation.status === 'open' && (
                   <Button 
                     className="w-full"

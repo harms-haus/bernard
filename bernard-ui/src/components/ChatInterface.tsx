@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
+import { useConfirmDialogPromise } from '../hooks/useConfirmDialogPromise';
 import { apiClient } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard, MessageCircle } from 'lucide-react';
+import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard, MessageCircle, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { UserMessage } from './chat-messages/UserMessage';
 import { AssistantMessage } from './chat-messages/AssistantMessage';
@@ -16,6 +17,7 @@ import { ToolCallMessage } from './chat-messages/ToolCallMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
+import { parseTraceChunk, updateTraceEventWithCompletion } from '../utils/traceEventParser';
 
 interface ToolCall {
   id: string;
@@ -35,11 +37,19 @@ interface TraceEvent {
   result?: any;
 }
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  initialMessages?: MessageRecord[];
+  initialTraceEvents?: TraceEvent[];
+  readOnly?: boolean;
+  height?: string;
+}
+
+export function ChatInterface({ initialMessages = [], initialTraceEvents = [], readOnly = false, height = "h-screen" }: ChatInterfaceProps = {}) {
+  const isAutoHeight = height === "h-auto";
   const { state } = useAuth();
   const { isDarkMode } = useDarkMode();
-  const [messages, setMessages] = React.useState<MessageRecord[]>([]);
-  const [traceEvents, setTraceEvents] = React.useState<TraceEvent[]>([]);
+  const [messages, setMessages] = React.useState<MessageRecord[]>(initialMessages);
+  const [traceEvents, setTraceEvents] = React.useState<TraceEvent[]>(initialTraceEvents);
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
@@ -56,6 +66,7 @@ export function ChatInterface() {
   
   // Hook calls - must be at the top level of the component function
   const toast = useToast();
+  const confirmDialog = useConfirmDialogPromise();
 
   // Handle input focus/blur with content check
   const handleInputFocus = () => {
@@ -133,47 +144,15 @@ export function ChatInterface() {
             if (chunk.bernard && chunk.bernard.type === 'trace') {
               const traceData = chunk.bernard.data;
 
-              if (traceData.type === 'llm_call' || traceData.type === 'tool_call') {
-                // Add new call event with loading status
-                const traceEvent: TraceEvent = {
-                  id: `trace-${Date.now()}-${Math.random()}`,
-                  type: traceData.type,
-                  data: traceData,
-                  timestamp: new Date(),
-                  status: 'loading'
-                };
-
-                setTraceEvents(prev => [...prev, traceEvent]);
-              } else if (traceData.type === 'llm_call_complete') {
-                // Update the most recent loading llm_call event to completed
-                setTraceEvents(prev => {
-                  const events = [...prev];
-                  // Find the last (most recent) loading llm_call event
-                  for (let i = events.length - 1; i >= 0; i--) {
-                    if (events[i].type === 'llm_call' && events[i].status === 'loading') {
-                      events[i] = {
-                        ...events[i],
-                        status: 'completed' as const,
-                        result: traceData.result
-                      };
-                      break;
-                    }
-                  }
-                  return events;
-                });
-              } else if (traceData.type === 'tool_call_complete') {
-                // Update matching tool_call event to completed
-                setTraceEvents(prev => prev.map(event => {
-                  if (event.type === 'tool_call' && event.status === 'loading' &&
-                      event.data.toolCall.id === traceData.toolCall.id) {
-                    return {
-                      ...event,
-                      status: 'completed' as const,
-                      result: traceData.result
-                    };
-                  }
-                  return event;
-                }));
+              if (traceData.type === 'llm_call_complete' || traceData.type === 'tool_call_complete') {
+                // Update trace events with completion data
+                setTraceEvents(prev => updateTraceEventWithCompletion(prev, traceData));
+              } else {
+                // Handle new trace events
+                const traceEvents = parseTraceChunk(traceData);
+                for (const traceEvent of traceEvents) {
+                  setTraceEvents(prev => [...prev, traceEvent]);
+                }
               }
             }
 
@@ -387,7 +366,34 @@ export function ChatInterface() {
     }));
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = async () => {
+    // Check if there are unsaved messages
+    const hasUnsavedMessages = messages.length > 0;
+
+    if (hasUnsavedMessages) {
+      const confirmed = await confirmDialog({
+        title: 'Start New Chat',
+        description: 'Starting a new chat will clear the current conversation. Any unsaved messages will be lost.',
+        confirmText: 'Start New Chat',
+        cancelText: 'Cancel',
+        confirmVariant: 'default'
+      });
+
+      if (!confirmed) return;
+    }
+
+    // If there's a current conversation, close it before starting a new one
+    if (currentConversationId) {
+      try {
+        // Close the current conversation
+        await apiClient.closeConversation(currentConversationId, 'manual');
+      } catch (error) {
+        console.error('Failed to close conversation:', error);
+        // Continue anyway - we still want to start a new chat
+      }
+    }
+
+    // Clear local state for new chat
     setMessages([]);
     setTraceEvents([]);
     setCurrentConversationId(null);
@@ -429,9 +435,35 @@ export function ChatInterface() {
     return count;
   };
 
-  const handleDeleteChat = () => {
-    // Admin only - mock implementation
-    setMessages([]);
+  const handleDeleteChat = async () => {
+    // Admin only
+    if (!currentConversationId) {
+      toast.error('No Chat', 'No active conversation to delete');
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: 'Delete Conversation',
+      description: 'Are you sure you want to permanently delete this conversation? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmVariant: 'destructive'
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await apiClient.deleteConversation(currentConversationId);
+      toast.success('Success', 'Conversation deleted successfully');
+      // Clear local state
+      setMessages([]);
+      setTraceEvents([]);
+      setCurrentConversationId(null);
+      setIsGhostMode(false);
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      toast.error('Delete Failed', error instanceof Error ? error.message : 'Failed to delete conversation');
+    }
   };
 
   const handleCopyChatHistory = async () => {
@@ -523,9 +555,10 @@ export function ChatInterface() {
   };
 
   return (
-    <div className={`flex flex-col h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header with model selector and menu */}
-      <div className={`flex items-center justify-between p-4 border-b ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+    <div className={`flex flex-col ${height} ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      {/* Header with model selector and menu - hidden in read-only mode */}
+      {!readOnly && (
+        <div className={`flex items-center justify-between p-4 border-b ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
         <div className="flex items-center space-x-2">
           <Avatar className="h-8 w-8">
             <AvatarFallback>B</AvatarFallback>
@@ -548,6 +581,7 @@ export function ChatInterface() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleNewChat}>
+                <Plus className="mr-2 h-4 w-4" />
                 New Chat
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopyChatHistory}>
@@ -564,6 +598,7 @@ export function ChatInterface() {
               </DropdownMenuItem>
               {state.user?.isAdmin && (
                 <DropdownMenuItem onClick={handleDeleteChat}>
+                  <Trash2 className="mr-2 h-4 w-4" />
                   Delete Chat
                 </DropdownMenuItem>
               )}
@@ -571,12 +606,13 @@ export function ChatInterface() {
           </DropdownMenu>
         </div>
       </div>
+      )}
 
       {/* Main chat area */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="max-w-3xl mx-auto w-full flex flex-col h-full">
-          <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-            {messages.length === 0 ? (
+          {(() => {
+            const content = messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
                 {isGhostMode ? (
                   <Ghost className={`h-16 w-16 mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
@@ -693,30 +729,67 @@ export function ChatInterface() {
                   </div>
                 )}
               </div>
-            )}
-          </ScrollArea>
+            );
 
-          {/* Chat input area */}
-          <div className={`${isInputFocused || input.trim() ? 'rounded-3xl' : 'rounded-full'} ${isDarkMode ? 'bg-gray-800' : 'bg-white'} my-2`}>
-            {isInputFocused ? (
-              <div className="flex flex-col p-2">
-                {/* First row: transparent input */}
-                <Input
-                  placeholder="Type your message..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={isStreaming}
-                  className="flex-1 min-h-[44px] bg-transparent border-none without-ring"
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                  autoFocus
-                />
-                {/* Second row: + button and send button */}
-                <div className="flex justify-between">
+            return isAutoHeight ? (
+              <div className="flex-1 p-4">
+                {content}
+              </div>
+            ) : (
+              <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+                {content}
+              </ScrollArea>
+            );
+          })()}
+
+          {/* Chat input area - hidden in read-only mode */}
+          {!readOnly && (
+            <div className={`${isInputFocused || input.trim() ? 'rounded-3xl' : 'rounded-full'} ${isDarkMode ? 'bg-gray-800' : 'bg-white'} my-2`}>
+              {isInputFocused ? (
+                <div className="flex flex-col p-2">
+                  {/* First row: transparent input */}
+                  <Input
+                    placeholder="Type your message..."
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    disabled={isStreaming}
+                    className="flex-1 min-h-[44px] bg-transparent border-none without-ring"
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    autoFocus
+                  />
+                  {/* Second row: + button and send button */}
+                  <div className="flex justify-between">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleSendMessage}
+                      disabled={!input.trim() || isStreaming}
+                      className="h-8 w-8 flex-shrink-0"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center h-11 px-2 ">
                   <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
                     <Plus className="h-4 w-4" />
                   </Button>
+                  <Input
+                    placeholder="Type your message..."
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    disabled={isStreaming}
+                    className="flex-1 min-h-[44px] bg-transparent border-none without-ring"
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
@@ -727,34 +800,9 @@ export function ChatInterface() {
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center h-11 px-2 ">
-                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
-                  <Plus className="h-4 w-4" />
-                </Button>
-                <Input
-                  placeholder="Type your message..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={isStreaming}
-                  className="flex-1 min-h-[44px] bg-transparent border-none without-ring"
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleSendMessage}
-                  disabled={!input.trim() || isStreaming}
-                  className="h-8 w-8 flex-shrink-0"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

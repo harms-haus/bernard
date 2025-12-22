@@ -33,6 +33,7 @@ type AdminConversationDetail = {
   hasErrors?: boolean;
   userAssistantCount?: number;
   maxTurnLatencyMs?: number;
+  ghost?: boolean;
 };
 
 async function buildAdminConversation(
@@ -93,7 +94,8 @@ async function buildAdminConversation(
     hasErrors: result.conversation.hasErrors ?? (result.conversation.errorCount ?? 0) > 0,
     ...(result.conversation.maxTurnLatencyMs !== undefined
       ? { maxTurnLatencyMs: result.conversation.maxTurnLatencyMs }
-      : {})
+      : {}),
+    ...(result.conversation.ghost !== undefined ? { ghost: result.conversation.ghost } : {})
   };
 
   if (result.conversation.summary !== undefined) conversation.summary = result.conversation.summary;

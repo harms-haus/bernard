@@ -320,6 +320,34 @@ class APIClient {
 
     return response.json();
   }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `Failed to delete conversation (${response.status})`);
+    }
+  }
+
+  async closeConversation(conversationId: string, reason: string = 'manual'): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({ ttl: 0, reason })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `Failed to close conversation (${response.status})`);
+    }
+  }
 }
 
 export const apiClient = new APIClient();

@@ -121,7 +121,15 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     finishReason,
   };
 
-  // 10. Emit LLM_CALL_COMPLETE event
+  // 10. Estimate token usage (since streaming doesn't provide actual counts)
+  const outputTokens = Math.ceil(responseContent.length / 4); // Rough estimate: ~4 chars per token
+  const actualTokens = {
+    promptTokens: totalContextTokens,
+    completionTokens: outputTokens,
+    totalTokens: totalContextTokens + outputTokens,
+  };
+
+  // 11. Emit LLM_CALL_COMPLETE event
   const aiMessage = new AIMessage({
     content: responseContent,
     id: messageId,
@@ -130,6 +138,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
     type: "llm_call_complete",
     context: promptMessages as any,
     result: aiMessage as any,
+    actualTokens,
   };
 }
 

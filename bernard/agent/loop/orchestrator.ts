@@ -243,6 +243,12 @@ export class StreamingOrchestrator {
                     await recorder.recordLLMCallComplete(conversationId, {
                         messageId: this.currentLLMCallMessageId,
                         result: event.result,
+                        ...(event.actualTokens ? {
+                            tokens: {
+                                in: event.actualTokens.promptTokens,
+                                out: event.actualTokens.completionTokens
+                            }
+                        } : {}),
                     });
                 }
                 break;

@@ -130,7 +130,18 @@ export function LLMCallMessage({
             <Cpu className="h-3 w-3 flex-shrink-0 opacity-60" />
           )}
           <div className="text-xs font-mono break-words flex-1 opacity-75">
-            LLM Call{model ? `: ${model}` : ''} • {context.length} context{toolCallCount && toolCallCount > 0 ? ` • ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : ''}{totalContextTokens ? ` • ~${totalContextTokens} tokens` : ''}
+            LLM Call{model ? `: ${model}` : ''}{toolCallCount && toolCallCount > 0 ? ` • ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : ''}            {(() => {
+              if (actualTokens?.promptTokens && actualTokens?.completionTokens && totalContextTokens) {
+                return ` • ~${totalContextTokens} [${actualTokens.promptTokens}] → ${actualTokens.completionTokens} tokens`;
+              } else if (actualTokens?.totalTokens && totalContextTokens) {
+                return ` • ~${totalContextTokens} → ${actualTokens.totalTokens} tokens`;
+              } else if (actualTokens?.totalTokens) {
+                return ` • ${actualTokens.totalTokens} tokens`;
+              } else if (totalContextTokens) {
+                return ` • ~${totalContextTokens} tokens`;
+              }
+              return '';
+            })()}
           </div>
         </div>
         {status === 'completed' && (

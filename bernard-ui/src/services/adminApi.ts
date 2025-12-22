@@ -87,6 +87,7 @@ export interface ConversationDetail {
   indexingStatus?: 'none' | 'queued' | 'indexing' | 'indexed' | 'failed';
   indexingError?: string;
   indexingAttempts?: number;
+  ghost?: boolean;
 }
 
 export interface ConversationMessage {
