@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { ToolWithInterpretation } from "./tools";
 import { runResponseHarness } from "../respond/responseHarness";
+import type { RouterContext, ResponseContext } from "@/lib/conversation/context";
 
 /**
  * Format tool calls and results into SystemMessage objects for LLM context.
@@ -239,15 +240,15 @@ type ToolLikeForPrompt = {
 
 export type RouterHarnessContext = {
   conversationId: string;
+  routerContext: RouterContext;
+  responseContext: ResponseContext;
   messages: BaseMessage[];
   llmCaller: LLMCaller;
   responseLLMCaller: LLMCaller;
-  archivist: Archivist;
   haContextManager?: HomeAssistantContextManager;
   haRestConfig?: HARestConfig;
   plexConfig?: PlexConfig;
   abortSignal?: AbortSignal;
-  skipHistory?: boolean;
   toolDefinitions?: ToolWithInterpretation[];
   usedTools?: string[];
 };
@@ -392,21 +393,30 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Always calls response harness even in error scenarios.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { messages, llmCaller, responseLLMCaller, archivist, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
+  const { routerContext, messages, llmCaller, responseLLMCaller, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
 
   // 1. Get available tools
   const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig, plexConfig);
   const usedTools = initialUsedTools || [];
   const toolNames = toolDefinitions.map(tool => tool.name);
 
-  // 2. Prepare initial context
-  let currentMessages = await prepareInitialContext(
-    context.conversationId,
-    messages,
-    archivist,
-    toolDefinitions,
-    { ...(context.skipHistory !== undefined ? { skipHistory: context.skipHistory } : {}) }
-  );
+  // 2. Process incoming messages in router context
+  for (const message of messages) {
+    // Convert BaseMessage to MessageRecord for context processing
+    const messageRecord: MessageRecord = {
+      id: `temp_${Date.now()}_${Math.random()}`,
+      role: (message as any).type === 'ai' ? 'assistant' : (message as any).type === 'human' ? 'user' : (message as any).type === 'tool' ? 'tool' : 'system',
+      content: message.content,
+      createdAt: new Date().toISOString(),
+      name: (message as any).name,
+      tool_call_id: (message as any).tool_call_id,
+      tool_calls: (message as any).tool_calls
+    };
+    routerContext.processMessage(messageRecord);
+  }
+
+  // 3. Get current messages from router context
+  let currentMessages = routerContext.getMessages();
 
   const MAX_TURNS = 5;
   let turnCount = 0;
@@ -554,10 +564,9 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         // The response harness will fetch conversation history separately
         const responseHarness = runResponseHarness({
           conversationId: context.conversationId,
+          responseContext: context.responseContext,
           messages: currentTurnToolMessages, // Only tool results from current turn
           llmCaller: responseLLMCaller,
-          archivist,
-          skipHistory: false, // Fetch full conversation history
           ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
           ...(usedTools.length > 0 ? { usedTools } : {}),
           ...(abortSignal ? { abortSignal } : {})
@@ -586,10 +595,9 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       try {
         const responseHarness = runResponseHarness({
           conversationId: context.conversationId,
+          responseContext: context.responseContext,
           messages: currentTurnToolMessages, // May be empty if we failed early
           llmCaller: responseLLMCaller,
-          archivist,
-          skipHistory: false, // Fetch full conversation history
           ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
           ...(usedTools.length > 0 ? { usedTools } : {}),
           ...(abortSignal ? { abortSignal } : {})

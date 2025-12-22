@@ -233,7 +233,7 @@ function isTraceMessage(record: MessageRecord): boolean {
 
 type MessageContentLike = string | Array<{ type: string; text?: string }>;
 
-function normalizeRecordContent(content: MessageRecord["content"]): MessageContentLike {
+export function normalizeRecordContent(content: MessageRecord["content"]): MessageContentLike {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     if (content.length === 0) return "";

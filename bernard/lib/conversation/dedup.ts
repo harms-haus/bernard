@@ -4,7 +4,7 @@ import type { MessageRecord } from "./types";
 /**
  * Create a unique fingerprint for a message based on its content and role
  */
-function createMessageFingerprint(message: BaseMessage | MessageRecord): string {
+export function createMessageFingerprint(message: BaseMessage | MessageRecord): string {
   const content = message.content ?? "";
   const role = (message as { role?: string }).role ?? (message as { type?: string }).type ?? "unknown";
   const name = (message as { name?: string }).name ?? "";

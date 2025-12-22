@@ -6,8 +6,14 @@ import type { Queue } from "bullmq";
 
 import type { ConversationSummaryService, SummaryResult, SummaryFlags } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
+
+// Helper function from messageLog.ts
+function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord {
+  return "role" in msg && "createdAt" in msg;
+}
 import { messageRecordToOpenAI } from "./messages";
 import type { OpenAIMessage } from "./messages";
+import type { Context } from "./context";
 import type {
   Archivist,
   Conversation,
@@ -117,6 +123,7 @@ export class RecordKeeper implements Archivist, Recorder {
   }
 
   private conversationQueue: Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null = null;
+  private registeredContexts = new Map<string, Context>();
 
   // Factory methods to get interface views
   asArchivist(): Archivist {
@@ -125,6 +132,21 @@ export class RecordKeeper implements Archivist, Recorder {
 
   asRecorder(): Recorder {
     return this;
+  }
+
+  /**
+   * Register a context for a conversation
+   * Contexts will be notified when new messages are appended
+   */
+  registerContext(conversationId: string, context: Context): void {
+    this.registeredContexts.set(conversationId, context);
+  }
+
+  /**
+   * Unregister a context for a conversation
+   */
+  unregisterContext(conversationId: string): void {
+    this.registeredContexts.delete(conversationId);
   }
 
   /**
@@ -286,6 +308,25 @@ export class RecordKeeper implements Archivist, Recorder {
     if (!messages.length) return;
     const convKey = this.key(`conv:${conversationId}`);
     await this.messageLog.append(conversationId, messages, convKey);
+
+    // Notify registered context of new messages
+    const context = this.registeredContexts.get(conversationId);
+    if (context) {
+      // Convert messages to MessageRecord format for context processing
+      const messageRecords = messages.map(msg => {
+        if (isMessageRecord(msg)) {
+          return msg;
+        }
+        // Convert BaseMessage to MessageRecord
+        const record = this.messageLog.serializeMessage(msg);
+        return record;
+      });
+
+      // Process each message in the context
+      for (const record of messageRecords) {
+        context.processMessage(record);
+      }
+    }
   }
 
   async recordToolResult(turnId: string, toolName: string, result: ToolResult) {

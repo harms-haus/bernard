@@ -11,6 +11,8 @@ const mockRecordKeeper = {
     asRecorder: vi.fn(),
     getConversation: vi.fn(),
     getMessages: vi.fn().mockResolvedValue([]),
+    registerContext: vi.fn(),
+    unregisterContext: vi.fn(),
 } as unknown as RecordKeeper;
 
 const mockArchivist = {
@@ -37,7 +39,7 @@ vi.mock("../agent/harness/router/routerHarness", () => ({
         yield { type: "delta", messageId: "msg1", delta: " world", finishReason: "stop" };
         yield { type: "llm_call_complete", result: { content: "Hello world" } };
     }),
-    getRouterToolDefinitions: vi.fn().mockReturnValue({ toolDefinitions: [] })
+    getRouterToolDefinitions: vi.fn().mockReturnValue({ langChainTools: [], toolDefinitions: [] })
 }));
 
 vi.mock("../agent/harness/respond/responseHarness", () => ({

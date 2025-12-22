@@ -9,6 +9,7 @@ import {
 } from "../agent/harness/router/routerHarness";
 import { ChatOpenAILLMCaller } from "../agent/llm/chatOpenAI";
 import type { Archivist } from "../lib/conversation/types";
+import { RouterContext, ResponseContext } from "../lib/conversation/context";
 
 // Mock Archivist
 const mockArchivist: Archivist = {
@@ -101,12 +102,16 @@ describe("runrouterHarness (Refactored)", () => {
         const aiMessage = new AIMessage({ content: "Hello there" });
         llmCaller.completeWithTools.mockResolvedValue(aiMessage);
 
+        const routerContext = new RouterContext();
+        const responseContext = new ResponseContext();
+
         const context = {
             conversationId: "test-conv",
+            routerContext,
+            responseContext,
             messages: [new HumanMessage("Hello")],
             llmCaller,
             responseLLMCaller: llmCaller,
-            archivist: mockArchivist,
         };
 
         const events: any[] = [];
@@ -132,11 +137,16 @@ describe("runrouterHarness (Refactored)", () => {
 
         llmCaller.completeWithTools.mockResolvedValue(aiMessage);
 
+        const routerContext = new RouterContext();
+        const responseContext = new ResponseContext();
+
         const context = {
             conversationId: "test-conv",
+            routerContext,
+            responseContext,
             messages: [new HumanMessage("Respond please")],
             llmCaller,
-            archivist: mockArchivist,
+            responseLLMCaller: llmCaller,
         };
 
         const events: any[] = [];
@@ -154,12 +164,16 @@ describe("runrouterHarness (Refactored)", () => {
     test("yields error event on LLM failure and calls response harness", async () => {
         llmCaller.completeWithTools.mockRejectedValue(new Error("LLM Down"));
 
+        const routerContext = new RouterContext();
+        const responseContext = new ResponseContext();
+
         const context = {
             conversationId: "test-conv",
+            routerContext,
+            responseContext,
             messages: [new HumanMessage("Hello")],
             llmCaller,
             responseLLMCaller: llmCaller, // Use same mock for response
-            archivist: mockArchivist,
         };
 
         const events: any[] = [];
@@ -186,11 +200,19 @@ describe("runrouterHarness (Refactored)", () => {
 
         llmCaller.completeWithTools.mockResolvedValue(new AIMessage("Response"));
 
+        const routerContext = new RouterContext();
+        const responseContext = new ResponseContext();
+
+        // Initialize router context with historical messages
+        routerContext.initializeWithHistory([historicalMessage]);
+
         const context = {
             conversationId: "test-conv",
+            routerContext,
+            responseContext,
             messages: [new HumanMessage("Current message")],
             llmCaller,
-            archivist: mockArchivist,
+            responseLLMCaller: llmCaller,
         };
 
         const events: any[] = [];

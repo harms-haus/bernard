@@ -1,5 +1,6 @@
 import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import type { AgentOutputItem } from "../streaming/types";
 import { runRouterHarness, getRouterToolDefinitions } from "../harness/router/routerHarness";
 import { runResponseHarness } from "../harness/respond/responseHarness";
@@ -91,24 +92,44 @@ export class StreamingOrchestrator {
         const recorder = this.recordKeeper.asRecorder();
         const archivist = this.recordKeeper.asArchivist();
 
-        // Sync history with deduplication and proper placement
-        await recorder.syncHistory(conversationId, persistable);
-
         // 4. Get tool definitions
         const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig, this.plexConfig);
+
+        // 5. Create contexts
+        const routerContext = new RouterContext(
+          langChainTools.map(tool => ({ name: tool.name, description: tool.description, schema: tool.schema }))
+        );
+        const responseContext = new ResponseContext(
+          langChainTools.map(tool => ({ name: tool.name, description: tool.description })),
+          undefined, // disabledTools
+          langChainTools,
+          [] // usedTools
+        );
+
+        // Register contexts for automatic updates
+        this.recordKeeper.registerContext(conversationId, routerContext);
+        this.recordKeeper.registerContext(conversationId, responseContext);
+
+        // 6. Sync history with deduplication and proper placement
+        await recorder.syncHistory(conversationId, persistable);
+
+        // 7. Initialize contexts with full history (existing + synced)
+        const fullHistory = await archivist.getMessages(conversationId);
+        routerContext.initializeWithHistory(fullHistory);
+        responseContext.initializeWithHistory(fullHistory);
 
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
 
-        // 6. Run Router Harness (now includes response harness execution)
+        // 8. Run Router Harness (now includes response harness execution)
         const routerStream = (async function* (this: StreamingOrchestrator) {
             const routerHarness = runRouterHarness({
                 conversationId,
-                messages: persistable, // Pass the full incoming context as the "history"
+                routerContext,
+                responseContext,
+                messages: persistable, // Pass the incoming messages for initial processing
                 llmCaller: this.routerLLMCaller,
                 responseLLMCaller: this.responseLLMCaller,
-                archivist,
-                skipHistory: true, // Don't fetch the historical record from the database
                 toolDefinitions: langChainTools,
                 usedTools: [],
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),

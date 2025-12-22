@@ -4,6 +4,7 @@ import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages
 import { runResponseHarness } from "../agent/harness/respond/responseHarness";
 import type { LLMCaller } from "../agent/llm/llm";
 import type { Archivist } from "../lib/conversation/types";
+import { ResponseContext } from "../lib/conversation/context";
 
 // Mock Archivist
 const mockArchivist: Archivist = {
@@ -29,11 +30,13 @@ describe("runResponseHarness (Refactored)", () => {
             yield " world";
         });
 
+        const responseContext = new ResponseContext();
+
         const context = {
             conversationId: "test-conv",
+            responseContext,
             messages: [new HumanMessage("Hi")],
             llmCaller: mockLLMCaller,
-            archivist: mockArchivist,
             toolDefinitions: [],
             usedTools: [],
         };
@@ -66,11 +69,13 @@ describe("runResponseHarness (Refactored)", () => {
             throw new Error("Stream Failed");
         });
 
+        const responseContext = new ResponseContext();
+
         const context = {
             conversationId: "test-conv",
+            responseContext,
             messages: [new HumanMessage("Hi")],
             llmCaller: mockLLMCaller,
-            archivist: mockArchivist,
             toolDefinitions: [],
             usedTools: [],
         };

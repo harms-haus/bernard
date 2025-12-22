@@ -166,7 +166,7 @@ export class MessageLog {
     return this.key(`conv:${conversationId}:msgs`);
   }
 
-  private serializeMessage(msg: BaseMessage | MessageRecord): MessageRecord {
+  serializeMessage(msg: BaseMessage | MessageRecord): MessageRecord {
     if (isMessageRecord(msg)) {
       return msg;
     }
