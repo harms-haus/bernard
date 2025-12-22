@@ -75,3 +75,56 @@ export function countTokens(messages: BaseMessage[], encoding: string = DEFAULT_
     return Math.ceil(totalChars / 4);
   }
 }
+
+/**
+ * Count tokens in a plain text string
+ * @param text - Plain text string to count tokens for
+ * @param encoding - Optional encoding to use (defaults to cl100k_base)
+ * @returns Token count
+ */
+export function countTokensInText(text: string, encoding: string = DEFAULT_ENCODING): number {
+  try {
+    const enc = getEncoding(encoding as any);
+    const tokens = enc.encode(text);
+    return tokens.length;
+  } catch (error) {
+    console.error("Error counting tokens in text:", error instanceof Error ? error.message : String(error));
+    // Fallback to approximate character-based counting (rough approximation)
+    return Math.ceil(text.length / 4);
+  }
+}
+
+/**
+ * Slice a text string by token boundaries
+ * @param text - Plain text string to slice
+ * @param startTokens - Starting token position (0-based)
+ * @param readTokens - Number of tokens to read from start position
+ * @param encoding - Optional encoding to use (defaults to cl100k_base)
+ * @returns Sliced text content
+ */
+export function sliceTokensFromText(
+  text: string,
+  startTokens: number,
+  readTokens: number,
+  encoding: string = DEFAULT_ENCODING
+): string {
+  try {
+    const enc = getEncoding(encoding as any);
+    const tokens = enc.encode(text);
+
+    // Calculate slice bounds
+    const startIndex = Math.max(0, startTokens);
+    const endIndex = Math.min(tokens.length, startIndex + readTokens);
+
+    // Slice and decode
+    const slicedTokens = tokens.slice(startIndex, endIndex);
+    return enc.decode(slicedTokens);
+  } catch (error) {
+    console.error("Error slicing tokens from text:", error instanceof Error ? error.message : String(error));
+    // Fallback to whitespace/punctuation splitting
+    const fallbackTokens = text.split(/\s+/).filter(t => t.length > 0);
+    const startIndex = Math.max(0, startTokens);
+    const endIndex = Math.min(fallbackTokens.length, startIndex + readTokens);
+    return fallbackTokens.slice(startIndex, endIndex).join(' ');
+  }
+}

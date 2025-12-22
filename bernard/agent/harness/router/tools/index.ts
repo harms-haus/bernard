@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { webSearchTool } from "./web-search";
 import { getWeatherDataTool } from "./get-weather-data";
+import { getWebsiteContentTool } from "./get-website-content";
 import { createListHAEntitiesToolInstance, type HARestConfig } from "./ha-list-entities";
 import { createExecuteHomeAssistantServicesToolInstance } from "./ha-execute-services";
 import { createGetHistoricalStateToolInstance } from "./ha-historical-state";
@@ -42,6 +43,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     getWeatherDataTool,
     wikipediaSearchTool,
     wikipediaEntryTool,
+    getWebsiteContentTool,
     respondTool, // Add respond tool at the end
   ];
 
@@ -69,6 +71,7 @@ export {
   getWeatherDataTool,
   wikipediaSearchTool,
   wikipediaEntryTool,
+  getWebsiteContentTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,
