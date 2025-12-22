@@ -629,12 +629,7 @@ export function ChatInterface() {
                       const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
                       return (
                         <div key={traceEvent.id} className="flex justify-start">
-                          <div className="w-8 flex justify-center">
-                            <Avatar className="h-6 w-6 mt-1">
-                              <AvatarFallback className="text-xs">T</AvatarFallback>
-                            </Avatar>
-                          </div>
-                          <div className="flex-1">
+                          <div className="flex-1 ml-12">
                             {traceEvent.type === 'llm_call' ? (
                               <LLMCallMessage
                                 model={traceEvent.data?.model}

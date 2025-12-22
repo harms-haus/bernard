@@ -105,6 +105,7 @@ describe("runrouterHarness (Refactored)", () => {
             conversationId: "test-conv",
             messages: [new HumanMessage("Hello")],
             llmCaller,
+            responseLLMCaller: llmCaller,
             archivist: mockArchivist,
         };
 
@@ -150,13 +151,14 @@ describe("runrouterHarness (Refactored)", () => {
         assert.equal(toolCall.toolCall.function.name, "respond");
     });
 
-    test("yields error event on LLM failure", async () => {
+    test("yields error event on LLM failure and calls response harness", async () => {
         llmCaller.completeWithTools.mockRejectedValue(new Error("LLM Down"));
 
         const context = {
             conversationId: "test-conv",
             messages: [new HumanMessage("Hello")],
             llmCaller,
+            responseLLMCaller: llmCaller, // Use same mock for response
             archivist: mockArchivist,
         };
 
@@ -165,8 +167,12 @@ describe("runrouterHarness (Refactored)", () => {
             events.push(event);
         }
 
+        // Should yield router error
         assert(events.some(e => e.type === "error"));
         assert.equal(events.find(e => e.type === "error").error, "LLM Down");
+
+        // Should call response harness after error
+        assert(events.some(e => e.type === "llm_call" && e.model === "response"));
     });
 
     test("includes history from archivist in context", async () => {

@@ -389,6 +389,7 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Router harness that processes user requests and executes tool calls.
  * Loops until respond() tool is called, awaiting all tool calls and results per turn.
  * Yields standardized streaming events.
+ * Always calls response harness even in error scenarios.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
   const { messages, llmCaller, responseLLMCaller, archivist, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
@@ -409,167 +410,202 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
 
   const MAX_TURNS = 5;
   let turnCount = 0;
+  let respondCalled = false;
+  let currentTurnToolMessages: BaseMessage[] = [];
+  let harnessCompletedNormally = false;
 
-  while (turnCount < MAX_TURNS) {
-    turnCount++;
+  try {
+    while (turnCount < MAX_TURNS) {
+      turnCount++;
 
-    // 4. Emit LLM_CALL event
-    yield {
-      type: "llm_call",
-      model: "router",
-      context: [...currentMessages] as any, // Yield a copy to avoid mutation issues
-      tools: toolNames,
-    };
+      // 4. Emit LLM_CALL event
+      yield {
+        type: "llm_call",
+        model: "router",
+        context: [...currentMessages] as any, // Yield a copy to avoid mutation issues
+        tools: toolNames,
+      };
 
-    // 5. Call LLM with tools (with retry logic)
-    const llmConfig = {
-      model: "router",
-      temperature: 0,
-      maxTokens: 1000,
-      timeout: 30000, // 30 second timeout
-      ...(abortSignal ? { abortSignal } : {}),
-    };
+      // 5. Call LLM with tools (with retry logic)
+      const llmConfig = {
+        model: "router",
+        temperature: 0,
+        maxTokens: 1000,
+        timeout: 30000, // 30 second timeout
+        ...(abortSignal ? { abortSignal } : {}),
+      };
 
-    let aiMessage: AIMessage;
+      let aiMessage: AIMessage;
 
-    try {
-      // Use the retry wrapper - it returns the final AIMessage and any error events to yield
-      const retryResult = await callLLMWithRetry(
-        llmCaller,
-        currentMessages,
-        llmConfig,
-        langChainTools,
-        toolNames,
-        abortSignal
-      );
+      try {
+        // Use the retry wrapper - it returns the final AIMessage and any error events to yield
+        const retryResult = await callLLMWithRetry(
+          llmCaller,
+          currentMessages,
+          llmConfig,
+          langChainTools,
+          toolNames,
+          abortSignal
+        );
 
-      // Yield any error events from retries
-      for (const errorEvent of retryResult.errorEvents) {
-        yield errorEvent;
+        // Yield any error events from retries
+        for (const errorEvent of retryResult.errorEvents) {
+          yield errorEvent;
+        }
+
+        aiMessage = retryResult.aiMessage;
+      } catch (error) {
+        // Final error after retries exhausted
+        yield {
+          type: "error",
+          error: error instanceof Error ? error.message : String(error),
+        };
+        // Force response harness call on error
+        break;
       }
 
-      aiMessage = retryResult.aiMessage;
-    } catch (error) {
-      // Final error after retries exhausted
+      // 6. Emit LLM_CALL_COMPLETE event
+      yield {
+        type: "llm_call_complete",
+        context: [...currentMessages] as any, // Yield a copy
+        result: aiMessage as any,
+      };
+
+      // 7. Extract tool calls
+      const toolCalls = extractToolCallsFromAIMessage(aiMessage);
+
+      // 8. If no tool calls, add AI message to context and break
+      if (toolCalls.length === 0) {
+        currentMessages.push(aiMessage);
+        harnessCompletedNormally = true;
+        break;
+      }
+
+      // 9. Emit TOOL_CALL events (for streaming, but not added to recorded context)
+      for (const toolCall of toolCalls) {
+        yield {
+          type: "tool_call",
+          toolCall: {
+            id: toolCall.id,
+            function: {
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments,
+            },
+          },
+        };
+      }
+
+      // 10. Execute tools sequentially
+      const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.function.name === "respond") {
+          respondCalled = true;
+          // Add a placeholder result for respond() tool
+          toolResults.push({
+            toolCallId: toolCall.id,
+            toolName: "respond",
+            output: "Ready to respond"
+          });
+          continue;
+        }
+
+        const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
+        const result = await executeTool(tool, toolCall, currentMessages);
+        toolResults.push(result);
+
+        // Track used tools (exclude respond tool)
+        if (!usedTools.includes(toolCall.function.name)) {
+          usedTools.push(toolCall.function.name);
+        }
+      }
+
+      // 11. Emit TOOL_CALL_COMPLETE events (for streaming, but not added to recorded context)
+      for (const result of toolResults) {
+        yield {
+          type: "tool_call_complete",
+          toolCall: {
+            id: result.toolCallId,
+            function: {
+              name: result.toolName,
+              arguments: toolCalls.find(tc => tc.id === result.toolCallId)?.function.arguments || "{}",
+            },
+          },
+          result: result.output,
+        };
+      }
+
+      // 12. Create combined assistant message with tool calls and results
+      let combinedContent = "";
+
+      // Include original AI message content if it exists
+      const aiContent = typeof aiMessage.content === 'string' ? aiMessage.content : '';
+      if (aiContent && aiContent.trim()) {
+        combinedContent += aiContent.trim() + "\n\n";
+      }
+
+      // Add formatted tool calls and results (excluding respond tool)
+      currentTurnToolMessages = formatToolResultsForContext(toolCalls, toolResults, ["respond"]);
+      currentMessages.push(...currentTurnToolMessages);
+
+      // 14. Check if respond() was called
+      if (respondCalled) {
+        // Execute response harness with only the current turn's tool results
+        // The response harness will fetch conversation history separately
+        const responseHarness = runResponseHarness({
+          conversationId: context.conversationId,
+          messages: currentTurnToolMessages, // Only tool results from current turn
+          llmCaller: responseLLMCaller,
+          archivist,
+          skipHistory: false, // Fetch full conversation history
+          ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+          ...(usedTools.length > 0 ? { usedTools } : {}),
+          ...(abortSignal ? { abortSignal } : {})
+        });
+
+        // Yield all response harness events
+        for await (const event of responseHarness) {
+          yield event;
+        }
+
+        harnessCompletedNormally = true;
+        return; // Exit successfully after response harness
+      }
+    }
+
+    if (turnCount >= MAX_TURNS) {
       yield {
         type: "error",
-        error: error instanceof Error ? error.message : String(error),
-      };
-      return;
-    }
-
-    // 6. Emit LLM_CALL_COMPLETE event
-    yield {
-      type: "llm_call_complete",
-      context: [...currentMessages] as any, // Yield a copy
-      result: aiMessage as any,
-    };
-
-    // 7. Extract tool calls
-    const toolCalls = extractToolCallsFromAIMessage(aiMessage);
-
-    // 8. If no tool calls, add AI message to context and break
-    if (toolCalls.length === 0) {
-      currentMessages.push(aiMessage);
-      break;
-    }
-
-    // 9. Emit TOOL_CALL events (for streaming, but not added to recorded context)
-    for (const toolCall of toolCalls) {
-      yield {
-        type: "tool_call",
-        toolCall: {
-          id: toolCall.id,
-          function: {
-            name: toolCall.function.name,
-            arguments: toolCall.function.arguments,
-          },
-        },
+        error: "Router harness reached maximum turn limit",
       };
     }
-
-    // 10. Execute tools sequentially
-    const toolResults: Array<{ toolCallId: string; toolName: string; output: string }> = [];
-    let respondCalled = false;
-
-    for (const toolCall of toolCalls) {
-      if (toolCall.function.name === "respond") {
-        respondCalled = true;
-        // Add a placeholder result for respond() tool
-        toolResults.push({
-          toolCallId: toolCall.id,
-          toolName: "respond",
-          output: "Ready to respond"
+  } finally {
+    // Force response harness call only if harness was interrupted or failed
+    // Don't call it if the harness completed normally without calling respond
+    if (!respondCalled && !harnessCompletedNormally) {
+      try {
+        const responseHarness = runResponseHarness({
+          conversationId: context.conversationId,
+          messages: currentTurnToolMessages, // May be empty if we failed early
+          llmCaller: responseLLMCaller,
+          archivist,
+          skipHistory: false, // Fetch full conversation history
+          ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+          ...(usedTools.length > 0 ? { usedTools } : {}),
+          ...(abortSignal ? { abortSignal } : {})
         });
-        continue;
+
+        // Yield all response harness events
+        for await (const event of responseHarness) {
+          yield event;
+        }
+      } catch (error) {
+        // If response harness also fails, yield a final error
+        yield {
+          type: "error",
+          error: `Failed to generate response: ${error instanceof Error ? error.message : String(error)}`,
+        };
       }
-
-      const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
-      const result = await executeTool(tool, toolCall, currentMessages);
-      toolResults.push(result);
-
-      // Track used tools (exclude respond tool)
-      if (!usedTools.includes(toolCall.function.name)) {
-        usedTools.push(toolCall.function.name);
-      }
     }
-
-    // 11. Emit TOOL_CALL_COMPLETE events (for streaming, but not added to recorded context)
-    for (const result of toolResults) {
-      yield {
-        type: "tool_call_complete",
-        toolCall: {
-          id: result.toolCallId,
-          function: {
-            name: result.toolName,
-            arguments: toolCalls.find(tc => tc.id === result.toolCallId)?.function.arguments || "{}",
-          },
-        },
-        result: result.output,
-      };
-    }
-
-    // 12. Create combined assistant message with tool calls and results
-    let combinedContent = "";
-
-    // Include original AI message content if it exists
-    const aiContent = typeof aiMessage.content === 'string' ? aiMessage.content : '';
-    if (aiContent && aiContent.trim()) {
-      combinedContent += aiContent.trim() + "\n\n";
-    }
-
-    // Add formatted tool calls and results (excluding respond tool)
-    const currentTurnToolMessages = formatToolResultsForContext(toolCalls, toolResults, ["respond"]);
-    currentMessages.push(...currentTurnToolMessages);
-
-    // 14. Check if respond() was called
-    if (respondCalled) {
-      // Execute response harness with only the current turn's tool results
-      // The response harness will fetch conversation history separately
-      const responseHarness = runResponseHarness({
-        conversationId: context.conversationId,
-        messages: currentTurnToolMessages, // Only tool results from current turn
-        llmCaller: responseLLMCaller,
-        archivist,
-        skipHistory: false, // Fetch full conversation history
-        ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
-        ...(usedTools.length > 0 ? { usedTools } : {}),
-        ...(abortSignal ? { abortSignal } : {})
-      });
-
-      // Yield all response harness events
-      for await (const event of responseHarness) {
-        yield event;
-      }
-
-      break;
-    }
-  }
-
-  if (turnCount >= MAX_TURNS) {
-    yield {
-      type: "error",
-      error: "Router harness reached maximum turn limit",
-    };
   }
 }

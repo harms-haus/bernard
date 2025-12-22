@@ -168,19 +168,19 @@ export async function safeJson(res: Response): Promise<unknown> {
 }
 
 /**
- * Build SearXNG search URL with query and count parameters.
+ * Build SearXNG search URL with query, count, and page number parameters.
  */
-export function buildSearXNGUrl(apiUrl: string, query: string, count?: number): URL {
+export function buildSearXNGUrl(apiUrl: string, query: string, count?: number, startingIndex?: number): URL {
   const url = new URL(apiUrl);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
-  url.searchParams.set("pageno", "1");
+  url.searchParams.set("pageno", String(startingIndex ?? 1));
   url.searchParams.set("language", "en-US");
-  
+
   if (count) {
     url.searchParams.set("num", String(Math.min(count, 8)));
   }
-  
+
   return url;
 }
 
@@ -249,17 +249,17 @@ async function handleSearchResponse(res: Response, count?: number): Promise<stri
   return formatResults(items, count);
 }
 
-async function executeSearch(query: string, count?: number): Promise<string> {
+async function executeSearch(query: string, count?: number, startingIndex?: number): Promise<string> {
   const config = await resolveSearchConfig();
   if (!config.ok) {
     return `Search tool is not configured (${config.reason})`;
   }
-  
-  logger.info('Executing search: query="%s" count=%d provider=%s', 
-    query, count ?? DEFAULT_RESULT_COUNT, config.provider);
-  
-  const url = buildSearXNGUrl(config.apiUrl, query, count);
-  
+
+  logger.info('Executing search: query="%s" count=%d starting_index=%d provider=%s',
+    query, count ?? DEFAULT_RESULT_COUNT, startingIndex ?? 1, config.provider);
+
+  const url = buildSearXNGUrl(config.apiUrl, query, count, startingIndex);
+
   try {
     const res = await fetchSearXNGSearch(url, config.apiKey);
     return handleSearchResponse(res, count);
@@ -283,15 +283,16 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
 }
 
 const webSearchToolImpl = tool(
-  async ({ query, count }) => {
-    return executeSearch(query, count);
+  async ({ query, count, starting_index }) => {
+    return executeSearch(query, count, starting_index);
   },
   {
     name: "web_search",
     description: "Search the web for fresh information.",
     schema: z.object({
       query: z.string().min(3),
-      count: z.number().int().min(1).max(8).optional()
+      count: z.number().int().min(1).max(8).optional(),
+      starting_index: z.number().int().min(1).optional().default(1)
     })
   }
 );

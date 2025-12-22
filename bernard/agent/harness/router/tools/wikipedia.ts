@@ -38,15 +38,19 @@ type WikipediaEntryResult = {
 /**
  * Execute Wikipedia search using the wikipedia package
  */
-async function executeWikipediaSearch(query: string, n_results: number = 10): Promise<string> {
+async function executeWikipediaSearch(query: string, n_results: number = 10, starting_index: number = 0): Promise<string> {
   try {
-    const searchResults = await wiki.search(query, { limit: n_results });
-    const results: WikipediaSearchResult[] = searchResults.results.map((result, index) => ({
-      page_id: result.pageid,
-      page_title: result.title,
-      description: result.snippet || '',
-      index: index + 1
-    }));
+    const searchResults = await wiki.search(query, {
+      limit: n_results + starting_index
+    });
+    const results: WikipediaSearchResult[] = searchResults.results
+      .slice(starting_index)
+      .map((result, index) => ({
+        page_id: result.pageid,
+        page_title: result.title,
+        description: result.snippet || '',
+        index: starting_index + index + 1
+      }));
     return JSON.stringify(results);
   } catch (error) {
     return `Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -81,15 +85,18 @@ async function executeWikipediaEntry(
 }
 
 const wikipediaSearchToolImpl = tool(
-  async ({ query, n_results }) => {
-    return executeWikipediaSearch(query, n_results);
+  async ({ query, n_results, starting_index }) => {
+    return executeWikipediaSearch(query, n_results, starting_index);
   },
   {
     name: "wikipedia_search",
-    description: "Search Wikipedia for articles matching a query.",
+    description: `Search Wikipedia for articles by title or topic.
+e.g. for finding information about a specific person, place, animal, event, category, etc.
+e.g. "What is the capital of France?" -> "France", "Who was the 8th president of the United States?" -> "United States Presidents`,
     schema: z.object({
       query: z.string().min(1),
-      n_results: z.number().int().min(1).max(50).optional().default(10)
+      n_results: z.number().int().min(1).max(50).optional().default(10),
+      starting_index: z.number().int().min(0).optional().default(0)
     })
   }
 );
@@ -100,7 +107,7 @@ const wikipediaEntryToolImpl = tool(
   },
   {
     name: "wikipedia_entry",
-    description: "Retrieve content from a specific Wikipedia page with character offset and length limits.",
+    description: "Retrieve text content from a specific Wikipedia article with character offset and length limits.",
     schema: z.object({
       page_identifier: z.string().min(1),
       char_offset: z.number().int().min(0).optional().default(0),

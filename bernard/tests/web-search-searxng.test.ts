@@ -164,6 +164,28 @@ void test(
   }
 );
 
+void test(
+  "buildSearXNGUrl uses starting_index parameter for pageno",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const url = buildSearXNGUrl("https://searxng.example.com/search", "test query", 5, 3);
+    assert.equal(url.searchParams.get("q"), "test query");
+    assert.equal(url.searchParams.get("format"), "json");
+    assert.equal(url.searchParams.get("pageno"), "3");
+    assert.equal(url.searchParams.get("language"), "en-US");
+    assert.equal(url.searchParams.get("num"), "5");
+  }
+);
+
+void test(
+  "buildSearXNGUrl defaults to page 1 when starting_index not provided",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const url = buildSearXNGUrl("https://searxng.example.com/search", "test query", 5);
+    assert.equal(url.searchParams.get("pageno"), "1");
+  }
+);
+
 // SearXNG Response Parsing Tests
 void test(
   "parseSearXNGResults handles valid SearXNG response",

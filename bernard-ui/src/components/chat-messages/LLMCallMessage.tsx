@@ -101,7 +101,7 @@ export function LLMCallMessage({
   const formattedContext = formatContext(context);
 
   return (
-    <div className={`max-w-xs lg:max-w-md rounded-sm ml-4 px-2 py-1 border ${styles.container} ${styles.border}`}>
+    <div className={`max-w-xs lg:max-w-md rounded-sm ml-0 px-2 py-1 border ${styles.container} ${styles.border}`}>
       <div
         role="button"
         tabIndex={status === 'completed' ? 0 : -1}

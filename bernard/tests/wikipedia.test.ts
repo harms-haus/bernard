@@ -42,6 +42,26 @@ test("wikipedia_entry tool returns JSON object", async () => {
   assert(parsed.n_chars <= 100, "n_chars should not exceed max_chars");
 });
 
+test("wikipedia_search tool supports starting_index parameter", async () => {
+  const result = await wikipediaSearchTool.invoke({
+    query: "TypeScript",
+    n_results: 2,
+    starting_index: 1
+  });
+
+  assert(typeof result === "string", "Result should be a string");
+
+  // Parse the JSON result
+  const parsed = JSON.parse(result);
+  assert(Array.isArray(parsed), "Result should parse to an array");
+  assert(parsed.length > 0, "Result should have at least one item");
+
+  // Check that indices are offset correctly (starting from 2 instead of 1)
+  const firstResult = parsed[0];
+  assert(typeof firstResult.index === "number", "Should have index as number");
+  assert(firstResult.index >= 2, "Index should be offset by starting_index");
+});
+
 test("wikipedia tools handle invalid input gracefully", async () => {
   // Test with invalid page identifier
   const result = await wikipediaEntryTool.invoke({
