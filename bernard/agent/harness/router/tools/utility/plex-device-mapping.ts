@@ -4,6 +4,7 @@
  */
 export interface DeviceConfig {
   haEntityId?: string;        // Home Assistant entity ID for ADB commands
+  haPlexEntityId?: string;    // Home Assistant entity ID for Plex commands
   plexClientId?: string;      // Plex client machine ID for direct navigation
   deviceName: string;         // Human-readable device name
 }
@@ -15,13 +16,15 @@ export type PlexDeviceMapping = Record<string, DeviceConfig>;
  * This is the single source of truth for device configurations
  */
 export const DEVICE_MAPPING: PlexDeviceMapping = {
-  'livingroom': {
+  'living_room': {
     haEntityId: 'media_player.living_room_tv_lucifer',
+    haPlexEntityId: 'media_player.living_room_plex_lucifer',
     plexClientId: '8d526b29a260ac38-com-plexapp-android',
     deviceName: 'Living Room TV'
   },
-  'bedroom': {
+  'main_bed': {
     haEntityId: 'media_player.main_bed_tv_asmodeus',
+    haPlexEntityId: 'media_player.main_bed_plex_asmodeus',
     plexClientId: 'dc1b3ceb227d64ba-com-plexapp-android', 
     deviceName: 'Bedroom TV'
   }
@@ -55,6 +58,14 @@ export function resolveHAEntityId(locationId: string): string | null {
 export function resolvePlexClientId(locationId: string): string | null {
   const config = resolveDeviceConfig(locationId);
   return config?.plexClientId || null;
+}
+
+/**
+ * Resolve location to Home Assistant Plex entity ID (if available)
+ */
+export function resolveHAPlexEntityId(locationId: string): string | null {
+  const config = resolveDeviceConfig(locationId);
+  return config?.haPlexEntityId || null;
 }
 
 /**

@@ -4,10 +4,11 @@ import { z } from "zod";
 import type { HomeAssistantServiceCall } from "./utility/home-assistant-entities";
 import { getHAConnection } from "./utility/home-assistant-websocket-client";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
+import { getEntityState } from "./home-assistant-get-entity-state.tool";
 import {
   resolveDeviceConfig,
   resolveHAEntityId,
-  resolvePlexClientId,
+  resolveHAPlexEntityId,
   getDeviceName,
   getSupportedLocations
 } from "./utility/plex-device-mapping";
@@ -165,47 +166,6 @@ async function discoverPlexClient(
 }
 
 /**
- * Play media directly on a Plex client
- */
-async function playMediaOnPlexClient(
-  clientInfo: PlexClientInfo,
-  plexConfig: PlexConfig,
-  mediaKey: string,
-  serverMachineIdentifier: string
-): Promise<void> {
-  if (!clientInfo.host) {
-    throw new Error(`Plex client '${clientInfo.name}' has no host address`);
-  }
-
-  const clientPort = clientInfo.port || 32400;
-  const clientUrl = `http://${clientInfo.host}:${clientPort}/player/playback/playMedia`;
-
-  // Build query parameters including media data
-  const params = new URLSearchParams({
-    'X-Plex-Token': plexConfig.token,
-    key: mediaKey,
-    offset: '0',
-    machineIdentifier: serverMachineIdentifier
-  });
-
-  const response = await fetch(`${clientUrl}?${params}`, {
-    method: 'GET',
-    headers: {
-      'X-Plex-Target-Client-Identifier': clientInfo.machineIdentifier
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(
-      `Failed to play media on Plex client '${clientInfo.name}': ${response.status} ${response.statusText} - ${errorText}`
-    );
-  }
-
-  console.warn(`Successfully initiated playback of media on Plex client '${clientInfo.name}'`);
-}
-
-/**
  * Search Plex libraries for media
  */
 async function searchPlexMedia(
@@ -295,7 +255,128 @@ function rankSearchResults(query: string, results: PlexMediaItem[]): PlexMediaIt
 }
 
 /**
- * Launch Plex app on Android TV device via Home Assistant
+ * Check if the media player is powered on
+ */
+async function checkMediaPlayerPowerState(
+  haConfig: HARestConfig,
+  entityId: string
+): Promise<boolean> {
+  if (!haConfig.accessToken) {
+    console.warn(`Home Assistant access token is required to check power state for ${entityId}`);
+    return true; // Assume device is on if we can't check
+  }
+
+  try {
+    const entityState = await getEntityState(
+      haConfig.baseUrl,
+      haConfig.accessToken,
+      entityId
+    );
+
+    console.log(`[DEBUG] ${entityId} current state:`, entityState);
+
+    // Media players use various states: 'on', 'idle', 'playing', 'paused', etc.
+    // Only 'off' means the TV is off. Everything else (including 'idle', 'unavailable') means it's on
+    const state = entityState?.state?.toLowerCase();
+    return state !== 'off' && state !== 'unavailable' && state !== 'unknown';
+  } catch (error) {
+    console.warn(`Failed to check power state for ${entityId}:`, error);
+    // If we can't determine the state, assume it's on to avoid breaking functionality
+    return true;
+  }
+}
+
+/**
+ * Check if Plex appears to be the current app by examining source/app_name/app_id attributes
+ * Note: Only returns true if Plex is explicitly detected, not based on device state alone
+ */
+async function checkIfPlexIsCurrentApp(
+  haConfig: HARestConfig,
+  entityId: string
+): Promise<boolean> {
+  if (!haConfig.accessToken) {
+    console.warn(`Home Assistant access token is required to check Plex app state for ${entityId}`);
+    return false; // Assume Plex is not current if we can't check
+  }
+
+  try {
+    const entityState = await getEntityState(
+      haConfig.baseUrl,
+      haConfig.accessToken,
+      entityId
+    );
+
+    // Check various indicators that might suggest Plex is running
+    const appName = entityState?.attributes?.['app_name'];
+    const source = entityState?.attributes?.['source'];
+    const appId = entityState?.attributes?.['app_id'];
+
+    console.log(`[DEBUG] Checking if Plex is current app for ${entityId}:`, {
+      state: entityState,
+      source,
+      app_name: appName,
+      app_id: appId
+    });
+
+    // Check app_name (most reliable indicator)
+    const appNameStr = typeof appName === 'string' ? appName : '';
+    if (appNameStr.toLowerCase().includes('plex')) {
+      console.log(`[DEBUG] Plex detected via app_name: "${appNameStr}"`);
+      return true;
+    }
+
+    // Check source (running apps as sources) - this is very reliable
+    const sourceStr = typeof source === 'string' ? source : '';
+    if (sourceStr.toLowerCase().includes('plex')) {
+      console.log(`[DEBUG] Plex detected via source: "${sourceStr}"`);
+      return true;
+    }
+
+    // Check app_id
+    const appIdStr = typeof appId === 'string' ? appId : '';
+    if (appIdStr.includes('plex') || appIdStr.includes('com.plexapp.android')) {
+      console.log(`[DEBUG] Plex detected via app_id: "${appIdStr}"`);
+      return true;
+    }
+
+    // Only consider Plex current if we can explicitly detect it via source/app_name/app_id
+    // Do NOT assume Plex is running just because the device is idle/playing/paused
+
+    console.log(`[DEBUG] Plex not detected as current app`);
+    return false;
+
+  } catch (error) {
+    console.warn(`Failed to check if Plex is current app for ${entityId}:`, error);
+    // If we can't determine, assume Plex is not current to trigger launch
+    return false;
+  }
+}
+
+/**
+ * Turn on the media player device
+ */
+async function turnOnMediaPlayer(
+  haConfig: HARestConfig,
+  entityId: string,
+  deps: PlayPlexMediaDependencies
+): Promise<void> {
+  if (!haConfig.accessToken) {
+    throw new Error('Home Assistant access token is required to turn on media player');
+  }
+
+  await deps.callHAServiceWebSocketImpl(
+    haConfig.baseUrl,
+    haConfig.accessToken,
+    'media_player',
+    'turn_on',
+    { entity_id: entityId }
+  );
+}
+
+
+/**
+ * Launch Plex app on Android TV device via Home Assistant media_player.select_source
+ * Uses the Plex app ID: com.plexapp.android
  */
 async function launchPlexApp(
   haConfig: HARestConfig,
@@ -306,16 +387,24 @@ async function launchPlexApp(
     throw new Error('Home Assistant access token is required');
   }
 
-  await deps.callHAServiceWebSocketImpl(
-    haConfig.baseUrl,
-    haConfig.accessToken,
-    'androidtv',
-    'adb_command',
-    {
-      command: 'am start -n com.plexapp.android/com.plexapp.activities.MainActivity',
-      entity_id: entityId
-    }
-  );
+  // Use Home Assistant's media_player.select_source to launch Plex
+  const plexAppId = 'com.plexapp.android';
+
+  try {
+    await deps.callHAServiceWebSocketImpl(
+      haConfig.baseUrl,
+      haConfig.accessToken,
+      'media_player',
+      'select_source',
+      {
+        entity_id: entityId,
+        source: plexAppId
+      }
+    );
+
+  } catch (error) {
+    throw error;
+  }
 }
 
 /**
@@ -369,81 +458,176 @@ export function createPlayPlexMediaTool(
 
       const deviceName = getDeviceName(location_id);
       const haEntityId = resolveHAEntityId(location_id);
-      const plexClientId = resolvePlexClientId(location_id);
+      const haPlexEntityId = resolveHAPlexEntityId(location_id);
 
       try {
-        // Search Plex libraries (Movies and TV Shows)
-        const searchResults: PlexMediaItem[] = [];
-        const librariesToSearch = ['1', '2']; // Movies, TV Shows
+        const actions: string[] = [];
 
-        for (const sectionId of librariesToSearch) {
-          try {
-            const results = await deps.searchPlexMediaImpl(plexConfig, sectionId, media_query);
-            searchResults.push(...results);
-          } catch (err) {
-            console.warn(`Search failed for section ${sectionId}:`, err);
-          }
-        }
+        const {bestMatch, mediaType} = await searchPlexBestMatch(plexConfig, media_query, deps);
 
-        if (searchResults.length === 0) {
-          return `No media found matching "${media_query}" in Plex libraries`;
-        }
+        await ensureTvOn(haEntityId, haRestConfig, actions, deviceName, deps);
 
-        // Rank and select best match
-        const bestMatch = deps.rankSearchResultsImpl(media_query, searchResults);
-        const mediaType = bestMatch.type === 'movie' ? 'movie' : 'show';
+        await ensurePlexActive(haEntityId, haRestConfig, actions, deviceName, deps);
 
-        // Execute actions based on available capabilities
-        const actions = [];
-
-        // 1. Launch Plex app via Home Assistant ADB (if HA entity available)
-        if (haEntityId && haRestConfig) {
-          await launchPlexApp(haRestConfig, haEntityId, deps);
-          actions.push(`launched Plex app on ${deviceName}`);
-        }
-
-        // 2. Navigate to content via Plex API (if Plex client ID available)
-        if (plexClientId) {
-          try {
-            // Discover the Plex client to get its network information
-            const clientInfo = await discoverPlexClient(plexConfig, plexClientId);
-            if (!clientInfo) {
-              actions.push(`Plex client (id=${plexClientId}) not found or unreachable — manual navigation required`);
-            } else {
-              // Get server identity for the playback request
-              const serverIdentity = await getPlexServerIdentity(plexConfig);
-
-              // Play the media directly on the client
-              await playMediaOnPlexClient(clientInfo, plexConfig, bestMatch.key, serverIdentity.machineIdentifier);
-              actions.push(`started "${bestMatch.title}" on ${deviceName} via Plex API`);
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`Failed to navigate to media via Plex API: ${errorMessage}`);
-            actions.push(`Plex navigation failed: ${errorMessage} — app launched but manual selection required`);
-          }
-        }
+        await playMediaOnPlex(haPlexEntityId, haRestConfig, deps, mediaType, bestMatch, deviceName, actions, location_id);
 
         if (actions.length === 0) {
           return `Found "${bestMatch.title}" (${mediaType}) but no actions are available for location "${location_id}". Please check device configuration.`;
         }
 
-        return `Found "${bestMatch.title}" (${mediaType}) and ${actions.join(' and ')}.`;
+        return `Found "${bestMatch.title}" (${mediaType})\n${actions.join('\n')}`;
 
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error
+          ? `${error.message}\n${error.stack}`
+          : typeof error === 'object'
+          ? JSON.stringify(error, null, 2)
+          : String(error);
         return `Error playing Plex media: ${errorMessage}`;
       }
     },
     {
       name: "play_media_tv",
-      description: `Search for media in Plex libraries and control playback on supported TV locations. Supported locations: ${supportedLocations.join(', ')}. The tool searches both Movies and TV Shows libraries and selects the best match. Actions performed depend on device capabilities: launches Plex app via Home Assistant ADB when available, and can navigate directly to content when Plex client ID is configured.`,
+      description: `Search for media in Plex libraries and control playback on supported TV locations. Supported locations: ${supportedLocations.join(', ')}. The tool automatically powers on the TV if needed, launches Plex via Home Assistant media_player.select_source, and uses Home Assistant's Plex integration to play media directly. It searches both Movies and TV Shows libraries and selects the best match. Actions performed depend on device capabilities: powers on device, launches apps via Home Assistant, and uses Home Assistant Plex entities for media playback.`,
       schema: z.object({
         location_id: z.enum(supportedLocations as [string, ...string[]]).describe(`TV location identifier. Supported: ${supportedLocations.join(', ')}`),
         media_query: z.string().describe("Media title to search for in Plex (e.g., 'Inception', 'The Matrix')")
       })
     }
   );
+}
+
+async function searchPlexBestMatch(plexConfig: PlexConfig, media_query: string, deps: PlayPlexMediaDependencies): Promise<{ bestMatch: PlexMediaItem, mediaType: 'movie' | 'show' }> {
+  const searchResults: PlexMediaItem[] = [];
+
+  // Get available library sections dynamically
+  const librarySections = await deps.getPlexLibrarySectionsImpl(plexConfig);
+
+  // Filter sections to common media libraries (Movies and TV Shows)
+  // These are the most common library types for media playback
+  const targetSectionTitles = ['Movies', 'TV Shows'];
+  const sectionsToSearch = librarySections.filter(section =>
+    targetSectionTitles.some(title =>
+      section.title.toLowerCase().includes(title.toLowerCase())
+    )
+  );
+
+  if (sectionsToSearch.length === 0) {
+    console.warn(`No matching library sections found. Available sections: ${librarySections.map(s => s.title).join(', ')}`);
+    throw new Error(`No suitable media libraries found in Plex (looking for: ${targetSectionTitles.join(', ')})`);
+  }
+
+  console.log(`Searching ${sectionsToSearch.length} library sections: ${sectionsToSearch.map(s => s.title).join(', ')}`);
+
+  // Search each matching section
+  for (const section of sectionsToSearch) {
+    try {
+      console.log(`Searching library "${section.title}" (ID: ${section.key}) for "${media_query}"`);
+      const results = await deps.searchPlexMediaImpl(plexConfig, section.key, media_query);
+      console.log(`Found ${results.length} results in "${section.title}"`);
+      searchResults.push(...results);
+    } catch (err) {
+      console.warn(`Search failed for library "${section.title}" (ID: ${section.key}):`, err);
+      // Continue with other sections even if one fails
+    }
+  }
+
+  if (searchResults.length === 0) {
+    const searchedLibraries = sectionsToSearch.map(s => s.title).join(', ');
+    throw new Error(`No media found matching "${media_query}" in Plex libraries (${searchedLibraries})`);
+  }
+
+  const bestMatch = deps.rankSearchResultsImpl(media_query, searchResults);
+  return {
+    bestMatch,
+    mediaType: bestMatch.type === 'movie' ? 'movie' : 'show',
+  };
+}
+
+async function ensureTvOn(haEntityId: string | null, haRestConfig: HARestConfig | undefined, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
+  if (haEntityId && haRestConfig) {
+    const isPoweredOn = await checkMediaPlayerPowerState(haRestConfig, haEntityId);
+
+    if (isPoweredOn) {
+      actions.push(`TV ${deviceName} is already on`);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await turnOnMediaPlayer(haRestConfig, haEntityId, deps);
+        } catch (error) {
+          console.warn(`Failed to turn on ${deviceName}:`, error);
+          if (i === 2) {
+            throw error;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      const isPoweredOnNow = await checkMediaPlayerPowerState(haRestConfig, haEntityId);
+      if (isPoweredOnNow) {
+        actions.push(`Turned on TV ${deviceName}`);
+      } else {
+        actions.push(`Turned on then assumed TV ${deviceName} is on`);
+      }
+    }
+  }
+}
+
+async function ensurePlexActive(haEntityId: string | null, haRestConfig: HARestConfig | undefined, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
+  if (haEntityId && haRestConfig) {
+    const isPlexCurrent = await checkIfPlexIsCurrentApp(haRestConfig, haEntityId);
+
+    if (isPlexCurrent) {
+      actions.push(`Plex is already current app on ${deviceName}`);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await launchPlexApp(haRestConfig, haEntityId, deps);
+        } catch (error) {
+          console.warn(`Failed to launch Plex on ${deviceName}:`, error);
+          if (i === 2) {
+            throw error;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      const isPlexCurrentNow = await checkIfPlexIsCurrentApp(haRestConfig, haEntityId);
+      if (isPlexCurrentNow) {
+        actions.push(`Set Plex as the current app on ${deviceName}`);
+      } else {
+        actions.push(`Set then assumed Plex is the current app on ${deviceName}`);
+      }
+    }
+  }
+}
+
+async function playMediaOnPlex(haPlexEntityId: string | null, haRestConfig: HARestConfig | undefined, deps: PlayPlexMediaDependencies, mediaType: 'movie' | 'show', bestMatch: PlexMediaItem, deviceName: string, actions: string[], location_id: string) {
+  if (haPlexEntityId && haRestConfig && haRestConfig.accessToken) {
+    // Use Home Assistant's Plex integration to play media directly
+    for (let i = 0; i < 3; i++) {
+      try {
+        await deps.callHAServiceWebSocketImpl(
+          haRestConfig.baseUrl,
+          haRestConfig.accessToken,
+          'media_player',
+          'play_media',
+          {
+            entity_id: haPlexEntityId,
+            media_content_type: mediaType,
+            media_content_id: `plex://{"library_name": "${mediaType === 'movie' ? 'Movies' : 'TV Shows'}", "title": "${bestMatch.title}"}`
+          }
+        );
+      } catch (error) {
+        console.warn(`Failed to play media on ${deviceName}:`, error);
+        if (i === 2) {
+          throw error;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    actions.push(`Started "${bestMatch.title}" playback on ${deviceName} via Home Assistant Plex`);
+  } else {
+    actions.push(`No Home Assistant Plex entity configured for ${location_id}`);
+  }
 }
 
 /**
