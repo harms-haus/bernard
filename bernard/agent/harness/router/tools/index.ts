@@ -12,6 +12,7 @@ import { wikipediaSearchTool } from "./wikipedia-search.tool";
 import { wikipediaEntryTool } from "./wikipedia-entry.tool";
 import type { HomeAssistantContextManager } from "./utility/home-assistant-context";
 import { createPlayPlexMediaToolInstance, type PlexConfig } from "./play_media_tv.tool";
+import { recallTool } from "./recall.tool";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation
@@ -45,6 +46,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     wikipediaSearchTool,
     wikipediaEntryTool,
     getWebsiteContentTool,
+    recallTool,
     respondTool, // Add respond tool at the end
   ];
 
@@ -73,11 +75,10 @@ export {
   wikipediaSearchTool,
   wikipediaEntryTool,
   getWebsiteContentTool,
+  recallTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,
   createToggleLightToolInstance,
   createPlayPlexMediaToolInstance
 };
-
-

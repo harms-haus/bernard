@@ -329,6 +329,15 @@ export class StreamingOrchestrator {
             console.warn('[StreamingOrchestrator] Error closing HA connections:', error);
         }
 
+        // Close vector Redis client
+        try {
+            const { cleanupVectorClient } = await import('../../lib/conversation/search');
+            await cleanupVectorClient();
+            console.log('[StreamingOrchestrator] Closed vector Redis client');
+        } catch (error) {
+            console.warn('[StreamingOrchestrator] Error closing vector Redis client:', error);
+        }
+
         // Note: Other cleanup logic (LLM callers, record keepers, etc.) should be handled by their respective owners
     }
 }
