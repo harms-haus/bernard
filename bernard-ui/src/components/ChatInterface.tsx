@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
-import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard, MessageCircle, Trash2 } from 'lucide-react';
+import { Send, MoreVertical, ChevronDown, Plus, Ghost, Download, Clipboard, MessageCircle, Trash2, Square } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { UserMessage } from './chat-messages/UserMessage';
 import { AssistantMessage } from './chat-messages/AssistantMessage';
@@ -17,7 +17,7 @@ import { ToolCallMessage } from './chat-messages/ToolCallMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
-import { parseTraceChunk, updateTraceEventWithCompletion } from '../utils/traceEventParser';
+import { parseTraceChunk, updateTraceEventWithCompletion, extractTraceEventsFromMessages } from '../utils/traceEventParser';
 
 interface ToolCall {
   id: string;
@@ -35,6 +35,7 @@ interface TraceEvent {
   timestamp: Date;
   status: 'loading' | 'completed';
   result?: any;
+  durationMs?: number;
 }
 
 interface ChatInterfaceProps {
@@ -56,14 +57,39 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
   const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
   const [isGhostMode, setIsGhostMode] = React.useState(false);
+  const [isScrolledToBottom, setIsScrolledToBottom] = React.useState(true);
+  const [hasScrollbarAppeared, setHasScrollbarAppeared] = React.useState(false);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  
+
+  // AbortController for cancelling streaming requests
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
   // Buffer for streaming tool call arguments
   const toolCallBufferRef = React.useRef<Record<string, string>>({});
-  
+
   // Store current assistant message ID for cleanup
   const currentAssistantIdRef = React.useRef<string | null>(null);
-  
+
+  // Check if scroll area is at the bottom and detect when scrollbar first appears
+  const checkIsAtBottom = React.useCallback(() => {
+    if (scrollAreaRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollAreaRef.current;
+      const isScrollable = scrollHeight > clientHeight;
+
+      // If scrollbar just appeared (content became scrollable), force scroll to bottom
+      if (isScrollable && !hasScrollbarAppeared) {
+        setHasScrollbarAppeared(true);
+        scrollAreaRef.current.scrollTop = scrollHeight;
+        setIsScrolledToBottom(true);
+        return;
+      }
+
+      // Consider "at bottom" if within 10px of the bottom
+      const atBottom = scrollHeight - scrollTop - clientHeight < 10;
+      setIsScrolledToBottom(atBottom);
+    }
+  }, [hasScrollbarAppeared]);
+
   // Hook calls - must be at the top level of the component function
   const toast = useToast();
   const confirmDialog = useConfirmDialogPromise();
@@ -80,13 +106,83 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     }
   };
 
-  // Auto-scroll to bottom when messages change
+  // Track scroll position to determine if user is at bottom
+  React.useEffect(() => {
+    const scrollElement = scrollAreaRef.current;
+    if (scrollElement) {
+      const handleScroll = () => checkIsAtBottom();
+      scrollElement.addEventListener('scroll', handleScroll);
+      return () => scrollElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [checkIsAtBottom]);
+
+  // Auto-scroll to bottom when messages change (only if user is already at bottom or scrollbar just appeared)
+  React.useEffect(() => {
+    if ((isScrolledToBottom || hasScrollbarAppeared) && scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    }
+  }, [messages, isScrolledToBottom, hasScrollbarAppeared]);
+
+  // Initial scroll to bottom when component mounts
   React.useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+      setIsScrolledToBottom(true);
+      setHasScrollbarAppeared(false); // Reset scrollbar appearance tracking
     }
-  }, [messages]);
+  }, []);
 
+  // Load current conversation on component mount
+  React.useEffect(() => {
+    const loadCurrentConversation = async () => {
+      try {
+        // Fetch the most recent conversation (limit 1, include messages)
+        const conversations = await apiClient.getConversationHistory(1, true);
+        if (conversations && conversations.length > 0) {
+          const currentConversation = conversations[0];
+          if (currentConversation.messages && currentConversation.messages.length > 0) {
+            // Extract trace events from messages
+            const extractedTraceEvents = extractTraceEventsFromMessages(currentConversation.messages);
+
+            // Filter out system messages that contain trace data (they should be displayed as trace events)
+            const filteredMessages = currentConversation.messages.filter((message: MessageRecord) => {
+              // Keep user, assistant, and tool messages
+              if (message.role === 'user' || message.role === 'assistant' || message.role === 'tool') {
+                return true;
+              }
+
+              // For system messages, check if they contain trace data
+              if (message.role === 'system' && typeof message.content === 'object' && message.content) {
+                const content = message.content as any;
+                // If it's a system message with trace type, filter it out (it's extracted as a trace event)
+                return !['llm_call', 'tool_call', 'llm_call_complete', 'tool_call_complete'].includes(content.type);
+              }
+
+              // Keep other system messages
+              return true;
+            });
+
+            setMessages(filteredMessages);
+            setTraceEvents(extractedTraceEvents);
+            setCurrentConversationId(currentConversation.id);
+            setIsGhostMode(currentConversation.ghost || false);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load current conversation:', error);
+        // Don't show error toast on initial load - it's not critical
+      }
+    };
+
+    loadCurrentConversation();
+  }, []);
+
+  const handleStopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!input.trim() || isStreaming) return;
@@ -102,13 +198,18 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     setInput('');
     setIsStreaming(true);
 
+    // Create AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       const stream = await apiClient.chatStream(
         messages.concat(userMessage).filter(msg => msg.role !== 'system').map(msg => ({
           role: msg.role as 'user' | 'assistant',
           content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
         })),
-        isGhostMode
+        isGhostMode,
+        abortController.signal
       );
 
       const reader = stream.getReader();
@@ -251,9 +352,17 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
         }
       }
     } catch (err) {
-      console.error('Chat error:', err);
-      toast.error('Chat Error', err instanceof Error ? err.message : 'Failed to send message');
+      // Don't show error toast if the request was aborted (user cancelled)
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('Chat request was cancelled by user');
+      } else {
+        console.error('Chat error:', err);
+        toast.error('Chat Error', err instanceof Error ? err.message : 'Failed to send message');
+      }
     } finally {
+      // Clear AbortController
+      abortControllerRef.current = null;
+
       // Clear tool call buffers when stream ends
       toolCallBufferRef.current = {};
 
@@ -398,6 +507,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     setTraceEvents([]);
     setCurrentConversationId(null);
     setIsGhostMode(false); // Reset ghost mode for new chat
+    setHasScrollbarAppeared(false); // Reset scrollbar appearance tracking for new chat
   };
 
   const handleToggleGhostMode = async () => {
@@ -769,11 +879,11 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={handleSendMessage}
-                      disabled={!input.trim() || isStreaming}
+                      onClick={isStreaming ? handleStopStreaming : handleSendMessage}
+                      disabled={!input.trim() && !isStreaming}
                       className="h-8 w-8 flex-shrink-0"
                     >
-                      <Send className="h-4 w-4" />
+                      {isStreaming ? <Square className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -795,11 +905,11 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={handleSendMessage}
-                    disabled={!input.trim() || isStreaming}
+                    onClick={isStreaming ? handleStopStreaming : handleSendMessage}
+                    disabled={!input.trim() && !isStreaming}
                     className="h-8 w-8 flex-shrink-0"
                   >
-                    <Send className="h-4 w-4" />
+                    {isStreaming ? <Square className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
               )}

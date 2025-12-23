@@ -255,7 +255,7 @@ class APIClient {
     return response.json();
   }
 
-  async chatStream(messages: ConversationMessage[], ghost?: boolean): Promise<ReadableStream> {
+  async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal): Promise<ReadableStream> {
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -270,7 +270,8 @@ class APIClient {
         })),
         stream: true,
         ...(ghost ? { ghost: true } : {})
-      })
+      }),
+      signal
     });
 
     if (!response.ok) {
