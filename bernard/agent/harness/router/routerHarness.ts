@@ -426,22 +426,22 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   let currentTurnToolMessages: BaseMessage[] = [];
   let harnessCompletedNormally = false;
   const toolCallCounts: Map<string, number> = new Map(); // Track identical tool calls
+  let accumulatedRequestTokens = 0; // Track tokens accumulated in this request
 
   try {
     // Get token limit settings once for the harness execution
     const settings = await getSettings();
     const currentRequestMaxTokens = settings.limits.currentRequestMaxTokens;
 
+    // Initialize accumulated request tokens with the user input
+    accumulatedRequestTokens = countTokens(messages);
+
     while (turnCount < MAX_TURNS) {
       turnCount++;
 
-      // 4a. Count tokens for current request only (exclude historical messages)
-      // Count tokens in messages that were passed to this router harness execution
-      const currentRequestTokens = countTokens(messages);
-      const routerContextTokens = countTokens(currentMessages);
-
       // Check if current request exceeds maximum tokens
-      if (currentRequestTokens > currentRequestMaxTokens) {
+      const routerContextTokens = countTokens(currentMessages);
+      if (accumulatedRequestTokens > currentRequestMaxTokens) {
         // Force response harness call when token limit exceeded
         respondCalled = true;
 
@@ -473,9 +473,9 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       const totalContextTokens = countTokens(currentMessages);
 
       // 4c. Create token info system message (not recorded in recordKeeper)
-      const tokenPercentage = ((currentRequestTokens / currentRequestMaxTokens) * 100).toFixed(2);
+      const tokenPercentage = ((accumulatedRequestTokens / currentRequestMaxTokens) * 100).toFixed(2);
       const tokenInfoMessage = new SystemMessage({
-        content: `Current request tokens: ${currentRequestTokens}/${currentRequestMaxTokens} (${tokenPercentage}%). Router context tokens: ${routerContextTokens}. Total context tokens: ${totalContextTokens}.`,
+        content: `Current request tokens: ${accumulatedRequestTokens}/${currentRequestMaxTokens} (${tokenPercentage}%). Router context tokens: ${routerContextTokens}. Total context tokens: ${totalContextTokens}.`,
         name: "token_info" // Special name to identify this as token info (not for recording)
       });
 
@@ -563,11 +563,36 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       // 7. Extract tool calls
       const toolCalls = extractToolCallsFromAIMessage(aiMessage);
 
-      // 8. If no tool calls at all, add AI message to context and break normally
+      // 8. If no tool calls at all, force respond() call instead of breaking normally
       if (toolCalls.length === 0) {
+        // Add the AI message to context for the response harness
         currentMessages.push(aiMessage);
+
+        // Force response harness call
+        respondCalled = true;
+
+        // Set reason on response context
+        context.responseContext.setReason("no tool calls returned");
+
+        // Create and execute response harness
+        const responseHarness = runResponseHarness({
+          conversationId: context.conversationId,
+          responseContext: context.responseContext,
+          messages: currentTurnToolMessages, // Only tool results from current turn
+          llmCaller: responseLLMCaller,
+          reason: "no tool calls returned",
+          ...(providedToolDefinitions || langChainTools ? { toolDefinitions: providedToolDefinitions || langChainTools } : {}),
+          ...(usedTools.length > 0 ? { usedTools } : {}),
+          ...(abortSignal ? { abortSignal } : {})
+        });
+
+        // Yield all response harness events
+        for await (const event of responseHarness) {
+          yield event;
+        }
+
         harnessCompletedNormally = true;
-        break;
+        return; // Exit successfully after response harness
       }
 
       // 9. Check for identical tool call limit (max 2 identical calls)
@@ -703,7 +728,17 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
 
       // Add formatted tool calls and results (excluding respond tool)
       currentTurnToolMessages = formatToolResultsForContext(validToolCalls, toolResults, ["respond"]);
+      const toolMessageTokens = countTokens(currentTurnToolMessages);
+      const tokensBeforePush = countTokens(currentMessages);
       currentMessages.push(...currentTurnToolMessages);
+      const tokensAfterPush = countTokens(currentMessages);
+
+      // Accumulate tokens for this request
+      accumulatedRequestTokens += toolMessageTokens;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f79e55ca-acc5-49c9-82aa-eba6a64474bf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routerHarness.ts:708',message:'Context growth after tool results',data:{turnCount,tokensBeforePush,tokensAfterPush,toolMessageTokens,accumulatedRequestTokens,toolMessagesAdded:currentTurnToolMessages.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
 
       // 15. Check if respond() was called
       if (respondCalled) {
@@ -725,8 +760,15 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         }
 
         harnessCompletedNormally = true;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f79e55ca-acc5-49c9-82aa-eba6a64474bf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routerHarness.ts:471',message:'Router harness terminated due to token limit',data:{turnCount,accumulatedRequestTokens,currentRequestMaxTokens},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return; // Exit successfully after response harness
       }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f79e55ca-acc5-49c9-82aa-eba6a64474bf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routerHarness.ts:733',message:'Loop continuing to next turn',data:{turnCount,accumulatedRequestTokens,currentRequestMaxTokens},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
 
     if (turnCount >= MAX_TURNS) {
