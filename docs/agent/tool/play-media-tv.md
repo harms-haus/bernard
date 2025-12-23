@@ -1,6 +1,6 @@
 # play_media_tv Tool
 
-The `play_media_tv` tool enables voice assistant agents to search for media content in Plex libraries and initiate playback on supported TV locations through conditional execution based on device capabilities.
+The `play_media_tv` tool enables voice assistant agents to search for media content in Plex libraries and initiate playback on supported TV locations with resume/restart capabilities through conditional execution based on device capabilities.
 
 ## Overview
 
@@ -9,13 +9,16 @@ This tool provides a unified interface for media discovery and playback control 
 ### Surface API
 
 ```typescript
-play_media_tv(location_id: string, media_query: string): Promise<string>
+play_media_tv(location_id: string, media_query: string, playback_mode?: "resume" | "restart"): Promise<string>
 ```
 
 **Parameters:**
 
 - `location_id`: TV location identifier (enum: "living_room" | "main_bed")
 - `media_query`: Media title to search for in Plex libraries
+- `playback_mode`: Playback mode (optional, default: "resume")
+  - `"resume"`: Resume from last watched position
+  - `"restart"`: Start from beginning
 
 **Returns:** Status message describing the actions performed
 
@@ -40,7 +43,10 @@ The tool performs conditional execution based on device capabilities:
 
 1. **Plex Library Search**: Dynamically discovers and searches Movies and TV Shows sections
 2. **Result Ranking**: Scores and selects best match using multiple criteria
-3. **Device-Specific Actions**:
+3. **Resume/Restart Logic**: Handles playback mode based on user preference
+   - **Resume Mode**: Queries Plex API for viewOffset (in ms), converts to seconds, and includes as `offset` in Home Assistant request
+   - **Restart Mode**: Starts playback from beginning (no offset parameter)
+4. **Device-Specific Actions**:
    - **Power Control**: Turns on TV via Home Assistant when HA entity configured
    - **App Launch**: Launches Plex app via Home Assistant media_player.select_source when HA entity configured
    - **Media Playback**: Plays content directly via Home Assistant Plex integration when HA Plex entity configured
@@ -137,6 +143,23 @@ play_media_tv("main_bed", "The Matrix")
 // Result: "Found 'The Matrix' (movie) and launched Plex app on Bedroom TV."
 ```
 
+### Resume Mode (Default)
+
+```typescript
+// Resume Inception from last watched position
+play_media_tv("living_room", "Inception")
+// Result: "Found 'Inception' (movie) and started playback on Living Room TV (resuming if available)."
+// Queries Plex API for viewOffset, converts to seconds, and starts playback at that position
+```
+
+### Restart Mode
+
+```typescript
+// Start Inception from the beginning
+play_media_tv("living_room", "Inception", "restart")
+// Result: "Found 'Inception' (movie) and started playback on Living Room TV (starting from beginning)."
+```
+
 ## Error Handling
 
 The tool provides structured error responses:
@@ -197,6 +220,7 @@ Error: Location "living_room" but no actions are available for location "living_
 - Watch history integration
 - Playlist creation via Plex API
 - Content recommendation based on viewing patterns
+- Specific offset seeking (e.g., jump to 30 minutes in)
 
 ### Configuration Flexibility
 

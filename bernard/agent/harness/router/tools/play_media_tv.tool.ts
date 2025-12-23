@@ -36,6 +36,7 @@ interface PlexMediaItem {
   duration?: number;
   addedAt: number;
   viewCount?: number;
+  viewOffset?: number; // in milliseconds
 }
 
 /**
@@ -54,6 +55,7 @@ interface LibrarySection {
 export type PlayPlexMediaDependencies = {
   searchPlexMediaImpl: typeof searchPlexMedia;
   getPlexLibrarySectionsImpl: typeof getPlexLibrarySections;
+  getPlexItemMetadataImpl: typeof getPlexItemMetadata;
   callHAServiceWebSocketImpl: typeof callHAServiceWebSocket;
   rankSearchResultsImpl: typeof rankSearchResults;
   recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
@@ -62,6 +64,7 @@ export type PlayPlexMediaDependencies = {
 const defaultDeps: PlayPlexMediaDependencies = {
   searchPlexMediaImpl: searchPlexMedia,
   getPlexLibrarySectionsImpl: getPlexLibrarySections,
+  getPlexItemMetadataImpl: getPlexItemMetadata,
   callHAServiceWebSocketImpl: callHAServiceWebSocket,
   rankSearchResultsImpl: rankSearchResults,
   recordServiceCallImpl: () => {
@@ -196,6 +199,30 @@ async function searchPlexMedia(
 
   const data = await response.json() as { MediaContainer?: { Metadata?: PlexMediaItem[] } };
   return data.MediaContainer?.Metadata || [];
+}
+
+/**
+ * Get detailed metadata for a specific Plex item by ratingKey
+ */
+async function getPlexItemMetadata(
+  plexConfig: PlexConfig,
+  ratingKey: string
+): Promise<PlexMediaItem | null> {
+  const response = await fetch(`${plexConfig.baseUrl}/library/metadata/${ratingKey}`, {
+    headers: {
+      'X-Plex-Token': plexConfig.token,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Plex API error: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const data = await response.json() as { MediaContainer?: { Metadata?: PlexMediaItem[] } };
+  return data.MediaContainer?.Metadata?.[0] || null;
 }
 
 /**
@@ -432,10 +459,12 @@ export function createPlayPlexMediaTool(
   return tool(
     async ({
       location_id,
-      media_query
+      media_query,
+      playback_mode = "resume"
     }: {
       location_id: string;
       media_query: string;
+      playback_mode?: "resume" | "restart";
     }) => {
       // Validate inputs
       if (!location_id || typeof location_id !== 'string') {
@@ -469,7 +498,7 @@ export function createPlayPlexMediaTool(
 
         await ensurePlexActive(haEntityId, haRestConfig, actions, deviceName, deps);
 
-        await playMediaOnPlex(haPlexEntityId, haRestConfig, deps, mediaType, bestMatch, deviceName, actions, location_id);
+        await playMediaOnPlex(haPlexEntityId, haRestConfig, deps, plexConfig, mediaType, bestMatch, deviceName, actions, location_id, playback_mode);
 
         if (actions.length === 0) {
           return `Found "${bestMatch.title}" (${mediaType}) but no actions are available for location "${location_id}". Please check device configuration.`;
@@ -491,7 +520,8 @@ export function createPlayPlexMediaTool(
       description: `Search for media in Plex libraries and control playback on supported TV locations. Supported locations: ${supportedLocations.join(', ')}. The tool automatically powers on the TV if needed, launches Plex via Home Assistant media_player.select_source, and uses Home Assistant's Plex integration to play media directly. It searches both Movies and TV Shows libraries and selects the best match. Actions performed depend on device capabilities: powers on device, launches apps via Home Assistant, and uses Home Assistant Plex entities for media playback.`,
       schema: z.object({
         location_id: z.enum(supportedLocations as [string, ...string[]]).describe(`TV location identifier. Supported: ${supportedLocations.join(', ')}`),
-        media_query: z.string().describe("Media title to search for in Plex (e.g., 'Inception', 'The Matrix')")
+        media_query: z.string().describe("Media title to search for in Plex (e.g., 'Inception', 'The Matrix')"),
+        playback_mode: z.enum(["resume", "restart"]).optional().default("resume").describe("Playback mode: 'resume' to continue from last position, 'restart' to start from beginning")
       })
     }
   );
@@ -600,8 +630,46 @@ async function ensurePlexActive(haEntityId: string | null, haRestConfig: HARestC
   }
 }
 
-async function playMediaOnPlex(haPlexEntityId: string | null, haRestConfig: HARestConfig | undefined, deps: PlayPlexMediaDependencies, mediaType: 'movie' | 'show', bestMatch: PlexMediaItem, deviceName: string, actions: string[], location_id: string) {
+async function playMediaOnPlex(haPlexEntityId: string | null, haRestConfig: HARestConfig | undefined, deps: PlayPlexMediaDependencies, plexConfig: PlexConfig, mediaType: 'movie' | 'show', bestMatch: PlexMediaItem, deviceName: string, actions: string[], location_id: string, playback_mode: "resume" | "restart" = "resume") {
   if (haPlexEntityId && haRestConfig && haRestConfig.accessToken) {
+    // Build media_content_id object dynamically
+    const mediaContentId: any = {
+      library_name: mediaType === 'movie' ? 'Movies' : 'TV Shows'
+    };
+
+    // Add title/show_name based on media type
+    if (mediaType === 'movie') {
+      mediaContentId.title = bestMatch.title;
+    } else {
+      mediaContentId.show_name = bestMatch.title;
+    }
+
+    // Handle resume mode: get viewOffset from Plex API and convert to seconds
+    if (playback_mode === 'resume') {
+      try {
+        const itemMetadata = await deps.getPlexItemMetadataImpl(plexConfig, bestMatch.ratingKey);
+
+        if (itemMetadata?.viewOffset && itemMetadata.viewOffset > 0) {
+          // Convert milliseconds to seconds for Home Assistant
+          mediaContentId.offset = Math.floor(itemMetadata.viewOffset / 1000);
+        }
+      } catch (error) {
+        console.warn(`Failed to get viewOffset for ${bestMatch.title}:`, error);
+        // Continue without offset - will play from beginning
+      }
+
+      if (mediaType === 'show') {
+        // For shows, add inProgress to find latest in-progress episode
+        mediaContentId.inProgress = true;
+      }
+    }
+
+    // Build service data with appropriate content type
+    const serviceData: any = {
+      media_content_type: mediaType === 'movie' ? 'MOVIE' : 'EPISODE',
+      media_content_id: `plex://${JSON.stringify(mediaContentId)}`
+    };
+
     // Use Home Assistant's Plex integration to play media directly
     for (let i = 0; i < 3; i++) {
       try {
@@ -612,8 +680,7 @@ async function playMediaOnPlex(haPlexEntityId: string | null, haRestConfig: HARe
           'play_media',
           {
             entity_id: haPlexEntityId,
-            media_content_type: mediaType,
-            media_content_id: `plex://{"library_name": "${mediaType === 'movie' ? 'Movies' : 'TV Shows'}", "title": "${bestMatch.title}"}`
+            ...serviceData
           }
         );
       } catch (error) {
@@ -624,7 +691,12 @@ async function playMediaOnPlex(haPlexEntityId: string | null, haRestConfig: HARe
       }
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
-    actions.push(`Started "${bestMatch.title}" playback on ${deviceName} via Home Assistant Plex`);
+
+    const playbackDescription = playback_mode === 'resume'
+      ? ' (resuming if available)'
+      : ' (starting from beginning)';
+
+    actions.push(`Started "${bestMatch.title}" playback on ${deviceName} via Home Assistant Plex${playbackDescription}`);
   } else {
     actions.push(`No Home Assistant Plex entity configured for ${location_id}`);
   }
