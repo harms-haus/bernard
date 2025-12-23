@@ -37,21 +37,22 @@ async function executeWikipediaEntry(
   token_offset: number = 0,
   max_tokens: number = 1500
 ): Promise<string> {
-  try {
-    const page = await wiki.page(page_identifier, { redirect: true });
-    const fullContent = await page.content({ redirect: true });
+  const page = await wiki.page(page_identifier, { redirect: true });
+  const fullContent = await page.content({ redirect: true });
 
-    // Use token-based slicing instead of character-based slicing
-    const content = sliceTokensFromText(fullContent, token_offset, max_tokens, DEFAULT_ENCODING);
-    const n_tokens = countTokensInText(content, DEFAULT_ENCODING);
-    const totalTokens = countTokensInText(fullContent, DEFAULT_ENCODING);
-    const n_next_tokens = Math.max(0, totalTokens - token_offset - n_tokens);
+  // Use token-based slicing instead of character-based slicing
+  const totalTokens = countTokensInText(fullContent, DEFAULT_ENCODING);
 
-    const result: WikipediaEntryResult = { n_tokens, content, n_next_tokens };
-    return JSON.stringify(result);
-  } catch (error) {
-    return `Wikipedia entry failed: ${error instanceof Error ? error.message : String(error)}`;
-  }
+  // If the offset is beyond the total tokens, return the last max_tokens tokens
+  // This maintains backward compatibility and provides better UX for pagination
+  const effectiveOffset = Math.min(token_offset, Math.max(0, totalTokens - max_tokens));
+
+  const content = sliceTokensFromText(fullContent, effectiveOffset, max_tokens, DEFAULT_ENCODING);
+  const n_tokens = countTokensInText(content, DEFAULT_ENCODING);
+  const n_next_tokens = Math.max(0, totalTokens - effectiveOffset - n_tokens);
+
+  const result: WikipediaEntryResult = { n_tokens, content, n_next_tokens };
+  return JSON.stringify(result);
 }
 
 const wikipediaEntryToolImpl = tool(

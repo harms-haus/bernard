@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { wikipediaSearchTool, wikipediaEntryTool } from "../agent/harness/router/tools/wikipedia";
+import { wikipediaSearchTool } from "../agent/harness/router/tools/wikipedia-search.tool";
+import { wikipediaEntryTool } from "../agent/harness/router/tools/wikipedia-entry.tool";
 
 test("wikipedia_search tool returns JSON array", async () => {
   const result = await wikipediaSearchTool.invoke({
@@ -64,12 +65,14 @@ test("wikipedia_search tool supports starting_index parameter", async () => {
 
 test("wikipedia tools handle invalid input gracefully", async () => {
   // Test with invalid page identifier
-  const result = await wikipediaEntryTool.invoke({
-    page_identifier: "ThisPageDoesNotExist12345",
-    token_offset: 0,
-    max_tokens: 100
-  });
-
-  assert(typeof result === "string", "Result should be a string");
-  assert(result.includes("failed"), "Should contain error message");
+  await assert.rejects(
+    async () => {
+      await wikipediaEntryTool.invoke({
+        page_identifier: "ThisPageDoesNotExist12345",
+        token_offset: 0,
+        max_tokens: 100
+      });
+    },
+    "Should throw an error for non-existent pages"
+  );
 });
