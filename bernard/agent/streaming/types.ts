@@ -108,6 +108,23 @@ export type DeltaEvent = {
   finishReason?: "stop" | "length" | "content_filter";
 }
 
+export type RecollectionEvent = {
+  type: "recollection";
+  recollectionId: string;
+  conversationId: string;
+  chunkIndex: number;
+  content: string;
+  score: number;
+  conversationMetadata?: {
+    summary?: string;
+    tags?: string[];
+    startedAt?: string;
+    messageCount?: number;
+  };
+  messageStartIndex: number;
+  messageEndIndex: number;
+}
+
 export type ErrorEvent<D = unknown> = {
   type: "error";
   data?: D;
@@ -117,4 +134,4 @@ export type ErrorEvent<D = unknown> = {
  * Agent output items that harnesses yield to be streamed to the client.
  * These represent the granular events that occur during agent execution.
  */
-export type AgentOutputItem = LLMCallEvent | LLMCallCompleteEvent | ToolCallEvent | ToolCallCompleteEvent | DeltaEvent | ErrorEvent;
+export type AgentOutputItem = LLMCallEvent | LLMCallCompleteEvent | ToolCallEvent | ToolCallCompleteEvent | DeltaEvent | RecollectionEvent | ErrorEvent;

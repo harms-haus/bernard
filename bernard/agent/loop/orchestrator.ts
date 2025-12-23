@@ -121,6 +121,27 @@ export class StreamingOrchestrator {
         // 5. Create event sequencer
         const sequencer = createDelegateSequencer<AgentOutputItem>();
 
+        // 7. Run Recollection Harness
+        const recollectionStream = (async function* (this: StreamingOrchestrator) {
+            const { runRecollectionHarness } = await import("../harness/recollect");
+            const recollectionHarness = runRecollectionHarness({
+                conversationId,
+                routerContext,
+                messages: persistable, // Pass the incoming messages
+                recordKeeper: this.recordKeeper
+            });
+
+            for await (const event of recollectionHarness) {
+                // Record recollection events via Recorder
+                await this.recordEvent(recorder, conversationId, event, requestId, turnId);
+
+                // Yield filtered recollection events
+                if (this.shouldEmitEvent(event, trace)) {
+                    yield event;
+                }
+            }
+        }).bind(this)();
+
         // 8. Run Router Harness (now includes response harness execution)
         const routerStream = (async function* (this: StreamingOrchestrator) {
             const routerHarness = runRouterHarness({
@@ -149,6 +170,8 @@ export class StreamingOrchestrator {
             }
         }).bind(this)();
 
+        // Chain recollection stream first, then router stream
+        sequencer.chain(recollectionStream);
         sequencer.chain(routerStream);
         sequencer.done();
 
@@ -294,6 +317,23 @@ export class StreamingOrchestrator {
                     }));
                 }
                 break;
+
+            case "recollection": {
+                const recollectionDetails: any = {
+                    recollectionId: event.recollectionId,
+                    sourceConversationId: event.conversationId,
+                    chunkIndex: event.chunkIndex,
+                    content: event.content,
+                    score: event.score,
+                    messageStartIndex: event.messageStartIndex,
+                    messageEndIndex: event.messageEndIndex
+                };
+                if (event.conversationMetadata) {
+                    recollectionDetails.conversationMetadata = event.conversationMetadata;
+                }
+                await recorder.recordRecollection(conversationId, recollectionDetails);
+                break;
+            }
         }
     }
 
@@ -307,7 +347,8 @@ export class StreamingOrchestrator {
                 event.type === "llm_call" ||
                 event.type === "llm_call_complete" ||
                 event.type === "tool_call" ||
-                event.type === "tool_call_complete"
+                event.type === "tool_call_complete" ||
+                event.type === "recollection"
             );
         }
 

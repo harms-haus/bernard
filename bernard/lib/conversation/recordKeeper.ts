@@ -134,6 +134,11 @@ export class RecordKeeper implements Archivist, Recorder {
     return this;
   }
 
+  // Get the underlying Redis client (used by search services)
+  getRedisClient(): Redis {
+    return this.redis;
+  }
+
   /**
    * Register a context for a conversation
    * Contexts will be notified when new messages are appended
@@ -469,6 +474,48 @@ export class RecordKeeper implements Archivist, Recorder {
 
   // Recorder interface implementation
   async recordMessage(conversationId: string, message: BaseMessage | MessageRecord): Promise<void> {
+    await this.appendMessages(conversationId, [message]);
+  }
+
+  async recordRecollection(
+    conversationId: string,
+    details: {
+      recollectionId: string;
+      sourceConversationId: string;
+      chunkIndex: number;
+      content: string;
+      score: number;
+      conversationMetadata?: {
+        summary?: string;
+        tags?: string[];
+        startedAt?: string;
+        messageCount?: number;
+      };
+      messageStartIndex: number;
+      messageEndIndex: number;
+    }
+  ): Promise<void> {
+    const message: MessageRecord = {
+      id: uniqueId("msg"),
+      role: "system",
+      name: "recollection",
+      content: {
+        recollectionId: details.recollectionId,
+        sourceConversationId: details.sourceConversationId,
+        chunkIndex: details.chunkIndex,
+        content: details.content,
+        score: details.score,
+        conversationMetadata: details.conversationMetadata,
+        messageStartIndex: details.messageStartIndex,
+        messageEndIndex: details.messageEndIndex
+      },
+      createdAt: nowIso(),
+      metadata: {
+        traceType: "recollection",
+        recollectionId: details.recollectionId
+      }
+    };
+
     await this.appendMessages(conversationId, [message]);
   }
 

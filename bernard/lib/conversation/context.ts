@@ -96,6 +96,11 @@ export abstract class BaseContext implements Context {
    * Convert MessageRecord to BaseMessage
    */
   private messageRecordToBaseMessage(record: MessageRecord): BaseMessage | null {
+    // Special handling for recollection events
+    if (record.name === "recollection" && record.role === "system") {
+      return this.formatRecollectionMessage(record);
+    }
+
     const normalizedContent = normalizeRecordContent(record.content);
     const base = { content: normalizedContent, ...(record.name ? { name: record.name } : {}) };
 
@@ -124,6 +129,56 @@ export abstract class BaseContext implements Context {
         return new HumanMessage(base);
     }
   }
+
+  /**
+   * Format a recollection event as a readable system message
+   */
+  private formatRecollectionMessage(record: MessageRecord): SystemMessage | null {
+    try {
+      if (typeof record.content !== "object" || !record.content) {
+        return null;
+      }
+
+      const recollection = record.content as any;
+      let formattedContent = `Recalled from conversation ${recollection.sourceConversationId || 'unknown'}:\n`;
+
+      if (recollection.content) {
+        // Truncate content if too long
+        const content = typeof recollection.content === 'string' ? recollection.content : JSON.stringify(recollection.content);
+        formattedContent += content.length > 500 ? content.substring(0, 500) + '...' : content;
+      }
+
+      if (recollection.score !== undefined) {
+        formattedContent += `\n\nSimilarity score: ${recollection.score.toFixed(3)}`;
+      }
+
+      if (recollection.conversationMetadata) {
+        const meta = recollection.conversationMetadata;
+        if (meta.summary) {
+          formattedContent += `\n\nConversation summary: ${meta.summary}`;
+        }
+        if (meta.tags && meta.tags.length > 0) {
+          formattedContent += `\n\nTags: ${meta.tags.join(', ')}`;
+        }
+      }
+
+      if (recollection.messageStartIndex !== undefined && recollection.messageEndIndex !== undefined) {
+        formattedContent += `\n\nMessage range: ${recollection.messageStartIndex}-${recollection.messageEndIndex}`;
+      }
+
+      return new SystemMessage({
+        content: formattedContent,
+        name: "recollection"
+      });
+
+    } catch (err) {
+      console.warn('[formatRecollectionMessage] Failed to format recollection message:', err);
+      return new SystemMessage({
+        content: 'Recalled information (formatting failed)',
+        name: "recollection"
+      });
+    }
+  }
 }
 
 /**
@@ -143,13 +198,18 @@ export class RouterContext extends BaseContext {
   }
 
   /**
-   * Router context includes: system, user, assistant, and tool messages
+   * Router context includes: system, user, assistant, tool, and recollection messages
    * Excludes: llm_call, llm_call_complete, respond messages
    */
   shouldIncludeMessage(record: MessageRecord): boolean {
     // Exclude system-level trace messages
     if (record.name === "llm_call" || record.name === "llm_call_complete" || record.name === "respond") {
       return false;
+    }
+
+    // Include recollection events (name="recollection")
+    if (record.name === "recollection") {
+      return true;
     }
 
     // Include user, assistant, system, and tool messages
@@ -197,13 +257,18 @@ export class ResponseContext extends BaseContext {
   }
 
   /**
-   * Response context includes: system, user, assistant, and tool messages
+   * Response context includes: system, user, assistant, tool, and recollection messages
    * Excludes: llm_call, llm_call_complete, respond messages
    */
   shouldIncludeMessage(record: MessageRecord): boolean {
     // Exclude system-level trace messages
     if (record.name === "llm_call" || record.name === "llm_call_complete" || record.name === "respond") {
       return false;
+    }
+
+    // Include recollection events (name="recollection")
+    if (record.name === "recollection") {
+      return true;
     }
 
     // Include user, assistant, system, and tool messages

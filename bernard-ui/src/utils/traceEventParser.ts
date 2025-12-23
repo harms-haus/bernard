@@ -2,7 +2,7 @@ import type { MessageRecord } from '../../../bernard/lib/conversation/types';
 
 export interface TraceEvent {
   id: string;
-  type: 'llm_call' | 'tool_call';
+  type: 'llm_call' | 'tool_call' | 'recollection';
   data: any;
   timestamp: Date;
   status: 'loading' | 'completed';
@@ -24,6 +24,17 @@ export function parseTraceChunk(traceData: any): TraceEvent[] {
       data: traceData,
       timestamp: new Date(),
       status: 'loading'
+    };
+
+    traceEvents.push(traceEvent);
+  } else if (traceData.type === 'recollection') {
+    // Recollection events are emitted as completed events
+    const traceEvent: TraceEvent = {
+      id: `trace-recollection-${Date.now()}-${Math.random()}`,
+      type: 'recollection',
+      data: traceData,
+      timestamp: new Date(),
+      status: 'completed'
     };
 
     traceEvents.push(traceEvent);
@@ -138,6 +149,28 @@ export function extractTraceEventsFromMessages(messages: MessageRecord[]): Trace
           };
         }
       }
+    }
+
+    // Extract recollection events from system messages with recollection content
+    if (message.role === 'system' && message.name === 'recollection' && typeof message.content === 'object' && message.content) {
+      const content = message.content as any;
+      const traceEvent: TraceEvent = {
+        id: `trace-recollection-${message.id}`,
+        type: 'recollection',
+        data: {
+          recollectionId: content.recollectionId,
+          conversationId: content.sourceConversationId,
+          chunkIndex: content.chunkIndex,
+          content: content.content,
+          score: content.score,
+          conversationMetadata: content.conversationMetadata,
+          messageStartIndex: content.messageStartIndex,
+          messageEndIndex: content.messageEndIndex
+        },
+        timestamp: new Date(message.createdAt),
+        status: 'completed'
+      };
+      traceEvents.push(traceEvent);
     }
   }
 

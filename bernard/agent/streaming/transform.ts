@@ -26,6 +26,7 @@ export async function* transformAgentOutputToChunks(
             item.type === "llm_call_complete" ||
             item.type === "tool_call" ||
             item.type === "tool_call_complete" ||
+            item.type === "recollection" ||
             item.type === "error"
         ) {
             const traceChunk: BernardTraceChunk = {

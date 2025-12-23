@@ -104,6 +104,28 @@ export interface Recorder {
   ): Promise<void>;
 
   /**
+   * Record a recollection event.
+   */
+  recordRecollection(
+    conversationId: string,
+    details: {
+      recollectionId: string;
+      sourceConversationId: string;
+      chunkIndex: number;
+      content: string;
+      score: number;
+      conversationMetadata?: {
+        summary?: string;
+        tags?: string[];
+        startedAt?: string;
+        messageCount?: number;
+      };
+      messageStartIndex: number;
+      messageEndIndex: number;
+    }
+  ): Promise<void>;
+
+  /**
    * Deduplicate and add messages to the historical record in proper placement.
    */
   syncHistory(

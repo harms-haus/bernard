@@ -14,6 +14,7 @@ import { AssistantMessage } from './chat-messages/AssistantMessage';
 import { ToolUseMessage } from './chat-messages/ToolUseMessage';
 import { LLMCallMessage } from './chat-messages/LLMCallMessage';
 import { ToolCallMessage } from './chat-messages/ToolCallMessage';
+import { RecollectionsMessage } from './chat-messages/RecollectionsMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
@@ -744,10 +745,34 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                     ...traceEvents.map(event => ({ type: 'trace' as const, item: event, timestamp: event.timestamp }))
                   ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-                  return allItems.map(({ type, item }) => {
+                  // Process items with recollection grouping
+                  const renderedItems: React.ReactNode[] = [];
+                  let skipIndices = new Set<number>();
+
+                  for (let i = 0; i < allItems.length; i++) {
+                    if (skipIndices.has(i)) continue;
+
+                    const { type, item } = allItems[i];
+
                     if (type === 'message') {
                       const message = item as MessageRecord;
-                      return (
+
+                      // Check if this is a user message followed by recollection events
+                      let recollectionsAfterUser: any[] = [];
+                      if (message.role === 'user') {
+                        // Look ahead for consecutive recollection events
+                        for (let j = i + 1; j < allItems.length; j++) {
+                          const nextItem = allItems[j];
+                          if (nextItem.type === 'trace' && (nextItem.item as TraceEvent).type === 'recollection') {
+                            recollectionsAfterUser.push((nextItem.item as TraceEvent).data);
+                            skipIndices.add(j);
+                          } else {
+                            break; // Stop at first non-recollection event
+                          }
+                        }
+                      }
+
+                      const messageElement = (
                         <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {message.role === 'assistant' && (
                             <div className="w-8 flex justify-center">
@@ -775,27 +800,31 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                           ) : (
                             <AssistantMessage
                               content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
-                              toolsUsed={[]}
-                              showToolDetails={showToolDetails[message.id]}
-                              onCopy={() => copyToClipboard(typeof message.content === 'string' ? message.content : JSON.stringify(message.content))}
-                              onToggleToolDetails={() => toggleToolDetails(message.id)}
+                              isStreaming={false}
+                              onStopStreaming={() => {}}
                             />
-                          )}
-                          {message.role === 'user' && (
-                            <div className="w-8 flex justify-center">
-                              <Avatar className="h-8 w-8 bg-blue-500">
-                                <AvatarFallback className="text-white">
-                                  {state.user ? state.user.displayName.charAt(0).toUpperCase() : 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                            </div>
                           )}
                         </div>
                       );
-                    } else {
+
+                      renderedItems.push(messageElement);
+
+                      // Add recollections after user message if any
+                      if (recollectionsAfterUser.length > 0) {
+                        const recollectionsElement = (
+                          <div key={`recollections-${message.id}`} className="flex justify-start">
+                            <div className="flex-1 ml-12">
+                              <RecollectionsMessage recollections={recollectionsAfterUser} />
+                            </div>
+                          </div>
+                        );
+                        renderedItems.push(recollectionsElement);
+                      }
+
+                    } else if (type === 'trace') {
                       const traceEvent = item as TraceEvent;
                       const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
-                      return (
+                      const traceElement = (
                         <div key={traceEvent.id} className="flex justify-start">
                           <div className="flex-1 ml-12">
                             {traceEvent.type === 'llm_call' ? (
@@ -817,6 +846,9 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                                 result={traceEvent.result}
                                 durationMs={traceEvent.durationMs}
                               />
+                            ) : traceEvent.type === 'recollection' ? (
+                              // Recollection events are handled separately - grouped after user messages
+                              null
                             ) : (
                               <div className="text-xs text-gray-500 dark:text-gray-400">
                                 {traceEvent.type}: {JSON.stringify(traceEvent.data)}
@@ -825,8 +857,14 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                           </div>
                         </div>
                       );
+
+                      if (traceEvent.type !== 'recollection') {
+                        renderedItems.push(traceElement);
+                      }
                     }
-                  });
+                  }
+
+                  return renderedItems;
                 })()}
                 {isStreaming && (
                   <div className="flex justify-start">
