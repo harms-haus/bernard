@@ -54,6 +54,19 @@ const MemoryServiceSchema = z.object({
   namespace: z.string().optional()
 });
 
+const AutomationSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  lastRunTime: z.number().optional(),
+  lastRunDuration: z.number().optional(),
+  runCount: z.number().int().min(0).default(0)
+});
+
+const AutomationsSettingsSchema = z.record(z.string(), AutomationSettingsSchema).default({});
+
+function defaultAutomations(): AutomationsSettings {
+  return {};
+}
+
 const SearchServiceSchema = z.object({
   apiKey: z.string().optional(),
   apiUrl: z.string().url().optional()
@@ -149,12 +162,16 @@ export type OAuthSettings = z.infer<typeof OAuthSettingsSchema>;
 export type BackupSettings = z.infer<typeof BackupSettingsSchema>;
 export type LimitsSettings = z.infer<typeof LimitsSettingsSchema>;
 
+export type AutomationSettings = z.infer<typeof AutomationSettingsSchema>;
+export type AutomationsSettings = z.infer<typeof AutomationsSettingsSchema>;
+
 export type BernardSettings = {
   models: ModelsSettings;
   services: ServicesSettings;
   oauth: OAuthSettings;
   backups: BackupSettings;
   limits: LimitsSettings;
+  automations: AutomationsSettings;
 };
 
 export type Section = keyof BernardSettings;
@@ -617,15 +634,42 @@ export class SettingsStore {
     return this.writeSection("limits", LimitsSettingsSchema, limits);
   }
 
+  async getAutomations(): Promise<AutomationsSettings> {
+    return this.readSection("automations", AutomationsSettingsSchema, defaultAutomations);
+  }
+
+  async setAutomations(automations: AutomationsSettings): Promise<AutomationsSettings> {
+    return this.writeSection("automations", AutomationsSettingsSchema, automations);
+  }
+
+  async getAutomationSettings(automationId: string): Promise<AutomationSettings> {
+    const automations = await this.getAutomations();
+    return automations[automationId] || {
+      enabled: true,
+      runCount: 0
+    };
+  }
+
+  async setAutomationSettings(automationId: string, settings: AutomationSettings): Promise<AutomationSettings> {
+    const automations = await this.getAutomations();
+    const updatedAutomations = {
+      ...automations,
+      [automationId]: settings
+    };
+    await this.setAutomations(updatedAutomations);
+    return settings;
+  }
+
   async getAll(): Promise<BernardSettings> {
-    const [models, services, oauth, backups, limits] = await Promise.all([
+    const [models, services, oauth, backups, limits, automations] = await Promise.all([
       this.getModels(),
       this.getServices(),
       this.getOAuth(),
       this.getBackups(),
-      this.getLimits()
+      this.getLimits(),
+      this.getAutomations()
     ]);
-    return { models, services, oauth, backups, limits };
+    return { models, services, oauth, backups, limits, automations };
   }
 }
 

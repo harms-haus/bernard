@@ -1,8 +1,7 @@
 import { RedisVectorStore } from "@langchain/redis";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
-import { ConversationIndexer } from "@/lib/queue/conversationTasks";
-import { createConversationQueue } from "@/lib/queue/client";
-import { CONVERSATION_TASKS } from "@/lib/queue/types";
+import { ConversationIndexer } from "@/lib/indexing/indexer";
+import { raiseEvent } from "@/lib/automation/hookService";
 import { getRedis } from "@/lib/infra/redis";
 import { getEmbeddingModel } from "@/lib/config/embeddings";
 import { createClient } from "redis";
@@ -77,9 +76,8 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
       console.log('Deleted conversation chunks from Redis', { deletedKeys: allKeys.length });
     }
 
-    // 3. Queue all existing conversations for re-indexing
+    // 3. Trigger index automation for all existing conversations
     const recordKeeper = new RecordKeeper(redis);
-    const queue = createConversationQueue();
 
     // Get all conversations
     const conversations = await recordKeeper.listConversations({
@@ -88,17 +86,19 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
       limit: 10000 // Get a large number to cover all conversations
     });
 
-    console.log('Found conversations to re-queue', { count: conversations.length });
+    console.log('Found conversations to re-index', { count: conversations.length });
 
-    // Queue each conversation for indexing
+    // Trigger conversation_archived event for each conversation to run index automation
     for (const conversation of conversations) {
       try {
-        await queue.add(CONVERSATION_TASKS.index, {
-          conversationId: conversation.id
+        await raiseEvent("conversation_archived", {
+          conversationId: conversation.id,
+          userId: conversation.tokenSet?.[0] ?? "",
+          conversationContent: conversation
         });
         conversationsQueued++;
       } catch (error) {
-        console.error('Failed to queue conversation for re-indexing', {
+        console.error('Failed to trigger index automation for conversation', {
           conversationId: conversation.id,
           error: error instanceof Error ? error.message : String(error)
         });

@@ -15,6 +15,7 @@ import History from './pages/admin/History'
 import Models from './pages/admin/Models'
 import Services from './pages/admin/Services'
 import Users from './pages/admin/Users'
+import Automations from './pages/admin/Automations'
 import ConversationDetail from './pages/admin/ConversationDetail'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
 
@@ -68,6 +69,7 @@ function App() {
                 <Route path="history" element={<History />} />
                 <Route path="history/:id" element={<ConversationDetail />} />
                 <Route path="users" element={<Users />} />
+                <Route path="automations" element={<Automations />} />
               </Route>
             </Routes>
           </Router>

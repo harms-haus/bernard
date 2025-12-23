@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Eye,
   Trash2,
-  Play,
   StopCircle,
   RefreshCw,
   Settings,
@@ -60,6 +59,7 @@ export default function ConversationDetail() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
+  const [automationAction, setAutomationAction] = useState<{ conversationId: string; automationId: string } | null>(null);
   const [showDebug, setShowDebug] = useState(true);
 
   // Hook calls - must be at the top level of the component function
@@ -232,6 +232,27 @@ export default function ConversationDetail() {
     }
   };
 
+  const handleTriggerAutomation = async (automationId: string) => {
+    if (!id || automationAction) return;
+
+    setAutomationAction({ conversationId: id, automationId });
+    try {
+      const result = await adminApiClient.triggerAutomation(id, automationId);
+      if (result.success) {
+        // Refresh the conversation to get updated data
+        await loadConversation();
+        toast.success('Success', `Automation "${automationId}" queued successfully`);
+      } else {
+        toast.error('Trigger Failed', result.message || 'Unable to trigger automation');
+      }
+    } catch (error) {
+      console.error('Failed to trigger automation:', error);
+      toast.error('Trigger Failed', error instanceof Error ? error.message : 'Failed to trigger automation');
+    } finally {
+      setAutomationAction(null);
+    }
+  };
+
   const canRetryIndexing = (): boolean => {
     if (!conversation) return false;
     if (conversation.ghost) return false; // Ghost conversations cannot be indexed
@@ -356,13 +377,87 @@ export default function ConversationDetail() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Summary */}
-              {conversation.summary && (
-                <div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Summary</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleTriggerAutomation('summarize-conversation')}
+                    disabled={automationAction?.automationId === 'summarize-conversation'}
+                    title="Regenerate summary"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${automationAction?.automationId === 'summarize-conversation' ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+                {conversation.summary ? (
                   <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                     {conversation.summary}
                   </p>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 italic">[none]</p>
+                )}
+              </div>
+
+              {/* Tags */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tags</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleTriggerAutomation('tag-conversation')}
+                    disabled={automationAction?.automationId === 'tag-conversation'}
+                    title="Regenerate tags"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${automationAction?.automationId === 'tag-conversation' ? 'animate-spin' : ''}`} />
+                  </Button>
                 </div>
-              )}
+                <div className="space-y-1">
+                  {conversation.tags?.map((tag, index) => (
+                    <Badge key={index} variant="outline" className="mr-2">
+                      {tag}
+                    </Badge>
+                  ))}
+                  {conversation.tags?.length === 0 && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">[none]</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Flags */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Flags</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleTriggerAutomation('flag-conversation')}
+                    disabled={automationAction?.automationId === 'flag-conversation'}
+                    title="Regenerate flags"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${automationAction?.automationId === 'flag-conversation' ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  {conversation.flags?.explicit || conversation.flags?.forbidden ? (
+                    <>
+                      {conversation.flags.explicit && (
+                        <Badge variant="destructive" className="mr-2">
+                          Explicit
+                        </Badge>
+                      )}
+                      {conversation.flags.forbidden && (
+                        <Badge variant="destructive" className="mr-2">
+                          Forbidden
+                        </Badge>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">[none]</p>
+                  )}
+                </div>
+              </div>
 
               {/* Basic Info */}
               <div className="space-y-4">
@@ -371,7 +466,7 @@ export default function ConversationDetail() {
                   <Badge variant={
                     conversation.status === 'open' ? 'default' : 'secondary'
                   }>
-                    {conversation.status === 'open' ? 'Active' : 'Closed'}
+                    {conversation.status === 'open' ? 'Active' : 'Archived'}
                   </Badge>
                 </div>
                 
@@ -386,7 +481,7 @@ export default function ConversationDetail() {
                   </div>
                   {conversation.closedAt && (
                     <div className="col-span-2">
-                      <span className="text-gray-500 dark:text-gray-400">Closed</span>
+                      <span className="text-gray-500 dark:text-gray-400">Archived</span>
                       <p className="font-medium">{formatDateTime(conversation.closedAt)}</p>
                     </div>
                   )}
@@ -405,99 +500,129 @@ export default function ConversationDetail() {
               </div>
 
               {/* Indexing Status */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Indexing Status</span>
-                  {conversation.ghost ? (
-                    <Badge variant="outline">
-                      Not Indexed (Ghost)
-                    </Badge>
-                  ) : (
-                    <Badge variant={
-                      getIndexingStatusInfo(conversation.indexingStatus).color === 'success' ? 'default' :
-                      getIndexingStatusInfo(conversation.indexingStatus).color === 'warning' ? 'secondary' :
-                      getIndexingStatusInfo(conversation.indexingStatus).color === 'destructive' ? 'destructive' : 'secondary'
-                    }>
-                      {getIndexingStatusInfo(conversation.indexingStatus).label}
-                    </Badge>
-                  )}
-                </div>
-
-                {conversation.ghost && (
-                  <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded border border-amber-200 dark:border-amber-800">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                      <span className="font-medium">Ghost Conversation</span>
-                    </div>
-                    <p className="mt-1 text-xs">
-                      This conversation was created in ghost mode and cannot be indexed for privacy reasons.
-                    </p>
-                  </div>
-                )}
-                
-                {conversation.indexingAttempts && (
-                  <div className="text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Attempts</span>
-                    <p className="font-medium">{conversation.indexingAttempts}</p>
-                  </div>
-                )}
-                
-                {conversation.indexingError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                      <span className="text-sm font-medium text-red-700 dark:text-red-300">Indexing Error</span>
-                    </div>
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">{conversation.indexingError}</p>
-                  </div>
-                )}
-                
-                <div className="flex space-x-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Indexing:</span>
+                <div className="flex items-center space-x-2">
+                  <Badge variant={
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'success' ? 'default' :
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'warning' ? 'secondary' :
+                    getIndexingStatusInfo(conversation.indexingStatus).color === 'destructive' ? 'destructive' : 'secondary'
+                  }>
+                    {conversation.ghost ? 'Not Indexed (Ghost)' : getIndexingStatusInfo(conversation.indexingStatus).label}
+                  </Badge>
                   {canRetryIndexing() && (
-                    <Button 
+                    <Button
                       size="sm"
+                      variant="ghost"
                       onClick={handleRetryIndexing}
                       disabled={indexingAction !== null}
+                      title="Retry indexing"
                     >
-                      <Play className="mr-2 h-4 w-4" />
-                      Queue Indexing
+                      <RefreshCw className={`h-4 w-4 ${indexingAction?.action === 'retry' ? 'animate-spin' : ''}`} />
                     </Button>
                   )}
-                  
                   {canCancelIndexing() && (
-                    <Button 
+                    <Button
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
                       onClick={handleCancelIndexing}
                       disabled={indexingAction !== null}
+                      title="Cancel indexing"
                     >
-                      <StopCircle className="mr-2 h-4 w-4" />
-                      Cancel Indexing
+                      <StopCircle className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* Source and Tokens */}
-              <div className="space-y-4">
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Source</span>
-                  <p className="font-medium">{conversation.source}</p>
+              {conversation.indexingAttempts && (
+                <div className="text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Attempts</span>
+                  <p className="font-medium">{conversation.indexingAttempts}</p>
                 </div>
-                
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tokens</span>
-                  <div className="mt-2 space-y-1">
-                    {conversation.tokenNames?.map((tokenName, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded">
-                        <span className="text-sm">{tokenName}</span>
-                        <Badge variant="outline">Active</Badge>
-                      </div>
-                    ))}
-                    {conversation.tokenNames?.length === 0 && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No tokens</p>
-                    )}
+              )}
+
+              {conversation.indexingError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm font-medium text-red-700 dark:text-red-300">Indexing Error</span>
                   </div>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">{conversation.indexingError}</p>
+                </div>
+              )}
+
+              {conversation.ghost && (
+                <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span className="font-medium">Ghost Conversation</span>
+                  </div>
+                  <p className="mt-1 text-xs">
+                    This conversation was created in ghost mode and cannot be indexed for privacy reasons.
+                  </p>
+                </div>
+              )}
+
+              {/* Source */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Source:</span>
+                <span className="text-sm font-medium">{conversation.source}</span>
+              </div>
+
+              {/* Token Usage */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Token Usage</span>
+                <div className="text-sm space-y-1">
+                  {(() => {
+                    // Calculate real token usage from messages
+                    const realTokens = messages.reduce((total, message) => {
+                      const deltas = message.tokenDeltas;
+                      if (deltas) {
+                        total.in += deltas.in || 0;
+                        total.out += deltas.out || 0;
+                      }
+                      return total;
+                    }, { in: 0, out: 0 });
+
+                    // Calculate estimated token usage (rough approximation: ~4 chars per token)
+                    const allText = messages.map(m => {
+                      if (typeof m.content === 'string') return m.content;
+                      if (Array.isArray(m.content)) return JSON.stringify(m.content);
+                      return JSON.stringify(m.content);
+                    }).join(' ');
+
+                    const estimatedTokens = Math.ceil(allText.length / 4);
+
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-gray-400">Real (Input/Output):</span>
+                          <span className="font-medium">{realTokens.in.toLocaleString()} / {realTokens.out.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-gray-400">Estimated (Input):</span>
+                          <span className="font-medium">{estimatedTokens.toLocaleString()}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Tokens */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tokens</span>
+                <div className="mt-2 space-y-1">
+                  {conversation.tokenNames?.map((tokenName, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded">
+                      <span className="text-sm">{tokenName}</span>
+                      <Badge variant="outline">Active</Badge>
+                    </div>
+                  ))}
+                  {conversation.tokenNames?.length === 0 && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No tokens</p>
+                  )}
                 </div>
               </div>
 
@@ -513,20 +638,6 @@ export default function ConversationDetail() {
                     ))}
                     {conversation.modelSet?.length === 0 && (
                       <p className="text-sm text-gray-500 dark:text-gray-400">No models</p>
-                    )}
-                  </div>
-                </div>
-                
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Tags</span>
-                  <div className="mt-2 space-y-1">
-                    {conversation.tags?.map((tag, index) => (
-                      <Badge key={index} variant="outline" className="mr-2">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {conversation.tags?.length === 0 && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No tags</p>
                     )}
                   </div>
                 </div>

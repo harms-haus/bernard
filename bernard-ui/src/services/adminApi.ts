@@ -213,6 +213,24 @@ export interface BackupSettings {
   retentionCount: number;
 }
 
+export interface AutomationInfo {
+  id: string;
+  name: string;
+  description: string;
+  hooks: string[];
+  enabled: boolean;
+  lastRunTime?: number;
+  lastRunDuration?: number;
+  runCount: number;
+}
+
+export interface AutomationSettings {
+  enabled: boolean;
+  lastRunTime?: number;
+  lastRunDuration?: number;
+  runCount: number;
+}
+
 export interface AdminSettings {
   models: ModelsSettings;
   services: ServicesSettings;
@@ -432,6 +450,18 @@ class AdminApiClient {
     return this.request<ModelsSettings>('/settings/models');
   }
 
+  // Automation management
+  async getAutomations(): Promise<{ automations: AutomationInfo[] }> {
+    return this.request<{ automations: AutomationInfo[] }>('/admin/automations');
+  }
+
+  async updateAutomation(id: string, enabled: boolean): Promise<AutomationSettings> {
+    return this.request<AutomationSettings>(`/admin/automations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled })
+    });
+  }
+
   async updateModelsSettings(body: ModelsSettings): Promise<ModelsSettings> {
     return this.request<ModelsSettings>('/settings/models', {
       method: 'PUT',
@@ -558,6 +588,18 @@ class AdminApiClient {
   }> {
     return this.request('/admin/clear-entire-index', {
       method: 'POST'
+    });
+  }
+
+  async triggerAutomation(conversationId: string, automationId: string): Promise<{
+    success: boolean;
+    message: string;
+    conversationId: string;
+    automationId: string;
+  }> {
+    return this.request(`/conversations/${conversationId}/trigger-automation/${automationId}`, {
+      method: 'POST',
+      body: JSON.stringify({})
     });
   }
 

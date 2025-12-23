@@ -2,11 +2,10 @@ import crypto from "node:crypto";
 import type { BaseMessage } from "@langchain/core/messages";
 import type Redis from "ioredis";
 
-import type { Queue } from "bullmq";
-
 import type { ConversationSummaryService, SummaryResult, SummaryFlags } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
-import { ConversationIndexer } from "../queue/conversationTasks";
+import { raiseEvent } from "../automation/hookService";
+import { ConversationIndexer } from "../indexing/indexer";
 
 // Helper function from messageLog.ts
 function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord {
@@ -34,9 +33,6 @@ import type {
   Turn,
   TurnStatus
 } from "./types";
-import { conversationQueueName, createConversationQueue } from "../queue/client";
-import { CONVERSATION_TASKS, buildConversationJobId } from "../queue/types";
-import type { ConversationTaskName, ConversationTaskPayload } from "../queue/types";
 import { childLogger, logger, toErrorObject } from "../logging";
 export type {
   Conversation,
@@ -61,8 +57,6 @@ type RecordKeeperOptions = {
   metricsNamespace?: string;
   idleMs?: number;
   summarizer?: ConversationSummaryService;
-  queue?: Queue<ConversationTaskPayload, unknown, ConversationTaskName>;
-  queueDisabled?: boolean;
 };
 
 const DEFAULT_NAMESPACE = "bernard:rk";
@@ -106,7 +100,6 @@ export class RecordKeeper implements Archivist, Recorder {
   private readonly metricsNamespace: string;
   private readonly idleMs: number;
   private readonly summarizer: ConversationSummaryService | undefined;
-  private readonly tasksDisabled: boolean;
   private readonly messageLog: MessageLog;
   private readonly log = childLogger({ component: "record_keeper" }, logger);
 
@@ -118,12 +111,9 @@ export class RecordKeeper implements Archivist, Recorder {
     this.metricsNamespace = opts.metricsNamespace ?? DEFAULT_METRICS_NAMESPACE;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.summarizer = opts.summarizer;
-    this.tasksDisabled = opts.queueDisabled ?? TASKS_DISABLED;
     this.messageLog = new MessageLog(redis, (suffix: string) => this.key(suffix));
-    this.conversationQueue = opts.queue ?? null;
   }
 
-  private conversationQueue: Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null = null;
   private registeredContexts = new Map<string, Context>();
 
   // Factory methods to get interface views
@@ -241,6 +231,34 @@ export class RecordKeeper implements Archivist, Recorder {
       await this.mergeSetField(convKey, "placeTags", [opts.place]);
     }
 
+    // Raise events for conversation lifecycle
+    try {
+      if (shouldCreateConversation) {
+        // New conversation started
+        await raiseEvent("conversation_started", {
+          conversationId: finalConversationId,
+          userId: opts.userId ?? "",
+          userMessageContent: "" // Empty for new conversation
+        });
+      } else if (isReopeningClosedConversation) {
+        // Conversation reopened
+        const conversation = await this.getConversation(finalConversationId);
+        const messages = await this.getMessages(finalConversationId);
+        const lastUserMessage = messages
+          .filter(m => m.role === "user")
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+        await raiseEvent("conversation_reopened", {
+          conversationId: finalConversationId,
+          userId: opts.userId ?? "",
+          conversationContent: conversation!,
+          userMessageContent: lastUserMessage?.content as string ?? ""
+        });
+      }
+    } catch (err) {
+      this.log.warn({ event: "startRequest.hook_failed", conversationId: finalConversationId, error: String(err) });
+    }
+
     return { requestId, conversationId: finalConversationId, isNewConversation: shouldCreateConversation };
   }
 
@@ -249,6 +267,61 @@ export class RecordKeeper implements Archivist, Recorder {
    */
   async completeRequest(requestId: string, latencyMs: number) {
     await this.redis.hset(this.key(`req:${requestId}`), { latencyMs });
+  }
+
+  /**
+   * Reopen a closed conversation.
+   */
+  async reopenConversation(conversationId: string, token?: string): Promise<Conversation | null> {
+    const convKey = this.key(`conv:${conversationId}`);
+    const convo = await this.redis.hgetall(convKey);
+
+    if (!convo || Object.keys(convo).length === 0) {
+      this.log.debug({ event: "reopen.conversation.not_found", conversationId });
+      return null;
+    }
+
+    const status = convo["status"];
+    if (status !== "closed") {
+      this.log.debug({ event: "reopen.conversation.not_closed", conversationId, status });
+      return null;
+    }
+
+    this.log.info({
+      event: "reopen.conversation.start",
+      conversationId,
+      token
+    });
+
+    const now = Date.now();
+    const nowISO = nowIso();
+
+    const updates: Record<string, string> = {
+      status: "open",
+      lastTouchedAt: nowISO,
+      closedAt: "",
+      closeReason: ""
+    };
+
+    const multi = this.redis
+      .multi()
+      .hset(convKey, updates)
+      .zrem(this.key("convs:closed"), conversationId)
+      .zadd(this.key("convs:active"), now, conversationId);
+
+    if (token) {
+      multi.zadd(this.key(`token:${token}:convs`), now, conversationId);
+      await this.mergeSetField(convKey, "tokenSet", [token]);
+    }
+
+    await multi.exec();
+
+    this.log.info({
+      event: "reopen.conversation.completed",
+      conversationId
+    });
+
+    return this.getConversation(conversationId);
   }
 
   /**
@@ -339,6 +412,30 @@ export class RecordKeeper implements Archivist, Recorder {
       // Process each message in the context
       for (const record of messageRecords) {
         context.processMessage(record);
+      }
+    }
+
+    // Raise events for user messages
+    const conversation = await this.getConversation(conversationId);
+    if (conversation) {
+      for (const message of messages) {
+        try {
+          const record = isMessageRecord(message) ? message : this.messageLog.serializeMessage(message);
+          if (record.role === "user") {
+            await raiseEvent("user_message", {
+              conversationId,
+              userId: conversation.userId ?? "",
+              messageContent: typeof record.content === "string" ? record.content : JSON.stringify(record.content)
+            });
+          }
+        } catch (err) {
+          this.log.warn({
+            event: "appendMessages.hook_failed",
+            conversationId,
+            messageId: isMessageRecord(message) ? message.id : "unknown",
+            error: String(err)
+          });
+        }
       }
     }
   }
@@ -735,50 +832,33 @@ export class RecordKeeper implements Archivist, Recorder {
       conversationId
     });
 
-    const enqueued = isGhost ? false : await this.enqueueConversationTasks(conversationId);
-    if (enqueued) {
-      await this.updateIndexingStatus(conversationId, "queued", undefined, 1);
-      this.log.info({
-        event: "close.conversation.tasks_enqueued",
-        conversationId,
-        status: "queued"
-      });
-    } else if (isGhost) {
-      this.log.info({
-        event: "close.conversation.ghost_skipped_indexing",
-        conversationId,
-        reason: "ghost_conversation"
-      });
-    } else if (this.summarizer) {
-      this.log.info({
-        event: "close.conversation.fallback_summary",
-        conversationId
-      });
+    // Raise conversation_archived event to trigger automations
+    if (!isGhost) {
       try {
-        const messages = await this.getMessages(conversationId);
-        const summary = await this.summarizer.summarize(conversationId, messages);
-        await this.updateConversationSummary(conversationId, summary);
-        await this.updateIndexingStatus(conversationId, "indexed");
-        this.log.info({
-          event: "close.conversation.summary_completed",
-          conversationId
-        });
+        const conversation = await this.getConversation(conversationId);
+        if (conversation) {
+          await raiseEvent("conversation_archived", {
+            conversationId,
+            userId: conversation.userId ?? "",
+            conversationContent: conversation
+          });
+          this.log.info({
+            event: "close.conversation.automations_triggered",
+            conversationId
+          });
+        }
       } catch (err) {
-        await this.redis.hset(convKey, {
-          closeReason: `${reason}; summary_error:${formatError(err)}`
-        });
-        await this.updateIndexingStatus(conversationId, "failed", formatError(err), 1);
         this.log.warn({
-          event: "close.conversation.summary_failed",
+          event: "close.conversation.hook_failed",
           conversationId,
-          error: formatError(err)
+          error: String(err)
         });
       }
     } else {
       this.log.info({
-        event: "close.conversation.no_tasks",
+        event: "close.conversation.ghost_skipped_automations",
         conversationId,
-        reason: "queue_disabled_or_no_summarizer"
+        reason: "ghost_conversation"
       });
     }
   }
@@ -833,23 +913,8 @@ export class RecordKeeper implements Archivist, Recorder {
     await this.redis.hset(convKey, updates);
   }
 
-  private async ensureConversationQueue(): Promise<Queue<ConversationTaskPayload, unknown, ConversationTaskName> | null> {
-    if (this.tasksDisabled) return null;
-    if (this.conversationQueue) return this.conversationQueue;
-    try {
-      this.conversationQueue = createConversationQueue();
-      this.log.info({ event: "queue.ensure", queue: conversationQueueName });
-      return this.conversationQueue;
-    } catch (err) {
-      this.log.warn({ event: "queue.ensure.failed", err: toErrorObject(err) });
-      return null;
-    }
-  }
 
   async retryIndexing(conversationId: string): Promise<boolean> {
-    const queue = await this.ensureConversationQueue();
-    if (!queue) return false;
-
     try {
       const existingConversation = await this.getConversation(conversationId);
       const currentAttempts = existingConversation?.indexingAttempts ?? 0;
@@ -862,160 +927,45 @@ export class RecordKeeper implements Archivist, Recorder {
         nextAttempts
       });
 
-      // Remove any existing jobs for this conversation individually
-      const jobIds = [
-        buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
-        buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
-        buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
-      ];
-
-      // Remove jobs individually using getJob and remove
-      const removeResults = await Promise.all(
-        jobIds.map(async (jobId) => {
-          try {
-            const job = await queue.getJob(jobId);
-            if (job) {
-              this.log.debug({ event: "indexing.job.found", conversationId, jobId, jobName: job.name });
-              await job.remove();
-              return { jobId, success: true };
-            } else {
-              this.log.debug({ event: "indexing.job.not_found", conversationId, jobId });
-              return { jobId, success: false, reason: "not_found" };
-            }
-          } catch (removeErr) {
-            // Ignore errors if job doesn't exist
-            this.log.debug({ event: "indexing.job.remove.failed", conversationId, jobId, err: toErrorObject(removeErr) });
-            return { jobId, success: false, reason: "error", error: toErrorObject(removeErr) };
-          }
-        })
-      );
-
-      this.log.info({
-        event: "indexing.jobs.removed",
+      // Trigger the index automation directly
+      await raiseEvent("conversation_archived", {
         conversationId,
-        results: removeResults
+        userId: existingConversation?.userId ?? "",
+        conversationContent: existingConversation!
       });
-
-      // Only enqueue the index task for retry - remove other conversation processes
-      const jobs = await Promise.all([
-        queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) })
-      ]);
 
       await this.updateIndexingStatus(conversationId, "queued", undefined, nextAttempts);
 
       this.log.info({
-        event: "indexing.retry",
+        event: "indexing.retry.triggered",
         conversationId,
-        attempts: nextAttempts,
-        jobs: jobs.map((job) => ({ id: job.id, name: job.name })),
-        note: "Only index task queued for retry - other processes removed"
+        nextAttempts
       });
 
       return true;
     } catch (err) {
-      this.log.warn({ event: "indexing.retry.failed", conversationId, err: toErrorObject(err) });
+      this.log.warn({ event: "indexing.retry.failed", conversationId, err: formatError(err) });
       await this.updateIndexingStatus(conversationId, "failed", formatError(err));
       return false;
     }
   }
 
   async cancelIndexing(conversationId: string): Promise<boolean> {
-    const queue = await this.ensureConversationQueue();
-    if (!queue) return false;
-
     try {
-      // Remove all jobs for this conversation individually
-      const jobIds = [
-        buildConversationJobId(CONVERSATION_TASKS.index, conversationId),
-        buildConversationJobId(CONVERSATION_TASKS.summary, conversationId),
-        buildConversationJobId(CONVERSATION_TASKS.flag, conversationId)
-      ];
-
-      // Remove jobs individually using getJob and remove
-      const removeResults = await Promise.all(
-        jobIds.map(async (jobId) => {
-          try {
-            const job = await queue.getJob(jobId);
-            if (job) {
-              this.log.debug({ event: "indexing.job.found", conversationId, jobId, jobName: job.name });
-              await job.remove();
-              return 1 as number;
-            } else {
-              this.log.debug({ event: "indexing.job.not_found", conversationId, jobId });
-              return 0 as number;
-            }
-          } catch (removeErr) {
-            // Ignore errors if job doesn't exist
-            this.log.debug({ event: "indexing.job.remove.failed", conversationId, jobId, err: toErrorObject(removeErr) });
-            return 0 as number;
-          }
-        })
-      );
-
-      const removedCount = removeResults.reduce((sum: number, count: number) => sum + count, 0);
-
-      this.log.info({
-        event: "indexing.jobs.removed",
-        conversationId,
-        removedCount,
-        totalJobs: jobIds.length
-      });
-
-      await this.updateIndexingStatus(conversationId, "none");
-
       this.log.info({
         event: "indexing.cancel",
         conversationId,
-        removedJobs: removedCount
+        note: "No queue jobs to cancel - using automation system"
       });
 
+      await this.updateIndexingStatus(conversationId, "none");
       return true;
     } catch (err) {
-      this.log.warn({ event: "indexing.cancel.failed", conversationId, err: toErrorObject(err) });
+      this.log.warn({ event: "indexing.cancel.failed", conversationId, err: formatError(err) });
       return false;
     }
   }
 
-  private async enqueueConversationTasks(conversationId: string): Promise<boolean> {
-    const queue = await this.ensureConversationQueue();
-    if (!queue) return false;
-
-    // Check if conversation is ghost - skip indexing but allow summary and flag tasks
-    const conversation = await this.getConversation(conversationId);
-    const isGhost = conversation?.ghost === true;
-
-    try {
-      this.log.info({
-        event: "queue.enqueue.start",
-        conversationId,
-        isGhost
-      });
-
-      const jobPromises = [
-        queue.add(CONVERSATION_TASKS.summary, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.summary, conversationId) }),
-        queue.add(CONVERSATION_TASKS.flag, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.flag, conversationId) })
-      ];
-
-      // Only add index task if not ghost
-      if (!isGhost) {
-        jobPromises.unshift(
-          queue.add(CONVERSATION_TASKS.index, { conversationId }, { jobId: buildConversationJobId(CONVERSATION_TASKS.index, conversationId) })
-        );
-      }
-
-      const jobs = await Promise.all(jobPromises);
-
-      this.log.info({
-        event: "queue.enqueue",
-        conversationId,
-        jobs: jobs.map((job) => ({ id: job.id, name: job.name }))
-      });
-      return true;
-    } catch (err) {
-      this.log.warn({ event: "queue.enqueue.failed", conversationId, err: toErrorObject(err) });
-      return false;
-    }
-  }
 
   async closeIfIdle(now: number = Date.now()) {
     const cutoff = now - this.idleMs;
@@ -1167,29 +1117,6 @@ export class RecordKeeper implements Archivist, Recorder {
     }
 
     return results;
-  }
-
-  async reopenConversation(conversationId: string, token: string): Promise<Conversation | null> {
-    const convKey = this.key(`conv:${conversationId}`);
-    const now = Date.now();
-    const nowISO = nowIso();
-    const exists = await this.redis.exists(convKey);
-    if (!exists) return null;
-
-    await this.redis
-      .multi()
-      .hset(convKey, { status: "open", lastTouchedAt: nowISO })
-      .zadd(this.key("convs:active"), now, conversationId)
-      .zadd(this.key(`token:${token}:convs`), now, conversationId)
-      .exec();
-    await this.mergeSetField(convKey, "tokenSet", [token]);
-    const convo = await this.getConversation(conversationId);
-    if (convo && (!convo.tokenSet || !convo.tokenSet.includes(token))) {
-      const next = JSON.stringify([...(convo.tokenSet ?? []), token]);
-      await this.redis.hset(convKey, { tokenSet: next });
-      return { ...convo, tokenSet: [...(convo.tokenSet ?? []), token] };
-    }
-    return convo;
   }
 
   async getConversation(id: string): Promise<Conversation | null> {

@@ -186,6 +186,7 @@ export type Conversation = {
   indexingError?: string;
   indexingAttempts?: number;
   ghost?: boolean;
+  userId?: string;
 };
 
 export type ConversationStats = {

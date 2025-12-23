@@ -1,5 +1,6 @@
 import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { raiseEvent } from "@/lib/automation/hookService";
 import { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import type { AgentOutputItem } from "../streaming/types";
 import { runRouterHarness, getRouterToolDefinitions } from "../harness/router/routerHarness";
@@ -279,6 +280,33 @@ export class StreamingOrchestrator {
                     }
 
                     await recorder.recordLLMCallComplete(conversationId, llmCompleteDetails);
+
+                    // Raise assistant_message_complete event for automation hooks
+                    try {
+                        // Check if this is an assistant message (AIMessage)
+                        if (event.result && event.result instanceof AIMessage) {
+                            const aiMessage = event.result;
+                            const conversation = await (recorder as RecordKeeper).getConversation(conversationId);
+
+                            if (conversation) {
+                                // Get the last user message for context
+                                const messages = await (recorder as RecordKeeper).getMessages(conversationId);
+                                const lastUserMessage = messages
+                                  .filter(m => m.role === "user")
+                                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+                                await raiseEvent("assistant_message_complete", {
+                                  conversationId,
+                                  userId: conversation.userId ?? "",
+                                  messageContent: typeof aiMessage.content === "string" ? aiMessage.content : JSON.stringify(aiMessage.content),
+                                  userMessageContent: lastUserMessage?.content as string ?? ""
+                                });
+                            }
+                        }
+                    } catch (err) {
+                        // Log but don't fail the main operation
+                        console.warn("Failed to raise assistant_message_complete event:", err);
+                    }
                 }
                 break;
 
