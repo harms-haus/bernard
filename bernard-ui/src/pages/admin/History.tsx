@@ -16,13 +16,11 @@ import {
   Play,
   StopCircle,
   RefreshCw,
-  Calendar,
   User,
-  Clock,
-  MessageSquare,
   MoreVertical,
   Database,
-  Copy
+  Copy,
+  AlertTriangle
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ConversationListItem, ConversationDetailResponse } from '../../services/adminApi';
@@ -32,10 +30,10 @@ import { useToast } from '../../components/ToastManager';
 export default function History() {
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
-  const [stats, setStats] = useState({ total: 0, active: 0, closed: 0 });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [indexingAction, setIndexingAction] = useState<{ conversationId: string; action: 'retry' | 'cancel' } | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [clearingIndex, setClearingIndex] = useState(false);
   
   // Hook calls - must be at the top level of the component function
   const confirmDialog = useConfirmDialog();
@@ -62,11 +60,6 @@ export default function History() {
         includeClosed: true
       });
       setConversations(response.items || []);
-      setStats({
-        total: response.total || response.items.length || 0,
-        active: response.activeCount || 0,
-        closed: response.closedCount || 0
-      });
     } catch (error) {
       console.error('Failed to load history:', error);
       toast.error('Failed to load conversation history');
@@ -99,18 +92,6 @@ export default function History() {
     });
   };
 
-  const handleCloseConversation = async (conversationId: string) => {
-    try {
-      await adminApiClient.closeConversation(conversationId);
-      setConversations(conversations.map(c =>
-        c.id === conversationId ? { ...c, status: 'closed' as const } : c
-      ));
-      loadHistory(); // Refresh stats
-    } catch (error) {
-      console.error('Failed to close conversation:', error);
-      toast.error('Failed to close conversation');
-    }
-  };
 
   const handleRetryIndexing = async (conversationId: string) => {
     if (indexingAction) return; // Prevent multiple actions
@@ -173,7 +154,7 @@ export default function History() {
               ? { ...c, indexingStatus: 'none' as const, indexingError: undefined, indexingAttempts: 0 }
               : c
           ));
-          
+
           alertDialog({
             title: 'Index deleted successfully',
             variant: 'success',
@@ -182,6 +163,37 @@ export default function History() {
         } catch (error) {
           console.error('Failed to delete index:', error);
           toast.error('Failed to delete index');
+        }
+      }
+    });
+  };
+
+  const handleClearEntireIndex = async () => {
+    confirmDialog({
+      title: '⚠️ DANGER: Clear Entire Conversation Index?',
+      description: 'This will permanently delete all conversation chunks from the vector store (including orphaned chunks from deleted conversations), drop the entire Redis search index, and remove all semantic search capabilities. All existing conversations will remain intact and be immediately queued for re-indexing. This action cannot be undone. Are you absolutely sure?',
+      confirmText: 'Yes, Delete Everything',
+      confirmVariant: 'destructive',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setClearingIndex(true);
+        try {
+          // Call API to clear entire index
+          const result = await adminApiClient.clearEntireIndex();
+          if (result.success) {
+            toast.success(
+              `Index cleared successfully. Deleted ${result.keysDeleted} keys and queued ${result.conversationsQueued} conversations for re-indexing.`
+            );
+            // Refresh the history to show updated indexing status
+            await loadHistory();
+          } else {
+            toast.error('Failed to clear index');
+          }
+        } catch (error) {
+          console.error('Failed to clear entire index:', error);
+          toast.error('Failed to clear entire index');
+        } finally {
+          setClearingIndex(false);
         }
       }
     });
@@ -226,7 +238,7 @@ export default function History() {
     result += `\n`;
     
     // Add each message
-    messages.forEach((message, index) => {
+    messages.forEach((message) => {
       const timestamp = new Date(message.createdAt).toLocaleTimeString();
       const role = message.role.toUpperCase();
       const content = typeof message.content === "string" 
@@ -282,10 +294,21 @@ export default function History() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Conversation History</h1>
           <p className="text-gray-600 dark:text-gray-300">Review and manage historical conversations</p>
         </div>
-        <Button onClick={loadHistory} variant="outline">
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex items-center space-x-3">
+          <Button
+            onClick={handleClearEntireIndex}
+            variant="destructive"
+            disabled={clearingIndex}
+            className="flex items-center"
+          >
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            {clearingIndex ? 'Clearing Index...' : 'Clear Index'}
+          </Button>
+          <Button onClick={loadHistory} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Conversations Table */}

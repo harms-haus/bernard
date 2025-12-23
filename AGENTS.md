@@ -33,7 +33,6 @@ Bernard implements a **harness-based agent architecture** where each component o
 **Core Harnesses:**
 - **Router Harness** (`bernard/agent/harness/router/`) - Determines which tools need to be executed based on user input
 - **Response Harness** (`bernard/agent/harness/respond/`) - Generates natural language responses after tool execution
-- **Memory Harness** (`bernard/agent/harness/memory/`) - Placeholder for future memory management capabilities
 - **Utility Harness** (`bernard/agent/harness/utility/`) - Placeholder for general-purpose tools
 
 **Orchestration Layer:**

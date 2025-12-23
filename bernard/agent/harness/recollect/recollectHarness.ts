@@ -6,7 +6,7 @@ import { getEmbeddingModel } from "../../../lib/config/embeddings";
 import { ConversationSearchService } from "../../../lib/conversation/search";
 import type { RecordKeeper } from "../../../lib/conversation/recordKeeper";
 import { getEmbeddingsForResults } from "./embeddings";
-import { rerankByUniqueness } from "./rerank";
+import { rerankByUniqueness, rerankByRelevance } from "./rerank";
 import { getChunkMessagePositions } from "./positions";
 import crypto from "node:crypto";
 
@@ -74,9 +74,20 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
     const topResults = rerankedResults.slice(0, 10);
     console.log(`[runRecollectionHarness] Selected top ${topResults.length} most unique results`);
 
-    // 7. Process each result and yield recollection events
-    for (const result of topResults) {
+    // 7. Resort the top results by relevance to the user's message
+    const relevanceRerankedResults = rerankByRelevance(queryEmbedding, resultEmbeddings, topResults);
+    console.log(`[runRecollectionHarness] Reranked top ${relevanceRerankedResults.length} results by relevance to query`);
+
+    // 8. Process each result and yield recollection events
+    for (const result of relevanceRerankedResults) {
       try {
+        // Check if the conversation still exists - skip if it was deleted
+        const conversationExists = await recordKeeper.getConversation(result.conversationId);
+        if (!conversationExists) {
+          console.log(`[runRecollectionHarness] Skipping recollection for deleted conversation ${result.conversationId}`);
+          continue;
+        }
+
         // Get message position mapping
         const positions = await getChunkMessagePositions(recordKeeper.asArchivist(), result.conversationId, result.chunkIndex);
 
@@ -129,7 +140,7 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
       }
     }
 
-    console.log(`[runRecollectionHarness] Completed recollection harness with ${topResults.length} results`);
+    console.log(`[runRecollectionHarness] Completed recollection harness with ${relevanceRerankedResults.length} results`);
 
   } catch (err) {
     console.error('[runRecollectionHarness] Failed to run recollection harness:', err);

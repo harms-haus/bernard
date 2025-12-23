@@ -1,6 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 
 // Load Next-style env files before the worker imports anything that reads process.env.
+// Load Next-style env files before the worker imports anything that reads process.env.
 loadEnvConfig(process.cwd());
 
 (async () => {
@@ -10,3 +11,4 @@ loadEnvConfig(process.cwd());
   console.error("Failed to start queue worker", err);
   process.exit(1);
 });
+

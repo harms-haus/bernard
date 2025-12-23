@@ -32,7 +32,7 @@ import type { ProviderType, ModelsSettings, ModelInfo } from '../../services/adm
 import { useConfirmDialog, useAlertDialog } from '../../components/DialogManager';
 import { useToast } from '../../components/ToastManager';
 
-type ModelCategory = 'response' | 'router' | 'memory' | 'utility' | 'aggregation' | 'embedding';
+type ModelCategory = 'response' | 'router' | 'utility' | 'aggregation' | 'embedding';
 
 interface ProviderForm {
   name: string;
@@ -65,7 +65,6 @@ export default function Models() {
   const categories: { key: ModelCategory; label: string; description: string }[] = [
     { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
     { key: 'router', label: 'Router', description: 'Routing and tool selection model.' },
-    { key: 'memory', label: 'Memory', description: 'Utility model used for memory dedupe and search.' },
     { key: 'utility', label: 'Utility', description: 'Helper model for tools and misc tasks.' },
     { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' },
     { key: 'embedding', label: 'Embedding', description: 'Model used for text embeddings and indexing.' }
@@ -169,7 +168,7 @@ export default function Models() {
           setSettings(prev => {
             if (!prev) return prev;
             const updatedSettings = { ...prev };
-            const allCategories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation', 'embedding'];
+            const allCategories: ModelCategory[] = ['response', 'router', 'utility', 'aggregation', 'embedding'];
             allCategories.forEach(category => {
               const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
               if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
@@ -323,7 +322,7 @@ export default function Models() {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
 
       // Check if backend is returning different model names
-      const categories: ModelCategory[] = ['response', 'router', 'memory', 'utility', 'aggregation', 'embedding'];
+      const categories: ModelCategory[] = ['response', 'router', 'utility', 'aggregation', 'embedding'];
       categories.forEach(category => {
         const frontendModel = settings[category]?.primary;
         const backendModel = updatedSettings[category]?.primary;

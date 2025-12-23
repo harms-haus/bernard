@@ -42,7 +42,6 @@ const respondTool = tool(
 export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig, plexConfig?: PlexConfig): ToolWithInterpretation[] {
   const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
-    // memorizeTool,
     getWeatherDataTool,
     wikipediaSearchTool,
     wikipediaEntryTool,

@@ -9,7 +9,7 @@ import type { Provider } from "../../lib/config/settingsStore";
 export function createLLMCaller(provider: Provider, model: string): LLMCaller {
   switch (provider.type) {
     case "openai":
-      return new ChatOpenAILLMCaller(provider.apiKey, provider.baseUrl, model);
+      return new ChatOpenAILLMCaller(provider.apiKey || "", provider.baseUrl, model);
 
     case "ollama":
       return new ChatOllamaLLMCaller(provider.baseUrl, model);

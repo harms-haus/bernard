@@ -34,7 +34,6 @@ export interface ModelsSettings {
   providers: ProviderType[];
   response: ModelCategorySettings;
   router: ModelCategorySettings;
-  memory: ModelCategorySettings;
   utility: ModelCategorySettings;
   aggregation: ModelCategorySettings;
   embedding: ModelCategorySettings;
@@ -158,14 +157,6 @@ export interface ServiceConfig {
 }
 
 export interface ServicesSettings {
-  memory: {
-    embeddingModel: string;
-    embeddingBaseUrl: string;
-    embeddingApiKey: string;
-    indexName: string;
-    keyPrefix: string;
-    namespace: string;
-  };
   search: {
     apiKey: string;
     apiUrl: string;
@@ -229,29 +220,7 @@ export interface AdminSettings {
   backups: BackupSettings;
 }
 
-export interface CreateMemoryRequest {
-  label: string;
-  content: string;
-  conversationId: string;
-}
 
-export interface UpdateMemoryRequest {
-  label?: string;
-  content?: string;
-  conversationId?: string;
-  successorId?: string | null;
-  refresh?: boolean;
-}
-
-export interface Memory {
-  id: string;
-  label: string;
-  content: string;
-  conversationId: string;
-  createdAt: string;
-  refreshedAt: string;
-  freshnessMaxDays: number;
-}
 
 export interface CreateTokenRequest {
   name: string;
@@ -453,37 +422,6 @@ class AdminApiClient {
     });
   }
 
-  // Memory management
-  async listMemories(): Promise<Memory[]> {
-    const response = await this.request<{ memories: Memory[] }>('/memories');
-    return response.memories || [];
-  }
-
-  async createMemory(body: CreateMemoryRequest): Promise<Memory> {
-    const response = await this.request<{ memory: Memory }>('/memories', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    });
-    return response.memory;
-  }
-
-  async updateMemory(id: string, body: UpdateMemoryRequest): Promise<Memory> {
-    const response = await this.request<{ memory: Memory }>(`/memories/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body)
-    });
-    return response.memory;
-  }
-
-  async refreshMemory(id: string): Promise<Memory> {
-    return this.updateMemory(id, { refresh: true });
-  }
-
-  async deleteMemory(id: string): Promise<void> {
-    return this.request<void>(`/memories/${id}`, {
-      method: 'DELETE'
-    });
-  }
 
   // Settings management
   async getSettings(): Promise<AdminSettings> {
@@ -613,22 +551,23 @@ class AdminApiClient {
     });
   }
 
+  async clearEntireIndex(): Promise<{
+    success: boolean;
+    conversationsQueued: number;
+    keysDeleted: number;
+  }> {
+    return this.request('/admin/clear-entire-index', {
+      method: 'POST'
+    });
+  }
+
   async logout(): Promise<void> {
     return this.request<void>('/auth/logout', {
       method: 'POST'
     });
   }
 
-  async clearEmbeddingIndex(): Promise<{
-    success: boolean;
-    deletedChunks: number;
-    conversationsQueued: number;
-    conversationsSkipped: number;
-  }> {
-    return this.request('/admin/clear-embedding-index', {
-      method: 'POST'
-    });
-  }
+
 }
 
 export const adminApiClient = new AdminApiClient();

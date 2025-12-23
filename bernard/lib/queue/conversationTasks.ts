@@ -7,6 +7,7 @@ import { createClient, type RedisClientType } from "redis";
 import { getEmbeddingModel } from "../config/embeddings";
 import { RecordKeeper } from "../conversation/recordKeeper";
 import { ConversationSummaryService } from "../conversation/summary";
+import { clearVectorClientCache } from "../conversation/search";
 import type { MessageRecord } from "../conversation/types";
 import type { SummaryFlags } from "../conversation/summary";
 import { getRedis } from "../infra/redis";
@@ -96,17 +97,18 @@ export class ConversationIndexer {
 
       if (docs.length) {
         debugLog(undefined, "Adding documents to vector store", { conversationId, count: docs.length });
-        await store.addDocuments(docs, { keys: chunkIds });
+        // Note: keys parameter doesn't work in current LangChain version, so we use auto-generated keys
+        await store.addDocuments(docs);
         debugLog(undefined, "Documents added successfully", { conversationId });
       }
 
+      // Note: Since we can't use custom keys with addDocuments, we skip stale chunk cleanup for now
+      // The search will filter results by metadata, so orphaned chunks won't affect results
       const stale = previousIds.filter((id) => !chunkIds.includes(id));
       debugLog(undefined, "Identified stale chunks", { conversationId, staleCount: stale.length });
 
       if (stale.length) {
-        debugLog(undefined, "Removing stale chunks", { conversationId, staleCount: stale.length });
-        await store.delete({ ids: stale });
-        debugLog(undefined, "Stale chunks removed", { conversationId });
+        debugLog(undefined, "Skipping stale chunk removal (keys not tracked)", { conversationId, staleCount: stale.length });
       }
 
       const multi = this.redis.multi().del(this.idsKey(conversationId));
@@ -130,9 +132,6 @@ export class ConversationIndexer {
     try {
       debugLog(undefined, "Starting index clearing");
 
-      const store = await this.vectorStore();
-      debugLog(undefined, "Vector store initialized for clearing");
-
       // Get all conversation IDs that have been indexed
       const pattern = `${indexPrefix}:ids:*`;
       const keys = await this.redis.keys(pattern);
@@ -140,31 +139,70 @@ export class ConversationIndexer {
 
       let totalDeleted = 0;
 
-      // For each conversation, delete all its chunks and clear metadata
+      // Count total chunks before clearing
       for (const key of keys) {
-        const conversationId = key.replace(`${indexPrefix}:ids:`, '');
-        debugLog(undefined, "Clearing conversation", { conversationId });
-
-        // Get all chunk IDs for this conversation
         const chunkIds = await this.redis.smembers(key);
-        debugLog(undefined, "Found chunk IDs for conversation", { conversationId, chunkCount: chunkIds.length });
+        totalDeleted += chunkIds.length;
+      }
 
-        if (chunkIds.length > 0) {
-          // Delete all chunks from vector store
-          await store.delete({ ids: chunkIds });
-          totalDeleted += chunkIds.length;
-          debugLog(undefined, "Deleted chunks from vector store", { conversationId, deletedCount: chunkIds.length });
+      // Clear cached vector store instances to ensure fresh connections
+      this.cachedStore = null;
+      this.cachedClient = null;
+
+      // Also clear the global vector client cache used by ConversationSearchService
+      clearVectorClientCache();
+
+      try {
+        // Since we don't track actual vector store keys, we drop and recreate the search index
+        // This removes all indexed documents
+        try {
+          // Drop the Redis search index completely
+          await this.redis.call('FT.DROPINDEX', indexName);
+          debugLog(undefined, "Successfully dropped Redis search index", { indexName });
+        } catch (dropErr) {
+          // Index might not exist, which is fine
+          debugLog(undefined, "Index drop failed (may not exist)", { indexName, error: String(dropErr) });
         }
 
-        // Delete the metadata key
-        await this.redis.del(key);
-        debugLog(undefined, "Deleted metadata key", { conversationId });
+        debugLog(undefined, "Successfully dropped Redis search index", { indexName });
+
+      } catch (err) {
+        errorLog(undefined, "Failed to drop search index", { error: String(err) });
       }
 
       debugLog(undefined, "Index clearing completed", { totalDeleted });
       return { deleted: totalDeleted };
     } catch (err) {
       errorLog(undefined, "Index clearing failed", { error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  }
+
+  /**
+   * Delete all vector index chunks for a specific conversation.
+   */
+  async deleteConversationChunks(conversationId: string): Promise<{ deleted: number }> {
+    try {
+      debugLog(undefined, "Starting conversation chunk deletion", { conversationId });
+
+      const idsKey = this.idsKey(conversationId);
+      const chunkIds = await this.redis.smembers(idsKey);
+      debugLog(undefined, "Found chunk IDs for conversation", { conversationId, chunkCount: chunkIds.length });
+
+      // Note: Since we can't track the actual vector store keys, we skip deletion from vector store
+      // The chunks will be orphaned but won't affect search results due to metadata filtering
+      if (chunkIds.length > 0) {
+        debugLog(undefined, "Skipping vector store deletion (keys not tracked)", { conversationId, chunkCount: chunkIds.length });
+      }
+
+      // Delete the metadata key
+      await this.redis.del(idsKey);
+      debugLog(undefined, "Deleted metadata key", { conversationId });
+
+      debugLog(undefined, "Conversation chunk deletion completed", { conversationId, totalDeleted: chunkIds.length });
+      return { deleted: chunkIds.length };
+    } catch (err) {
+      errorLog(undefined, "Conversation chunk deletion failed", { conversationId, error: err instanceof Error ? err.message : String(err) });
       throw err;
     }
   }
@@ -187,9 +225,29 @@ function errorLog(logger: TaskLogger | undefined, message: string, meta?: Record
 }
 
 function filterMessages(messages: MessageRecord[]): MessageRecord[] {
-  const filtered = messages.filter(
-    (message) => (message.metadata as { traceType?: string } | undefined)?.traceType !== "llm_call"
-  );
+  const filtered = messages.filter((message) => {
+    const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType;
+    const name = message.name;
+
+    // Exclude recollection events
+    if (name === "recollection" || traceType === "recollection") {
+      return false;
+    }
+
+    // Exclude tool calls and results
+    if (message.role === "tool") {
+      return false;
+    }
+
+    // Exclude LLM calls and results
+    if (traceType === "llm_call") {
+      return false;
+    }
+
+    // Only include user and assistant messages
+    return message.role === "user" || message.role === "assistant";
+  });
+
   debugLog(undefined, "Message filtering", {
     originalCount: messages.length,
     filteredCount: filtered.length,

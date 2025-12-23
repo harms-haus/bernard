@@ -159,11 +159,14 @@ export async function resolveModel(
   }
 
   const rawOptions = modelSettings?.options;
-  const options: ModelCallOptions | undefined = rawOptions
+  const hasProviderSettings = baseUrl || apiKey;
+  const hasRawOptions = rawOptions && (rawOptions.temperature !== undefined || rawOptions.topP !== undefined || rawOptions.maxTokens !== undefined);
+
+  const options: ModelCallOptions | undefined = (hasRawOptions || hasProviderSettings)
     ? {
-        ...(rawOptions.temperature !== undefined ? { temperature: rawOptions.temperature } : {}),
-        ...(rawOptions.topP !== undefined ? { topP: rawOptions.topP } : {}),
-        ...(rawOptions.maxTokens !== undefined ? { maxTokens: rawOptions.maxTokens } : {}),
+        ...(rawOptions?.temperature !== undefined ? { temperature: rawOptions.temperature } : {}),
+        ...(rawOptions?.topP !== undefined ? { topP: rawOptions.topP } : {}),
+        ...(rawOptions?.maxTokens !== undefined ? { maxTokens: rawOptions.maxTokens } : {}),
         ...(baseUrl ? { baseUrl } : {}),
         ...(apiKey ? { apiKey } : {})
       }

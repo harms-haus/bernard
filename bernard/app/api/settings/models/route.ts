@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/app/api/_lib/admin";
-import { clearEmbeddingIndex } from "@/app/api/_lib/embeddingIndex";
 import { settingsStore } from "@/app/api/settings/_common";
 import { ModelsSettingsSchema } from "@/lib/config/settingsStore";
 
@@ -25,33 +24,8 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const parsed = ModelsSettingsSchema.parse(body);
 
-    // Check if embedding dimension has changed
-    const currentSettings = await settingsStore().getModels();
-    const embeddingDimensionChanged =
-      currentSettings.embedding?.dimension !== parsed.embedding?.dimension &&
-      parsed.embedding?.dimension !== undefined;
-
     // Save the new settings
     const saved = await settingsStore().setModels(parsed);
-
-    // If embedding dimension changed, clear index and requeue conversations
-    if (embeddingDimensionChanged) {
-      auth.reqLog.log.info({
-        event: "settings.models.embedding_dimension_changed",
-        oldDimension: currentSettings.embedding?.dimension,
-        newDimension: parsed.embedding?.dimension
-      });
-
-      try {
-        // Call the clear embedding index service directly
-        const result = await clearEmbeddingIndex(auth);
-        auth.reqLog.log.info({ event: "settings.models.clear_index_success", ...result });
-      } catch (clearErr) {
-        const errorMessage = clearErr instanceof Error ? clearErr.message : String(clearErr);
-        auth.reqLog.log.error({ event: "settings.models.clear_index_exception", error: errorMessage });
-        // Don't fail the entire request, just log the error
-      }
-    }
 
     return Response.json(saved);
   } catch (err) {

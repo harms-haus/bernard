@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { settingsStore } from "@/app/api/settings/_common";
-import { ttlSeconds } from "@/lib/memory";
 
 export const runtime = "nodejs";
 

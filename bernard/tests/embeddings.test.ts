@@ -10,6 +10,7 @@ import {
   setSettingsFetcher,
   verifyEmbeddingConfig
 } from "@/lib/config/embeddings";
+import { setSettingsFetcher as setModelsSettingsFetcher } from "@/lib/config/models";
 import { getSettings } from "@/lib/config/settingsCache";
 
 const TEST_TIMEOUT = 2_000;
@@ -59,6 +60,7 @@ afterEach(() => {
   resetEnv();
   resetEmbeddingVerificationState();
   setSettingsFetcher(getSettings);
+  setModelsSettingsFetcher(getSettings);
   setEmbeddingsFactory(defaultFactory);
   globalThis.fetch = originalFetch;
   console.info = originalConsoleInfo;
@@ -66,15 +68,16 @@ afterEach(() => {
 });
 
 void test(
-  "verifyEmbeddingConfig returns failure when api key and base url are missing",
+  "verifyEmbeddingConfig returns failure when fetch fails",
   { timeout: TEST_TIMEOUT },
   async () => {
+    setModelsSettingsFetcher(async () => null as any);
     globalThis.fetch = (async () => {
       throw new Error("unexpected fetch");
     }) as any;
     const result = await verifyEmbeddingConfig();
     assert.equal(result.ok, false);
-    assert.match(result.reason ?? "", /EMBEDDING_API_KEY or EMBEDDING_BASE_URL/);
+    assert.match(result.reason ?? "", /unexpected fetch/);
   }
 );
 
@@ -222,11 +225,13 @@ void test(
 );
 
 void test(
-  "getEmbeddingModel throws when neither api key nor base url is provided",
+  "getEmbeddingModel uses defaults when no explicit config provided",
   { timeout: TEST_TIMEOUT },
   async () => {
     setSettingsFetcher(async () => null as any);
-    await assert.rejects(() => getEmbeddingModel(), /EMBEDDING_API_KEY or EMBEDDING_BASE_URL/);
+    setModelsSettingsFetcher(async () => null as any);
+    const model = await getEmbeddingModel();
+    assert.ok(model); // Should succeed with defaults
   }
 );
 

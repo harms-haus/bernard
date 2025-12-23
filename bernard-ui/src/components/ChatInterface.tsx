@@ -745,9 +745,44 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                     ...traceEvents.map(event => ({ type: 'trace' as const, item: event, timestamp: event.timestamp }))
                   ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
+                  // First pass: collect all historical recollections to group them together
+                  const allHistoricalRecollections: any[] = [];
+                  const recollectionMessageIds = new Set<string>();
+
+                  for (const { type, item } of allItems) {
+                    if (type === 'message') {
+                      const message = item as MessageRecord;
+                      if (message.role === 'system' && message.name === 'recollection') {
+                        allHistoricalRecollections.push({
+                          recollectionId: (message.content as any)?.recollectionId || '',
+                          conversationId: (message.content as any)?.sourceConversationId || '',
+                          chunkIndex: (message.content as any)?.chunkIndex || 0,
+                          content: (message.content as any)?.content || '',
+                          score: (message.content as any)?.score || 0,
+                          conversationMetadata: (message.content as any)?.conversationMetadata,
+                          messageStartIndex: (message.content as any)?.messageStartIndex || 0,
+                          messageEndIndex: (message.content as any)?.messageEndIndex || 0
+                        });
+                        recollectionMessageIds.add(message.id);
+                      }
+                    }
+                  }
+
                   // Process items with recollection grouping
                   const renderedItems: React.ReactNode[] = [];
                   let skipIndices = new Set<number>();
+
+                  // Render historical recollections at the beginning if any exist
+                  if (allHistoricalRecollections.length > 0) {
+                    const recollectionsElement = (
+                      <div key="all-historical-recollections" className="flex justify-start">
+                        <div className="flex-1 ml-12">
+                          <RecollectionsMessage recollections={allHistoricalRecollections} />
+                        </div>
+                      </div>
+                    );
+                    renderedItems.push(recollectionsElement);
+                  }
 
                   for (let i = 0; i < allItems.length; i++) {
                     if (skipIndices.has(i)) continue;
@@ -756,6 +791,9 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
 
                     if (type === 'message') {
                       const message = item as MessageRecord;
+
+                      // Skip historical recollection messages since we already rendered them
+                      if (recollectionMessageIds.has(message.id)) continue;
 
                       // Check if this is a user message followed by recollection events
                       let recollectionsAfterUser: any[] = [];
@@ -819,6 +857,46 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                           </div>
                         );
                         renderedItems.push(recollectionsElement);
+                      }
+                    } else if (type === 'trace') {
+                      const traceEvent = item as TraceEvent;
+                      const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
+                      const traceElement = (
+                        <div key={traceEvent.id} className="flex justify-start">
+                          <div className="flex-1 ml-12">
+                            {traceEvent.type === 'llm_call' ? (
+                              <LLMCallMessage
+                                model={traceEvent.data?.model}
+                                context={traceEvent.data?.context || []}
+                                tools={traceEvent.data?.tools}
+                                toolCallCount={getToolCallCountForLLMCall(traceEventIndex)}
+                                status={traceEvent.status}
+                                result={traceEvent.result}
+                                totalContextTokens={traceEvent.data?.totalContextTokens}
+                                actualTokens={traceEvent.result?.actualTokens}
+                                durationMs={traceEvent.durationMs}
+                              />
+                            ) : traceEvent.type === 'tool_call' ? (
+                              <ToolCallMessage
+                                toolCall={traceEvent.data?.toolCall || { id: '', function: { name: 'Unknown', arguments: '{}' } }}
+                                status={traceEvent.status}
+                                result={traceEvent.result}
+                                durationMs={traceEvent.durationMs}
+                              />
+                            ) : traceEvent.type === 'recollection' ? (
+                              // Recollection events are handled separately - grouped after user messages
+                              null
+                            ) : (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {traceEvent.type}: {JSON.stringify(traceEvent.data)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+
+                      if (traceEvent.type !== 'recollection') {
+                        renderedItems.push(traceElement);
                       }
 
                     } else if (type === 'trace') {

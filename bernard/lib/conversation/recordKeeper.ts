@@ -6,6 +6,7 @@ import type { Queue } from "bullmq";
 
 import type { ConversationSummaryService, SummaryResult, SummaryFlags } from "./summary";
 import { MessageLog, snapshotMessageForTrace } from "./messageLog";
+import { ConversationIndexer } from "../queue/conversationTasks";
 
 // Helper function from messageLog.ts
 function isMessageRecord(msg: BaseMessage | MessageRecord): msg is MessageRecord {
@@ -822,6 +823,9 @@ export class RecordKeeper implements Archivist, Recorder {
     const updates: Record<string, string> = { indexingStatus: status };
     if (error !== undefined) {
       updates["indexingError"] = error;
+    } else if (status === "indexed") {
+      // Clear any previous error when indexing succeeds
+      updates["indexingError"] = "";
     }
     if (attempts !== undefined) {
       updates["indexingAttempts"] = String(attempts);
@@ -1053,6 +1057,17 @@ export class RecordKeeper implements Archivist, Recorder {
     turnIds.forEach((turnId) => multi.del(this.key(`turn:${turnId}`)));
 
     await multi.exec();
+
+    // Clean up vector index chunks for this conversation
+    try {
+      const indexer = new ConversationIndexer(this.redis);
+      await indexer.deleteConversationChunks(conversationId);
+      this.log.info({ event: "conversation.deleted.vector_cleanup", conversationId });
+    } catch (err) {
+      this.log.warn({ event: "conversation.deleted.vector_cleanup_failed", conversationId, error: String(err) });
+      // Don't fail the deletion if vector cleanup fails
+    }
+
     return true;
   }
 

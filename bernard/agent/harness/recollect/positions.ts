@@ -7,9 +7,29 @@ const maxChunks = parseInt(process.env["CONVERSATION_INDEX_MAX_CHUNKS"] ?? "12",
 const messageLimit = parseInt(process.env["CONVERSATION_INDEX_MESSAGE_LIMIT"] ?? "240", 10) || 240;
 
 function filterMessages(messages: MessageRecord[]): MessageRecord[] {
-  const filtered = messages.filter(
-    (message) => (message.metadata as { traceType?: string } | undefined)?.traceType !== "llm_call"
-  );
+  const filtered = messages.filter((message) => {
+    const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType;
+    const name = message.name;
+
+    // Exclude recollection events
+    if (name === "recollection" || traceType === "recollection") {
+      return false;
+    }
+
+    // Exclude tool calls and results
+    if (message.role === "tool") {
+      return false;
+    }
+
+    // Exclude LLM calls and results
+    if (traceType === "llm_call") {
+      return false;
+    }
+
+    // Only include user and assistant messages
+    return message.role === "user" || message.role === "assistant";
+  });
+
   return filtered;
 }
 

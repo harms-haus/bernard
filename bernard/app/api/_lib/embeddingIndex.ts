@@ -1,15 +1,11 @@
+import { RedisVectorStore } from "@langchain/redis";
 import { RecordKeeper } from "@/lib/conversation/recordKeeper";
 import { ConversationIndexer } from "@/lib/queue/conversationTasks";
 import { createConversationQueue } from "@/lib/queue/client";
 import { CONVERSATION_TASKS } from "@/lib/queue/types";
 import { getRedis } from "@/lib/infra/redis";
-
-export interface ClearEmbeddingIndexResult {
-  success: boolean;
-  deletedChunks: number;
-  conversationsQueued: number;
-  conversationsSkipped: number;
-}
+import { getEmbeddingModel } from "@/lib/config/embeddings";
+import { createClient } from "redis";
 
 export interface AuthContext {
   reqLog: {
@@ -29,55 +25,107 @@ export interface AuthContext {
   };
 }
 
-export async function clearEmbeddingIndex(auth: AuthContext): Promise<ClearEmbeddingIndexResult> {
+export interface ClearEntireIndexResult {
+  success: boolean;
+  conversationsQueued: number;
+  keysDeleted: number;
+}
+
+export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
   const redis = getRedis();
-  const recordKeeper = new RecordKeeper(redis);
-  const indexer = new ConversationIndexer(redis);
-  const queue = createConversationQueue();
+  const indexName = process.env["CONVERSATION_INDEX_NAME"] ?? "bernard_conversations";
+  const indexPrefix = process.env["CONVERSATION_INDEX_PREFIX"] ?? "bernard:conv:index";
 
-  auth.reqLog.log.info({ event: "admin.clear_embedding_index.start", adminId: auth.admin.user.id });
+  let conversationsQueued = 0;
 
-  // Clear the entire embedding index
-  auth.reqLog.log.info({ event: "admin.clear_embedding_index.clearing" });
-  const clearResult = await indexer.clearIndex();
-  auth.reqLog.log.info({ event: "admin.clear_embedding_index.cleared", deletedChunks: clearResult.deleted });
+  try {
+    console.log('Starting clear entire index operation', { indexName, indexPrefix });
 
-  // Get all conversations that need re-indexing
-  const conversations = await recordKeeper.listConversations({ includeClosed: true });
-  auth.reqLog.log.info({ event: "admin.clear_embedding_index.retrieved_conversations", conversationCount: conversations.length });
-
-  let queuedCount = 0;
-  let skippedCount = 0;
-
-  // Requeue each conversation for indexing
-  for (const conversation of conversations) {
+    // 1. Drop the Redis search index completely
     try {
-      // Reset indexing status to "none" so it can be re-indexed
-      await recordKeeper.updateIndexingStatus(conversation.id, "none");
-
-      // Add indexing job to queue
-      await queue.add(CONVERSATION_TASKS.index, { conversationId: conversation.id });
-
-      queuedCount++;
-      auth.reqLog.log.debug({ event: "admin.clear_embedding_index.queued", conversationId: conversation.id });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      auth.reqLog.log.warn({ event: "admin.clear_embedding_index.queue_failed", conversationId: conversation.id, error: errorMessage });
-      skippedCount++;
+      await redis.call('FT.DROPINDEX', indexName);
+      console.log('Dropped Redis search index', { indexName });
+    } catch (error) {
+      // Index might not exist, that's okay
+      console.warn('Failed to drop index (may not exist)', { indexName, error: error instanceof Error ? error.message : String(error) });
     }
+
+    // 2. Delete all conversation chunks and metadata from Redis
+    // Get all keys that match the index prefix patterns
+    const metadataPattern = `${indexPrefix}:*`;
+    const chunkPattern = `${indexPrefix}[0-9]*`; // For keys like bernard:conv:index0, index1, etc.
+
+    const [metadataKeys, chunkKeys] = await Promise.all([
+      redis.keys(metadataPattern),
+      redis.keys(chunkPattern)
+    ]);
+
+    const allKeys = [...metadataKeys, ...chunkKeys];
+    console.log('Found keys to delete', {
+      metadataKeys: metadataKeys.length,
+      chunkKeys: chunkKeys.length,
+      total: allKeys.length
+    });
+
+    if (allKeys.length > 0) {
+      // Delete all keys in batches to avoid blocking Redis
+      const batchSize = 1000;
+      for (let i = 0; i < allKeys.length; i += batchSize) {
+        const batch = allKeys.slice(i, i + batchSize);
+        await redis.del(batch);
+      }
+      console.log('Deleted conversation chunks from Redis', { deletedKeys: allKeys.length });
+    }
+
+    // 3. Queue all existing conversations for re-indexing
+    const recordKeeper = new RecordKeeper(redis);
+    const queue = createConversationQueue();
+
+    // Get all conversations
+    const conversations = await recordKeeper.listConversations({
+      includeOpen: true,
+      includeClosed: true,
+      limit: 10000 // Get a large number to cover all conversations
+    });
+
+    console.log('Found conversations to re-queue', { count: conversations.length });
+
+    // Queue each conversation for indexing
+    for (const conversation of conversations) {
+      try {
+        await queue.add(CONVERSATION_TASKS.index, {
+          conversationId: conversation.id
+        });
+        conversationsQueued++;
+      } catch (error) {
+        console.error('Failed to queue conversation for re-indexing', {
+          conversationId: conversation.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    console.log('Clear entire index operation completed successfully', {
+      conversationsQueued,
+      deletedKeys: allKeys.length
+    });
+
+    return {
+      success: true,
+      conversationsQueued,
+      keysDeleted: allKeys.length
+    };
+
+  } catch (error) {
+    console.error('Failed to clear entire index', {
+      error: error instanceof Error ? error.message : String(error),
+      conversationsQueued
+    });
+
+    return {
+      success: false,
+      conversationsQueued,
+      keysDeleted: 0
+    };
   }
-
-  auth.reqLog.success(200, {
-    event: "admin.clear_embedding_index.completed",
-    deletedChunks: clearResult.deleted,
-    conversationsQueued: queuedCount,
-    conversationsSkipped: skippedCount
-  });
-
-  return {
-    success: true,
-    deletedChunks: clearResult.deleted,
-    conversationsQueued: queuedCount,
-    conversationsSkipped: skippedCount
-  };
 }

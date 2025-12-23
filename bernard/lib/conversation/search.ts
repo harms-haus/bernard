@@ -221,6 +221,14 @@ export class ConversationSearchService {
 }
 
 /**
+ * Clear the cached vector client without disconnecting.
+ * This forces recreation of the vector store on next use.
+ */
+export function clearVectorClientCache(): void {
+  globalVectorClient = null;
+}
+
+/**
  * Module-level cleanup function for vector Redis client.
  * Call this during application shutdown to prevent connection leaks.
  * This function is idempotent and safe to call multiple times.

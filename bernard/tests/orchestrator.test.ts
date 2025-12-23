@@ -13,10 +13,12 @@ const mockRecordKeeper = {
     getMessages: vi.fn().mockResolvedValue([]),
     registerContext: vi.fn(),
     unregisterContext: vi.fn(),
+    getRedisClient: vi.fn(),
 } as unknown as RecordKeeper;
 
 const mockArchivist = {
     getMessages: vi.fn().mockResolvedValue([]),
+    getConversation: vi.fn().mockResolvedValue(null),
 };
 
 const mockRecorder = {
@@ -51,6 +53,19 @@ vi.mock("../agent/harness/respond/responseHarness", () => ({
     })
 }));
 
+vi.mock("../agent/harness/recollect", () => ({
+    runRecollectionHarness: vi.fn().mockImplementation(async function* () {
+        // Mock recollection harness that yields no events (no recollections found)
+        return;
+    })
+}));
+
+vi.mock("../../lib/conversation/search", () => ({
+    ConversationSearchService: vi.fn().mockImplementation(() => ({
+        searchSimilar: vi.fn().mockResolvedValue({ results: [], total: 0, offset: 0, limit: 5 })
+    }))
+}));
+
 describe("StreamingOrchestrator", () => {
     let routerLLMCaller: LLMCaller;
     let responseLLMCaller: LLMCaller;
@@ -63,6 +78,7 @@ describe("StreamingOrchestrator", () => {
         (mockRecordKeeper.asArchivist as any).mockReturnValue(mockArchivist);
         (mockRecordKeeper.asRecorder as any).mockReturnValue(mockRecorder);
         (mockRecordKeeper.getConversation as any).mockResolvedValue({ id: "test-conv" });
+        (mockRecordKeeper.getRedisClient as any).mockReturnValue({});
     });
 
     test("runs through harnesses and yields events", async () => {

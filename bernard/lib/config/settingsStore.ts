@@ -14,7 +14,7 @@ export const ProviderSchema = z.object({
   name: z.string().min(1),
   type: z.enum(["openai", "ollama"]).default("openai"),
   baseUrl: z.string().url(),
-  apiKey: z.string().min(1),
+  apiKey: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lastTestedAt: z.string().optional(),
@@ -200,9 +200,51 @@ export function normalizeList(raw?: string | string[] | null): string[] {
 }
 
 /**
+ * Create a model category configuration from environment variables.
+ */
+export function defaultModelCategory(envName: string, fallbacks: string[] = []): { primary: string; fallbacks: string[] } {
+  const envValue = process.env[envName];
+  if (envValue) {
+    const models = normalizeList(envValue);
+    return {
+      primary: models[0] ?? fallbacks[0] ?? DEFAULT_MODEL,
+      fallbacks: models.slice(1)
+    };
+  }
+
+  // Legacy fallback for OPENROUTER_MODEL
+  const legacyValue = process.env["OPENROUTER_MODEL"];
+  if (legacyValue) {
+    const models = normalizeList(legacyValue);
+    return {
+      primary: models[0] ?? fallbacks[0] ?? DEFAULT_MODEL,
+      fallbacks: []
+    };
+  }
+
+  return {
+    primary: fallbacks[0] ?? DEFAULT_MODEL,
+    fallbacks: []
+  };
+}
+
+/**
  * Default model selections for each category, cascading from response models.
  */
 export function defaultModels(): ModelsSettings {
+  const ollamaProvider: Provider = {
+    id: "ollama-provider",
+    name: "Ollama",
+    type: "openai",
+    baseUrl: process.env["OLLAMA_BASE_URL"] ?? "http://localhost:11434/v1",
+    apiKey: process.env["OLLAMA_API_KEY"] ?? "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastTestedAt: undefined,
+    testStatus: undefined,
+    testError: undefined
+  };
+
   const defaultProvider: Provider = {
     id: "default-provider",
     name: "Default Provider",
@@ -247,13 +289,13 @@ export function defaultModels(): ModelsSettings {
   };
 
   const embedding: ModelCategorySettings = {
-    primary: process.env["EMBEDDING_MODELS"]?.split(",")[0]?.trim() ?? "text-embedding-ada-002",
-    providerId: defaultProvider.id,
+    primary: process.env["EMBEDDING_MODELS"]?.split(",")[0]?.trim() ?? "nomic-embed-text",
+    providerId: ollamaProvider.id,
     options: {}
   };
 
   return {
-    providers: [defaultProvider],
+    providers: [ollamaProvider, defaultProvider],
     response,
     router,
     memory,
@@ -277,13 +319,13 @@ export function defaultServices(): ServicesSettings {
       namespace: process.env["MEMORY_NAMESPACE"]
     },
     search: {
-      apiKey: process.env["SEARCH_API_KEY"],
+      apiKey: process.env["SEARCH_API_KEY"] ?? process.env["BRAVE_API_KEY"],
       apiUrl: process.env["SEARCH_API_URL"]
     },
     weather: {
       provider: "open-meteo",
-      forecastUrl: process.env["OPEN_METEO_FORECAST_URL"] || "https://api.open-meteo.com/v1/forecast",
-      historicalUrl: process.env["OPEN_METEO_HISTORICAL_URL"] || "https://archive-api.open-meteo.com/v1/archive",
+      forecastUrl: process.env["OPEN_METEO_FORECAST_URL"],
+      historicalUrl: process.env["OPEN_METEO_HISTORICAL_URL"],
       timeoutMs: process.env["WEATHER_TIMEOUT_MS"] ? parseInt(process.env["WEATHER_TIMEOUT_MS"]) : undefined
     },
     geocoding: {
@@ -294,12 +336,14 @@ export function defaultServices(): ServicesSettings {
     }
   };
 
+  return services;
+
   // Add Home Assistant configuration if environment variables are present
   const haBaseUrl = process.env["HA_BASE_URL"];
   const haAccessToken = process.env["HA_ACCESS_TOKEN"];
   if (haBaseUrl) {
     services.homeAssistant = {
-      baseUrl: haBaseUrl,
+      baseUrl: haBaseUrl as string,
       accessToken: haAccessToken
     };
   }
@@ -309,8 +353,8 @@ export function defaultServices(): ServicesSettings {
   const plexToken = process.env["PLEX_TOKEN"];
   if (plexUrl && plexToken) {
     services.plex = {
-      baseUrl: plexUrl,
-      token: plexToken
+      baseUrl: plexUrl as string,
+      token: plexToken as string
     };
   }
 

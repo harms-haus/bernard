@@ -163,6 +163,68 @@ export function rerankByUniqueness(
 }
 
 /**
+ * Rerank search results by relevance to the query.
+ * Sorts results by cosine similarity to the query embedding (highest similarity first).
+ *
+ * @param queryEmbedding - The embedding of the user's query
+ * @param resultEmbeddings - Map of document keys to their embeddings
+ * @param results - Search results to rerank
+ * @returns Results sorted by relevance to query (highest similarity first)
+ */
+export function rerankByRelevance(
+  queryEmbedding: number[],
+  resultEmbeddings: Map<string, number[]>,
+  results: SearchResult[]
+): SearchResult[] {
+  if (results.length === 0) {
+    return [];
+  }
+
+  if (resultEmbeddings.size === 0) {
+    console.warn('[rerankByRelevance] No embeddings provided, returning original order');
+    return results;
+  }
+
+  try {
+    // Create document key to result mapping
+    const keyToResult = new Map<string, SearchResult>();
+    for (const result of results) {
+      const conversationId = result.conversationId || 'unknown';
+      const chunkIndex = result.chunkIndex || 0;
+      const key = `${conversationId}:chunk:${chunkIndex}`;
+      keyToResult.set(key, result);
+    }
+
+    // Calculate relevance scores (cosine similarity to query)
+    const relevanceScores = new Map<string, number>();
+    for (const [key, embedding] of resultEmbeddings) {
+      const similarity = cosineSimilarity(queryEmbedding, embedding);
+      relevanceScores.set(key, similarity);
+    }
+
+    // Sort results by relevance score (highest first)
+    const sortedResults = results
+      .map(result => {
+        const conversationId = result.conversationId || 'unknown';
+        const chunkIndex = result.chunkIndex || 0;
+        const key = `${conversationId}:chunk:${chunkIndex}`;
+        const relevanceScore = relevanceScores.get(key) || 0;
+        return { result, relevanceScore };
+      })
+      .sort((a, b) => b.relevanceScore - a.relevanceScore) // Higher similarity first
+      .map(item => item.result);
+
+    console.log(`[rerankByRelevance] Reranked ${sortedResults.length} results by relevance to query`);
+    return sortedResults;
+
+  } catch (err) {
+    console.error('[rerankByRelevance] Failed to rerank results by relevance:', err);
+    console.log('[rerankByRelevance] Returning original results');
+    return results;
+  }
+}
+
+/**
  * Rerank search results by uniqueness score only (simpler approach).
  * Uses similarity to already selected results as the ranking criterion.
  */

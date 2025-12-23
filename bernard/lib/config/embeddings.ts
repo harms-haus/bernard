@@ -1,5 +1,6 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { getSettings } from "./settingsCache";
+import { resolveModel } from "./models";
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;
@@ -58,11 +59,69 @@ function logModelConfig(source: "probe" | "runtime", baseUrl: string | undefined
 }
 
 async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<ResolvedEmbeddingConfig> {
-  const settings = await settingsFetcher().catch(() => null);
-  const service = settings?.services.memory;
-  const apiKey = config.apiKey ?? service?.embeddingApiKey ?? process.env["EMBEDDING_API_KEY"];
-  const baseUrl = config.baseUrl ?? service?.embeddingBaseUrl ?? process.env["EMBEDDING_BASE_URL"];
-  const model = config.model ?? service?.embeddingModel ?? process.env["EMBEDDING_MODEL"] ?? DEFAULT_EMBEDDING_MODEL;
+  // First, try to resolve from admin model configuration (takes precedence)
+  let resolvedModel;
+  try {
+    resolvedModel = await resolveModel("embedding");
+  } catch (error) {
+    console.warn("[embeddings] Failed to resolve embedding model from admin settings:", error);
+  }
+
+  // If we have resolved model settings from admin, use them
+  if (resolvedModel) {
+    const resolvedApiKey = config.apiKey ?? resolvedModel.options?.apiKey;
+    const resolvedBaseUrl = config.baseUrl ?? resolvedModel.options?.baseUrl;
+    const resolvedModelName = config.model ?? resolvedModel.id;
+
+    // Don't include apiKey if it's a placeholder value like "none"
+    const shouldIncludeApiKey = resolvedApiKey && resolvedApiKey !== "none" && resolvedApiKey !== "";
+
+    return {
+      ...(shouldIncludeApiKey ? { apiKey: resolvedApiKey } : {}),
+      model: resolvedModelName,
+      ...(resolvedBaseUrl ? { baseUrl: resolvedBaseUrl } : {})
+    };
+  }
+
+  // Fall back to environment variables if no admin configuration exists
+  const envApiKey = process.env["EMBEDDING_API_KEY"];
+  const envBaseUrl = process.env["EMBEDDING_BASE_URL"];
+  const envModel = process.env["EMBEDDING_MODEL"];
+
+  if (envApiKey || envBaseUrl || envModel) {
+    const apiKey = config.apiKey ?? envApiKey;
+    const baseUrl = config.baseUrl ?? envBaseUrl;
+    const model = config.model ?? envModel ?? "nomic-embed-text";
+
+    // Don't include apiKey if it's a placeholder value like "none"
+    const shouldIncludeApiKey = apiKey && apiKey !== "none" && apiKey !== "";
+
+    return {
+      ...(shouldIncludeApiKey ? { apiKey } : {}),
+      model,
+      ...(baseUrl ? { baseUrl } : {})
+    };
+  }
+
+  // Final fallback to hardcoded defaults
+  const fallbackApiKey = config.apiKey;
+  const fallbackBaseUrl = config.baseUrl ?? "http://localhost:11434/v1";
+  const fallbackModel = config.model ?? "nomic-embed-text";
+
+  // Don't include apiKey if it's a placeholder value like "none"
+  const shouldIncludeApiKey = fallbackApiKey && fallbackApiKey !== "none" && fallbackApiKey !== "";
+
+  return {
+    ...(shouldIncludeApiKey ? { apiKey: fallbackApiKey } : {}),
+    model: fallbackModel,
+    ...(fallbackBaseUrl ? { baseUrl: fallbackBaseUrl } : {})
+  };
+
+  // Use resolved model settings
+  const apiKey = config.apiKey ?? resolvedModel.options?.apiKey;
+  const baseUrl = config.baseUrl ?? resolvedModel.options?.baseUrl;
+  const model = config.model ?? resolvedModel.id;
+
   return {
     ...(apiKey ? { apiKey } : {}),
     model,
@@ -163,11 +222,18 @@ export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<O
     throw new Error("EMBEDDING_API_KEY or EMBEDDING_BASE_URL is required for embeddings.");
   }
 
+  // For local providers (like Ollama), provide a dummy API key if none is set
+  const apiKey = resolved.apiKey || (resolved.baseUrl && resolved.baseUrl.includes('localhost') ? 'ollama' : undefined);
+
+  if (!apiKey) {
+    throw new Error("EMBEDDING_API_KEY or EMBEDDING_BASE_URL is required for embeddings.");
+  }
+
   logModelConfig("runtime", resolved.baseUrl, resolved.model);
 
   return embeddingsFactory(
     {
-      ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
+      apiKey,
       modelName: resolved.model,
       ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {})
     }
