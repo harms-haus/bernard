@@ -15,6 +15,8 @@ import { runResponseHarness } from "@/agent/harness/respond/responseHarness";
 import type { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import { countTokens } from "@/lib/conversation/tokenCounter";
 import { getSettings } from "@/lib/config/settingsCache";
+import { StatusService, type StatusEvent } from "@/lib/status/statusService";
+import { GENERAL_STATUS_MESSAGES } from "@/lib/status/messages";
 
 /**
  * Format tool calls and results into SystemMessage objects for LLM context.
@@ -319,7 +321,8 @@ export async function prepareInitialContext(
 export async function executeTool(
   tool: StructuredToolInterface | null,
   toolCall: { id: string; function: { name: string; arguments: string } },
-  currentContext: BaseMessage[]
+  currentContext: BaseMessage[],
+  statusService?: { setStatus: (msg: string, done?: boolean, hidden?: boolean) => void; setStatusPool: (msgs: string[], done?: boolean, hidden?: boolean) => void }
 ): Promise<{ toolCallId: string; toolName: string; output: string }> {
   if (!tool) {
     return {
@@ -342,7 +345,10 @@ export async function executeTool(
 
   try {
     const result = await tool.invoke(args, {
-      configurable: { conversationMessages: currentContext },
+      configurable: {
+        conversationMessages: currentContext,
+        ...(statusService && { statusService }),
+      },
     });
 
     return {
@@ -437,6 +443,14 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   let harnessCompletedNormally = false;
   const toolCallCounts: Map<string, number> = new Map(); // Track identical tool calls
   let accumulatedRequestTokens = 0; // Track tokens accumulated in this request
+
+  // Create status service for managing status messages
+  const statusService = new StatusService();
+
+  // Create a function to yield status events
+  const yieldStatusEvent = (event: StatusEvent) => {
+    // This will be set up later to yield events from the harness
+  };
 
   try {
     // Get token limit settings once for the harness execution
@@ -673,10 +687,19 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         };
       }
 
+      // Start status rotation with general messages if no tool-specific status is set
+      if (!statusService.getCurrentStatus()) {
+        statusService.setStatusPool(GENERAL_STATUS_MESSAGES, false, false);
+      }
+
       // 12. Execute tools sequentially
       const toolResults: Array<{ toolCallId: string; toolName: string; output: string; latencyMs?: number }> = [];
 
       for (const toolCall of validToolCalls) {
+        // Yield any pending status events before tool execution
+        for (const statusEvent of statusService.getPendingEvents()) {
+          yield statusEvent;
+        }
         if (toolCall.function.name === "respond") {
           respondCalled = true;
           // Add a placeholder result for respond() tool
@@ -692,7 +715,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         const toolStartTime = Date.now();
 
         const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
-        const result = await executeTool(tool, toolCall, currentMessages);
+        const result = await executeTool(tool, toolCall, currentMessages, statusService);
 
         // Calculate tool call duration
         const toolDurationMs = Date.now() - toolStartTime;
@@ -725,6 +748,14 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
           event.latencyMs = result.latencyMs;
         }
         yield event;
+      }
+
+      // Mark status as completed after all tools finish
+      statusService.markCompleted(true);
+
+      // Yield final status event
+      for (const statusEvent of statusService.getPendingEvents()) {
+        yield statusEvent;
       }
 
       // 13. Create combined assistant message with tool calls and results

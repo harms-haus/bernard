@@ -60,6 +60,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
   const [isGhostMode, setIsGhostMode] = React.useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = React.useState(true);
   const [hasScrollbarAppeared, setHasScrollbarAppeared] = React.useState(false);
+  const [currentStatus, setCurrentStatus] = React.useState<{ description: string; done: boolean; hidden: boolean } | null>(null);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
 
   // AbortController for cancelling streaming requests
@@ -133,8 +134,13 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     }
   }, []);
 
-  // Load current conversation on component mount
+  // Load current conversation on component mount (only for interactive chat, not read-only conversation details)
   React.useEffect(() => {
+    // Don't load current conversation if we're in read-only mode or have initial messages provided
+    if (readOnly || initialMessages.length > 0) {
+      return;
+    }
+
     const loadCurrentConversation = async () => {
       try {
         // Fetch the most recent conversation (limit 1, include messages)
@@ -176,7 +182,17 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     };
 
     loadCurrentConversation();
-  }, []);
+  }, [readOnly, initialMessages.length]);
+
+  // Update messages and trace events when initial props change (for read-only conversation details)
+  React.useEffect(() => {
+    if (initialMessages.length > 0) {
+      setMessages(initialMessages);
+    }
+    if (initialTraceEvents.length > 0) {
+      setTraceEvents(initialTraceEvents);
+    }
+  }, [initialMessages, initialTraceEvents]);
 
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
@@ -242,11 +258,14 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
           try {
             const chunk = JSON.parse(payload);
 
-            // Handle Bernard trace chunks (llm_call, tool_call events)
+            // Handle Bernard trace chunks (llm_call, tool_call, status events)
             if (chunk.bernard && chunk.bernard.type === 'trace') {
               const traceData = chunk.bernard.data;
 
-              if (traceData.type === 'llm_call_complete' || traceData.type === 'tool_call_complete') {
+              if (traceData.type === 'status') {
+                // Handle status events
+                setCurrentStatus(traceData.data.done && traceData.data.hidden ? null : traceData.data);
+              } else if (traceData.type === 'llm_call_complete' || traceData.type === 'tool_call_complete') {
                 // Update trace events with completion data
                 setTraceEvents(prev => updateTraceEventWithCompletion(prev, traceData));
               } else {
@@ -382,6 +401,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
       }
 
       setIsStreaming(false);
+      setCurrentStatus(null);
     }
   };
 
@@ -952,7 +972,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                       </Avatar>
                     </div>
                     <div className="">
-                      <ThinkingMessage />
+                      <ThinkingMessage statusMessage={currentStatus?.description} />
                     </div>
                   </div>
                 )}

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import { logger } from "@/lib/logging";
+import { getStatusMessagesForTool } from "@/lib/status/messages";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";
 const DEFAULT_RESULT_COUNT = 3;
@@ -283,7 +284,14 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
 }
 
 const webSearchToolImpl = tool(
-  async ({ query, count, starting_index }) => {
+  async ({ query, count, starting_index }, config) => {
+    // Set status messages for web search
+    const statusService = config?.configurable?.statusService;
+    if (statusService) {
+      const statusMessages = getStatusMessagesForTool("web_search");
+      statusService.setStatusPool(statusMessages, false, false);
+    }
+
     return executeSearch(query, count, starting_index);
   },
   {

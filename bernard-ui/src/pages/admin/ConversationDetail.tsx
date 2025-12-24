@@ -357,6 +357,7 @@ export default function ConversationDetail() {
           <Card>
             <CardContent className="p-0 mt-6">
               <ChatInterface
+                key={conversation?.id || 'loading'}
                 initialMessages={convertMessagesForChatInterface(messages)}
                 initialTraceEvents={extractTraceEventsFromMessages(messages)}
                 readOnly={true}

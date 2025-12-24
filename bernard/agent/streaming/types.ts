@@ -130,8 +130,18 @@ export type ErrorEvent<D = unknown> = {
   data?: D;
   error: string;
 }
+
+export type StatusEvent = {
+  type: "status";
+  data: {
+    description: string;
+    done: boolean;
+    hidden: boolean;
+  };
+}
+
 /**
  * Agent output items that harnesses yield to be streamed to the client.
  * These represent the granular events that occur during agent execution.
  */
-export type AgentOutputItem = LLMCallEvent | LLMCallCompleteEvent | ToolCallEvent | ToolCallCompleteEvent | DeltaEvent | RecollectionEvent | ErrorEvent;
+export type AgentOutputItem = LLMCallEvent | LLMCallCompleteEvent | ToolCallEvent | ToolCallCompleteEvent | DeltaEvent | RecollectionEvent | ErrorEvent | StatusEvent;
