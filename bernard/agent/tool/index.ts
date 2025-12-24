@@ -15,6 +15,7 @@ import { createPlayPlexMediaToolInstance } from "./play_media_tv.tool";
 import { recallTool } from "./recall.tool";
 import { recallConversationTool } from "./recall_conversation.tool";
 import { recallTaskTool } from "./recall_task.tool";
+import { createTimerToolInstance } from "./timer.tool";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation
@@ -59,7 +60,7 @@ export function getRouterTools(
     recallTool,
     recallConversationTool,
     recallTaskTool,
-    respondTool, // Add respond tool at the end
+    respondTool,
   ];
 
   const haTools: ToolWithInterpretation[] = [];
@@ -76,6 +77,7 @@ export function getRouterTools(
 
   if (taskContext) {
     haTools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
+    haTools.push(createTimerToolInstance(taskContext));
   }
 
   return [...baseTools, ...haTools];
@@ -94,5 +96,6 @@ export {
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,
   createToggleLightToolInstance,
-  createPlayPlexMediaToolInstance
+  createPlayPlexMediaToolInstance,
+  createTimerToolInstance
 };

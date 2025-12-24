@@ -7,7 +7,7 @@ import { childLogger, logger } from "../logging";
 
 // Register task functions
 import { playMediaTvTask } from "../../agent/task/play_media_tv.task";
-registerTaskFunction("play_media_tv", playMediaTvTask);
+import { timerTask } from "../../agent/task/timer.task";
 
 const log = childLogger({ component: "task_executor" }, logger);
 
@@ -15,6 +15,10 @@ const log = childLogger({ component: "task_executor" }, logger);
  * Registry of task functions by tool name
  */
 const taskFunctions = new Map<string, TaskFunction>();
+
+// Register task functions after taskFunctions is declared
+registerTaskFunction("play_media_tv", playMediaTvTask);
+registerTaskFunction("timer", timerTask);
 
 /**
  * Register a task function

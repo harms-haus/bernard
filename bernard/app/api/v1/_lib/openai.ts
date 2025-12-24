@@ -36,7 +36,7 @@ export async function validateAuth(req: NextRequest) {
   if ("error" in result) {
     return result;
   }
-  return { token: result.access.token };
+  return { token: result.access.token, user: result.access.user };
 }
 
 export type AgentScaffolding = {

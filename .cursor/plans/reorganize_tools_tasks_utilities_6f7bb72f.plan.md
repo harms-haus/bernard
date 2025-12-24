@@ -306,4 +306,3 @@ Move all tool files from `bernard/agent/harness/router/tools/` to `bernard/agent
 ## Notes
 
 - Use `@/lib/` import alias for utilities (already configured in tsconfig)
-- Keep backward compatibility during migration if possible

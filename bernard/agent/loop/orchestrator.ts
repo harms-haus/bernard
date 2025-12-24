@@ -203,7 +203,8 @@ export class StreamingOrchestrator {
                 ...(this.haContextManager ? { haContextManager: this.haContextManager } : {}),
                 ...(this.haRestConfig ? { haRestConfig: this.haRestConfig } : {}),
                 ...(this.plexConfig ? { plexConfig: this.plexConfig } : {}),
-                ...(abortSignal ? { abortSignal } : {})
+                ...(abortSignal ? { abortSignal } : {}),
+                ...(taskContext ? { taskContext } : {})
             });
 
             for await (const event of routerHarness) {

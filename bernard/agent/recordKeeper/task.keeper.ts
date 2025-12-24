@@ -47,12 +47,11 @@ export class TaskRecordKeeper {
     const task: Task = {
       id: taskId,
       name: metadata.name,
-      status: "running",
+      status: "queued",
       toolName: metadata.toolName,
       userId: metadata.userId,
       ...(metadata.conversationId && { conversationId: metadata.conversationId }),
       createdAt: now,
-      startedAt: now,
       messageCount: 0,
       toolCallCount: 0,
       tokensIn: 0,
@@ -152,6 +151,10 @@ export class TaskRecordKeeper {
     const updates: Record<string, string | number> = {};
 
     switch (event.type) {
+      case "task_started":
+        updates["status"] = "running";
+        updates["startedAt"] = event.timestamp;
+        break;
       case "message_recorded":
         updates["messageCount"] = 1; // Will be incremented
         break;
@@ -352,19 +355,61 @@ export class TaskRecordKeeper {
   }
 
   /**
-   * Delete an archived task (cleanup)
+   * Cancel a running or queued task
+   */
+  async cancelTask(taskId: string): Promise<boolean> {
+    const task = await this.getTask(taskId);
+    if (!task || task.status === "completed" || task.status === "errored" || task.status === "cancelled") {
+      return false;
+    }
+
+    const taskKey = this.key(`task:${taskId}`);
+    const now = nowIso();
+
+    const multi = this.redis.multi();
+    multi.hset(taskKey, {
+      status: "cancelled",
+      completedAt: now
+    });
+
+    // Move from active to completed (even cancelled tasks go to completed)
+    multi.zrem(this.key("tasks:active"), taskId);
+    multi.zrem(this.key("tasks:user:active"), `${task.userId}:${taskId}`);
+    multi.zadd(this.key("tasks:completed"), Date.parse(now), taskId);
+    multi.zadd(this.key("tasks:user:completed"), Date.parse(now), `${task.userId}:${taskId}`);
+
+    await multi.exec();
+
+    this.log.info({
+      event: "task.cancelled",
+      taskId,
+      userId: task.userId
+    });
+
+    return true;
+  }
+
+  /**
+   * Delete a completed task (cleanup)
    */
   async deleteTask(taskId: string): Promise<boolean> {
     const task = await this.getTask(taskId);
-    if (!task || !task.archived) {
+    if (!task || (task.status !== "completed" && task.status !== "errored" && task.status !== "uncompleted" && task.status !== "cancelled" && !task.archived)) {
       return false;
     }
 
     const multi = this.redis.multi();
     multi.del(this.key(`task:${taskId}`));
     multi.del(this.key(`task:${taskId}:events`));
-    multi.zrem(this.key("tasks:archived"), taskId);
-    multi.zrem(this.key("tasks:user:archived"), `${task.userId}:${taskId}`);
+
+    // Remove from appropriate sets based on task status
+    if (task.archived) {
+      multi.zrem(this.key("tasks:archived"), taskId);
+      multi.zrem(this.key("tasks:user:archived"), `${task.userId}:${taskId}`);
+    } else {
+      multi.zrem(this.key("tasks:completed"), taskId);
+      multi.zrem(this.key("tasks:user:completed"), `${task.userId}:${taskId}`);
+    }
 
     await multi.exec();
 

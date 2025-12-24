@@ -1212,6 +1212,11 @@ export class RecordKeeper implements Archivist, Recorder {
       conversation.ghost = data["ghost"] === "true";
     }
 
+    // User ID field
+    if (data["userId"]) {
+      conversation.userId = data["userId"];
+    }
+
     return conversation;
   }
 

@@ -1,22 +1,17 @@
-import { SystemMessage, AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
-import type { BaseMessage, MessageStructure, MessageType } from "@langchain/core/messages";
-import { ToolMessage as LangChainToolMessage } from "@langchain/core/messages";
-import type { AgentOutputItem } from "../../streaming/types";
-import type { LLMCaller, LLMConfig } from "../../llm/llm";
-import { ChatOpenAILLMCaller } from "../../llm/chatOpenAI";
+import { SystemMessage, AIMessage } from "@langchain/core/messages";
+import type { BaseMessage, MessageStructure } from "@langchain/core/messages";
+import type { AgentOutputItem } from "@/agent/streaming/types";
+import type { LLMCaller, LLMConfig } from "@/agent/llm/llm";
 import { buildRouterSystemPrompt } from "./prompts";
-import { getRouterTools } from "../../tool";
+import { getRouterTools, ToolWithInterpretation } from "@/agent/tool";
 import type { HomeAssistantContextManager } from "@/lib/home-assistant";
-import type { HARestConfig } from "../../tool/home-assistant-list-entities.tool";
+import type { HARestConfig } from "@/agent/tool/home-assistant-list-entities.tool";
 import type { PlexConfig } from "@/lib/plex";
-// PlexConfig is now defined in the task function
-import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
-import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
-import { deduplicateMessages } from "../../../lib/conversation/dedup";
-import crypto from "node:crypto";
+import type { Archivist, MessageRecord } from "@/lib/conversation/types";
+import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
+import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { StructuredToolInterface } from "@langchain/core/tools";
-import type { ToolWithInterpretation } from "../../tool";
-import { runResponseHarness } from "../respond/responseHarness";
+import { runResponseHarness } from "@/agent/harness/respond/responseHarness";
 import type { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import { countTokens } from "@/lib/conversation/tokenCounter";
 import { getSettings } from "@/lib/config/settingsCache";
@@ -254,6 +249,11 @@ export type RouterHarnessContext = {
   abortSignal?: AbortSignal;
   toolDefinitions?: ToolWithInterpretation[];
   usedTools?: string[];
+  taskContext?: {
+    conversationId: string;
+    userId: string;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+  };
 };
 
 /**
@@ -405,10 +405,10 @@ function extractToolCallsFromAIMessage(aiMessage: AIMessage): Array<{
  * Always calls response harness even in error scenarios.
  */
 export async function* runRouterHarness(context: RouterHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { routerContext, messages, llmCaller, responseLLMCaller, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools } = context;
+  const { routerContext, messages, llmCaller, responseLLMCaller, haContextManager, haRestConfig, plexConfig, abortSignal, toolDefinitions: providedToolDefinitions, usedTools: initialUsedTools, taskContext } = context;
 
   // 1. Get available tools
-  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig, plexConfig);
+  const { langChainTools, toolDefinitions } = getRouterToolDefinitions(haContextManager, haRestConfig, plexConfig, taskContext);
   const usedTools = initialUsedTools || [];
   const toolNames = toolDefinitions.map(tool => tool.name);
 

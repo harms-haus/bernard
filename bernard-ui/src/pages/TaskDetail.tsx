@@ -16,13 +16,15 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  MessageSquare,
+  Check
 } from 'lucide-react';
 
 interface Task {
   id: string;
   name: string;
-  status: 'running' | 'completed' | 'errored' | 'timed_out';
+  status: 'queued' | 'running' | 'completed' | 'errored' | 'uncompleted' | 'cancelled';
   toolName: string;
   createdAt: string;
   startedAt?: string;
@@ -64,6 +66,64 @@ interface TaskDetailResponse {
   }>;
 }
 
+// Task Event Message Block Components
+const TaskStartedBlock = ({ event, formatDate }: { event: TaskEvent; formatDate: (date: string) => string }) => (
+  <div className="border-l-4 border-green-500 bg-green-50 dark:bg-green-950/20 pl-4 py-3">
+    <div className="flex items-center space-x-2 mb-2">
+      <div className="flex items-center space-x-2">
+        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+          <Play className="w-3 h-3 text-white ml-0.5" />
+        </div>
+        <span className="text-sm font-medium text-green-800 dark:text-green-200">Task Started</span>
+      </div>
+      <span className="text-xs text-green-600 dark:text-green-400">
+        {formatDate(event.timestamp)}
+      </span>
+    </div>
+    <div className="text-sm text-green-700 dark:text-green-300">
+      The background task has begun execution.
+    </div>
+  </div>
+);
+
+const TaskMessageBlock = ({ event, formatDate }: { event: TaskEvent; formatDate: (date: string) => string }) => (
+  <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20 pl-4 py-3">
+    <div className="flex items-center space-x-2 mb-2">
+      <div className="flex items-center space-x-2">
+        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+          <MessageSquare className="w-3 h-3 text-white" />
+        </div>
+        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Task Message</span>
+      </div>
+      <span className="text-xs text-blue-600 dark:text-blue-400">
+        {formatDate(event.timestamp)}
+      </span>
+    </div>
+    <div className="text-sm text-blue-700 dark:text-blue-300">
+      {event.data.content || 'A message was recorded during task execution.'}
+    </div>
+  </div>
+);
+
+const TaskCompletedBlock = ({ event, formatDate }: { event: TaskEvent; formatDate: (date: string) => string }) => (
+  <div className="border-l-4 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 pl-4 py-3">
+    <div className="flex items-center space-x-2 mb-2">
+      <div className="flex items-center space-x-2">
+        <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center">
+          <Check className="w-3 h-3 text-white" />
+        </div>
+        <span className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Task Completed</span>
+      </div>
+      <span className="text-xs text-emerald-600 dark:text-emerald-400">
+        {formatDate(event.timestamp)}
+      </span>
+    </div>
+    <div className="text-sm text-emerald-700 dark:text-emerald-300">
+      The background task has finished successfully.
+    </div>
+  </div>
+);
+
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(false);
@@ -85,9 +145,7 @@ export default function TaskDetail() {
     setLoading(true);
     try {
       const response = await fetch(`/api/tasks/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-        }
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -109,13 +167,17 @@ export default function TaskDetail() {
 
   const getStatusIcon = (status: Task['status']) => {
     switch (status) {
+      case 'queued':
+        return <Clock className="w-5 h-5 text-orange-500" />;
       case 'running':
         return <Play className="w-5 h-5 text-blue-500" />;
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'errored':
         return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'timed_out':
+      case 'uncompleted':
+        return <AlertCircle className="w-5 h-5 text-yellow-500" />;
+      case 'cancelled':
         return <AlertCircle className="w-5 h-5 text-yellow-500" />;
       default:
         return <Clock className="w-5 h-5 text-gray-500" />;
@@ -124,13 +186,17 @@ export default function TaskDetail() {
 
   const getStatusBadgeVariant = (status: Task['status']) => {
     switch (status) {
+      case 'queued':
+        return 'outline';
       case 'running':
         return 'default';
       case 'completed':
         return 'secondary';
       case 'errored':
         return 'destructive';
-      case 'timed_out':
+      case 'uncompleted':
+        return 'outline';
+      case 'cancelled':
         return 'outline';
       default:
         return 'outline';
@@ -233,25 +299,39 @@ export default function TaskDetail() {
                 ) : (
                   <div className="space-y-4">
                     {/* Events */}
-                    {events.map((event, index) => (
-                      <div key={index} className="border-l-2 border-gray-200 pl-4">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <Badge variant="outline" className="text-xs">
-                            {event.type}
-                          </Badge>
-                          <span className="text-xs text-gray-500">
-                            {formatDate(event.timestamp)}
-                          </span>
+                    {events.map((event, index) => {
+                      // Use specific message blocks for known event types
+                      if (event.type === 'task_started') {
+                        return <TaskStartedBlock key={index} event={event} formatDate={formatDate} />;
+                      }
+                      if (event.type === 'message_recorded') {
+                        return <TaskMessageBlock key={index} event={event} formatDate={formatDate} />;
+                      }
+                      if (event.type === 'task_completed') {
+                        return <TaskCompletedBlock key={index} event={event} formatDate={formatDate} />;
+                      }
+
+                      // Default event rendering for other event types
+                      return (
+                        <div key={index} className="border-l-2 border-gray-200 dark:border-gray-700 pl-4">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <Badge variant="outline" className="text-xs">
+                              {event.type}
+                            </Badge>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatDate(event.timestamp)}
+                            </span>
+                          </div>
+                          <pre className="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+                            {JSON.stringify(event.data, null, 2)}
+                          </pre>
                         </div>
-                        <pre className="text-sm bg-gray-50 p-2 rounded overflow-x-auto">
-                          {JSON.stringify(event.data, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Messages */}
                     {messages.map((message) => (
-                      <div key={message.id} className="border-l-2 border-blue-200 pl-4">
+                      <div key={message.id} className="border-l-2 border-blue-200 dark:border-blue-700 pl-4">
                         <div className="flex items-center space-x-2 mb-1">
                           <Badge variant="secondary" className="text-xs">
                             {message.role}
@@ -261,18 +341,18 @@ export default function TaskDetail() {
                               {message.name}
                             </Badge>
                           )}
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
                             {formatDate(message.createdAt)}
                           </span>
                         </div>
-                        <div className="text-sm">
+                        <div className="text-sm text-gray-900 dark:text-gray-100">
                           {typeof message.content === 'string'
                             ? message.content
                             : JSON.stringify(message.content, null, 2)
                           }
                         </div>
                         {message.tool_calls && message.tool_calls.length > 0 && (
-                          <div className="mt-2 text-xs text-gray-600">
+                          <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
                             <div>Tool calls:</div>
                             {message.tool_calls.map((call, i) => (
                               <div key={i} className="ml-2">
@@ -389,7 +469,7 @@ export default function TaskDetail() {
                           <div className="text-xs text-gray-600">{section.description}</div>
                         )}
                         {section.content && (
-                          <div className="text-sm mt-1 bg-gray-50 p-2 rounded">
+                          <div className="text-sm mt-1 bg-gray-50 dark:bg-gray-800 p-2 rounded">
                             {section.content}
                           </div>
                         )}

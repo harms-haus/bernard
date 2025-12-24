@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { validateAccessToken } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { getRedis } from "@/lib/infra/redis";
 
@@ -10,15 +10,12 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await validateAccessToken(req);
-  if ("error" in auth) return auth.error;
-
-  const userId = auth.access.user?.id;
-  if (!userId) {
-    return new Response(JSON.stringify({ error: "User not found" }), {
-      status: 401
-    });
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), { status: 401 });
   }
+
+  const userId = user.user.id;
 
   const resolvedParams = await params;
   const taskId = resolvedParams.id;

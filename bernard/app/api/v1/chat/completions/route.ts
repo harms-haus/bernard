@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
     token: auth.token,
     responseModelOverride: responseModelConfig.id,
     ...(body.chatId ? { conversationId: body.chatId } : {}),
+    ...(auth.user ? { userId: auth.user.id } : {}),
     ...(isGhostMode ? { ghost: true } : {})
   });
   const {

@@ -12,7 +12,8 @@
     "type-check:src": "tsc --noEmit --project tsconfig.check.json",
     "tests": "vitest run",
     "tests:coverage": "vitest run --coverage",
-    "queues:worker": "tsx agent/queueWorker.ts"
+    "queues:worker": "tsx agent/queueWorker.ts",
+    "tasks:worker": "tsx agent/taskWorker.ts"
   },
   "keywords": [
     "langgraph",

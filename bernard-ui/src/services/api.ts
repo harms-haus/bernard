@@ -50,7 +50,7 @@ export interface ChatResponse {
 export interface Task {
   id: string;
   name: string;
-  status: 'running' | 'completed' | 'errored' | 'timed_out';
+  status: 'queued' | 'running' | 'completed' | 'errored' | 'uncompleted' | 'cancelled';
   toolName: string;
   createdAt: string;
   startedAt?: string;

@@ -3,7 +3,7 @@ import type { BernardSettings } from "../config/settingsStore";
 /**
  * Task status enumeration
  */
-export type TaskStatus = "running" | "completed" | "errored" | "timed_out";
+export type TaskStatus = "queued" | "running" | "completed" | "errored" | "uncompleted" | "cancelled";
 
 /**
  * Task metadata stored in Redis

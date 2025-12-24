@@ -21,7 +21,7 @@ cleanup() {
   echo "Stopping services..."
   
   # Send SIGTERM to all processes first for graceful shutdown
-  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       echo "Sending SIGTERM to process ${pid}..."
       kill -TERM "${pid}" 2>/dev/null || true
@@ -33,7 +33,7 @@ cleanup() {
   local max_wait=20  # 5 seconds at 0.25s intervals
   while [[ ${count} -lt ${max_wait} ]]; do
     local running=0
-    for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
+    for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
       if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
         running=1
         break
@@ -47,7 +47,7 @@ cleanup() {
   done
   
   # Force kill any remaining processes
-  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}"; do
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       echo "Force killing process ${pid}..."
       kill -KILL "${pid}" 2>/dev/null || true
@@ -187,6 +187,10 @@ echo "Starting conversation task worker..."
 npm run queues:worker --prefix "${ROOT_DIR}/bernard" &
 WORKER_PID=$!
 
+echo "Starting background task worker..."
+npm run tasks:worker --prefix "${ROOT_DIR}/bernard" &
+TASK_WORKER_PID=$!
+
 echo "Starting bernard-ui on port ${UI_PORT}..."
 kill_port_processes "${UI_PORT}"
 
@@ -202,7 +206,7 @@ UI_PID=$!
 # Wait for any of the background processes to exit
 # This properly handles signals and ensures cleanup runs
 status=0
-wait "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" || status=$?
+wait "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" "${TASK_WORKER_PID}" || status=$?
 
 # Cleanup will be called automatically via the EXIT trap
 exit "${status}"

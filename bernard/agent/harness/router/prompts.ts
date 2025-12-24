@@ -45,8 +45,9 @@ export function buildRouterSystemPrompt(
 export function buildLangChainToolSystemPrompt(tools: ToolLikeForPrompt[]): string | null {
   if (!tools.length) return null;
   return [
-    `You have access to tools. When you call a tool, return an assistant message containing up to ${MAX_PARALLEL_TOOL_CALLS} tool_calls in parallel. Tool_calls must be UNIQUE or they will not be executed.
+    `You have access to tools. To call a tool, return an assistant message containing up to ${MAX_PARALLEL_TOOL_CALLS} tool_calls in parallel. Tool_calls must be UNIQUE or they will not be executed.
 Reuse tool results from the conversation history if they are still valid.
+Some tools may start a task that will complete in the background. Start the task by calling the tool which will return a task id. Then you may continue calling tools or respond immediately.
 Mark the end of tool calling with the \"respond\" tool call. It may be added to the same message as the last tool calls necessary or in a separate message.
 Do not add conversational text. Only tool calls.
 
