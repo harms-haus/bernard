@@ -117,13 +117,27 @@ const PlexServiceSchema = z.object({
   token: z.string().min(1)
 });
 
+const InfrastructureServiceSchema = z.object({
+  redisUrl: z.string().url().optional(),
+  queuePrefix: z.string().optional(),
+  taskQueueName: z.string().optional(),
+  taskWorkerConcurrency: z.number().int().positive().optional(),
+  taskMaxRuntimeMs: z.number().int().positive().optional(),
+  taskAttempts: z.number().int().positive().optional(),
+  taskBackoffMs: z.number().int().positive().optional(),
+  taskKeepCompleted: z.number().int().min(0).optional(),
+  taskKeepFailed: z.number().int().min(0).optional(),
+  taskArchiveAfterDays: z.number().int().positive().optional()
+});
+
 export const ServicesSettingsSchema = z.object({
   memory: MemoryServiceSchema.default({}),
   search: SearchServiceSchema.default({}),
   weather: WeatherServiceSchema.default({ provider: "open-meteo" }),
   geocoding: GeocodingServiceSchema.default({}),
   homeAssistant: HomeAssistantServiceSchema.optional(),
-  plex: PlexServiceSchema.optional()
+  plex: PlexServiceSchema.optional(),
+  infrastructure: InfrastructureServiceSchema.default({})
 });
 
 const OAuthClientSchema = z.object({
@@ -157,6 +171,7 @@ const LimitsSettingsSchema = z.object({
 export type Provider = z.infer<typeof ProviderSchema>;
 export type ModelCategorySettings = z.infer<typeof ModelCategorySchema>;
 export type ModelsSettings = z.infer<typeof ModelsSettingsSchema>;
+export type InfrastructureSettings = z.infer<typeof InfrastructureServiceSchema>;
 export type ServicesSettings = z.infer<typeof ServicesSettingsSchema>;
 export type OAuthSettings = z.infer<typeof OAuthSettingsSchema>;
 export type BackupSettings = z.infer<typeof BackupSettingsSchema>;
@@ -327,6 +342,7 @@ export function defaultModels(): ModelsSettings {
  */
 export function defaultServices(): ServicesSettings {
   const services: ServicesSettings = {
+    infrastructure: {},
     memory: {
       embeddingModel: process.env["EMBEDDING_MODEL"],
       embeddingBaseUrl: process.env["EMBEDDING_BASE_URL"],
@@ -671,5 +687,6 @@ export class SettingsStore {
     ]);
     return { models, services, oauth, backups, limits, automations };
   }
+
 }
 

@@ -47,6 +47,59 @@ export interface ChatResponse {
   content: string;
 }
 
+export interface Task {
+  id: string;
+  name: string;
+  status: 'running' | 'completed' | 'errored' | 'timed_out';
+  toolName: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  runtimeMs?: number;
+  errorMessage?: string;
+  messageCount: number;
+  toolCallCount: number;
+  tokensIn: number;
+  tokensOut: number;
+  archived: boolean;
+}
+
+export interface TaskDetail {
+  task: Task;
+  events: Array<{
+    type: string;
+    timestamp: string;
+    data: Record<string, unknown>;
+  }>;
+  sections: Record<string, {
+    name: string;
+    description: string;
+    content: string;
+  }>;
+  messages: Array<{
+    id: string;
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string;
+    createdAt: string;
+    name?: string;
+    tool_call_id?: string;
+    tool_calls?: Array<{
+      id: string;
+      type: string;
+      function: {
+        name: string;
+        arguments: string;
+      };
+    }>;
+  }>;
+}
+
+export interface TasksListResponse {
+  tasks: Task[];
+  total: number;
+  hasMore: boolean;
+}
+
 class APIClient {
   private readonly baseUrl: string;
   private currentUserInFlight: Promise<User | null> | null = null;
@@ -348,6 +401,37 @@ class APIClient {
       const errorText = await response.text().catch(() => '');
       throw new Error(errorText || `Failed to close conversation (${response.status})`);
     }
+  }
+
+  // Task API methods
+  async getTasks(includeArchived: boolean = false, limit: number = 50, offset: number = 0): Promise<TasksListResponse> {
+    const params = new URLSearchParams({
+      includeArchived: String(includeArchived),
+      limit: String(limit),
+      offset: String(offset)
+    });
+
+    const response = await fetch(`${this.baseUrl}/api/tasks?${params}`, {
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch tasks');
+    }
+
+    return response.json();
+  }
+
+  async getTask(taskId: string): Promise<TaskDetail> {
+    const response = await fetch(`${this.baseUrl}/api/tasks/${taskId}`, {
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch task details');
+    }
+
+    return response.json();
   }
 }
 

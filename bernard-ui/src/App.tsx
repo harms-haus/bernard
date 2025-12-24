@@ -17,6 +17,8 @@ import Services from './pages/admin/Services'
 import Users from './pages/admin/Users'
 import Automations from './pages/admin/Automations'
 import ConversationDetail from './pages/admin/ConversationDetail'
+import Tasks from './pages/Tasks'
+import TaskDetail from './pages/TaskDetail'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
 
 // Admin protected route component
@@ -47,6 +49,8 @@ function App() {
               >
                 <Route index element={<Home />} />
                 <Route path="chat" element={<Chat />} />
+                <Route path="tasks" element={<Tasks />} />
+                <Route path="tasks/:id" element={<TaskDetail />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="keys" element={<Keys />} />
                 <Route path="about" element={<About />} />

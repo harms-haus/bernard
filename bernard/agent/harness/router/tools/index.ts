@@ -11,9 +11,10 @@ import { createToggleLightToolInstance } from "./home-assistant-toggle-light.too
 import { wikipediaSearchTool } from "./wikipedia-search.tool";
 import { wikipediaEntryTool } from "./wikipedia-entry.tool";
 import type { HomeAssistantContextManager } from "./utility/home-assistant-context";
-import { createPlayPlexMediaToolInstance, type PlexConfig } from "./play_media_tv.tool";
+import { createPlayPlexMediaToolInstance } from "./play_media_tv.tool";
 import { recallTool } from "./recall.tool";
 import { recallConversationTool } from "./recall_conversation.tool";
+import { recallTaskTool } from "./recall_task.tool";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation
@@ -39,7 +40,16 @@ const respondTool = tool(
   }
 );
 
-export function getRouterTools(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig, plexConfig?: PlexConfig): ToolWithInterpretation[] {
+export function getRouterTools(
+  haContextManager?: HomeAssistantContextManager,
+  haRestConfig?: HARestConfig,
+  plexConfig?: any, // Not used anymore, kept for compatibility
+  taskContext?: {
+    conversationId: string;
+    userId: string;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+  }
+): ToolWithInterpretation[] {
   const baseTools: ToolWithInterpretation[] = [
     webSearchTool,
     getWeatherDataTool,
@@ -48,6 +58,7 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     getWebsiteContentTool,
     recallTool,
     recallConversationTool,
+    recallTaskTool,
     respondTool, // Add respond tool at the end
   ];
 
@@ -63,8 +74,8 @@ export function getRouterTools(haContextManager?: HomeAssistantContextManager, h
     haTools.push(createGetHistoricalStateToolInstance(haRestConfig));
   }
 
-  if (plexConfig) {
-    haTools.push(createPlayPlexMediaToolInstance(haRestConfig, plexConfig));
+  if (taskContext) {
+    haTools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
   }
 
   return [...baseTools, ...haTools];
@@ -78,6 +89,7 @@ export {
   getWebsiteContentTool,
   recallTool,
   recallConversationTool,
+  recallTaskTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,
   createGetHistoricalStateToolInstance,

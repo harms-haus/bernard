@@ -8,7 +8,7 @@ import { buildRouterSystemPrompt } from "./prompts";
 import { getRouterTools } from "./tools";
 import type { HomeAssistantContextManager } from "./tools/utility/home-assistant-context";
 import type { HARestConfig } from "./tools/home-assistant-list-entities.tool";
-import type { PlexConfig } from "./tools/play_media_tv.tool";
+// PlexConfig is now defined in the task function
 import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
 import { messageRecordToBaseMessage } from "../../../lib/conversation/messages";
 import { deduplicateMessages } from "../../../lib/conversation/dedup";
@@ -258,8 +258,17 @@ export type RouterHarnessContext = {
 /**
  * Get router tool definitions for the system prompt
  */
-export function getRouterToolDefinitions(haContextManager?: HomeAssistantContextManager, haRestConfig?: HARestConfig, plexConfig?: PlexConfig) {
-  const langChainTools = getRouterTools(haContextManager, haRestConfig, plexConfig);
+export function getRouterToolDefinitions(
+  haContextManager?: HomeAssistantContextManager,
+  haRestConfig?: HARestConfig,
+  plexConfig?: any, // We don't use this anymore, but keeping for compatibility
+  taskContext?: {
+    conversationId: string;
+    userId: string;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+  }
+) {
+  const langChainTools = getRouterTools(haContextManager, haRestConfig, undefined, taskContext);
   const toolDefinitions: ToolLikeForPrompt[] = langChainTools.map(tool => ({
     name: tool.name,
     description: tool.description || "",

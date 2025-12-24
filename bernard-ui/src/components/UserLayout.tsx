@@ -10,11 +10,13 @@ import {
   Info,
   Menu,
   X,
-  Shield
+  Shield,
+  ListTodo
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Chat', href: '/chat', icon: MessagesSquare },
+  { name: 'Tasks', href: '/tasks', icon: ListTodo },
   { name: 'Keys', href: '/keys', icon: Key },
   { name: 'About', href: '/about', icon: Info },
 ];

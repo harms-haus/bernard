@@ -13,8 +13,10 @@ import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "../harness/router/tools/utility/home-assistant-context";
 import type { ToolWithInterpretation } from "../harness/router/tools";
 import type { HARestConfig } from "../harness/router/tools/home-assistant-list-entities.tool";
-import type { PlexConfig } from "../harness/router/tools/play_media_tv.tool";
 import { getSettings } from "@/lib/config/settingsCache";
+import { getRedis } from "@/lib/infra/redis";
+import { TaskRecordKeeper } from "@/lib/task/recordKeeper";
+import { enqueueTask } from "@/lib/task/queue";
 import crypto from "node:crypto";
 
 function uniqueId(prefix: string) {
@@ -93,8 +95,51 @@ export class StreamingOrchestrator {
         const recorder = this.recordKeeper.asRecorder();
         const archivist = this.recordKeeper.asArchivist();
 
-        // 4. Get tool definitions
-        const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig, this.plexConfig);
+        // 4. Get conversation metadata for task context
+        const conversation = await archivist.getConversation(conversationId);
+        const userId = conversation?.userId || "";
+
+        // 5. Create task creation context
+        const taskRecordKeeper = new TaskRecordKeeper(getRedis());
+        const createTask = async (toolName: string, args: Record<string, unknown>, settings: any) => {
+          const taskId = `task_${crypto.randomBytes(10).toString("hex")}`;
+          const taskName = `${toolName}: ${Object.values(args).join(" (")}...)`.slice(0, 100);
+
+          await taskRecordKeeper.createTask(taskId, {
+            name: taskName,
+            toolName,
+            userId,
+            conversationId,
+            sections: {
+              execution_log: "Task execution log",
+              metadata: "Task metadata and results"
+            }
+          });
+
+          const taskPayload = {
+            taskId,
+            toolName,
+            arguments: args,
+            settings,
+            userId,
+            conversationId
+          };
+
+          await enqueueTask(taskId, taskPayload);
+
+          return { taskId, taskName };
+        };
+
+        const taskContext = {
+          conversationId,
+          userId,
+          createTask
+        };
+
+        // 6. Get tool definitions
+
+        // 5. Get tool definitions
+        const { langChainTools } = getRouterToolDefinitions(this.haContextManager, this.haRestConfig, this.plexConfig, taskContext);
 
         // 5. Create contexts
         const routerContext = new RouterContext(
