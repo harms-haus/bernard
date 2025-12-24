@@ -23,6 +23,7 @@ import { transformAgentOutputToChunks } from "@/agent/streaming/transform";
 import { createSSEStream } from "@/agent/streaming/sse";
 import { createLLMCaller } from "@/agent/llm/factory";
 import type { AgentOutputItem } from "@/agent/streaming/types";
+import { logRawRequest } from "@/lib/logging/rawRequestLogger";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,11 @@ export async function POST(req: NextRequest) {
     return new NextResponse(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: getCorsHeaders(null) });
   }
 
+  // Log raw request body with timestamp
+  await logRawRequest(body, {
+    timestamp: new Date().toISOString()
+  });
+
   if (!body?.messages || !Array.isArray(body.messages)) {
     return new NextResponse(JSON.stringify({ error: "`messages` array is required" }), { status: 400, headers: getCorsHeaders(null) });
   }
@@ -106,6 +112,20 @@ export async function POST(req: NextRequest) {
 
   let inputMessages: BaseMessage[];
   try {
+    // Detect agentic tasks (follow-up suggestions): stream=false with only one message
+    const isAgenticTask = body.stream === false && body.messages.length === 1;
+
+    if (isAgenticTask) {
+      // Skip processing agentic tasks entirely
+      return new NextResponse(
+        JSON.stringify({
+          error: "Agentic task requests are not supported",
+          type: "agentic_task_detected"
+        }),
+        { status: 400, headers: getCorsHeaders(null) }
+      );
+    }
+
     inputMessages = mapChatMessages(body.messages);
   } catch (err) {
     return new NextResponse(

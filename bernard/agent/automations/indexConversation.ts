@@ -1,7 +1,13 @@
 import { ConversationIndexer } from "../../lib/indexing/indexer";
+import { isFollowUpSuggestionMessage } from "../../lib/conversation/followUpDetection";
 
 function filterMessages(messages: MessageRecord[]): MessageRecord[] {
   const filtered = messages.filter((message) => {
+    // Exclude follow-up suggestion messages
+    if (isFollowUpSuggestionMessage(message)) {
+      return false;
+    }
+
     const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType;
     const name = message.name;
 

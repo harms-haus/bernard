@@ -1,4 +1,5 @@
 import type { Archivist, MessageRecord } from "../../../lib/conversation/types";
+import { isFollowUpSuggestionMessage } from "../../../lib/conversation/followUpDetection";
 
 // Import the chunking logic from conversationTasks.ts
 // These constants and functions need to match exactly for consistent chunking
@@ -8,6 +9,11 @@ const messageLimit = parseInt(process.env["CONVERSATION_INDEX_MESSAGE_LIMIT"] ??
 
 function filterMessages(messages: MessageRecord[]): MessageRecord[] {
   const filtered = messages.filter((message) => {
+    // Exclude follow-up suggestion messages
+    if (isFollowUpSuggestionMessage(message)) {
+      return false;
+    }
+
     const traceType = (message.metadata as { traceType?: string } | undefined)?.traceType;
     const name = message.name;
 

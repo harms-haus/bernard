@@ -1230,6 +1230,10 @@ export class RecordKeeper implements Archivist, Recorder {
   ): Promise<MessageRecord[]> {
     let messages = await this.messageLog.getMessages(conversationId, options?.limit);
 
+    // Filter out follow-up suggestion messages
+    const { isFollowUpSuggestionMessage } = await import("@/lib/conversation/followUpDetection");
+    messages = messages.filter((m) => !isFollowUpSuggestionMessage(m));
+
     if (options?.role) {
       messages = messages.filter((m) => m.role === options.role);
     }

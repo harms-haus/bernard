@@ -10,6 +10,7 @@ import { RecordKeeper, type MessageRecord } from "@/agent/recordKeeper/conversat
 import { getPrimaryModel } from "@/lib/config/models";
 import { getRedis } from "@/lib/infra/redis";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
+import { isFollowUpSuggestionMessage } from "@/lib/conversation/followUpDetection";
 
 export const BERNARD_MODEL_ID = "bernard-v1";
 
@@ -232,6 +233,11 @@ function roleOrder(message: BaseMessage): number {
 }
 
 function shouldIncludeHistoryRecord(record: MessageRecord): boolean {
+  // Exclude follow-up suggestion messages from history
+  if (isFollowUpSuggestionMessage(record)) {
+    return false;
+  }
+
   if (record.role !== "system") return true;
 
   // Exclude all system messages from history when preparing LLM context.

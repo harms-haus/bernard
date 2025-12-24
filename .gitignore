@@ -13,3 +13,4 @@ node_modules
 bernard/coverage
 bernard/backups
 agents.config.json
+logs/
