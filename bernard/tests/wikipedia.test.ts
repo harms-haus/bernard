@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { wikipediaSearchTool } from "../agent/harness/router/tools/wikipedia-search.tool";
-import { wikipediaEntryTool } from "../agent/harness/router/tools/wikipedia-entry.tool";
+import { wikipediaSearchTool } from "../agent/tool/wikipedia-search.tool";
+import { wikipediaEntryTool } from "../agent/tool/wikipedia-entry.tool";
 
 test("wikipedia_search tool returns JSON array", async () => {
   const result = await wikipediaSearchTool.invoke({

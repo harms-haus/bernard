@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 
 import { validateAccessToken } from "@/lib/auth";
-import { TaskRecordKeeper } from "@/lib/task/recordKeeper";
+import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { enqueueTask } from "@/lib/task/queue";
+import type { TaskPayload } from "@/lib/task/types";
 import { getRedis } from "@/lib/infra/redis";
 import crypto from "node:crypto";
 
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       name: taskName,
       toolName: body.toolName,
       userId,
-      conversationId: body.conversationId || undefined,
+      ...(body.conversationId && { conversationId: body.conversationId }),
       sections: {
         execution_log: "Task execution log",
         metadata: "Task metadata and results"
@@ -59,13 +60,13 @@ export async function POST(req: NextRequest) {
     });
 
     // Create task payload
-    const taskPayload = {
+    const taskPayload: TaskPayload = {
       taskId,
       toolName: body.toolName,
       arguments: body.arguments,
       settings: body.settings || {},
       userId,
-      conversationId: body.conversationId || undefined
+      ...(body.conversationId && { conversationId: body.conversationId })
     };
 
     // Enqueue task

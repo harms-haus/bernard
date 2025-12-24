@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireAdmin } from "@/lib/auth";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { getRedis } from "@/lib/infra/redis";
 import packageJson from "@/package.json";
 

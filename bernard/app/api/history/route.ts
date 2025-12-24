@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { validateAccessToken } from "@/lib/auth";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { RecordKeeper } from "../lib/conversation/recordKeeper";
+import { RecordKeeper } from "../agent/recordKeeper/conversation.keeper";
 import type { SummaryResult } from "../lib/conversation/summary";
 import type { MessageRecord, OpenRouterResult, ToolResult } from "../lib/conversation/types";
 import { FakeRedis } from "./fakeRedis";

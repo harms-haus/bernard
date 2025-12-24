@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import type { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { BERNARD_MODEL_ID, isBernardModel } from "@/app/api/v1/_lib/openai";
 
 type UsageLike = {

@@ -2,11 +2,11 @@ import type { Job } from "bullmq";
 import { getRedis } from "../infra/redis";
 import { getSettings } from "../config/settingsCache";
 import type { TaskPayload, TaskExecutionContext, TaskResult, TaskFunction } from "./types";
-import { TaskRecordKeeper } from "./recordKeeper";
+import { TaskRecordKeeper } from "../../agent/recordKeeper/task.keeper";
 import { childLogger, logger } from "../logging";
 
 // Register task functions
-import { playMediaTvTask } from "./functions/play_media_tv";
+import { playMediaTvTask } from "../../agent/task/play_media_tv.task";
 registerTaskFunction("play_media_tv", playMediaTvTask);
 
 const log = childLogger({ component: "task_executor" }, logger);

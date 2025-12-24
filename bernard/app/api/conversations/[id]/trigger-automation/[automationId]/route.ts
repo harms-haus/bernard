@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { getRedis } from "@/lib/infra/redis";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { enqueueAutomationJob } from "@/lib/automation/queue";
 import type { AutomationEvent, ConversationArchivedEvent, UserMessageEvent, AssistantMessageCompleteEvent } from "@/lib/automation/types";
 

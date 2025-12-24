@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { SessionStore, TokenStore, UserStore } from "@/lib/auth";
-import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper, type MessageRecord } from "@/agent/recordKeeper/conversation.keeper";
 import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";

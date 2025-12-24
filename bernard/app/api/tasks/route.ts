@@ -1,18 +1,18 @@
 import type { NextRequest } from "next/server";
 
-import { validateAccessToken } from "@/lib/auth";
-import { TaskRecordKeeper } from "@/lib/task/recordKeeper";
+import { getAuthenticatedUser } from "@/lib/auth";
+import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const auth = await validateAccessToken(req);
-  if ("error" in auth) return auth.error;
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), { status: 401 });
+  }
 
-  // For now, we'll use a hardcoded user ID since the auth system may not provide user IDs yet
-  // In a full implementation, this would come from the auth token
-  const userId = "user"; // TODO: Get from auth token
+  const userId = user.user.id;
 
   const recordKeeper = new TaskRecordKeeper(getRedis());
 

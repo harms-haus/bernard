@@ -8,11 +8,11 @@ import {
   validateEntityId,
   getDomainFromEntityId,
   formatEntitiesForDisplay
-} from "../agent/harness/router/tools/ha-entities";
-import { createListHAEntitiesToolInstance } from "../agent/harness/router/tools/ha-list-entities";
-import { createExecuteHomeAssistantServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
-import { createGetHistoricalStateToolInstance } from "../agent/harness/router/tools/ha-historical-state";
-import { HomeAssistantContextManager } from "../agent/harness/router/tools/ha-context";
+} from "../agent/tool/ha-entities";
+import { createListHAEntitiesToolInstance } from "../agent/tool/ha-list-entities";
+import { createExecuteHomeAssistantServicesToolInstance } from "../agent/tool/ha-execute-services";
+import { createGetHistoricalStateToolInstance } from "../agent/tool/ha-historical-state";
+import { HomeAssistantContextManager } from "../agent/tool/ha-context";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 describe("Home Assistant Entities", () => {
@@ -195,7 +195,7 @@ light.living_room,Living Room Light,on,main light
 });
 
 // Mock the WebSocket client
-vi.mock("../agent/harness/router/tools/ha-websocket-client", () => ({
+vi.mock("../agent/tool/ha-websocket-client", () => ({
   getHAConnection: vi.fn(),
   closeHAConnection: vi.fn(),
   closeAllHAConnections: vi.fn(),
@@ -258,7 +258,7 @@ switch.kitchen,Kitchen Switch,off,light switch
     it("should execute a service call via WebSocket API when configured", async () => {
       // Mock WebSocket connection and callService
       const mockConnection = { connected: true };
-      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+      const { getHAConnection } = await import("../agent/tool/ha-websocket-client");
       const { callService } = await import("home-assistant-js-websocket");
 
       vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
@@ -504,7 +504,7 @@ light.living_room,Living Room Light,on,main light
         connected: true,
         sendMessagePromise: vi.fn()
       };
-      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+      const { getHAConnection } = await import("../agent/tool/ha-websocket-client");
 
       vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
       mockConnection.sendMessagePromise.mockResolvedValue({
@@ -549,7 +549,7 @@ light.living_room,Living Room Light,on,main light
         connected: true,
         sendMessagePromise: vi.fn()
       };
-      const { getHAConnection } = await import("../agent/harness/router/tools/ha-websocket-client");
+      const { getHAConnection } = await import("../agent/tool/ha-websocket-client");
 
       vi.mocked(getHAConnection).mockResolvedValue(mockConnection as any);
       mockConnection.sendMessagePromise.mockResolvedValue({

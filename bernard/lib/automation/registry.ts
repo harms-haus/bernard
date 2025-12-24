@@ -16,10 +16,10 @@ async function loadAutomations(): Promise<Map<string, Automation>> {
 
   try {
     // Import automations statically
-    const { automation: summarizeAutomation } = await import('./automations/summarizeConversation');
-    const { automation: tagAutomation } = await import('./automations/tagConversation');
-    const { automation: flagAutomation } = await import('./automations/flagConversation');
-    const { automation: indexAutomation } = await import('./automations/indexConversation');
+    const { automation: summarizeAutomation } = await import('../../agent/automations/summarizeConversation');
+    const { automation: tagAutomation } = await import('../../agent/automations/tagConversation');
+    const { automation: flagAutomation } = await import('../../agent/automations/flagConversation');
+    const { automation: indexAutomation } = await import('../../agent/automations/indexConversation');
 
     // Add them to the cache
     [summarizeAutomation, tagAutomation, flagAutomation, indexAutomation].forEach(automation => {

@@ -6,7 +6,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { validateAccessToken } from "@/lib/auth";
 import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/conversation/messages";
 import { ConversationSummaryService } from "@/lib/conversation/summary";
-import { RecordKeeper, type MessageRecord } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper, type MessageRecord } from "@/agent/recordKeeper/conversation.keeper";
 import { getPrimaryModel } from "@/lib/config/models";
 import { getRedis } from "@/lib/infra/redis";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";

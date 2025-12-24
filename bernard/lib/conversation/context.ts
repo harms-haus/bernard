@@ -3,7 +3,7 @@ import type { MessageRecord, ToolCallEntry } from "./types";
 import { createMessageFingerprint, deduplicateMessages } from "./dedup";
 import { buildRouterSystemPrompt } from "../../agent/harness/router/prompts";
 import { buildResponseSystemPrompt } from "../../agent/harness/respond/prompts";
-import type { ToolWithInterpretation } from "../../agent/harness/router/tools";
+import type { ToolWithInterpretation } from "../../agent/tool";
 import { normalizeRecordContent } from "./messages";
 
 /**

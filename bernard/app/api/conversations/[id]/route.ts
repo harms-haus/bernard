@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis } from "@/lib/infra/redis";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { validateAuth } from "@/app/api/v1/_lib/openai";
 
 export const runtime = "nodejs";

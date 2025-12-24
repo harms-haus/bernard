@@ -13,6 +13,16 @@ AI coding agent instructions for **bernard**
 **Project Structure:**
 - `docs/` - Documentation
 - `bernard/` - Main application codebase
+  - `agent/` - Agent components
+    - `tool/` - Tool implementations
+    - `task/` - Background task implementations
+  - `recordKeeper/conversation.keeper.ts` - Conversation record keeping
+  - `recordKeeper/task.keeper.ts` - Task record keeping
+  - `lib/` - Shared utilities organized by domain
+    - `home-assistant/` - Home Assistant integrations
+    - `plex/` - Plex media server integrations
+    - `weather/` - Weather and geocoding utilities
+    - `website/` - Website content utilities
 - `bernard-ui/` - Frontend interface
 - `docs/agent/` - Agent architecture documentation
 - `docs/plans/` - Temporary implementation plans and specifications

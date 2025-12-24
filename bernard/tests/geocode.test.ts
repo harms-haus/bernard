@@ -11,7 +11,7 @@ import {
   normalizeLabel,
   parsePlaces,
   summarizePlaces
-} from "../agent/harness/router/tools/geocode";
+} from "../agent/tool/geocode.tool";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;

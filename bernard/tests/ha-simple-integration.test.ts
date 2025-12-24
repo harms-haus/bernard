@@ -5,10 +5,10 @@ import {
   parseHomeAssistantEntities,
   extractHomeAssistantContext,
   formatEntitiesForDisplay
-} from "../agent/harness/router/tools/ha-entities";
-import { HomeAssistantContextManager } from "../agent/harness/router/tools/ha-context";
-import { createListHAEntitiesToolInstance } from "../agent/harness/router/tools/ha-list-entities";
-import { createExecuteHomeAssistantServicesToolInstance } from "../agent/harness/router/tools/ha-execute-services";
+} from "../agent/tool/ha-entities";
+import { HomeAssistantContextManager } from "../agent/tool/ha-context";
+import { createListHAEntitiesToolInstance } from "../agent/tool/ha-list-entities";
+import { createExecuteHomeAssistantServicesToolInstance } from "../agent/tool/ha-execute-services";
 
 describe("Home Assistant Simple Integration", () => {
   let scopedContextManager: HomeAssistantContextManager;

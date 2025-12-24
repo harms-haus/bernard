@@ -15,7 +15,7 @@ function uniqueId(prefix: string) {
 }
 
 
-import type { ToolWithInterpretation } from "../router/tools";
+import type { ToolWithInterpretation } from "../../tool";
 
 /**
  * Context passed to the response harness

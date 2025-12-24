@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "vitest";
 
-import { getWeatherDataTool } from "../agent/harness/router/tools";
-import { chooseUnits, parseTarget, parseDateRange, getImperialUnits } from "../agent/harness/router/tools/weather-common";
+import { getWeatherDataTool } from "../agent/tool";
+import { chooseUnits, parseTarget, parseDateRange, getImperialUnits } from "../lib/weather";
 
 const TEST_TIMEOUT = 2000;
 const originalFetch = globalThis.fetch;

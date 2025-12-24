@@ -1,5 +1,5 @@
 import { RedisVectorStore } from "@langchain/redis";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { ConversationIndexer } from "@/lib/indexing/indexer";
 import { raiseEvent } from "@/lib/automation/hookService";
 import { getRedis } from "@/lib/infra/redis";

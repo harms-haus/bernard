@@ -1,5 +1,5 @@
 // Simple test to verify HA tools are enabled with REST config
-const { getRouterTools } = require('./agent/harness/router/tools/index.ts');
+const { getRouterTools } = require('./bernard/agent/tool/index.ts');
 
 console.log('Testing HA tool enablement...');
 

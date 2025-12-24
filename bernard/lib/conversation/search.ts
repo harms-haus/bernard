@@ -5,7 +5,7 @@ import { createClient } from "redis";
 import type { RedisClientType } from "redis";
 
 import { getEmbeddingModel } from "../config/embeddings";
-import type { RecordKeeper } from "./recordKeeper";
+import type { RecordKeeper } from "../../agent/recordKeeper/conversation.keeper";
 import type { Conversation } from "./types";
 
 const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";

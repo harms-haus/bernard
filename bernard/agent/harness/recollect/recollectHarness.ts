@@ -4,7 +4,7 @@ import type { AgentOutputItem } from "../../streaming/types";
 import type { RouterContext } from "../../../lib/conversation/context";
 import { getEmbeddingModel } from "../../../lib/config/embeddings";
 import { ConversationSearchService } from "../../../lib/conversation/search";
-import type { RecordKeeper } from "../../../lib/conversation/recordKeeper";
+import type { RecordKeeper } from "../../recordKeeper/conversation.keeper";
 import { getEmbeddingsForResults } from "./embeddings";
 import { rerankByUniqueness, rerankByRelevance } from "./rerank";
 import { getChunkMessagePositions } from "./positions";

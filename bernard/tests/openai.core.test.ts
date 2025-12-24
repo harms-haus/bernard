@@ -56,7 +56,7 @@ class StubRecordKeeper {
   }
 }
 
-vi.mock("@/lib/conversation/recordKeeper", () => ({
+vi.mock("@/agent/recordKeeper/conversation.keeper", () => ({
   RecordKeeper: StubRecordKeeper
 }));
 
@@ -226,7 +226,7 @@ test("hydrateMessagesWithHistory merges history with incoming and orders by ts",
   ];
   const incoming = [mkMessage("human", "hi"), mkMessage("ai", "reply")];
   const merged = await openai.hydrateMessagesWithHistory({
-    keeper: StubRecordKeeper.instances.at(-1) as unknown as import("@/lib/conversation/recordKeeper").RecordKeeper,
+    keeper: StubRecordKeeper.instances.at(-1) as unknown as import("@/agent/recordKeeper/conversation.keeper").RecordKeeper,
     conversationId: "conv",
     incoming
   });

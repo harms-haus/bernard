@@ -1,5 +1,5 @@
 import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
-import { RecordKeeper } from "@/lib/conversation/recordKeeper";
+import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { raiseEvent } from "@/lib/automation/hookService";
 import { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import type { AgentOutputItem } from "../streaming/types";
@@ -10,12 +10,13 @@ import { AIMessage, BaseMessage } from "@langchain/core/messages";
 import { createDelegateSequencer } from "../streaming/delegateSequencer";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
 import { deduplicateMessages } from "@/lib/conversation/dedup";
-import type { HomeAssistantContextManager } from "../harness/router/tools/utility/home-assistant-context";
-import type { ToolWithInterpretation } from "../harness/router/tools";
-import type { HARestConfig } from "../harness/router/tools/home-assistant-list-entities.tool";
+import type { HomeAssistantContextManager } from "@/lib/home-assistant";
+import type { ToolWithInterpretation } from "../tool";
+import type { HARestConfig } from "../tool/home-assistant-list-entities.tool";
+import type { PlexConfig } from "@/lib/plex";
 import { getSettings } from "@/lib/config/settingsCache";
 import { getRedis } from "@/lib/infra/redis";
-import { TaskRecordKeeper } from "@/lib/task/recordKeeper";
+import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { enqueueTask } from "@/lib/task/queue";
 import crypto from "node:crypto";
 
@@ -436,7 +437,7 @@ export class StreamingOrchestrator {
 
         // Close all Home Assistant WebSocket connections
         try {
-            const { closeAllHAConnections } = await import('../harness/router/tools/utility/home-assistant-websocket-client');
+            const { closeAllHAConnections } = await import('@/lib/home-assistant');
             closeAllHAConnections();
             console.log('[StreamingOrchestrator] Closed all HA WebSocket connections');
         } catch (error) {

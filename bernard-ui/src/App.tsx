@@ -17,7 +17,7 @@ import Services from './pages/admin/Services'
 import Users from './pages/admin/Users'
 import Automations from './pages/admin/Automations'
 import ConversationDetail from './pages/admin/ConversationDetail'
-import Tasks from './pages/Tasks'
+import { Tasks } from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
 

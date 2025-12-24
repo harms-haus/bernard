@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { RecordKeeper } from "../lib/conversation/recordKeeper";
+import { RecordKeeper } from "../agent/recordKeeper/conversation.keeper";
 import { CONVERSATION_TASKS } from "../lib/queue/types";
 import { buildConversationTaskProcessor } from "../lib/queue/conversationTasks";
 import type { ConversationTaskResult } from "../lib/queue/conversationTasks";
@@ -99,3 +99,4 @@ test("conversation task processor runs index, summary, and flag handlers", async
   const flags = JSON.parse(convAfterFlag.flags);
   assert.equal(flags.forbidden, true);
 });
+

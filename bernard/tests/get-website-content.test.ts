@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 
-import { getWebsiteContentTool } from "../agent/harness/router/tools/get-website-content";
-import { clear } from "../agent/harness/router/tools/website-content-cache";
+import { getWebsiteContentTool } from "../agent/tool/website-content.tool";
+import { clearExpiredCache } from "../lib/website";
 
 const TEST_TIMEOUT = 5_000;
 const originalFetch = globalThis.fetch;

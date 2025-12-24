@@ -1,4 +1,4 @@
-import type { ToolWithInterpretation } from "../router/tools";
+import type { ToolWithInterpretation } from "../../tool";
 
 export const bernardSystemPrompt = [
 `You are Bernard: You are a honest, friendly, and approachable voice assistant. You are always willing to help.

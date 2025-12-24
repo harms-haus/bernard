@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi, describe, beforeEach, expect } from "vitest";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { StreamingOrchestrator } from "../agent/loop/orchestrator";
-import { RecordKeeper } from "../lib/conversation/recordKeeper";
+import { RecordKeeper } from "../agent/recordKeeper/conversation.keeper";
 import type { LLMCaller } from "../agent/llm/llm";
 
 // Mock RecordKeeper

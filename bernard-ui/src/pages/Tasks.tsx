@@ -55,9 +55,7 @@ export function Tasks() {
       });
 
       const response = await fetch(`/api/tasks?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-        }
+        credentials: 'include'
       });
 
       if (!response.ok) {
