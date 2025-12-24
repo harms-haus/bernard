@@ -3,6 +3,7 @@
  * Maps location identifiers to Home Assistant media player entities and Plex client IDs
  */
 export interface DeviceConfig {
+  adbAddress?: string;        // ADB address for direct ADB commands
   haEntityId?: string;        // Home Assistant entity ID for ADB commands
   haPlexEntityId?: string;    // Home Assistant entity ID for Plex commands
   plexClientId?: string;      // Plex client machine ID for direct navigation
@@ -17,12 +18,14 @@ export type PlexDeviceMapping = Record<string, DeviceConfig>;
  */
 export const DEVICE_MAPPING: PlexDeviceMapping = {
   'living_room': {
+    adbAddress: '10.97.1.90:5555',
     haEntityId: 'media_player.living_room_tv_lucifer',
     haPlexEntityId: 'media_player.living_room_plex_lucifer',
     plexClientId: '8d526b29a260ac38-com-plexapp-android',
     deviceName: 'Living Room TV'
   },
   'main_bed': {
+    adbAddress: '10.97.1.92:5555',
     haEntityId: 'media_player.main_bed_tv_asmodeus',
     haPlexEntityId: 'media_player.main_bed_plex_asmodeus',
     plexClientId: 'dc1b3ceb227d64ba-com-plexapp-android', 
@@ -77,10 +80,25 @@ export function getDeviceName(locationId: string): string {
 }
 
 /**
+ * Resolve location to ADB address (if available)
+ */
+export function resolveAdbAddress(locationId: string): string | null {
+  const config = resolveDeviceConfig(locationId);
+  return config?.adbAddress || null;
+}
+
+/**
  * Check if a location supports ADB commands via Home Assistant
  */
 export function supportsADB(locationId: string): boolean {
   return resolveHAEntityId(locationId) !== null;
+}
+
+/**
+ * Check if a location supports direct ADB commands
+ */
+export function supportsDirectADB(locationId: string): boolean {
+  return resolveAdbAddress(locationId) !== null;
 }
 
 /**

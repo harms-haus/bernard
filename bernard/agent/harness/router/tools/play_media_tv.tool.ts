@@ -5,13 +5,24 @@ import type { HomeAssistantServiceCall } from "./utility/home-assistant-entities
 import { getHAConnection } from "./utility/home-assistant-websocket-client";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getEntityState } from "./home-assistant-get-entity-state.tool";
+import { callHAService } from "./utility/home-assistant-rest-client";
 import {
   resolveDeviceConfig,
   resolveHAEntityId,
   resolveHAPlexEntityId,
+  resolveAdbAddress,
   getDeviceName,
   getSupportedLocations
 } from "./utility/plex-device-mapping";
+import { getRedis } from "../../../../lib/infra";
+import { logger } from "../../../../lib/logging";
+import { exec } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+
+const execAsync = promisify(exec);
 
 /**
  * Plex configuration
@@ -285,98 +296,125 @@ function rankSearchResults(query: string, results: PlexMediaItem[]): PlexMediaIt
  * Check if the media player is powered on
  */
 async function checkMediaPlayerPowerState(
-  haConfig: HARestConfig,
-  entityId: string
+  haConfig: HARestConfig | undefined,
+  entityId: string | null,
+  adbAddress: string | null
 ): Promise<boolean> {
-  if (!haConfig.accessToken) {
-    console.warn(`Home Assistant access token is required to check power state for ${entityId}`);
-    return true; // Assume device is on if we can't check
+  // Try direct ADB first if available
+  if (adbAddress) {
+    try {
+      const adbResult = await checkScreenPowerViaAdb(adbAddress);
+      return adbResult;
+    } catch (error) {
+      logger.warn({
+        msg: 'Direct ADB power check failed, falling back to HA',
+        address: adbAddress,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
-  try {
-    const entityState = await getEntityState(
-      haConfig.baseUrl,
-      haConfig.accessToken,
-      entityId
-    );
+  // Fall back to HA entity state check
+  if (haConfig?.accessToken && entityId) {
+    try {
+      const entityState = await getEntityState(
+        haConfig.baseUrl,
+        haConfig.accessToken,
+        entityId
+      );
 
-    console.log(`[DEBUG] ${entityId} current state:`, entityState);
+      // Media players use various states: 'on', 'idle', 'playing', 'paused', etc.
+      // Only 'off' means the TV is off. Everything else (including 'idle', 'unavailable') means it's on
+      const state = entityState?.state?.toLowerCase();
+      const haSaysOn = state !== 'off' && state !== 'unavailable' && state !== 'unknown';
 
-    // Media players use various states: 'on', 'idle', 'playing', 'paused', etc.
-    // Only 'off' means the TV is off. Everything else (including 'idle', 'unavailable') means it's on
-    const state = entityState?.state?.toLowerCase();
-    return state !== 'off' && state !== 'unavailable' && state !== 'unknown';
-  } catch (error) {
-    console.warn(`Failed to check power state for ${entityId}:`, error);
-    // If we can't determine the state, assume it's on to avoid breaking functionality
-    return true;
+      return haSaysOn;
+
+    } catch (error) {
+      logger.warn({
+        msg: 'HA power check failed',
+        entityId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
+
+  // If both methods fail, assume device is on to avoid breaking functionality
+  logger.warn({
+    msg: 'All power state checks failed, assuming TV is on',
+    adbAddress,
+    entityId
+  });
+  return true;
 }
 
 /**
- * Check if Plex appears to be the current app by examining source/app_name/app_id attributes
- * Note: Only returns true if Plex is explicitly detected, not based on device state alone
+ * Check if Plex appears to be the current app
+ * Note: Only returns true if Plex is explicitly detected
  */
 async function checkIfPlexIsCurrentApp(
-  haConfig: HARestConfig,
-  entityId: string
+  haConfig: HARestConfig | undefined,
+  entityId: string | null,
+  adbAddress: string | null
 ): Promise<boolean> {
-  if (!haConfig.accessToken) {
-    console.warn(`Home Assistant access token is required to check Plex app state for ${entityId}`);
-    return false; // Assume Plex is not current if we can't check
+  // Try direct ADB first if available
+  if (adbAddress) {
+    try {
+      const adbResult = await checkPlexActivityViaAdb(adbAddress);
+      return adbResult;
+    } catch (error) {
+      logger.warn({
+        msg: 'Direct ADB Plex check failed, falling back to HA',
+        address: adbAddress,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
-  try {
-    const entityState = await getEntityState(
-      haConfig.baseUrl,
-      haConfig.accessToken,
-      entityId
-    );
+  // Fall back to HA entity attributes check
+  if (haConfig?.accessToken && entityId) {
+    try {
+      const entityState = await getEntityState(
+        haConfig.baseUrl,
+        haConfig.accessToken,
+        entityId
+      );
 
-    // Check various indicators that might suggest Plex is running
-    const appName = entityState?.attributes?.['app_name'];
-    const source = entityState?.attributes?.['source'];
-    const appId = entityState?.attributes?.['app_id'];
+      // Check various indicators that might suggest Plex is running
+      const appName = entityState?.attributes?.['app_name'];
+      const source = entityState?.attributes?.['source'];
+      const appId = entityState?.attributes?.['app_id'];
 
-    console.log(`[DEBUG] Checking if Plex is current app for ${entityId}:`, {
-      state: entityState,
-      source,
-      app_name: appName,
-      app_id: appId
-    });
+      // Check app_name (most reliable indicator)
+      const appNameStr = typeof appName === 'string' ? appName : '';
+      if (appNameStr.toLowerCase().includes('plex')) {
+        return true;
+      }
 
-    // Check app_name (most reliable indicator)
-    const appNameStr = typeof appName === 'string' ? appName : '';
-    if (appNameStr.toLowerCase().includes('plex')) {
-      console.log(`[DEBUG] Plex detected via app_name: "${appNameStr}"`);
-      return true;
+      // Check source (running apps as sources) - this is very reliable
+      const sourceStr = typeof source === 'string' ? source : '';
+      if (sourceStr.toLowerCase().includes('plex')) {
+        return true;
+      }
+
+      // Check app_id
+      const appIdStr = typeof appId === 'string' ? appId : '';
+      if (appIdStr.includes('plex') || appIdStr.includes('com.plexapp.android')) {
+        return true;
+      }
+
+    } catch (error) {
+      logger.warn({
+        msg: 'HA Plex check failed',
+        entityId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Check source (running apps as sources) - this is very reliable
-    const sourceStr = typeof source === 'string' ? source : '';
-    if (sourceStr.toLowerCase().includes('plex')) {
-      console.log(`[DEBUG] Plex detected via source: "${sourceStr}"`);
-      return true;
-    }
-
-    // Check app_id
-    const appIdStr = typeof appId === 'string' ? appId : '';
-    if (appIdStr.includes('plex') || appIdStr.includes('com.plexapp.android')) {
-      console.log(`[DEBUG] Plex detected via app_id: "${appIdStr}"`);
-      return true;
-    }
-
-    // Only consider Plex current if we can explicitly detect it via source/app_name/app_id
-    // Do NOT assume Plex is running just because the device is idle/playing/paused
-
-    console.log(`[DEBUG] Plex not detected as current app`);
-    return false;
-
-  } catch (error) {
-    console.warn(`Failed to check if Plex is current app for ${entityId}:`, error);
-    // If we can't determine, assume Plex is not current to trigger launch
-    return false;
   }
+
+  // If both methods fail or don't detect Plex, assume it's not active
+  return false;
+  return false;
 }
 
 /**
@@ -435,6 +473,446 @@ async function launchPlexApp(
 }
 
 /**
+ * ADB configuration stored in Redis
+ */
+interface AdbConfig {
+  privateKey: string;
+  publicKey: string;
+}
+
+/**
+ * Get ADB keys from Redis, generating them if they don't exist
+ */
+async function getAdbKeys(): Promise<AdbConfig> {
+  const redis = getRedis();
+
+  try {
+    const existingKeys = await redis.get('adb_keys');
+    if (existingKeys) {
+      return JSON.parse(existingKeys);
+    }
+  } catch (error) {
+    console.warn('Failed to retrieve ADB keys from Redis:', error);
+  }
+
+  // Generate new ADB keys
+  logger.info('Generating new ADB keys for device authorization');
+
+  const keyDir = path.join(os.tmpdir(), 'bernard-adb-keys');
+  const privateKeyPath = path.join(keyDir, 'adbkey');
+  const publicKeyPath = path.join(keyDir, 'adbkey.pub');
+
+  try {
+    // Create key directory
+    await fs.promises.mkdir(keyDir, { recursive: true });
+
+    // Generate RSA key pair using ssh-keygen
+    await execAsync(`ssh-keygen -t rsa -b 2048 -f "${privateKeyPath}" -N "" -C "bernard-livingroom-tv"`);
+
+    // Read the keys
+    const privateKey = await fs.promises.readFile(privateKeyPath, 'utf8');
+    const publicKey = await fs.promises.readFile(publicKeyPath, 'utf8');
+
+    const adbConfig: AdbConfig = {
+      privateKey,
+      publicKey
+    };
+
+    // Store in Redis
+    await redis.set('adb_keys', JSON.stringify(adbConfig));
+
+    // Clean up temporary files
+    await fs.promises.unlink(privateKeyPath);
+    await fs.promises.unlink(publicKeyPath);
+    await fs.promises.rmdir(keyDir);
+
+    logger.info('ADB keys generated and stored securely');
+    return adbConfig;
+
+  } catch (error) {
+    logger.error({
+      msg: 'Failed to generate ADB keys',
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw new Error('Could not generate ADB authentication keys');
+  }
+}
+
+/**
+ * Initialize ADB connection to living room TV only
+ * This should be called during system startup
+ */
+async function initializeLivingRoomAdb(): Promise<void> {
+  console.log('🔧 Initializing ADB connection to living room TV...');
+
+  // Check if ADB is available
+  if (!(await isAdbAvailable())) {
+    console.log('ADB not installed - skipping ADB initialization, will use HA fallback');
+    return;
+  }
+
+  try {
+    // Generate keys if needed
+    await getAdbKeys();
+
+    // Connect to living room TV only
+    const livingRoomAddress = '10.97.1.90:5555';
+    console.log(`Connecting to living room TV at ${livingRoomAddress}...`);
+
+    // Kill any existing server and start fresh
+    try {
+      await execAsync('adb kill-server', { timeout: 5000 });
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await execAsync('adb start-server', { timeout: 5000 });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (serverError) {
+      console.warn('ADB server restart failed:', serverError);
+    }
+
+    // Attempt connection
+    const connectResult = await execAsync(`adb connect ${livingRoomAddress}`, { timeout: 10000 });
+    console.log(`ADB connect result: ${connectResult.stdout.trim()}`);
+
+    // Wait for connection
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Verify connection
+    const devicesResult = await execAsync('adb devices', { timeout: 5000 });
+    console.log(`ADB devices: ${devicesResult.stdout.trim()}`);
+
+    if (devicesResult.stdout.includes(livingRoomAddress) && !devicesResult.stdout.includes('offline')) {
+      console.log('✅ Living room TV ADB connection established successfully');
+
+      // Test communication
+      try {
+        const testResult = await executeDirectAdbCommand(livingRoomAddress, 'echo "ADB ready"');
+        if (testResult.includes('ADB ready')) {
+          console.log('✅ Living room TV ADB communication verified');
+        } else {
+          console.log('⚠️  Living room TV connected but test communication failed');
+        }
+      } catch (testError) {
+        console.log('⚠️  Living room TV connected but test communication failed:', testError);
+      }
+    } else {
+      console.log('⚠️  Living room TV ADB connection failed - will use HA fallback');
+    }
+
+  } catch (error) {
+    console.error('Failed to initialize living room ADB connection:', error);
+    console.log('Will use HA fallback for living room TV control');
+  }
+
+  console.log('🏠 Bedroom TV ADB connection deliberately skipped (wife sleeping)');
+}
+
+/**
+ * Check if ADB is available on the system
+ */
+async function isAdbAvailable(): Promise<boolean> {
+  try {
+    await execAsync('which adb', { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Execute ADB command directly on a device
+ */
+async function executeDirectAdbCommand(
+  adbAddress: string,
+  command: string
+): Promise<string> {
+  // Check if ADB is available
+  if (!(await isAdbAvailable())) {
+    throw new Error('ADB is not installed on this system. Please install Android SDK platform tools.');
+  }
+
+  const adbKeys = await getAdbKeys();
+
+  // Create temporary key files
+  const keyDir = path.join(os.tmpdir(), `bernard-adb-${Date.now()}`);
+  const privateKeyPath = path.join(keyDir, 'adbkey');
+
+  try {
+    await fs.promises.mkdir(keyDir, { recursive: true });
+    await fs.promises.writeFile(privateKeyPath, adbKeys.privateKey, { mode: 0o600 });
+
+    // ADB command with key authentication
+    const adbCommand = `ADB_VENDOR_KEYS="${privateKeyPath}" adb -s ${adbAddress} shell "${command}"`;
+
+    const { stdout, stderr } = await execAsync(adbCommand, {
+      timeout: 10000, // 10 second timeout
+      env: {
+        ...process.env,
+        ADB_VENDOR_KEYS: privateKeyPath
+      }
+    });
+
+    if (stderr && !stdout) {
+      console.warn('ADB command produced stderr:', stderr);
+    }
+
+    return stdout.trim();
+
+  } catch (error: any) {
+    logger.error({
+      msg: 'ADB command execution failed',
+      address: adbAddress,
+      command,
+      error: error.message
+    });
+
+    // Try to connect first if connection failed
+    if (error.message.includes('device offline') || error.message.includes('no devices') || error.message.includes('device not found')) {
+      try {
+        console.log(`Attempting to connect to ${adbAddress}...`);
+
+        // First kill any existing ADB server
+        try {
+          await execAsync('adb kill-server', { timeout: 2000 });
+        } catch (e) {
+          // Ignore kill-server errors
+        }
+
+        // Start ADB server
+        await execAsync('adb start-server', { timeout: 5000 });
+
+        // Try to connect
+        const connectResult = await execAsync(`adb connect ${adbAddress}`, { timeout: 10000 });
+
+        // Wait for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Check if device is now connected
+        const devicesResult = await execAsync('adb devices', { timeout: 5000 });
+
+        if (!devicesResult.stdout.includes(adbAddress) || devicesResult.stdout.includes('offline')) {
+          logger.error({
+            msg: 'ADB connection recovery failed',
+            address: adbAddress,
+            devices: devicesResult.stdout.trim()
+          });
+          throw new Error(`Failed to connect to ${adbAddress} - device not found in adb devices list`);
+        }
+
+        logger.info({
+          msg: 'ADB connection recovered successfully',
+          address: adbAddress
+        });
+
+        // Retry the command
+        const adbCommand = `ADB_VENDOR_KEYS="${privateKeyPath}" adb -s ${adbAddress} shell "${command}"`;
+        const { stdout } = await execAsync(adbCommand, {
+          timeout: 10000,
+          env: {
+            ...process.env,
+            ADB_VENDOR_KEYS: privateKeyPath
+          }
+        });
+        return stdout.trim();
+
+      } catch (retryError: any) {
+        logger.error({
+          msg: 'ADB command retry failed',
+          address: adbAddress,
+          error: retryError.message,
+          command
+        });
+
+        // Provide helpful troubleshooting information
+        const troubleshooting = `
+ADB Connection Troubleshooting:
+1. Enable ADB over network on your Android TV:
+   - Go to Settings > Device Preferences > About
+   - Tap "Android TV OS Build" 7 times to enable Developer Options
+   - Go to Settings > Device Preferences > Developer options
+   - Enable "ADB debugging" and "ADB over network"
+
+2. Find your TV's IP address in Developer Options > ADB over network
+
+3. If still failing, try USB connection first:
+   - Connect TV via USB to this machine
+   - Run: adb devices (should show device)
+   - Run: adb tcpip 5555
+   - Disconnect USB, then try network connection
+
+4. Check firewall settings and network connectivity
+
+Current error: ${retryError.message}
+        `.trim();
+
+        logger.error({
+          msg: 'ADB connection troubleshooting',
+          address: adbAddress,
+          troubleshooting,
+          originalError: retryError.message
+        });
+        throw new Error(`ADB connection failed for ${adbAddress}. Check logs for troubleshooting steps.`);
+      }
+    }
+
+    throw error;
+
+  } finally {
+    // Clean up temporary key file
+    try {
+      await fs.promises.unlink(privateKeyPath);
+      await fs.promises.rmdir(keyDir);
+    } catch (cleanupError) {
+      logger.warn({
+        msg: 'ADB key cleanup failed',
+        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      });
+    }
+  }
+}
+
+/**
+ * Call an ADB command directly and return the result
+ */
+async function callAdbCommand(
+  adbAddress: string,
+  command: string
+): Promise<{ adb_response?: string }> {
+  try {
+    const output = await executeDirectAdbCommand(adbAddress, command);
+    return { adb_response: output };
+  } catch (error) {
+    logger.warn({
+      msg: 'ADB command failed, returning empty result',
+      address: adbAddress,
+      command,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return {}; // Return empty result on failure
+  }
+}
+
+/**
+ * Check screen power state using ADB command
+ */
+async function checkScreenPowerViaAdb(
+  adbAddress: string
+): Promise<boolean> {
+  try {
+    const result = await callAdbCommand(
+      adbAddress,
+      'dumpsys power | grep mWakefulness='
+    );
+
+    const output = result.adb_response || '';
+
+    if (output.includes('mWakefulness=Awake') || output.includes('mWakefulness=Asleep')) {
+      return true;
+    } else if (output.includes('mWakefulness=Dozing')) {
+      return false;
+    }
+
+    logger.warn({
+      msg: 'Unable to parse ADB power state output',
+      output
+    });
+    // If we can't determine the state, assume it's on (safer default)
+    return true;
+  } catch (error) {
+    logger.error({
+      msg: 'ADB power state check failed',
+      address: adbAddress,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return false;
+  }
+}
+
+/**
+ * Check if Plex is the current activity using ADB command
+ */
+async function checkPlexActivityViaAdb(
+  adbAddress: string
+): Promise<boolean> {
+  try {
+    // First try a simple test command to see if ADB is working
+    const testResult = await callAdbCommand(
+      adbAddress,
+      'echo "ADB_TEST"'
+    );
+
+    if (!testResult.adb_response || !testResult.adb_response.includes('ADB_TEST')) {
+      logger.warn({
+        msg: 'ADB connectivity test failed',
+        address: adbAddress
+      });
+      return false;
+    }
+
+    // Try the primary command first (may not work on all Android TV versions)
+    let result = await callAdbCommand(
+      adbAddress,
+      'dumpsys window windows | grep mCurrentFocus='
+    );
+
+    let output = result.adb_response || '';
+    let focusMatch = null;
+
+    // Parse: mCurrentFocus=Window{... u0 com.plexapp.android/com.plexapp.activities.MainActivity}
+    if (output.trim()) {
+      focusMatch = output.match(
+        /mCurrentFocus=Window\{[^}]*\s+u0\s+([^/]+)\/([^\}]+)\}/
+      );
+    }
+
+    if (!focusMatch) {
+      console.log('Primary activity command failed or returned empty, trying alternative...');
+
+      // Try alternative command for Android 10+
+      result = await callAdbCommand(
+        adbAddress,
+        'dumpsys activity activities | grep ResumedActivity'
+      );
+
+      output = result.adb_response || '';
+
+      // Parse: mResumedActivity: ActivityRecord{cdc9e4c u0 com.plexapp.android/com.plexapp.plex.home.tv.HomeActivityTV t585}
+      // Look for the package name after "u0 " in the ActivityRecord
+      focusMatch = output.match(
+        /ActivityRecord\{[^}]*\s+u0\s+([^/\s}]+)\/[^\s}]*/
+      );
+
+      if (!focusMatch) {
+        logger.warn({
+          msg: 'ADB activity detection failed to parse package name',
+          address: adbAddress,
+          output
+        });
+        return false;
+      }
+    }
+
+    const packageName = focusMatch[1];
+    const isPlex = packageName === 'com.plexapp.android';
+
+    logger.debug({
+      msg: 'ADB activity detection result',
+      address: adbAddress,
+      packageName,
+      isPlex
+    });
+
+    return isPlex;
+  } catch (error) {
+    logger.error({
+      msg: 'ADB Plex activity check failed',
+      address: adbAddress,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return false;
+  }
+}
+
+/**
  * Create the play plex media tool
  */
 export function createPlayPlexMediaTool(
@@ -488,15 +966,16 @@ export function createPlayPlexMediaTool(
       const deviceName = getDeviceName(location_id);
       const haEntityId = resolveHAEntityId(location_id);
       const haPlexEntityId = resolveHAPlexEntityId(location_id);
+      const adbAddress = resolveAdbAddress(location_id);
 
       try {
         const actions: string[] = [];
 
         const {bestMatch, mediaType} = await searchPlexBestMatch(plexConfig, media_query, deps);
 
-        await ensureTvOn(haEntityId, haRestConfig, actions, deviceName, deps);
+        await ensureTvOn(haEntityId, haRestConfig, adbAddress, actions, deviceName, deps);
 
-        await ensurePlexActive(haEntityId, haRestConfig, actions, deviceName, deps);
+        await ensurePlexActive(haEntityId, haRestConfig, adbAddress, actions, deviceName, deps);
 
         await playMediaOnPlex(haPlexEntityId, haRestConfig, deps, plexConfig, mediaType, bestMatch, deviceName, actions, location_id, playback_mode);
 
@@ -574,59 +1053,151 @@ async function searchPlexBestMatch(plexConfig: PlexConfig, media_query: string, 
   };
 }
 
-async function ensureTvOn(haEntityId: string | null, haRestConfig: HARestConfig | undefined, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
-  if (haEntityId && haRestConfig) {
-    const isPoweredOn = await checkMediaPlayerPowerState(haRestConfig, haEntityId);
+async function ensureTvOn(haEntityId: string | null, haRestConfig: HARestConfig | undefined, adbAddress: string | null, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
+  // Loop up to 10 times: check if TV is on, if not, turn it on and wait
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    const isPoweredOn = await checkMediaPlayerPowerState(haRestConfig, haEntityId, adbAddress);
 
     if (isPoweredOn) {
-      actions.push(`TV ${deviceName} is already on`);
-    } else {
-      for (let i = 0; i < 3; i++) {
+      if (attempt === 1) {
+        actions.push(`TV ${deviceName} is already on`);
+      } else {
+        actions.push(`Turned on TV ${deviceName}`);
+      }
+      break; // TV is on, we're done
+    }
+
+    let turnOnSucceeded = false;
+
+    try {
+      // Try direct ADB first if available
+      if (adbAddress) {
         try {
-          await turnOnMediaPlayer(haRestConfig, haEntityId, deps);
-        } catch (error) {
-          console.warn(`Failed to turn on ${deviceName}:`, error);
-          if (i === 2) {
-            throw error;
+          await executeDirectAdbCommand(adbAddress, 'input keyevent 224'); // Wake key
+          turnOnSucceeded = true;
+        } catch (adbError) {
+          logger.warn({
+            msg: 'Direct ADB turn-on failed, trying HA fallback',
+            device: deviceName,
+            address: adbAddress,
+            error: adbError instanceof Error ? adbError.message : String(adbError)
+          });
+          // Fall back to HA if ADB fails
+          if (haEntityId && haRestConfig) {
+            await turnOnMediaPlayer(haRestConfig, haEntityId, deps);
+            turnOnSucceeded = true;
           }
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      const isPoweredOnNow = await checkMediaPlayerPowerState(haRestConfig, haEntityId);
-      if (isPoweredOnNow) {
-        actions.push(`Turned on TV ${deviceName}`);
+      } else if (haEntityId && haRestConfig) {
+        // Use HA if no ADB address
+        await turnOnMediaPlayer(haRestConfig, haEntityId, deps);
+        turnOnSucceeded = true;
       } else {
-        actions.push(`Turned on then assumed TV ${deviceName} is on`);
+        throw new Error('No method available to turn on TV');
+      }
+    } catch (error) {
+      logger.error({
+        msg: 'TV turn-on attempt failed',
+        device: deviceName,
+        attempt,
+        maxAttempts: 10,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      if (attempt === 10) {
+        throw new Error(`Failed to turn on TV ${deviceName} after 10 attempts: ${error}`);
       }
     }
+
+    if (!turnOnSucceeded && attempt === 10) {
+      throw new Error(`Failed to turn on TV ${deviceName} - all methods exhausted`);
+    }
+
+    // Wait 1000ms before next attempt
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 }
 
-async function ensurePlexActive(haEntityId: string | null, haRestConfig: HARestConfig | undefined, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
-  if (haEntityId && haRestConfig) {
-    const isPlexCurrent = await checkIfPlexIsCurrentApp(haRestConfig, haEntityId);
+async function ensurePlexActive(haEntityId: string | null, haRestConfig: HARestConfig | undefined, adbAddress: string | null, actions: string[], deviceName: string, deps: PlayPlexMediaDependencies) {
+  // Loop up to 10 times: check if Plex is active, if not, launch it and wait
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    const isPlexCurrent = await checkIfPlexIsCurrentApp(haRestConfig, haEntityId, adbAddress);
 
     if (isPlexCurrent) {
-      actions.push(`Plex is already current app on ${deviceName}`);
-    } else {
-      for (let i = 0; i < 3; i++) {
+      if (attempt === 1) {
+        actions.push(`Plex is already current app on ${deviceName}`);
+      } else {
+        actions.push(`Set Plex as the current app on ${deviceName}`);
+      }
+      break; // Plex is active, we're done
+    }
+
+    let launchSucceeded = false;
+
+    try {
+      // Try direct ADB first if available
+      if (adbAddress) {
         try {
-          await launchPlexApp(haRestConfig, haEntityId, deps);
-        } catch (error) {
-          console.warn(`Failed to launch Plex on ${deviceName}:`, error);
-          if (i === 2) {
-            throw error;
+          // First try to bring existing Plex instance to foreground
+          await executeDirectAdbCommand(adbAddress, 'am start -f 0x200000 -n com.plexapp.android/.MainActivity');
+
+          // Wait a bit and check if it's now foreground
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const checkForeground = await checkPlexActivityViaAdb(adbAddress);
+
+          if (!checkForeground) {
+            // If not foreground, try launching the NowPlaying activity
+            await executeDirectAdbCommand(adbAddress, 'am start -n com.plexapp.android/com.plexapp.plex.home.tv.NowPlayingActivityTV');
+
+            // Wait and check again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const finalCheck = await checkPlexActivityViaAdb(adbAddress);
+            if (!finalCheck) {
+              // Last resort: try to switch to Plex task
+              await executeDirectAdbCommand(adbAddress, 'am task switch com.plexapp.android');
+            }
+          }
+
+          launchSucceeded = true;
+        } catch (adbError) {
+          logger.warn({
+            msg: 'Direct ADB Plex launch failed, trying HA fallback',
+            device: deviceName,
+            address: adbAddress,
+            attempt,
+            error: adbError instanceof Error ? adbError.message : String(adbError)
+          });
+          // Fall back to HA if ADB fails
+          if (haEntityId && haRestConfig) {
+            await launchPlexApp(haRestConfig, haEntityId, deps);
+            launchSucceeded = true;
           }
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      const isPlexCurrentNow = await checkIfPlexIsCurrentApp(haRestConfig, haEntityId);
-      if (isPlexCurrentNow) {
-        actions.push(`Set Plex as the current app on ${deviceName}`);
+      } else if (haEntityId && haRestConfig) {
+        // Use HA if no ADB address
+        await launchPlexApp(haRestConfig, haEntityId, deps);
+        launchSucceeded = true;
       } else {
-        actions.push(`Set then assumed Plex is the current app on ${deviceName}`);
+        throw new Error('No method available to launch Plex');
+      }
+    } catch (error) {
+      logger.error({
+        msg: 'Plex launch attempt failed',
+        device: deviceName,
+        attempt,
+        maxAttempts: 10,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      if (attempt === 10) {
+        throw new Error(`Failed to launch Plex on ${deviceName} after 10 attempts: ${error}`);
       }
     }
+
+    if (!launchSucceeded && attempt === 10) {
+      throw new Error(`Failed to launch Plex on ${deviceName} - all methods exhausted`);
+    }
+
+    // Wait 1000ms before next attempt
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 }
 
@@ -711,3 +1282,5 @@ export function createPlayPlexMediaToolInstance(
 ) {
   return createPlayPlexMediaTool(haRestConfig, plexConfig);
 }
+
+

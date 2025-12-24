@@ -147,6 +147,18 @@ ensure_redis() {
 ensure_redis
 export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
+echo "Initializing ADB connection to living room TV..."
+if command -v adb >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  # Run the ADB initialization script
+  if node "${ROOT_DIR}/bernard/init-livingroom-adb.js"; then
+    echo "ADB initialization completed"
+  else
+    echo "⚠️  ADB initialization script failed - will use HA fallback"
+  fi
+else
+  echo "ADB or Node.js not available - will use HA fallback for all TV control"
+fi
+
 echo "Running type-check..."
 if ! npm run type-check:src --prefix "${ROOT_DIR}/bernard"; then
   echo "Type-check failed. Aborting startup." >&2
