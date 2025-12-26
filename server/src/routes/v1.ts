@@ -5,7 +5,7 @@ import { logger } from '../lib/logger.js';
 
 const BERNARD_URL = process.env.BERNARD_URL || 'http://localhost:3000';
 const VLLM_URL = process.env.VLLM_URL || 'http://localhost:8001';
-const KOKORO_URL = process.env.KOKORO_URL || 'http://localhost:8003';
+const KOKORO_URL = process.env.KOKORO_URL || 'http://localhost:8880';
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8002';
 
 export async function registerV1Routes(fastify: FastifyInstance) {

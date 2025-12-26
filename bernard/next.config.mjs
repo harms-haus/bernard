@@ -8,11 +8,10 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ['pino', 'thread-stream'],
   turbopack: {
-    // Pin the project root so Turbopack ignores stray lockfiles outside this app.
     root: projectRoot
   },
-  serverExternalPackages: ['pino', 'thread-stream'],
   async rewrites() {
     return [
       {
@@ -26,6 +25,10 @@ const nextConfig = {
       {
         source: '/_next/:path*',
         destination: '/_next/:path*'
+      },
+      {
+        source: '/bernard/api/:path*',
+        destination: '/api/:path*'
       },
       {
         source: '/:path*',

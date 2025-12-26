@@ -105,7 +105,7 @@ test("GitHub OAuth endpoint redirects to GitHub with correct parameters", { time
     authUrl: "https://github.com/login/oauth/authorize",
     tokenUrl: "https://github.com/login/oauth/access_token",
     userInfoUrl: "https://api.github.com/user",
-    redirectUri: "http://localhost:3000/api/auth/github/callback",
+    redirectUri: "http://localhost:3456/bernard/api/auth/github/callback",
     scope: "read:user user:email",
     clientId: "github-client-id",
     clientSecret: "github-client-secret"
@@ -190,7 +190,7 @@ test("GitHub OAuth callback handles successful authentication", { timeout: TEST_
     authUrl: "https://github.com/login/oauth/authorize",
     tokenUrl: "https://github.com/login/oauth/access_token",
     userInfoUrl: "https://api.github.com/user",
-    redirectUri: "http://localhost:3000/api/auth/github/callback",
+    redirectUri: "http://localhost:3456/bernard/api/auth/github/callback",
     scope: "read:user user:email",
     clientId: "github-client-id",
     clientSecret: "github-client-secret"
@@ -222,7 +222,7 @@ test("GitHub OAuth callback handles successful authentication", { timeout: TEST_
   // Import the GitHub OAuth callback endpoint
   const githubCallbackModule = await import("../app/api/auth/github/callback/route");
   const response = await githubCallbackModule.GET(
-    new NextRequest(new Request(`http://localhost:3000/api/auth/github/callback?code=gh-auth-code&state=${state}`))
+    new NextRequest(new Request(`http://localhost:3456/bernard/api/auth/github/callback?code=gh-auth-code&state=${state}`))
   );
 
   assert.equal(response.status, 302);
@@ -240,7 +240,7 @@ test("Google OAuth callback handles missing code parameter", { timeout: TEST_TIM
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     userInfoUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
-    redirectUri: "http://localhost:3000/api/auth/google/callback",
+    redirectUri: "http://localhost:3456/bernard/api/auth/google/callback",
     scope: "openid profile email",
     clientId: "google-client-id",
     clientSecret: "google-client-secret"
@@ -250,7 +250,7 @@ test("Google OAuth callback handles missing code parameter", { timeout: TEST_TIM
   // Import the Google OAuth callback endpoint
   const googleCallbackModule = await import("../app/api/auth/google/callback/route");
   const response = await googleCallbackModule.GET(
-    new NextRequest(new Request("http://localhost:3000/api/auth/google/callback"))
+    new NextRequest(new Request("http://localhost:3456/bernard/api/auth/google/callback"))
   );
 
   assert.equal(response.status, 302);
@@ -263,7 +263,7 @@ test("GitHub OAuth callback handles token exchange failure", { timeout: TEST_TIM
     authUrl: "https://github.com/login/oauth/authorize",
     tokenUrl: "https://github.com/login/oauth/access_token",
     userInfoUrl: "https://api.github.com/user",
-    redirectUri: "http://localhost:3000/api/auth/github/callback",
+    redirectUri: "http://localhost:3  456/bernard/api/auth/github/callback",
     scope: "read:user user:email",
     clientId: "github-client-id",
     clientSecret: "github-client-secret"
@@ -288,7 +288,7 @@ test("GitHub OAuth callback handles token exchange failure", { timeout: TEST_TIM
   // Import the GitHub OAuth callback endpoint
   const githubCallbackModule = await import("../app/api/auth/github/callback/route");
   const response = await githubCallbackModule.GET(
-    new NextRequest(new Request(`http://localhost:3000/api/auth/github/callback?code=invalid-code&state=${state}`))
+    new NextRequest(new Request(`http://localhost:3456/bernard/api/auth/github/callback?code=invalid-code&state=${state}`))
   );
 
   assert.equal(response.status, 302);

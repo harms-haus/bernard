@@ -19,7 +19,7 @@ const createClientMock = vi.fn();
 const connectMock = vi.fn();
 const getEmbeddingModelMock = vi.fn(async () => ({ embedQuery: () => Promise.resolve([0]) }));
 
-vi.mock("@langchain/community/vectorstores/redis", () => {
+vi.mock("@langchain/redis", () => {
   class MockRedisVectorStore {
     embeddings: unknown;
     options: unknown;
@@ -600,3 +600,4 @@ test(
     expect(storeDelete).not.toHaveBeenCalled();
   }
 );
+

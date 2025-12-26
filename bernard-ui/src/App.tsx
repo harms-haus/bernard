@@ -34,7 +34,7 @@ function App() {
       <DarkModeProvider>
         <DialogManagerProvider>
           <ToastManagerProvider>
-            <Router>
+            <Router basename="/bernard">
             <Routes>
               <Route path="/login" element={<Login />} />
 

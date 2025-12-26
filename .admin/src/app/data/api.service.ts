@@ -613,7 +613,7 @@ class MockApiClient implements ApiClient {
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
         tokenUrl: 'https://oauth2.googleapis.com/token',
         userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
-        redirectUri: 'http://localhost:3000/api/auth/google/callback',
+        redirectUri: 'http://localhost:3456/bernard/api/auth/google/callback',
         scope: 'openid profile email',
         clientId: 'google-client-id',
         clientSecret: 'google-client-secret'
@@ -622,7 +622,7 @@ class MockApiClient implements ApiClient {
         authUrl: 'https://github.com/login/oauth/authorize',
         tokenUrl: 'https://github.com/login/oauth/access_token',
         userInfoUrl: 'https://api.github.com/user',
-        redirectUri: 'http://localhost:3000/api/auth/github/callback',
+        redirectUri: 'http://localhost:3456/bernard/api/auth/github/callback',
         scope: 'read:user user:email',
         clientId: 'github-client-id',
         clientSecret: 'github-client-secret'

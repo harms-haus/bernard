@@ -22,7 +22,7 @@ This guide sets up a fully self-hosted, GPU-accelerated OpenAI-compatible API pr
                 │              │                   │
                 ▼              ▼                   ▼
             vLLM Server   Whisper.cpp         Kokoro FastAPI
-            (Port 8001)   (Port 8002)         (Port 8003)
+            (Port 8001)   (Port 8002)         (Port 8880)
             
             - Embedding    - Whisper-1        - Kokoro-v1.0
             - nomic-embed  - Live server      - TTS Server
@@ -529,12 +529,12 @@ export CUDA_VISIBLE_DEVICES=0
 
 echo -e "${GREEN}[Kokoro] Starting Kokoro TTS server...${NC}"
 echo -e "${YELLOW}Available voices: af, am, bf, bm, etc${NC}"
-echo -e "${YELLOW}Access at: http://localhost:8003${NC}"
+echo -e "${YELLOW}Access at: http://localhost:8880${NC}"
 
 # The Kokoro-FastAPI repo should have its own startup
 # Usually: python main.py or similar
 # Check the repo for exact command
-python main.py --host 0.0.0.0 --port 8003
+python main.py --host 0.0.0.0 --port 8880
 ```
 
 Make it executable:
@@ -581,7 +581,7 @@ logger = logging.getLogger(__name__)
 # Backend service URLs
 VLLM_URL = "http://localhost:8001"
 WHISPER_URL = "http://localhost:8002"
-KOKORO_URL = "http://localhost:8003"
+KOKORO_URL = "http://localhost:8880"
 
 # HTTP client with longer timeout for inference
 http_client = httpx.AsyncClient(timeout=300.0)
@@ -909,7 +909,7 @@ echo -e "${GREEN}✓ All services started!${NC}\n"
 echo -e "Service Status:"
 echo -e "  ${GREEN}vLLM (Embeddings): http://localhost:8001${NC}"
 echo -e "  ${GREEN}Whisper:           http://localhost:8002${NC}"
-echo -e "  ${GREEN}Kokoro:            http://localhost:8003${NC}"
+echo -e "  ${GREEN}Kokoro:            http://localhost:8880${NC}"
 echo -e "  ${GREEN}Main Proxy:        http://localhost:8000${NC}"
 echo -e "\nQuick Test:"
 echo -e "  ${YELLOW}curl http://localhost:8000/health${NC}"
@@ -1126,7 +1126,7 @@ sudo journalctl -u ai-proxy.service -f
 - Pre-download models manually
 
 ### Port conflicts
-- Check: `lsof -i :8000` (or 8001, 8002, 8003)
+- Check: `lsof -i :8000` (or 8001, 8002, 8880)
 - Kill process: `kill -9 <PID>`
 - Or change ports in startup scripts
 

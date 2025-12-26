@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
     const cookie = buildSessionCookie(session.id, maxAge);
 
     // Parse redirect from state
-    let redirect = "/";
+    let redirect = "/bernard/chat";
     try {
       if (state && typeof state === "string") {
         const stateData = JSON.parse(Buffer.from(state, "base64").toString()) as { redirect?: unknown };

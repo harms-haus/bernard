@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
     const maxAge = Number(process.env["SESSION_TTL_SECONDS"] ?? 60 * 60 * 24 * 7);
 
     // Parse and validate state
-    let redirect = "/";
+    let redirect = "/bernard/chat";
     try {
       if (state && typeof state === "string") {
         const stateData = JSON.parse(Buffer.from(state, "base64").toString()) as { csrf?: unknown; redirect?: unknown };

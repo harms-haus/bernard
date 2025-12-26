@@ -68,7 +68,7 @@ export function Tasks() {
         limit: '50'
       });
 
-      const response = await fetch(`/api/tasks?${params}`, {
+      const response = await fetch(`/bernard/api/tasks?${params}`, {
         credentials: 'include'
       });
 
@@ -108,7 +108,7 @@ export function Tasks() {
       cancelText: 'Keep Running',
       onConfirm: async () => {
         try {
-          const response = await fetch('/api/tasks', {
+          const response = await fetch('/bernard/api/tasks', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -140,7 +140,7 @@ export function Tasks() {
       cancelText: 'Cancel',
       onConfirm: async () => {
         try {
-          const response = await fetch(`/api/tasks?taskId=${taskId}`, {
+          const response = await fetch(`/bernard/api/tasks?taskId=${taskId}`, {
             method: 'DELETE',
             credentials: 'include',
           });

@@ -117,6 +117,10 @@ const PlexServiceSchema = z.object({
   token: z.string().min(1)
 });
 
+const KokoroServiceSchema = z.object({
+  baseUrl: z.string().url().default("http://localhost:8880")
+});
+
 const InfrastructureServiceSchema = z.object({
   redisUrl: z.string().url().optional(),
   queuePrefix: z.string().optional(),
@@ -137,6 +141,7 @@ export const ServicesSettingsSchema = z.object({
   geocoding: GeocodingServiceSchema.default({}),
   homeAssistant: HomeAssistantServiceSchema.optional(),
   plex: PlexServiceSchema.optional(),
+  kokoro: KokoroServiceSchema.optional(),
   infrastructure: InfrastructureServiceSchema.default({})
 });
 
@@ -368,14 +373,12 @@ export function defaultServices(): ServicesSettings {
     }
   };
 
-  return services;
-
   // Add Home Assistant configuration if environment variables are present
   const haBaseUrl = process.env["HA_BASE_URL"];
   const haAccessToken = process.env["HA_ACCESS_TOKEN"];
   if (haBaseUrl) {
     services.homeAssistant = {
-      baseUrl: haBaseUrl as string,
+      baseUrl: haBaseUrl,
       accessToken: haAccessToken
     };
   }
@@ -385,10 +388,16 @@ export function defaultServices(): ServicesSettings {
   const plexToken = process.env["PLEX_TOKEN"];
   if (plexUrl && plexToken) {
     services.plex = {
-      baseUrl: plexUrl as string,
-      token: plexToken as string
+      baseUrl: plexUrl,
+      token: plexToken
     };
   }
+
+  // Add Kokoro configuration
+  const kokoroUrl = process.env["KOKORO_URL"] || "http://localhost:8880";
+  services.kokoro = {
+    baseUrl: kokoroUrl
+  };
 
   return services;
 }

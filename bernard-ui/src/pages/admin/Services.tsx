@@ -85,6 +85,17 @@ export default function Services() {
     });
   };
 
+  const updateKokoroSettings = (kokoroUpdates: Partial<NonNullable<ServicesSettings['kokoro']>>) => {
+    setSettings(prev => {
+      if (!prev) return null;
+      const currentKokoro = prev.kokoro || { baseUrl: '' };
+      return {
+        ...prev,
+        kokoro: { ...currentKokoro, ...kokoroUpdates }
+      };
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -182,6 +193,35 @@ export default function Services() {
               </a>
               {' '}or your Plex server settings.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Kokoro Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Kokoro TTS</CardTitle>
+          <CardDescription>Configure Kokoro Text-to-Speech service for voice synthesis</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="kokoro-baseUrl">Base URL *</Label>
+              <Input
+                id="kokoro-baseUrl"
+                type="url"
+                value={settings?.kokoro?.baseUrl || ''}
+                onChange={(e) => updateKokoroSettings({ baseUrl: e.target.value })}
+                placeholder="http://localhost:8880"
+                required
+              />
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <p>
+                Kokoro is a text-to-speech service that converts text into audio.
+                The service should be running on the configured URL.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

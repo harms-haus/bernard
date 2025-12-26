@@ -183,6 +183,9 @@ export interface ServicesSettings {
     baseUrl: string;
     token: string;
   };
+  kokoro?: {
+    baseUrl: string;
+  };
 }
 
 export interface OAuthSettings {
@@ -285,7 +288,7 @@ export interface APIError extends Error {
 class AdminApiClient {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string = '/api') {
+  constructor(baseUrl: string = '/bernard/api') {
     this.baseUrl = baseUrl;
   }
 

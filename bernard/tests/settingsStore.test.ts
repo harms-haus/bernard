@@ -248,7 +248,11 @@ test("SettingsStore getAll aggregates all sections", { timeout: TEST_TIMEOUT }, 
       forecastUrl: "https://api.open-meteo.com/v1/forecast",
       historicalUrl: "https://archive-api.open-meteo.com/v1/archive"
     },
-    geocoding: {}
+    geocoding: {},
+    infrastructure: {},
+    kokoro: {
+      baseUrl: "http://localhost:8880"
+    }
   };
   const oauth = defaultOauth();
   const backups = defaultBackups();

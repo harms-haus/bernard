@@ -77,7 +77,7 @@ flowchart TB
 
 ## Route Structure
 
-| Route | Handler ||-------|---------|| `/` | Status/index page with service health, uptime, links || `/v1/models` | Aggregate from Next.js + static audio models || `/v1/chat/completions` | Proxy to Next.js `:3000/api/v1/chat/completions` || `/v1/completions` | Proxy to Next.js || `/v1/embeddings` | Proxy to vLLM `:8001/v1/embeddings` || `/v1/audio/transcriptions` | Proxy to Whisper `:8002` || `/v1/audio/speech` | Proxy to Kokoro `:8003` || `/bernard/*` | Proxy to Vite dev server `:4200` || `/bernard/api/*` | Proxy to Next.js `:3000/api/*` |
+| Route | Handler ||-------|---------|| `/` | Status/index page with service health, uptime, links || `/v1/models` | Aggregate from Next.js + static audio models || `/v1/chat/completions` | Proxy to Next.js `:3000/api/v1/chat/completions` || `/v1/completions` | Proxy to Next.js || `/v1/embeddings` | Proxy to vLLM `:8001/v1/embeddings` || `/v1/audio/transcriptions` | Proxy to Whisper `:8002` || `/v1/audio/speech` | Proxy to Kokoro `:8880` || `/bernard/*` | Proxy to Vite dev server `:4200` || `/bernard/api/*` | Proxy to Next.js `:3000/api/*` |
 
 ## Implementation
 
@@ -171,4 +171,3 @@ Serve at `/` with:
 - Keep `api/kokoro/` and `api/whisper.cpp/` - these are the actual model servers
 - Keep `api/vllm_venv/` - vLLM still runs as Python process
 - The Python files in `api/services/` are just wrappers - those get replaced
-- Next.js stays on port 3000 internally (not exposed directly)

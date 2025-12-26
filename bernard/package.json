@@ -11,6 +11,7 @@
     "type-check": "tsc --noEmit",
     "type-check:src": "tsc --noEmit --project tsconfig.check.json",
     "tests": "vitest run",
+    "tests:watch": "vitest --watch",
     "tests:coverage": "vitest run --coverage",
     "queues:worker": "tsx agent/queueWorker.ts",
     "tasks:worker": "tsx agent/taskWorker.ts"

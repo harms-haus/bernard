@@ -147,7 +147,7 @@ Bernard uses the following priority order for web search configuration:
 | `OAUTH_GOOGLE_AUTH_URL` | Google auth URL | `https://accounts.google.com/o/oauth2/v2/auth` |
 | `OAUTH_GOOGLE_TOKEN_URL` | Google token URL | `https://oauth2.googleapis.com/token` |
 | `OAUTH_GOOGLE_USERINFO_URL` | Google userinfo URL | `https://openidconnect.googleapis.com/v1/userinfo` |
-| `OAUTH_GOOGLE_REDIRECT_URI` | Google redirect URI | `http://localhost:3000/api/auth/google/callback` |
+| `OAUTH_GOOGLE_REDIRECT_URI` | Google redirect URI | `http://localhost:3456/bernard/api/auth/google/callback` |
 | `OAUTH_GOOGLE_SCOPES` | Google scopes | `openid profile email` |
 | `OAUTH_GOOGLE_CLIENT_ID` | Google client ID | `google-client-id` |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | Google client secret | `google-client-secret` |
@@ -159,7 +159,7 @@ Bernard uses the following priority order for web search configuration:
 | `OAUTH_GITHUB_AUTH_URL` | GitHub auth URL | `https://github.com/login/oauth/authorize` |
 | `OAUTH_GITHUB_TOKEN_URL` | GitHub token URL | `https://github.com/login/oauth/access_token` |
 | `OAUTH_GITHUB_USERINFO_URL` | GitHub userinfo URL | `https://api.github.com/user` |
-| `OAUTH_GITHUB_REDIRECT_URI` | GitHub redirect URI | `http://localhost:3000/api/auth/github/callback` |
+| `OAUTH_GITHUB_REDIRECT_URI` | GitHub redirect URI | `http://localhost:3456/bernard/api/auth/github/callback` |
 | `OAUTH_GITHUB_SCOPES` | GitHub scopes | `read:user user:email` |
 | `OAUTH_GITHUB_CLIENT_ID` | GitHub client ID | `github-client-id` |
 | `OAUTH_GITHUB_CLIENT_SECRET` | GitHub client secret | `github-client-secret` |

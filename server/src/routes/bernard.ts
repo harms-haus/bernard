@@ -22,8 +22,9 @@ export async function registerBernardRoutes(fastify: FastifyInstance) {
   fastify.register(proxy, {
     upstream: UI_URL,
     prefix: '/',
-    rewritePrefix: '/',
+    rewritePrefix: '/bernard/',
     http2: false,
+    websocket: true,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Bernard UI)', error: error.message, upstream: UI_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard-ui' });

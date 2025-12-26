@@ -105,7 +105,7 @@ class APIClient {
   private currentUserInFlight: Promise<User | null> | null = null;
   private currentUserCache: { user: User | null; cachedAtMs: number } | null = null;
 
-  constructor(baseUrl: string = '/api') {
+  constructor(baseUrl: string = '/bernard/api') {
     this.baseUrl = baseUrl;
   }
 
@@ -158,12 +158,12 @@ class APIClient {
 
   async githubLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open('/api/auth/github/login', '_self');
+    window.open(`${this.baseUrl}/auth/github/login`, '_self');
   }
 
   async googleLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open('/api/auth/google/login', '_self');
+    window.open(`${this.baseUrl}/auth/google/login`, '_self');
   }
 
   async logout(): Promise<void> {
@@ -286,7 +286,7 @@ class APIClient {
   }
 
   async chat(messages: ConversationMessage[]): Promise<ChatResponse> {
-    const response = await fetch('/api/v1/chat/completions', {
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -346,7 +346,7 @@ class APIClient {
       params.set('conversationId', conversationId);
     }
     
-    const response = await fetch(`/api/history?${params.toString()}`, {
+    const response = await fetch(`${this.baseUrl}/history?${params.toString()}`, {
       headers: this.getAuthHeaders()
     });
 
