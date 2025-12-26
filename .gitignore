@@ -1,16 +1,153 @@
 
+# Sensitive/Configuration Files
 secrets.yaml
-.esphome
-bin
-
-.next
-node_modules
-.env.local
+agents.config.json
 .env
+.env.local
+.env.*
+!.env.example
+
+# ESPHome and IoT
+.esphome
+bin/
+
+# Node.js/JavaScript
+.next
+node_modules/
 .turbo
 .cache
 .npm
-bernard/coverage
-bernard/backups
-agents.config.json
+bernard/coverage/
+bernard/backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+api/venv/
+api/*venv/
+api/vllm_venv/
+api/kokoro/venv/
+*.venv/
+
+# AI/ML Models and Weights
+models/
+models/
+!models/llama-server/bernard-v1-tools-268M-F16.gguf
+!models/llama-server/gemma-3-4b-it-Q4_K_M.gguf
+!models/llama-server/nomic-embed-text-v1.5.gguf
+
+# HuggingFace Cache (can contain sensitive auth tokens)
+.huggingface/
+.cache/huggingface/
+transformers_cache/
+
+# Model checkpoints and large files
+*.bin
+*.gguf
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.tflite
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# Logs and sensitive data
 logs/
+*.log
+logs/
+bernard/logs/
+api/logs/
+api/logs/
+raw-requests/
+bernard/logs/raw-requests/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.whl
+*.tar.gz
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Redis dumps (if any)
+dump.rdb
+
+# Docker (if used)
+.dockerignore
+
+# Miscellaneous
+*.tgz
+*.zip
+*.rar
+*.7z

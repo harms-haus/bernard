@@ -2,7 +2,7 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { getSettings } from "./settingsCache";
 import { resolveModel } from "./models";
 
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const DEFAULT_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1.5";
 const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;
 const EMBEDDING_VERIFY_TIMEOUT_MS = 5_000;
 const EMBEDDING_LOG_PREFIX = "[embeddings]";
@@ -104,28 +104,14 @@ async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<Resolved
   }
 
   // Final fallback to hardcoded defaults
-  const fallbackApiKey = config.apiKey;
-  const fallbackBaseUrl = config.baseUrl ?? "http://localhost:11434/v1";
-  const fallbackModel = config.model ?? "nomic-embed-text";
-
-  // Don't include apiKey if it's a placeholder value like "none"
-  const shouldIncludeApiKey = fallbackApiKey && fallbackApiKey !== "none" && fallbackApiKey !== "";
+  const fallbackApiKey = config.apiKey ?? "not-needed";
+  const fallbackBaseUrl = config.baseUrl ?? "http://localhost:8001/v1";
+  const fallbackModel = config.model ?? "nomic-ai/nomic-embed-text-v1.5";
 
   return {
-    ...(shouldIncludeApiKey ? { apiKey: fallbackApiKey } : {}),
+    apiKey: fallbackApiKey,
     model: fallbackModel,
-    ...(fallbackBaseUrl ? { baseUrl: fallbackBaseUrl } : {})
-  };
-
-  // Use resolved model settings
-  const apiKey = config.apiKey ?? resolvedModel.options?.apiKey;
-  const baseUrl = config.baseUrl ?? resolvedModel.options?.baseUrl;
-  const model = config.model ?? resolvedModel.id;
-
-  return {
-    ...(apiKey ? { apiKey } : {}),
-    model,
-    ...(baseUrl ? { baseUrl } : {})
+    baseUrl: fallbackBaseUrl
   };
 }
 
@@ -218,16 +204,8 @@ export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promi
  */
 export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<OpenAIEmbeddings> {
   const resolved = await resolveEmbeddingConfig(config);
-  if (!resolved.apiKey && !resolved.baseUrl) {
-    throw new Error("EMBEDDING_API_KEY or EMBEDDING_BASE_URL is required for embeddings.");
-  }
-
-  // For local providers (like Ollama), provide a dummy API key if none is set
-  const apiKey = resolved.apiKey || (resolved.baseUrl && resolved.baseUrl.includes('localhost') ? 'ollama' : undefined);
-
-  if (!apiKey) {
-    throw new Error("EMBEDDING_API_KEY or EMBEDDING_BASE_URL is required for embeddings.");
-  }
+  
+  const apiKey = resolved.apiKey || 'none';
 
   logModelConfig("runtime", resolved.baseUrl, resolved.model);
 

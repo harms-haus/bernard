@@ -21,7 +21,7 @@ cleanup() {
   echo "Stopping services..."
   
   # Send SIGTERM to all processes first for graceful shutdown
-  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}" "${AI_SERVICES_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       echo "Sending SIGTERM to process ${pid}..."
       kill -TERM "${pid}" 2>/dev/null || true
@@ -33,7 +33,7 @@ cleanup() {
   local max_wait=20  # 5 seconds at 0.25s intervals
   while [[ ${count} -lt ${max_wait} ]]; do
     local running=0
-    for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
+    for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}" "${AI_SERVICES_PID:-}"; do
       if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
         running=1
         break
@@ -47,7 +47,7 @@ cleanup() {
   done
   
   # Force kill any remaining processes
-  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}"; do
+  for pid in "${BERNARD_PID:-}" "${UI_PID:-}" "${WORKER_PID:-}" "${TASK_WORKER_PID:-}" "${AI_SERVICES_PID:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       echo "Force killing process ${pid}..."
       kill -KILL "${pid}" 2>/dev/null || true
@@ -147,6 +147,22 @@ ensure_redis() {
 ensure_redis
 export REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
+echo "Starting AI Services (vLLM, Whisper, Kokoro, Proxy)..."
+"${ROOT_DIR}/api/start.sh" &
+AI_SERVICES_PID=$!
+
+# Wait for proxy to be ready
+echo "Waiting for AI Proxy on port 8000..."
+timeout=60
+while ! curl -s http://localhost:8000/health > /dev/null; do
+  sleep 1
+  timeout=$((timeout - 1))
+  if [ $timeout -le 0 ]; then
+    echo "AI Proxy failed to start in time."
+    break
+  fi
+done
+
 echo "Initializing ADB connection to living room TV..."
 if command -v adb >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
   # Run the ADB initialization script
@@ -206,7 +222,7 @@ UI_PID=$!
 # Wait for any of the background processes to exit
 # This properly handles signals and ensures cleanup runs
 status=0
-wait "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" "${TASK_WORKER_PID}" || status=$?
+wait "${BERNARD_PID}" "${UI_PID}" "${WORKER_PID}" "${TASK_WORKER_PID}" "${AI_SERVICES_PID}" || status=$?
 
 # Cleanup will be called automatically via the EXIT trap
 exit "${status}"
