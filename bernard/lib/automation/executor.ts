@@ -1,5 +1,4 @@
 import type { Job } from "bullmq";
-import { getRedis } from "../infra/redis";
 import type { AutomationJobPayload, AutomationResult, AutomationContext } from "./types";
 import { getAutomation, updateAutomationSettings } from "./registry";
 
@@ -11,8 +10,6 @@ function errorLog(logger: ((message: string, meta?: Record<string, unknown>) => 
  * Build the automation executor function that processes jobs from the queue
  */
 export function buildAutomationExecutor() {
-  const redis = getRedis();
-
   return async function executor(job: Job<AutomationJobPayload, unknown, string>): Promise<AutomationResult> {
     const { automationId, event } = job.data;
 
@@ -31,7 +28,7 @@ export function buildAutomationExecutor() {
 
     // Create execution context
     const context: AutomationContext = {
-      logger: (message: string, meta?: Record<string, unknown>) => {
+      logger: (_message: string, _meta?: Record<string, unknown>) => {
         // Logger will be called by individual automations
       },
       settings

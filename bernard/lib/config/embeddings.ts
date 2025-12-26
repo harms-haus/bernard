@@ -2,7 +2,6 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { getSettings } from "./settingsCache";
 import { resolveModel } from "./models";
 
-const DEFAULT_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1.5";
 const EMBEDDING_VERIFY_TTL_MS = 5 * 60 * 1000;
 const EMBEDDING_VERIFY_TIMEOUT_MS = 5_000;
 const EMBEDDING_LOG_PREFIX = "[embeddings]";
@@ -43,7 +42,7 @@ function getEmbeddingState(): EmbeddingState {
 
 const embeddingState = getEmbeddingState();
 
-let settingsFetcher: typeof getSettings = getSettings;
+let _settingsFetcher: typeof getSettings = getSettings;
 let embeddingsFactory: EmbeddingFactory = (options) => new OpenAIEmbeddings(options);
 
 function embeddingUrl(baseUrl: string | undefined): string {
@@ -55,7 +54,7 @@ function logModelConfig(source: "probe" | "runtime", baseUrl: string | undefined
   if (embeddingState.loggedModelConfig && source === "runtime") return;
   if (source === "runtime") embeddingState.loggedModelConfig = true;
   const base = baseUrl ? baseUrl.replace(/\/+$/, "") : "default(openai)";
-  console.info(`${EMBEDDING_LOG_PREFIX} ${source} resolved base=${base} model=${model}`);
+  console.warn(`${EMBEDDING_LOG_PREFIX} ${source} resolved base=${base} model=${model}`);
 }
 
 async function resolveEmbeddingConfig(config: EmbeddingConfig): Promise<ResolvedEmbeddingConfig> {
@@ -192,7 +191,7 @@ export async function verifyEmbeddingConfig(config: EmbeddingConfig = {}): Promi
 
   embeddingState.inflightEmbeddingCheck.set(cacheKey, probe);
 
-  probe.finally(() => {
+  void probe.finally(() => {
     embeddingState.inflightEmbeddingCheck.delete(cacheKey);
   });
 
@@ -222,7 +221,7 @@ export async function getEmbeddingModel(config: EmbeddingConfig = {}): Promise<O
  * Override the settings loader (used by tests).
  */
 export function setSettingsFetcher(fetcher: typeof getSettings) {
-  settingsFetcher = fetcher;
+  _settingsFetcher = fetcher;
 }
 
 /**

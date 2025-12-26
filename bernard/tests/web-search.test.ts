@@ -3,15 +3,7 @@ import { afterEach, test } from "vitest";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import {
-  buildBraveSearchUrl,
-  buildSearXNGUrl,
-  formatResults,
-  parseBraveResults,
-  parseSearXNGResults,
-  resolveBraveConfigFromEnv,
   resolveSearchConfig,
-  resolveSearXNGConfigFromEnv,
-  safeJson,
   setSettingsFetcher,
   verifySearchConfigured,
   webSearchTool
@@ -253,6 +245,7 @@ void test(
 
     const firstCall = calls[0];
     assert.ok(firstCall);
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const calledUrl = new URL(String(firstCall.input));
     assert.equal(calledUrl.searchParams.get("q"), "news");
     assert.equal(calledUrl.searchParams.get("count"), "2");

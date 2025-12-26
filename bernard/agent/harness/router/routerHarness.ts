@@ -1,9 +1,10 @@
-import { SystemMessage, AIMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
 import type { BaseMessage, MessageStructure } from "@langchain/core/messages";
 import type { AgentOutputItem } from "@/agent/streaming/types";
 import type { LLMCaller, LLMConfig } from "@/agent/llm/llm";
 import { buildRouterSystemPrompt } from "./prompts";
-import { getRouterTools, ToolWithInterpretation } from "@/agent/tool";
+import type { ToolWithInterpretation } from "@/agent/tool";
+import { getRouterTools } from "@/agent/tool";
 import type { HomeAssistantContextManager } from "@/lib/home-assistant";
 import type { HARestConfig } from "@/agent/tool/home-assistant-list-entities.tool";
 import type { PlexConfig } from "@/lib/plex";
@@ -15,8 +16,6 @@ import { runResponseHarness } from "@/agent/harness/respond/responseHarness";
 import type { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import { countTokens } from "@/lib/conversation/tokenCounter";
 import { getSettings } from "@/lib/config/settingsCache";
-import { StatusService, type StatusEvent } from "@/lib/status/statusService";
-import { GENERAL_STATUS_MESSAGES } from "@/lib/status/messages";
 
 /**
  * Format tool calls and results into SystemMessage objects for LLM context.
@@ -36,7 +35,7 @@ export function formatToolResultsForContext(
       // Parse the arguments JSON and format as map without quotes
       let formattedArgs: string;
       try {
-        const args = JSON.parse(toolCall.function.arguments);
+        const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
         formattedArgs = Object.entries(args)
           .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
           .join(", ");
@@ -75,7 +74,7 @@ function validateToolCalls(aiMessage: AIMessage, availableTools: string[]): { va
     try {
       JSON.parse(toolCall.function.arguments);
     } catch (error) {
-      return { valid: false, error: `Invalid JSON parameters for tool ${toolCall.function.name}: ${error}` };
+      return { valid: false, error: `Invalid JSON parameters for tool ${toolCall.function.name}: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
 
@@ -227,7 +226,13 @@ export async function callLLMWithRetry(
   }
 
   // This should never be reached, but just in case
-  throw lastError || new Error("Retry logic failed unexpectedly");
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error(lastError ? `Retry failed: ${lastError instanceof Error ? lastError.message : JSON.stringify(lastError)}` : "Retry logic failed unexpectedly");
 }
 
 // Define the tool definition type for system prompts
@@ -254,7 +259,7 @@ export type RouterHarnessContext = {
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   };
 };
 
@@ -264,11 +269,11 @@ export type RouterHarnessContext = {
 export function getRouterToolDefinitions(
   haContextManager?: HomeAssistantContextManager,
   haRestConfig?: HARestConfig,
-  plexConfig?: any, // We don't use this anymore, but keeping for compatibility
+  plexConfig?: unknown, // We don't use this anymore, but keeping for compatibility
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
   const langChainTools = getRouterTools(haContextManager, haRestConfig, undefined, taskContext);
@@ -334,12 +339,12 @@ export async function executeTool(
 
   let args: Record<string, unknown>;
   try {
-    args = JSON.parse(toolCall.function.arguments);
+    args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
   } catch (error) {
     return {
       toolCallId: toolCall.id,
       toolName: toolCall.function.name,
-      output: `Error: Invalid tool arguments: ${error}`,
+      output: `Error: Invalid tool arguments: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -349,7 +354,7 @@ export async function executeTool(
         conversationMessages: currentContext,
         ...(statusService && { statusService }),
       },
-    });
+    }) as unknown;
 
     return {
       toolCallId: toolCall.id,
@@ -421,14 +426,34 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   // 2. Process incoming messages in router context
   for (const message of messages) {
     // Convert BaseMessage to MessageRecord for context processing
+    let role: 'user' | 'assistant' | 'system' | 'tool';
+    let name: string | undefined;
+    let tool_call_id: string | undefined;
+    let tool_calls: unknown[] | undefined;
+
+    if (message instanceof AIMessage) {
+      role = 'assistant';
+      tool_calls = message.tool_calls;
+    } else if (message instanceof HumanMessage) {
+      role = 'user';
+    } else if (message instanceof ToolMessage) {
+      role = 'tool';
+      name = message.name;
+      tool_call_id = message.tool_call_id;
+    } else if (message instanceof SystemMessage) {
+      role = 'system';
+    } else {
+      role = 'system'; // fallback
+    }
+
     const messageRecord: MessageRecord = {
       id: `temp_${Date.now()}_${Math.random()}`,
-      role: (message as any).type === 'ai' ? 'assistant' : (message as any).type === 'human' ? 'user' : (message as any).type === 'tool' ? 'tool' : 'system',
-      content: message.content,
+      role,
+      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
       createdAt: new Date().toISOString(),
-      name: (message as any).name,
-      tool_call_id: (message as any).tool_call_id,
-      tool_calls: (message as any).tool_calls
+      ...(name && { name }),
+      ...(tool_call_id && { tool_call_id }),
+      ...(tool_calls && { tool_calls })
     };
     routerContext.processMessage(messageRecord);
   }
@@ -444,13 +469,6 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
   const toolCallCounts: Map<string, number> = new Map(); // Track identical tool calls
   let accumulatedRequestTokens = 0; // Track tokens accumulated in this request
 
-  // Create status service for managing status messages
-  const statusService = new StatusService();
-
-  // Create a function to yield status events
-  const yieldStatusEvent = (event: StatusEvent) => {
-    // This will be set up later to yield events from the harness
-  };
 
   try {
     // Get token limit settings once for the harness execution
@@ -514,7 +532,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       yield {
         type: "llm_call",
         model: "router",
-        context: [...contextForRecording] as any, // Yield a copy to avoid mutation issues
+        context: [...contextForRecording],
         tools: toolNames,
         totalContextTokens,
       };
@@ -561,7 +579,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       const llmDurationMs = Date.now() - llmStartTime;
 
       // 6. Extract actual token usage from the LLM response
-      const responseMetadata = (aiMessage as any).response_metadata as Record<string, unknown> | undefined;
+      const responseMetadata = aiMessage.response_metadata;
       const usage = responseMetadata?.["usage"] as
         | { prompt_tokens: number; completion_tokens: number; total_tokens: number }
         | undefined;
@@ -573,16 +591,16 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
       } : undefined;
 
       // 7. Emit LLM_CALL_COMPLETE event
-      const event: any = {
+      const completeEvent: AgentOutputItem = {
         type: "llm_call_complete",
-        context: [...currentMessages] as any, // Yield a copy
-        result: aiMessage as any,
+        context: [...currentMessages],
+        result: aiMessage,
         latencyMs: llmDurationMs,
       };
-      if (actualTokens) {
-        event.actualTokens = actualTokens;
+      if (actualTokens && completeEvent.type === "llm_call_complete") {
+        completeEvent.actualTokens = actualTokens;
       }
-      yield event;
+      yield completeEvent;
 
       // 7. Extract tool calls
       const toolCalls = extractToolCallsFromAIMessage(aiMessage);
@@ -687,19 +705,12 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         };
       }
 
-      // Start status rotation with general messages if no tool-specific status is set
-      if (!statusService.getCurrentStatus()) {
-        statusService.setStatusPool(GENERAL_STATUS_MESSAGES, false, false);
-      }
+      // Status messages are handled by individual tools
 
       // 12. Execute tools sequentially
       const toolResults: Array<{ toolCallId: string; toolName: string; output: string; latencyMs?: number }> = [];
 
       for (const toolCall of validToolCalls) {
-        // Yield any pending status events before tool execution
-        for (const statusEvent of statusService.getPendingEvents()) {
-          yield statusEvent;
-        }
         if (toolCall.function.name === "respond") {
           respondCalled = true;
           // Add a placeholder result for respond() tool
@@ -715,7 +726,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
         const toolStartTime = Date.now();
 
         const tool = langChainTools.find(t => t.name === toolCall.function.name) ?? null;
-        const result = await executeTool(tool, toolCall, currentMessages, statusService);
+        const result = await executeTool(tool, toolCall, currentMessages);
 
         // Calculate tool call duration
         const toolDurationMs = Date.now() - toolStartTime;
@@ -733,7 +744,7 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
 
       // 11. Emit TOOL_CALL_COMPLETE events (for streaming, but not added to recorded context)
       for (const result of toolResults) {
-        const event: any = {
+        const completeEvent: AgentOutputItem = {
           type: "tool_call_complete",
           toolCall: {
             id: result.toolCallId,
@@ -744,30 +755,15 @@ export async function* runRouterHarness(context: RouterHarnessContext): AsyncGen
           },
           result: result.output,
         };
-        if (result.latencyMs !== undefined) {
-          event.latencyMs = result.latencyMs;
+        if (result.latencyMs !== undefined && completeEvent.type === "tool_call_complete") {
+          completeEvent.latencyMs = result.latencyMs;
         }
-        yield event;
+        yield completeEvent;
       }
 
-      // Mark status as completed after all tools finish
-      statusService.markCompleted(true);
+      // All tools completed
 
-      // Yield final status event
-      for (const statusEvent of statusService.getPendingEvents()) {
-        yield statusEvent;
-      }
-
-      // 13. Create combined assistant message with tool calls and results
-      let combinedContent = "";
-
-      // Include original AI message content if it exists
-      const aiContent = typeof aiMessage.content === 'string' ? aiMessage.content : '';
-      if (aiContent && aiContent.trim()) {
-        combinedContent += aiContent.trim() + "\n\n";
-      }
-
-      // Add formatted tool calls and results (excluding respond tool)
+      // 13. Add formatted tool calls and results (excluding respond tool)
       currentTurnToolMessages = formatToolResultsForContext(validToolCalls, toolResults, ["respond"]);
       const toolMessageTokens = countTokens(currentTurnToolMessages);
       const tokensBeforePush = countTokens(currentMessages);

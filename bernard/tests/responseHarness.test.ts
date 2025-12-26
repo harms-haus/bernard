@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
 import { test, vi, describe, beforeEach } from "vitest";
-import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { HumanMessage } from "@langchain/core/messages";
 import { runResponseHarness } from "../agent/harness/respond/responseHarness";
 import type { LLMCaller } from "../agent/llm/llm";
-import type { Archivist } from "../lib/conversation/types";
 import { ResponseContext } from "../lib/conversation/context";
 
-// Mock Archivist
-const mockArchivist: Archivist = {
-    getMessages: vi.fn().mockResolvedValue([]),
-    getFullConversation: vi.fn(),
-    getConversation: vi.fn(),
-};
 
 // Mock LLM Caller
 const mockLLMCaller: LLMCaller = {
@@ -65,7 +58,7 @@ describe("runResponseHarness (Refactored)", () => {
     });
 
     test("yields error event on LLM failure", async () => {
-        mockLLMCaller.streamText.mockImplementation(async function* () {
+        mockLLMCaller.streamText.mockImplementation(async () => {
             throw new Error("Stream Failed");
         });
 

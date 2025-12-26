@@ -221,7 +221,7 @@ test("get_weather_data average calculation", { timeout: TEST_TIMEOUT }, async ()
 });
 
 test("get_weather_data rejects low confidence geocoding", { timeout: TEST_TIMEOUT }, async () => {
-  const calls = mockFetchSequence([
+  mockFetchSequence([
     {
       ok: true,
       json: async () => [{

@@ -187,7 +187,7 @@ export async function getChunkMessagePositions(
     const startIndex = chunkMessageIndices[0] ?? 0;
     const endIndex = chunkMessageIndices[chunkMessageIndices.length - 1] ?? startIndex;
 
-    console.log(`[getChunkMessagePositions] Mapped chunk ${chunkIndex} to messages ${startIndex}-${endIndex} in conversation ${conversationId}`);
+    console.warn(`[getChunkMessagePositions] Mapped chunk ${chunkIndex} to messages ${startIndex}-${endIndex} in conversation ${conversationId}`);
 
     return { startIndex, endIndex };
 

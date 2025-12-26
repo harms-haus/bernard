@@ -3,15 +3,10 @@ import { afterEach, test } from "vitest";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import {
-  buildBraveSearchUrl,
   buildSearXNGUrl,
-  formatResults,
-  parseBraveResults,
   parseSearXNGResults,
-  resolveBraveConfigFromEnv,
   resolveSearchConfig,
   resolveSearXNGConfigFromEnv,
-  safeJson,
   setSettingsFetcher,
   verifySearchConfigured,
   webSearchTool

@@ -1,8 +1,16 @@
 import { ChatOllama } from "@langchain/ollama";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+
+// Type for serialized LangChain messages
+interface SerializedLangChainMessage {
+  lc: number;
+  type: string;
+  id: string[];
+  kwargs?: Record<string, unknown>;
+}
 
 /**
  * ChatOllama-based implementation of LLMCaller
@@ -28,25 +36,36 @@ export class ChatOllamaLLMCaller implements LLMCaller {
   private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
     return messages.map((msg, index) => {
       // Check if this is a serialized LangChain message
-      const isSerialized = (msg as any).lc === 1 &&
-                          (msg as any).type === "constructor" &&
-                          Array.isArray((msg as any).id) &&
-                          (msg as any).id.length >= 3 &&
-                          (msg as any).id[0] === "langchain_core" &&
-                          (msg as any).id[1] === "messages";
+      const serializedMsg = msg as unknown as SerializedLangChainMessage;
+      const isSerialized = serializedMsg.lc === 1 &&
+                          serializedMsg.type === "constructor" &&
+                          Array.isArray(serializedMsg.id) &&
+                          serializedMsg.id.length >= 3 &&
+                          serializedMsg.id[0] === "langchain_core" &&
+                          serializedMsg.id[1] === "messages";
 
       let actualType: string;
-      let kwargs: any;
+      let kwargs: Record<string, unknown> = {};
       let content = msg.content;
 
       if (isSerialized) {
         // Extract type from serialized format
-        actualType = (msg as any).id[2]; // e.g., "ToolMessage", "AIMessage", etc.
-        kwargs = (msg as any).kwargs || {};
-        content = kwargs.content || content;
+        actualType = serializedMsg.id[2] || "Unknown"; // e.g., "ToolMessage", "AIMessage", etc.
+        kwargs = serializedMsg.kwargs || {};
+        content = (kwargs["content"] as string | undefined) || content;
       } else {
-        // Live LangChain message object
-        actualType = (msg as any).type || (msg as any)._getType?.() || "";
+        // Live LangChain message object - use instanceof checks
+        if (msg instanceof AIMessage) {
+          actualType = "AIMessage";
+        } else if (msg instanceof HumanMessage) {
+          actualType = "HumanMessage";
+        } else if (msg instanceof SystemMessage) {
+          actualType = "SystemMessage";
+        } else if (msg instanceof ToolMessage) {
+          actualType = "ToolMessage";
+        } else {
+          actualType = "Unknown";
+        }
         kwargs = {};
       }
 
@@ -57,16 +76,36 @@ export class ChatOllamaLLMCaller implements LLMCaller {
 
       // Convert based on actual message type
       switch (actualType) {
-        case "ToolMessage":
-          const toolCallId = kwargs.tool_call_id || (msg as any).tool_call_id || `call_tool_${index}`;
+        case "ToolMessage": {
+          let toolCallId: string;
+          let name: string | undefined;
+
+          if (isSerialized) {
+            toolCallId = (kwargs["tool_call_id"] as string | undefined) || `call_tool_${index}`;
+            name = kwargs["name"] as string | undefined;
+          } else if (msg instanceof ToolMessage) {
+            toolCallId = msg.tool_call_id;
+            name = msg.name;
+          } else {
+            toolCallId = `call_tool_${index}`;
+            name = undefined;
+          }
+
           return new ToolMessage({
             content: typeof content === "string" ? content : JSON.stringify(content),
             tool_call_id: toolCallId,
-            name: kwargs.name || (msg as any).name,
+            ...(name && { name }),
           });
+        }
 
-        case "AIMessage":
-          const toolCalls = kwargs.tool_calls || (msg as any).tool_calls || (msg as any).additional_kwargs?.tool_calls;
+        case "AIMessage": {
+          let toolCalls: LangChainToolCall[] | undefined;
+
+          if (isSerialized) {
+            toolCalls = kwargs["tool_calls"] as LangChainToolCall[];
+          } else if (msg instanceof AIMessage) {
+            toolCalls = msg.tool_calls;
+          }
           let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
 
           // Some providers require content to be non-empty string when tool_calls are present
@@ -74,25 +113,14 @@ export class ChatOllamaLLMCaller implements LLMCaller {
             cleanedContent = "";
           }
 
-          const aiFields: any = { content: cleanedContent };
+          const aiFields: { content: string; tool_calls?: LangChainToolCall[] } = { content: cleanedContent };
 
           if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-            aiFields.tool_calls = toolCalls.map((tc: any, tcIdx: number) => {
-              const name = tc.name || tc.function?.name || "unknown";
-              return {
-                id: tc.id || tc.tool_call_id || `call_${index}_${tcIdx}_${name}`,
-                type: "function",
-                function: {
-                  name,
-                  arguments: tc.args
-                    ? (typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args))
-                    : (tc.function?.arguments || "{}")
-                }
-              };
-            });
+            aiFields.tool_calls = toolCalls;
           }
 
           return new AIMessage(aiFields);
+        }
 
         case "SystemMessage":
           return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });

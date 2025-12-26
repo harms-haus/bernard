@@ -1,4 +1,4 @@
-import { getEncoding } from "js-tiktoken";
+import { getEncoding, type TiktokenEncoding } from "js-tiktoken";
 import type { BaseMessage } from "@langchain/core/messages";
 
 /**
@@ -37,7 +37,7 @@ function serializeMessage(message: BaseMessage): string {
 
   // Add tool call ID if present
   if ("tool_call_id" in message && message.tool_call_id) {
-    serialized += `\nTool call ID: ${String(message.tool_call_id)}`;
+    serialized += "\nTool call ID: " + JSON.stringify(message.tool_call_id);
   }
 
   return serialized;
@@ -49,9 +49,9 @@ function serializeMessage(message: BaseMessage): string {
  * @param encoding - Optional encoding to use (defaults to cl100k_base)
  * @returns Total token count across all messages
  */
-export function countTokens(messages: BaseMessage[], encoding: string = DEFAULT_ENCODING): number {
+export function countTokens(messages: BaseMessage[], encoding: TiktokenEncoding = DEFAULT_ENCODING): number {
   try {
-    const enc = getEncoding(encoding as any);
+    const enc = getEncoding(encoding);
 
     let totalTokens = 0;
 
@@ -82,9 +82,9 @@ export function countTokens(messages: BaseMessage[], encoding: string = DEFAULT_
  * @param encoding - Optional encoding to use (defaults to cl100k_base)
  * @returns Token count
  */
-export function countTokensInText(text: string, encoding: string = DEFAULT_ENCODING): number {
+export function countTokensInText(text: string, encoding: TiktokenEncoding = DEFAULT_ENCODING): number {
   try {
-    const enc = getEncoding(encoding as any);
+    const enc = getEncoding(encoding);
     const tokens = enc.encode(text);
     return tokens.length;
   } catch (error) {
@@ -106,10 +106,10 @@ export function sliceTokensFromText(
   text: string,
   startTokens: number,
   readTokens: number,
-  encoding: string = DEFAULT_ENCODING
+  encoding: TiktokenEncoding = DEFAULT_ENCODING
 ): string {
   try {
-    const enc = getEncoding(encoding as any);
+    const enc = getEncoding(encoding);
     const tokens = enc.encode(text);
 
     // Calculate slice bounds

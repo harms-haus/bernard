@@ -5,6 +5,7 @@
 
 import type { CorsHeaders } from "./cors";
 import { getCorsHeaders } from "./cors";
+import { logger } from "@/lib/logging";
 
 /**
  * Get CORS headers with enhanced origin matching and debugging
@@ -73,9 +74,10 @@ export function debugCorsHeaders(request: Request | null): void {
   
   const allowedOrigins = process.env['ALLOWED_ORIGINS']?.split(',').map(s => s.trim()) || [];
   
-  console.log('[CORS DEBUG]', {
+  logger.debug({
+    event: "cors.debug",
     origin,
     allowedOrigins,
     headers: getCorsHeaders(origin)
-  });
+  }, '[CORS DEBUG]');
 }

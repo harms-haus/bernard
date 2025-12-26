@@ -1,10 +1,24 @@
-import { AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import type { MessageRecord, ToolCallEntry } from "./types";
+import type { BaseMessage, ToolCall} from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import type { MessageRecord } from "./types";
 import { createMessageFingerprint, deduplicateMessages } from "./dedup";
 import { buildRouterSystemPrompt } from "../../agent/harness/router/prompts";
 import { buildResponseSystemPrompt } from "../../agent/harness/respond/prompts";
 import type { ToolWithInterpretation } from "../../agent/tool";
 import { normalizeRecordContent } from "./messages";
+
+// Type for recollection content
+interface RecollectionData {
+  sourceConversationId?: string;
+  content?: string;
+  score?: number;
+  conversationMetadata?: {
+    summary?: string;
+    tags?: string[];
+  };
+  messageStartIndex?: number;
+  messageEndIndex?: number;
+}
 
 /**
  * Context interface for maintaining filtered conversation views
@@ -110,9 +124,10 @@ export abstract class BaseContext implements Context {
       case "user":
         return new HumanMessage(base);
       case "assistant": {
-        const aiFields: any = { content: record.content };
+        const content = typeof record.content === "string" ? record.content : JSON.stringify(record.content);
+        const aiFields: { content: string; tool_calls?: ToolCall[]; name?: string } = { content };
         if (record.tool_calls?.length) {
-          aiFields.tool_calls = record.tool_calls;
+          aiFields.tool_calls = record.tool_calls as ToolCall[];
         }
         if (record.name) {
           aiFields.name = record.name;
@@ -139,7 +154,7 @@ export abstract class BaseContext implements Context {
         return null;
       }
 
-      const recollection = record.content as any;
+      const recollection = record.content as RecollectionData;
       let formattedContent = `Recalled from conversation ${recollection.sourceConversationId || 'unknown'}:\n`;
 
       if (recollection.content) {

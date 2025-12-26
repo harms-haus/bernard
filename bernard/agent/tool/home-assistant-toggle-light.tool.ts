@@ -7,7 +7,6 @@ import { getHAConnection } from "@/lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getEntityState, getCurrentBrightness, getSupportedColorModes } from "./home-assistant-get-entity-state.tool";
 import { convertColorToSupportedFormat, getExampleColorNames, type ColorInput } from "@/lib/home-assistant";
-import { getStatusMessagesForTool } from "@/lib/status/messages";
 
 /**
  * Dependencies for the toggle light tool
@@ -78,13 +77,7 @@ export function createToggleLightTool(
       brightness_pct?: number | null;
       brightness_pct_delta?: number | null;
       color?: ColorInput | null;
-    }, config) => {
-      // Set status messages for Home Assistant tools
-      const statusService = config?.configurable?.statusService;
-      if (statusService) {
-        const statusMessages = getStatusMessagesForTool("home_assistant_toggle_light");
-        statusService.setStatusPool(statusMessages, false, false);
-      }
+    }) => {
       // Validate entity_id format and domain
       if (!entity || typeof entity !== 'string') {
         return "Error: entity parameter is required and must be a string";
@@ -95,7 +88,7 @@ export function createToggleLightTool(
         return `Error: Invalid entity_id format: ${entity}. Entity IDs must be in format 'domain.entity_name'`;
       }
 
-      const [domain, entityName] = entityParts;
+      const [domain] = entityParts;
       if (domain !== 'light') {
         return `Error: Entity ${entity} is not a light. Only light entities are supported by this tool.`;
       }
@@ -117,7 +110,7 @@ export function createToggleLightTool(
 
         // Prepare service call data
         let service = 'turn_on';
-        let serviceData: Record<string, unknown> = { entity_id: entity };
+        const serviceData: Record<string, unknown> = { entity_id: entity };
 
         // Handle 'on' parameter
         if (on === true) {

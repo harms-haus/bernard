@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { getRedis } from "@/lib/infra/redis";
 import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { enqueueAutomationJob } from "@/lib/automation/queue";
-import type { AutomationEvent, ConversationArchivedEvent, UserMessageEvent, AssistantMessageCompleteEvent } from "@/lib/automation/types";
+import type { AutomationEvent, ConversationArchivedEvent, AssistantMessageCompleteEvent } from "@/lib/automation/types";
 
 type RouteParams = { params: Promise<{ id: string; automationId: string }> };
 
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     // Create appropriate event based on automation type
     switch (automationId) {
       case 'summarize-conversation':
-      case 'tag-conversation':
+      case 'tag-conversation': {
         // These automations expect a conversation_archived event
         event = {
           name: 'conversation_archived',
@@ -54,8 +54,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           timestamp: Date.now()
         };
         break;
+      }
 
-      case 'flag-conversation':
+      case 'flag-conversation': {
         // Flag automation can work with either user_message or assistant_message_complete
         // We'll create an assistant_message_complete event with the last assistant message
         const lastAssistantMessage = messages
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           timestamp: Date.now()
         };
         break;
+      }
 
       default:
         return new Response(JSON.stringify({ error: `Unknown automation: ${automationId}` }), {

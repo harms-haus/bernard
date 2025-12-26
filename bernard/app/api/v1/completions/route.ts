@@ -5,14 +5,14 @@ import { getCorsHeaders } from "@/app/api/_lib/cors";
 export const runtime = "nodejs";
 
 // OPTIONS handler for CORS preflight
-export function OPTIONS(request: NextRequest): NextResponse {
+export function OPTIONS(_request: NextRequest): NextResponse {
   return new NextResponse(null, {
     status: 204,
     headers: getCorsHeaders(null)
   });
 }
 
-export async function POST(req: NextRequest) {
+export function POST(_req: NextRequest) {
   // Temporarily disabled during chat completions overhaul
   return new NextResponse(JSON.stringify({
     error: "Completions endpoint temporarily disabled during agentic loop overhaul"

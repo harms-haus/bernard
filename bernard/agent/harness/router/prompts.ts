@@ -1,8 +1,5 @@
 export const MAX_PARALLEL_TOOL_CALLS = 6;
 
-import type { ToolDefinition } from "@langchain/core/language_models/base";
-import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
-
 type ToolLikeForPrompt = { name: string; description?: string; schema?: unknown };
 
 export const routerSystemPrompt = [
@@ -48,7 +45,7 @@ export function buildLangChainToolSystemPrompt(tools: ToolLikeForPrompt[]): stri
     `You have access to tools. To call a tool, return an assistant message containing up to ${MAX_PARALLEL_TOOL_CALLS} tool_calls in parallel. Tool_calls must be UNIQUE or they will not be executed.
 Reuse tool results from the conversation history if they are still valid.
 Some tools may start a task that will complete in the background. Start the task by calling the tool which will return a task id. Then you may continue calling tools or respond immediately.
-Mark the end of tool calling with the \"respond\" tool call. It may be added to the same message as the last tool calls necessary or in a separate message.
+Mark the end of tool calling with the "respond" tool call. It may be added to the same message as the last tool calls necessary or in a separate message.
 Do not add conversational text. Only tool calls.
 
 WORKFLOW:

@@ -278,7 +278,6 @@ export function rgbToHs(rgb: RGBColor): HSColor {
  */
 export function hsToRgb(hs: HSColor): RGBColor {
   const h = hs.h / 360;
-  const s = hs.s / 100;
 
   const c = 1 - Math.abs(2 * 0.5 - 1); // v = 1 (full brightness)
   const x = c * (1 - Math.abs((h * 6) % 2 - 1));

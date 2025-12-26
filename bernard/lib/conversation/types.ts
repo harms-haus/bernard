@@ -154,7 +154,7 @@ export type MessageRecord = {
   content: string | Record<string, unknown> | Array<Record<string, unknown>>;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: ToolCallEntry[];
+  tool_calls?: unknown[];
   createdAt: string;
   tokenDeltas?: { in?: number; out?: number };
   metadata?: Record<string, unknown>;

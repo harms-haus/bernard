@@ -1,17 +1,15 @@
-import type { Archivist, Recorder, MessageRecord } from "@/lib/conversation/types";
-import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
+import type { Recorder, MessageRecord } from "@/lib/conversation/types";
+import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { raiseEvent } from "@/lib/automation/hookService";
 import { RouterContext, ResponseContext } from "@/lib/conversation/context";
 import type { AgentOutputItem } from "../streaming/types";
 import { runRouterHarness, getRouterToolDefinitions } from "../harness/router/routerHarness";
-import { runResponseHarness } from "../harness/respond/responseHarness";
 import type { LLMCaller } from "../llm/llm";
-import { AIMessage, BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
+import { AIMessage } from "@langchain/core/messages";
 import { createDelegateSequencer } from "../streaming/delegateSequencer";
 import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
-import { deduplicateMessages } from "@/lib/conversation/dedup";
 import type { HomeAssistantContextManager } from "@/lib/home-assistant";
-import type { ToolWithInterpretation } from "../tool";
 import type { HARestConfig } from "../tool/home-assistant-list-entities.tool";
 import type { PlexConfig } from "@/lib/plex";
 import { getSettings } from "@/lib/config/settingsCache";
@@ -72,7 +70,7 @@ export class StreamingOrchestrator {
         this.usedTools.clear();
 
         // 1. Identify or create conversation
-        const { conversationId, isNewConversation, existingHistory } =
+        const { conversationId } =
             await this.identifyConversation(providedId);
 
         // 2. Load HA REST configuration from settings
@@ -102,7 +100,7 @@ export class StreamingOrchestrator {
 
         // 5. Create task creation context
         const taskRecordKeeper = new TaskRecordKeeper(getRedis());
-        const createTask = async (toolName: string, args: Record<string, unknown>, settings: any) => {
+        const createTask = async (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => {
           const taskId = `task_${crypto.randomBytes(10).toString("hex")}`;
           const taskName = `${toolName}: ${Object.values(args).join(" (")}...)`.slice(0, 100);
 
@@ -277,14 +275,15 @@ export class StreamingOrchestrator {
         };
     }
 
-    private async mergeHistory(
+    private mergeHistory(
         _conversationId: string,
         newMessages: BaseMessage[],
         existingHistory: MessageRecord[]
-    ): Promise<BaseMessage[]> {
+    ): BaseMessage[] {
         // This is a simplified merge.
+        const history = existingHistory.map((msg) => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null);
         return [
-            ...existingHistory.map((msg) => messageRecordToBaseMessage(msg)).filter((m): m is BaseMessage => m !== null),
+            ...history,
             ...newMessages
         ];
     }
@@ -302,7 +301,7 @@ export class StreamingOrchestrator {
                 await recorder.recordLLMCallStart(conversationId, {
                     messageId: this.currentLLMCallMessageId,
                     model: event.model || "unknown",
-                    context: event.context as BaseMessage[],
+                    context: event.context,
                     ...(requestId ? { requestId } : {}),
                     ...(turnId ? { turnId } : {}),
                     ...(event.tools ? { tools: event.tools } : {}),
@@ -311,7 +310,12 @@ export class StreamingOrchestrator {
 
             case "llm_call_complete":
                 if (this.currentLLMCallMessageId) {
-                    const llmCompleteDetails: any = {
+                    const llmCompleteDetails: {
+                        messageId: string;
+                        result: BaseMessage;
+                        latencyMs?: number;
+                        tokens?: { in: number; out: number };
+                    } = {
                         messageId: this.currentLLMCallMessageId,
                         result: event.result,
                         ...(event.actualTokens ? {
@@ -367,8 +371,12 @@ export class StreamingOrchestrator {
                 });
                 break;
 
-            case "tool_call_complete":
-                const toolCompleteDetails: any = {
+            case "tool_call_complete": {
+                const toolCompleteDetails: {
+                    toolCallId: string;
+                    result: string;
+                    latencyMs?: number;
+                } = {
                     toolCallId: event.toolCall.id,
                     result: event.result
                 };
@@ -379,8 +387,9 @@ export class StreamingOrchestrator {
 
                 await recorder.recordToolCallComplete(conversationId, toolCompleteDetails);
                 break;
+            }
 
-            case "delta":
+            case "delta": {
                 const current = this.accumulatedDeltas.get(event.messageId) || "";
                 const next = current + event.delta;
                 this.accumulatedDeltas.set(event.messageId, next);
@@ -392,9 +401,19 @@ export class StreamingOrchestrator {
                     }));
                 }
                 break;
+            }
 
             case "recollection": {
-                const recollectionDetails: any = {
+                const recollectionDetails: {
+                    recollectionId: string;
+                    sourceConversationId: string;
+                    chunkIndex: number;
+                    content: string;
+                    score: number;
+                    messageStartIndex: number;
+                    messageEndIndex: number;
+                    conversationMetadata?: Record<string, unknown>;
+                } = {
                     recollectionId: event.recollectionId,
                     sourceConversationId: event.conversationId,
                     chunkIndex: event.chunkIndex,
@@ -404,7 +423,7 @@ export class StreamingOrchestrator {
                     messageEndIndex: event.messageEndIndex
                 };
                 if (event.conversationMetadata) {
-                    recollectionDetails.conversationMetadata = event.conversationMetadata;
+                    recollectionDetails.conversationMetadata = event.conversationMetadata as Record<string, unknown>;
                 }
                 await recorder.recordRecollection(conversationId, recollectionDetails);
                 break;
@@ -434,13 +453,13 @@ export class StreamingOrchestrator {
      * Cleanup resources when shutting down the orchestrator
      */
     async shutdown(): Promise<void> {
-        console.log('[StreamingOrchestrator] Shutting down...');
+        console.warn('[StreamingOrchestrator] Shutting down...');
 
         // Close all Home Assistant WebSocket connections
         try {
             const { closeAllHAConnections } = await import('@/lib/home-assistant');
             closeAllHAConnections();
-            console.log('[StreamingOrchestrator] Closed all HA WebSocket connections');
+            console.warn('[StreamingOrchestrator] Closed all HA WebSocket connections');
         } catch (error) {
             console.warn('[StreamingOrchestrator] Error closing HA connections:', error);
         }
@@ -449,7 +468,7 @@ export class StreamingOrchestrator {
         try {
             const { cleanupVectorClient } = await import('../../lib/conversation/search');
             await cleanupVectorClient();
-            console.log('[StreamingOrchestrator] Closed vector Redis client');
+            console.warn('[StreamingOrchestrator] Closed vector Redis client');
         } catch (error) {
             console.warn('[StreamingOrchestrator] Error closing vector Redis client:', error);
         }

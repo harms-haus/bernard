@@ -1,4 +1,4 @@
-import { BaseMessage, MessageStructure } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 
 
 /**
@@ -60,15 +60,15 @@ export type MessageEventType = "llm_call" | "llm_call_complete" | "tool_call" | 
 export type LLMCallEvent = {
   type: "llm_call";
   model?: string;
-  context: BaseMessage<MessageStructure, MessageEventType>[];
+  context: BaseMessage[];
   tools?: string[];
   totalContextTokens?: number;
 }
 
 export type LLMCallCompleteEvent = {
   type: "llm_call_complete";
-  context: BaseMessage<MessageStructure, MessageEventType>[];
-  result: BaseMessage<MessageStructure, MessageEventType>;
+  context: BaseMessage[];
+  result: BaseMessage;
   actualTokens?: {
     promptTokens: number;
     completionTokens: number;

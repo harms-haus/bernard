@@ -5,7 +5,7 @@ type StringStore = Map<string, string>;
 type SetStore = Map<string, Set<string>>;
 
 class FakeMulti {
-  private actions: Array<() => Promise<unknown> | unknown> = [];
+  private actions: Array<() => unknown> = [];
 
   constructor(private readonly redis: FakeRedis) {}
 

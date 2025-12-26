@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { requireAdminRequest } from '@/app/api/_lib/admin';
 import { clearEntireIndex } from '@/app/api/_lib/embeddingIndex';
 

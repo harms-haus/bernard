@@ -5,21 +5,10 @@ import { childLogger, logger } from "../logging";
 const log = childLogger({ component: "task_archiver" }, logger);
 
 function getArchiveConfig() {
-  // Try to get from global config if available, otherwise fall back to env vars
-  try {
-    const queueModule = require("./queue");
-    const globalConfig = queueModule?.globalConfig;
-    return {
-      archiveAfterDays: globalConfig?.archiveAfterDays || parseInt(process.env["TASK_ARCHIVE_AFTER_DAYS"] ?? "7", 10) || 7,
-      batchSize: parseInt(process.env["TASK_ARCHIVE_BATCH_SIZE"] ?? "100", 10) || 100
-    };
-  } catch {
-    // Fallback if queue module not available
-    return {
-      archiveAfterDays: parseInt(process.env["TASK_ARCHIVE_AFTER_DAYS"] ?? "7", 10) || 7,
-      batchSize: parseInt(process.env["TASK_ARCHIVE_BATCH_SIZE"] ?? "100", 10) || 100
-    };
-  }
+  return {
+    archiveAfterDays: parseInt(process.env["TASK_ARCHIVE_AFTER_DAYS"] ?? "7", 10) || 7,
+    batchSize: parseInt(process.env["TASK_ARCHIVE_BATCH_SIZE"] ?? "100", 10) || 100
+  };
 }
 
 /**

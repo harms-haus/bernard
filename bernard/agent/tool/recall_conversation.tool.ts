@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getRedis } from "@/lib/infra/redis";
 import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
-import { countTokens, countTokensInText } from "@/lib/conversation/tokenCounter";
+import { countTokens } from "@/lib/conversation/tokenCounter";
 import { mapRecordsToMessages } from "@/lib/conversation/messages";
 import { withTimeout } from "@/lib/infra/timeouts";
 import type { Conversation, MessageRecord } from "@/lib/conversation/types";

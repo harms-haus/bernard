@@ -10,7 +10,7 @@ export type CorsHeaders = {
   'Access-Control-Allow-Credentials'?: string;
 };
 
-export function getCorsHeaders(origin: string | null): CorsHeaders {
+export function getCorsHeaders(_origin: string | null): CorsHeaders {
   // OpenAI API endpoints should allow all origins for compatibility
   // This ensures any client can connect to Bernard's OpenAI-compatible API
   return {

@@ -46,7 +46,7 @@ export function buildTaskExecutor() {
   const recordKeeper = new TaskRecordKeeper(redis);
 
   return async function executor(job: Job<TaskPayload, unknown, string>): Promise<TaskResult> {
-    const { taskId, toolName, arguments: args, settings: payloadSettings, userId, conversationId } = job.data;
+    const { taskId, toolName, arguments: args, settings: payloadSettings, userId } = job.data;
 
     log.info({
       event: "task.execution.started",

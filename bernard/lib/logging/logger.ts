@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import path from "node:path";
 import pino, { stdTimeFunctions, type Logger, type LoggerOptions, type TransportSingleOptions } from "pino";
 
 export type LogContext = {
@@ -39,7 +38,7 @@ export const redactionPaths = [
 function parseJsonOption(raw: string | undefined): Record<string, unknown> | undefined {
   if (!raw) return undefined;
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
   } catch {
     return undefined;

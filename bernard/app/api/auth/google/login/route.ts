@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getProviderConfig } from "@/lib/auth/oauth";
 import { randomBytes } from "crypto";
 import { getRedis } from "@/lib/infra";
+import { logger } from "@/lib/logging";
 
 /**
  * GET /api/auth/google/login
@@ -27,10 +28,10 @@ export async function GET(req: NextRequest) {
     });
 
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    console.log("GET /google/login - Redirecting to Google OAuth");
+    logger.info({ event: "auth.google.login.redirect" }, "Redirecting to Google OAuth");
     return Response.redirect(googleAuthUrl, 302);
   } catch (err) {
-    console.error("GET /google/login - Error initiating Google OAuth:", err);
+    logger.error({ event: "auth.google.login.error", error: err instanceof Error ? err.message : String(err) }, "Error initiating Google OAuth");
     return new Response(JSON.stringify({ error: "Unable to start Google OAuth" }), {
       status: 500
     });

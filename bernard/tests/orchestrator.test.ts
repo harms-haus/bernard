@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test, vi, describe, beforeEach, expect } from "vitest";
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
+import { HumanMessage } from "@langchain/core/messages";
 import { StreamingOrchestrator } from "../agent/loop/orchestrator";
-import { RecordKeeper } from "../agent/recordKeeper/conversation.keeper";
+import type { RecordKeeper } from "../agent/recordKeeper/conversation.keeper";
 import type { LLMCaller } from "../agent/llm/llm";
 
 // Mock RecordKeeper
@@ -54,7 +54,7 @@ vi.mock("../agent/harness/respond/responseHarness", () => ({
 }));
 
 vi.mock("../agent/harness/recollect", () => ({
-    runRecollectionHarness: vi.fn().mockImplementation(async function* () {
+    runRecollectionHarness: vi.fn().mockImplementation(async () => {
         // Mock recollection harness that yields no events (no recollections found)
         return;
     })

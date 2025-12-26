@@ -30,7 +30,7 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number, la
       })
       .catch((err) => {
         if (timer) clearTimeout(timer);
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
       });
   });
 }

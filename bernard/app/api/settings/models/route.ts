@@ -21,7 +21,7 @@ export async function PUT(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as unknown;
     const parsed = ModelsSettingsSchema.parse(body);
 
     // Save the new settings

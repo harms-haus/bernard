@@ -5,6 +5,13 @@ import { settingsStore } from "@/app/api/settings/_common";
 
 export const runtime = "nodejs";
 
+interface ProviderPayload {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  type?: "openai" | "ollama" | undefined;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const auth = await requireAdminRequest(req, { route: `/api/providers/${resolvedParams.id}` });
@@ -28,24 +35,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if ("error" in auth) return auth.error;
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as Partial<ProviderPayload>;
     const store = settingsStore();
 
     // Validate required fields
-    if (!body.name || !body.baseUrl || !body.apiKey) {
+    const { name, baseUrl, apiKey, type } = body;
+    if (!name || !baseUrl || !apiKey) {
       return new Response(JSON.stringify({ error: "Missing required fields: name, baseUrl, apiKey" }), { status: 400 });
     }
 
+    const payload: ProviderPayload = { name, baseUrl, apiKey, type };
+
     // Test the provider connection
     const testResult = await store.testProviderConnection({
-      ...body,
+      ...payload,
       id: "",
       createdAt: "",
-      updatedAt: ""
+      updatedAt: "",
+      type: payload.type || "openai"
     });
 
     const updatedProvider = await store.updateProvider(resolvedParams.id, {
-      ...body,
+      name: payload.name,
+      baseUrl: payload.baseUrl,
+      apiKey: payload.apiKey,
+      type: payload.type || "openai",
       lastTestedAt: new Date().toISOString(),
       testStatus: testResult.status,
       testError: testResult.error

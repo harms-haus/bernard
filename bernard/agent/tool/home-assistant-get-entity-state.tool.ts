@@ -1,6 +1,5 @@
 import { getStates } from "home-assistant-js-websocket";
 import { getHAConnection } from "@/lib/home-assistant";
-import type { HARestConfig } from "./home-assistant-list-entities.tool";
 
 /**
  * Home Assistant entity state object
@@ -77,9 +76,9 @@ export async function getEntityState(
       entity_id: entityState.entity_id,
       state: entityState.state,
       attributes: entityState.attributes,
-      last_changed: entityState.last_changed,
-      last_updated: entityState.last_updated,
-      context: entityState.context
+      ...(entityState.last_changed && { last_changed: entityState.last_changed }),
+      ...(entityState.last_updated && { last_updated: entityState.last_updated }),
+      ...(entityState.context !== undefined ? { context: entityState.context } : {})
     };
 
     // Cache the result
@@ -132,15 +131,22 @@ export async function getEntityStateREST(
       throw new Error(`HA API error: ${response.status} ${response.statusText}`);
     }
 
-    const entityState = await response.json();
+    const entityState = await response.json() as {
+      entity_id: string;
+      state: string;
+      attributes: Record<string, unknown>;
+      last_changed?: string;
+      last_updated?: string;
+      context?: unknown;
+    };
 
     const result: HAEntityState = {
       entity_id: entityState.entity_id,
       state: entityState.state,
       attributes: entityState.attributes,
-      last_changed: entityState.last_changed,
-      last_updated: entityState.last_updated,
-      context: entityState.context
+      ...(entityState.last_changed && { last_changed: entityState.last_changed }),
+      ...(entityState.last_updated && { last_updated: entityState.last_updated }),
+      ...(entityState.context !== undefined ? { context: entityState.context } : {})
     };
 
     // Cache the result

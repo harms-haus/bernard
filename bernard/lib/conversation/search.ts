@@ -14,8 +14,7 @@ const indexPrefix = process.env["CONVERSATION_INDEX_PREFIX"] ?? "bernard:conv:in
 const SEARCH_TIMEOUT_MS = Number(process.env["RECALL_SEARCH_TIMEOUT_MS"]) || 10_000;
 
 // Module-level singleton for vector Redis client to prevent connection leaks
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let globalVectorClient: any = null;
+let globalVectorClient: RedisClientType | null = null;
 
 export type SearchResult = {
   conversationId: string;
@@ -48,10 +47,10 @@ export class ConversationSearchService {
   ) {}
 
   private async vectorClient(): Promise<RedisClientType> {
-    if (globalVectorClient) return globalVectorClient as RedisClientType;
+    if (globalVectorClient) return globalVectorClient;
     const client = createClient({ url: redisUrl });
     await client.connect();
-    // @ts-ignore: Redis client type complexity
+    // @ts-expect-error: Redis client type complexity
     globalVectorClient = client;
     return client as RedisClientType;
   }

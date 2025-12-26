@@ -2,8 +2,21 @@ import type { NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { settingsStore } from "@/app/api/settings/_common";
+import { getRedis } from "@/lib/infra/redis";
 
 export const runtime = "nodejs";
+
+interface CachedModels {
+  models: ProviderModel[];
+  timestamp: number;
+}
+
+interface ProviderModel {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,12 +34,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Check if we have cached models and they're still fresh (5 minutes)
     const cacheKey = `provider:${provider.id}:models`;
-    const redis = store["redis"];
+    const redis = getRedis();
     const cached = await redis.get(cacheKey);
 
     if (cached) {
       try {
-        const parsed = JSON.parse(cached);
+        const parsed = JSON.parse(cached) as CachedModels;
         if (parsed.timestamp && Date.now() - parsed.timestamp < 5 * 60 * 1000) {
           auth.reqLog.success(200, {
             action: "providers.models.get",
@@ -60,19 +73,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { data: Record<string, unknown>[] };
 
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error("Invalid models response format");
     }
 
     // Cache the models
-    const models = data.data.map((model: any) => ({
-      id: model.id,
-      object: model.object || "model",
-      created: model.created,
-      owned_by: model.owned_by || "unknown"
-    }));
+    const models: ProviderModel[] = data.data.map((model) => {
+      const id = model["id"];
+      const object = model["object"];
+      const created = model["created"];
+      const ownedBy = model["owned_by"];
+
+      return {
+        id: typeof id === "string" || typeof id === "number" ? String(id) : "",
+        object: typeof object === "string" ? object : "model",
+        created: typeof created === "number" ? created : Number(created ?? 0),
+        owned_by: typeof ownedBy === "string" ? ownedBy : "unknown"
+      };
+    });
 
     await redis.set(cacheKey, JSON.stringify({
       models,

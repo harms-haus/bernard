@@ -19,8 +19,6 @@ import {
   type HourlyWeather
 } from "@/lib/weather/common";
 
-import { geocodeLocation as geocodeLocationApi } from "@/lib/weather";
-import { getStatusMessagesForTool } from "@/lib/status/messages";
 
 type ForecastResponse = {
   daily?: DailyWeather;
@@ -63,13 +61,7 @@ const HOURLY_FIELDS = [
 const CURRENT_FIELDS = "temperature_2m,apparent_temperature,precipitation,precipitation_probability,wind_speed_10m";
 
 export const getWeatherDataTool = tool(
-  async ({ area_search, startDateTime, endDateTime, period }, config) => {
-    // Set status messages for weather tools
-    const statusService = config?.configurable?.statusService;
-    if (statusService) {
-      const statusMessages = getStatusMessagesForTool("get_weather");
-      statusService.setStatusPool(statusMessages, false, false);
-    }
+  async ({ area_search, startDateTime, endDateTime, period }) => {
     // Geocode the area_search to get lat/lon coordinates
     let coordinates: { lat: number; lon: number } | null = null;
     try {

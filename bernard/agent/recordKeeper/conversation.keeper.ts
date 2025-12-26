@@ -19,7 +19,6 @@ import type {
   Conversation,
   ConversationIndexingStatus,
   ConversationStatus,
-  ConversationStats,
   ConversationWithStats,
   MessageRecord,
   OpenRouterResult,
@@ -27,13 +26,10 @@ import type {
   RecallQuery,
   Recorder,
   RecordKeeperStatus,
-  Request,
-  ToolCallEntry,
   ToolResult,
-  Turn,
   TurnStatus
 } from "../../lib/conversation/types";
-import { childLogger, logger, toErrorObject } from "../../lib/logging";
+import { childLogger, logger } from "../../lib/logging";
 export type {
   Conversation,
   ConversationIndexingStatus,
@@ -62,7 +58,6 @@ type RecordKeeperOptions = {
 const DEFAULT_NAMESPACE = "bernard:rk";
 const DEFAULT_METRICS_NAMESPACE = "bernard:rk:metrics";
 const DEFAULT_IDLE_MS = 10 * 60 * 1000; // 10 minutes
-const TASKS_DISABLED = process.env["CONVERSATION_TASKS_DISABLED"] === "true";
 
 function nowIso() {
   return new Date().toISOString();
@@ -673,7 +668,7 @@ export class RecordKeeper implements Archivist, Recorder {
       tokens?: { in?: number; out?: number };
     }
   ): Promise<void> {
-    const resultMessage = Array.isArray(details.result) ? details.result[0] : details.result;
+    const resultMessage = details.result;
     const resultSnapshot = snapshotMessageForTrace(resultMessage);
 
     // Find the original LLM call to update it?

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
@@ -7,20 +8,22 @@ import wiki from "wikipedia";
 // Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures
 wiki.setUserAgent("Bernard-AI/1.0 (https://github.com/your-repo/bernard)");
 
+import axios from 'axios';
+import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
-const axios = require('axios');
-const originalGet = axios.default.get;
-axios.default.get = function(url: string, config?: any) {
+const originalGet = axios.get;
+axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Promise<AxiosResponse> {
   const newConfig = {
     ...config,
     headers: {
       ...config?.headers,
       'User-Agent': 'Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)'
     }
-  };
+  } as AxiosRequestConfig;
   return originalGet(url, newConfig);
-};
+} as typeof axios.get);
 
 type WikipediaSearchResult = {
   page_id: number;
@@ -28,6 +31,13 @@ type WikipediaSearchResult = {
   description: string;
   index: number;
 };
+
+// Type for raw Wikipedia API result
+interface WikipediaAPIResult {
+  pageid: number;
+  title: string;
+  snippet?: string;
+}
 
 /**
  * Execute Wikipedia search using the wikipedia package
@@ -37,7 +47,7 @@ async function executeWikipediaSearch(query: string, n_results: number = 10, sta
     const searchResults = await wiki.search(query, {
       limit: n_results + starting_index
     });
-    const results: WikipediaSearchResult[] = searchResults.results
+    const results: WikipediaSearchResult[] = (searchResults.results as WikipediaAPIResult[])
       .slice(starting_index)
       .map((result, index) => ({
         page_id: result.pageid,
@@ -71,3 +81,4 @@ e.g. "What is the capital of France?" -> "France", "Who was the 8th president of
 export const wikipediaSearchTool = Object.assign(wikipediaSearchToolImpl, {
   interpretationPrompt: ``
 });
+/* eslint-enable @typescript-eslint/unbound-method */

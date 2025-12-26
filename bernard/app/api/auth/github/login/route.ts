@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getProviderConfig } from "@/lib/auth/oauth";
 import { randomBytes } from "crypto";
 import { getRedis } from "@/lib/infra/redis";
+import { logger } from "@/lib/logging";
 
 /**
  * GET /api/auth/github/login
@@ -33,10 +34,10 @@ export async function GET(req: NextRequest) {
     });
 
     const githubAuthUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
-    console.log("GET /github/login - Redirecting to GitHub OAuth");
+    logger.info({ event: "auth.github.login.redirect" }, "Redirecting to GitHub OAuth");
     return Response.redirect(githubAuthUrl, 302);
   } catch (err) {
-    console.error("GET /github/login - Error initiating GitHub OAuth:", err);
+    logger.error({ event: "auth.github.login.error", error: err instanceof Error ? err.message : String(err) }, "Error initiating GitHub OAuth");
     return new Response(JSON.stringify({ error: "Unable to start GitHub OAuth" }), {
       status: 500,
       headers: { "Content-Type": "application/json" }

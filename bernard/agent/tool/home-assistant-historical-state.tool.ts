@@ -10,7 +10,7 @@ import { getHAConnection } from "@/lib/home-assistant";
 interface HistoricalStateData {
   entity_id: string;
   state: string;
-  attributes: Record<string, any>;
+  attributes: Record<string, string | number | boolean | null | Record<string, unknown>>;
   last_changed: string;
   last_updated: string;
 }

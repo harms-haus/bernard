@@ -1,6 +1,12 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import type { MessageRecord } from "./types";
 
+// Extended message type that includes tool-related properties
+type MessageWithTools = (BaseMessage | MessageRecord) & {
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+};
+
 /**
  * Create a unique fingerprint for a message based on its content and role
  */
@@ -15,9 +21,10 @@ export function createMessageFingerprint(message: BaseMessage | MessageRecord): 
     : JSON.stringify(content).toLowerCase();
 
   // Include tool calls and tool call ID for deeper uniqueness
-  const toolCalls = (message as any).tool_calls;
+  const extendedMessage = message as MessageWithTools;
+  const toolCalls = extendedMessage.tool_calls;
   const toolCallsString = toolCalls ? JSON.stringify(toolCalls) : "";
-  const toolCallId = (message as any).tool_call_id || "";
+  const toolCallId = extendedMessage.tool_call_id || "";
 
   return `${role}:${name}:${contentString}:${toolCallsString}:${toolCallId}`;
 }

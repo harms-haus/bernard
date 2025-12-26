@@ -152,12 +152,12 @@ export function rerankByUniqueness(
       }
     }
 
-    console.log(`[rerankByUniqueness] Reranked ${reranked.length} results using MMR (λ=${lambda})`);
+    console.warn(`[rerankByUniqueness] Reranked ${reranked.length} results using MMR (λ=${lambda})`);
     return reranked;
 
   } catch (err) {
     console.error('[rerankByUniqueness] Failed to rerank results:', err);
-    console.log('[rerankByUniqueness] Returning original results');
+    console.warn('[rerankByUniqueness] Returning original results');
     return results;
   }
 }
@@ -214,12 +214,12 @@ export function rerankByRelevance(
       .sort((a, b) => b.relevanceScore - a.relevanceScore) // Higher similarity first
       .map(item => item.result);
 
-    console.log(`[rerankByRelevance] Reranked ${sortedResults.length} results by relevance to query`);
+    console.warn(`[rerankByRelevance] Reranked ${sortedResults.length} results by relevance to query`);
     return sortedResults;
 
   } catch (err) {
     console.error('[rerankByRelevance] Failed to rerank results by relevance:', err);
-    console.log('[rerankByRelevance] Returning original results');
+    console.warn('[rerankByRelevance] Returning original results');
     return results;
   }
 }
@@ -296,12 +296,12 @@ export function rerankBySimilarityDiversity(
       }
     }
 
-    console.log(`[rerankBySimilarityDiversity] Reranked ${reranked.length} results by diversity`);
+    console.warn(`[rerankBySimilarityDiversity] Reranked ${reranked.length} results by diversity`);
     return reranked;
 
   } catch (err) {
     console.error('[rerankBySimilarityDiversity] Failed to rerank results:', err);
-    console.log('[rerankBySimilarityDiversity] Returning original results');
+    console.warn('[rerankBySimilarityDiversity] Returning original results');
     return results;
   }
 }

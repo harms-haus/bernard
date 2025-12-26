@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { updateAutomationSettings } from "@/lib/automation/registry";
 
@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as { enabled?: unknown };
     const { enabled } = body;
 
     if (typeof enabled !== "boolean") {

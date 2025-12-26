@@ -22,7 +22,7 @@ const TEST_TIMEOUT = 1_000;
 const originalEnv = { ...process.env };
 const originalConsole = { ...console };
 
-const resetEnv = () => {
+const resetEnv = function(this: void) {
   for (const key of Object.keys(process.env)) {
     delete process.env[key];
   }
@@ -51,9 +51,9 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  console.error = originalConsole.error;
-  console.warn = originalConsole.warn;
-  console.info = originalConsole.info;
+  (console as any).error = function(this: void, ...args: any[]) { return originalConsole.error.apply(console, args); };
+  (console as any).warn = function(this: void, ...args: any[]) { return originalConsole.warn.apply(console, args); };
+  (console as any).info = function(this: void, ...args: any[]) { return originalConsole.info.apply(console, args); };
 });
 
 afterEach(() => {

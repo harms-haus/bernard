@@ -6,6 +6,7 @@ import { getRedis } from "../infra/redis";
 import { SessionStore } from "./sessionStore";
 import { UserStore } from "./userStore";
 import { getSettings } from "../config/settingsCache";
+import { logger } from "../logging";
 
 type OAuthProvider = "default" | "google" | "github";
 	export type ProviderConfig = {
@@ -63,7 +64,7 @@ const fallbackProviderConfig = (provider: OAuthProvider): ProviderConfig => {
     tokenUrl: config.tokenUrl!,
     userInfoUrl: config.userInfoUrl!,
     redirectUri: config.redirectUri!,
-    scope: config.scope!,
+    scope: config.scope,
     clientId: config.clientId!,
     ...(config.clientSecret ? { clientSecret: config.clientSecret } : {})
   };
@@ -97,7 +98,7 @@ const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}
 
 export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
   const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
-  console.log(`OAuth start: redirectUri=${redirectUri}`);
+  logger.info({ event: 'oauth.start', provider, redirectUri }, `OAuth start: redirectUri=${redirectUri}`);
   const state = base64UrlEncode(crypto.randomBytes(24));
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createChallenge(codeVerifier);
@@ -124,7 +125,7 @@ const parseState = async (provider: OAuthProvider, state: string): Promise<{ cod
   try {
     return JSON.parse(raw) as { codeVerifier: string; returnTo: string };
   } catch (err) {
-    console.error("Failed to parse OAuth state", err);
+    logger.error({ event: 'oauth.state.parse_error', provider, error: err instanceof Error ? err.message : String(err) }, "Failed to parse OAuth state");
     return null;
   }
 };
@@ -234,7 +235,11 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
       }
     });
   } catch (err) {
-    console.error(`Auth callback failed (${provider})`, err);
+    logger.error({ 
+      event: 'oauth.callback.error', 
+      provider, 
+      error: err instanceof Error ? err.message : String(err) 
+    }, `Auth callback failed (${provider})`);
     const message = (err as Error).message ?? "Authentication failed";
     const status = message.toLowerCase().includes("deleted") ? 403 : 500;
     return new Response(JSON.stringify({ error: message }), {

@@ -6,7 +6,7 @@ import { getCorsHeaders } from "@/app/api/_lib/cors";
 export const runtime = "nodejs";
 
 // GET handler with CORS support
-export function GET(request: Request) {
+export function GET(_request: Request) {
   const response = NextResponse.json({
     object: "list",
     data: listModels()
@@ -24,7 +24,7 @@ export function GET(request: Request) {
 }
 
 // OPTIONS handler for CORS preflight
-export function OPTIONS(request: Request) {
+export function OPTIONS(_request: Request) {
   return new NextResponse(null, {
     status: 204,
     headers: getCorsHeaders(null)

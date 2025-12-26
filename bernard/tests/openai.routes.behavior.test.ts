@@ -94,8 +94,8 @@ vi.mock("@/lib/agent", () => ({
   })
 }));
 
-let completionsRoute: Awaited<typeof import("../app/api/v1/completions/route")>;
-let chatRoute: Awaited<typeof import("../app/api/v1/chat/completions/route")>;
+let completionsRoute: any;
+let chatRoute: any;
 
 beforeAll(async () => {
   completionsRoute = await import("../app/api/v1/completions/route");
@@ -117,13 +117,13 @@ const readResponseBody = async (res: Response) => {
 
 test("completions rejects invalid JSON", async () => {
   const req = new NextRequest(new Request("http://localhost/api", { method: "POST", body: "{" }));
-  const res = await completionsRoute.POST(req);
+  const res = completionsRoute.POST(req);
   assert.equal(res.status, 400);
 });
 
 test("completions enforces prompt and unsupported keys", async () => {
   const missing = new NextRequest(new Request("http://localhost/api", { method: "POST", body: JSON.stringify({}) }));
-  const res1 = await completionsRoute.POST(missing);
+  const res1 = completionsRoute.POST(missing);
   assert.equal(res1.status, 400);
 
   const badN = new NextRequest(
@@ -138,7 +138,7 @@ test("completions rejects wrong model", async () => {
   const req = new NextRequest(
     new Request("http://localhost/api", { method: "POST", body: JSON.stringify({ prompt: "hi" }) })
   );
-  const res = await completionsRoute.POST(req);
+  const res = completionsRoute.POST(req);
   assert.equal(res.status, 404);
   state.modelOk = true;
 });
@@ -148,7 +148,7 @@ test("completions returns non-streamed completion with usage", async () => {
   const req = new NextRequest(
     new Request("http://localhost/api", { method: "POST", body: JSON.stringify({ prompt: "hi" }) })
   );
-  const res = await completionsRoute.POST(req);
+  const res = completionsRoute.POST(req);
   const json = await res.json();
   assert.equal(res.status, 200);
   assert.equal(json.choices[0].text, "hello");
@@ -167,7 +167,7 @@ test("completions streams incremental chunks and usage", async () => {
       body: JSON.stringify({ prompt: "hi", stream: true, stream_options: { include_usage: true } })
     })
   );
-  const res = await completionsRoute.POST(req);
+  const res = completionsRoute.POST(req);
   const body = await readResponseBody(res);
   assert.ok(body.includes("Hello"));
   assert.ok(body.includes('"usage"'));

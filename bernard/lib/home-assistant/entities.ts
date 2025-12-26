@@ -64,7 +64,7 @@ export function parseHomeAssistantEntities(systemPrompt: string): HomeAssistantE
       if (entity) {
         entities.push(entity);
       }
-    } catch (error) {
+    } catch {
       // Skip malformed lines
       continue;
     }

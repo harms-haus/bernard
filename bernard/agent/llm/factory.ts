@@ -15,6 +15,6 @@ export function createLLMCaller(provider: Provider, model: string): LLMCaller {
       return new ChatOllamaLLMCaller(provider.baseUrl, model);
 
     default:
-      throw new Error(`Unsupported provider type: ${provider.type}`);
+      throw new Error("Unsupported provider type: " + String(provider.type));
   }
 }

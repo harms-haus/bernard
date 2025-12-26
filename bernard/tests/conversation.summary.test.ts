@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, test } from "vitest";
-import { HumanMessage } from "@langchain/core/messages";
+import type { HumanMessage } from "@langchain/core/messages";
 
 import { ConversationSummaryService } from "../lib/conversation/summary";
 import type { MessageRecord } from "../lib/conversation/types";

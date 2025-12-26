@@ -72,10 +72,10 @@ function filterEntitiesByRegex(entities: HomeAssistantEntity[], regex: string): 
 function filterEntitiesByVisibility(entities: HomeAssistantEntity[]): HomeAssistantEntity[] {
   return entities.filter(entity => {
     // Check if entity has visibility attributes (from WebSocket API)
-    const attributes = (entity as any).attributes;
+    const attributes = entity.attributes;
     if (!attributes) return true; // No attributes means visible (backward compatibility)
 
-    const hiddenBy = attributes.hidden_by;
+    const hiddenBy = attributes["hidden_by"];
     if (!hiddenBy) return true; // No hidden_by means visible
 
     // Hidden by assistant or cloud means not visible to assistants

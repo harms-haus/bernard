@@ -13,12 +13,16 @@ export default tseslint.config(
       "coverage/**",
       "dist/**",
       "eslint.config.mjs",
-      "next.config.mjs"
+      "next.config.mjs",
+      "init-livingroom-adb.js"
     ]
   },
   js.configs.recommended,
   ...(Array.isArray(nextCoreWebVitals) ? nextCoreWebVitals : [nextCoreWebVitals]),
-  ...tseslint.configs.recommendedTypeChecked,
+  ...tseslint.configs.recommendedTypeChecked.map(config => ({
+    ...config,
+    files: ["**/*.{ts,tsx}"]
+  })),
   {
     name: "bernard/typescript-overrides",
     files: ["**/*.{ts,tsx}"],
@@ -54,4 +58,3 @@ export default tseslint.config(
     }
   }
 );
-

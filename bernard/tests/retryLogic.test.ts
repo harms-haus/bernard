@@ -1,5 +1,5 @@
-import { describe, test, mock, assert } from "vitest";
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { describe, test, assert } from "vitest";
+import { AIMessage, SystemMessage } from "@langchain/core/messages";
 import { callLLMWithRetry } from "../agent/harness/router/routerHarness";
 import type { LLMCaller, LLMConfig } from "../agent/llm/llm";
 
@@ -13,15 +13,15 @@ class MockLLMCaller implements LLMCaller {
     this.callCount = 0;
   }
 
-  async complete(messages: BaseMessage[], config: LLMConfig): Promise<LLMResponse> {
+  async complete(_messages: BaseMessage[], _config: LLMConfig): Promise<LLMResponse> {
     throw new Error("Not implemented");
   }
 
-  async *streamText(messages: BaseMessage[], config: LLMConfig): AsyncIterable<string> {
-    throw new Error("Not implemented");
+  async *streamText(_messages: BaseMessage[], _config: LLMConfig): AsyncIterable<string> {
+    yield* []; // Not implemented
   }
 
-  async completeWithTools(messages: BaseMessage[], config: LLMConfig, tools?: any[]): Promise<AIMessage> {
+  async completeWithTools(_messages: BaseMessage[], _config: LLMConfig, _tools?: any[]): Promise<AIMessage> {
     this.callCount++;
     const response = this.responses[this.callCount - 1];
 
@@ -150,7 +150,7 @@ describe("LLM Retry Logic", () => {
     // Mock setTimeout to avoid actual delays in tests
     const originalSetTimeout = global.setTimeout;
     let timeoutCalled = false;
-    global.setTimeout = ((callback: () => void, delay: number) => {
+    global.setTimeout = ((callback: () => void, _delay: number) => {
       timeoutCalled = true;
       // Call immediately to avoid test timeout
       callback();

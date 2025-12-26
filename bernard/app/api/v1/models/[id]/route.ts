@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest} from "next/server";
+import { NextResponse } from "next/server";
 
 import { BERNARD_MODEL_ID, listModels } from "@/app/api/v1/_lib/openai";
 import { getCorsHeaders } from "@/app/api/_lib/cors";

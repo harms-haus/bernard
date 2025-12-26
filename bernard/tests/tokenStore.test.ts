@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { afterEach, test, vi } from "vitest";
 
-import { TokenStore, type TokenInfo, type TokenRecord } from "../lib/auth/tokenStore";
+import { TokenStore, type TokenRecord } from "../lib/auth/tokenStore";
 import { FakeRedis } from "./fakeRedis";
 
 const DEFAULT_NAMESPACE = "bernard:tokens";
@@ -131,7 +131,6 @@ test("update supports rename and status change with conflict checks", { timeout:
     Buffer.alloc(24, 14)
   ]);
   const { store, redis } = createStore();
-  const first = await store.create("first");
   const second = await store.create("second");
 
   await assert.rejects(store.update(second.id, { name: "first" }), /already exists/);
@@ -171,7 +170,6 @@ test("list returns active records and skips malformed ones", { timeout: 2000 }, 
     Buffer.alloc(24, 20)
   ]);
   const { store, redis } = createStore();
-  const first = await store.create("listed-a");
   const second = await store.create("listed-b");
   await store.update(second.id, { status: "disabled" });
   await redis.hset(idKey("bad"), { id: "bad" });

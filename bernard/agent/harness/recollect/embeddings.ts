@@ -36,7 +36,7 @@ export async function computeEmbeddingsForResults(
       }
     }
 
-    console.log(`[computeEmbeddingsForResults] Computed ${embeddings.size}/${results.length} embeddings`);
+    console.warn(`[computeEmbeddingsForResults] Computed ${embeddings.size}/${results.length} embeddings`);
 
   } catch (err) {
     console.error('[computeEmbeddingsForResults] Failed to compute embeddings:', err);
@@ -52,9 +52,9 @@ export async function computeEmbeddingsForResults(
 export async function getStoredEmbeddings(
   redisClient: RedisClientType,
   results: SearchResult[],
-  indexPrefix: string
+  _indexPrefix: string
 ): Promise<Map<string, number[]>> {
-  console.log(`[getStoredEmbeddings] RedisVectorStore embeddings are not directly accessible, computing embeddings instead`);
+  console.warn(`[getStoredEmbeddings] RedisVectorStore embeddings are not directly accessible, computing embeddings instead`);
   return computeEmbeddingsForResults(results);
 }
 
@@ -65,7 +65,7 @@ export async function getStoredEmbeddings(
 export async function getEmbeddingsForResults(
   redisClient: RedisClientType,
   results: SearchResult[],
-  indexPrefix: string
+  _indexPrefix: string
 ): Promise<Map<string, number[]>> {
   return computeEmbeddingsForResults(results);
 }

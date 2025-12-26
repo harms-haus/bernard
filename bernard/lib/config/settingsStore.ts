@@ -190,7 +190,6 @@ export type BernardSettings = {
 };
 
 export type Section = keyof BernardSettings;
-type PersistedSettings = Partial<Record<Section, unknown>>;
 
 /**
  * Safely parses JSON and validates it against a Zod schema, returning null on failure.
@@ -562,10 +561,10 @@ export class SettingsStore {
     const categories: Array<keyof Omit<ModelsSettings, "providers">> = ["response", "router", "memory", "utility", "aggregation"];
 
     for (const category of categories) {
-      if (updatedModels[category] && updatedModels[category]!.providerId === id) {
+      if (updatedModels[category] && updatedModels[category].providerId === id) {
         // Set to first available provider or clear if none
         updatedModels[category] = {
-          ...updatedModels[category]!,
+          ...updatedModels[category],
           providerId: filteredProviders[0]?.id ?? ""
         };
       }
@@ -595,7 +594,7 @@ export class SettingsStore {
         throw new Error(`HTTP ${response.status}: ${await response.text()}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as { data?: unknown[] };
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error("Invalid models response format");
       }

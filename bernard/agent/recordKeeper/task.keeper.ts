@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import type Redis from "ioredis";
 import { childLogger, logger } from "../../lib/logging";
 import type { Task, TaskEvent, TaskStatus, TaskRecallResult, TaskListQuery, TaskListResponse } from "../../lib/task/types";
@@ -8,10 +7,6 @@ const DEFAULT_METRICS_NAMESPACE = "bernard:task:rk:metrics";
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function uniqueId(prefix: string) {
-  return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
 }
 
 /**
@@ -99,39 +94,39 @@ export class TaskRecordKeeper {
    */
   async getTask(taskId: string): Promise<Task | null> {
     const taskKey = this.key(`task:${taskId}`);
-    const data = await this.redis.hgetall(taskKey) as any;
+    const data = await this.redis.hgetall(taskKey);
 
-    if (!data || !data.id) {
+    if (!data || !data['id']) {
       return null;
     }
 
     let sections: Record<string, string> | undefined;
-    if (data.sections) {
+    if (data['sections']) {
       try {
-        sections = JSON.parse(data.sections);
+        sections = JSON.parse(data['sections']) as Record<string, string>;
       } catch {
         sections = undefined;
       }
     }
 
     const task: Task = {
-      id: data.id,
-      name: data.name,
-      status: data.status as TaskStatus,
-      toolName: data.toolName,
-      userId: data.userId,
-      ...(data.conversationId && { conversationId: data.conversationId }),
-      createdAt: data.createdAt,
-      ...(data.startedAt && { startedAt: data.startedAt }),
-      ...(data.completedAt && { completedAt: data.completedAt }),
-      ...(data.runtimeMs && { runtimeMs: Number(data.runtimeMs) }),
-      ...(data.errorMessage && { errorMessage: data.errorMessage }),
-      messageCount: Number(data.messageCount) || 0,
-      toolCallCount: Number(data.toolCallCount) || 0,
-      tokensIn: Number(data.tokensIn) || 0,
-      tokensOut: Number(data.tokensOut) || 0,
-      archived: data.archived === "true",
-      ...(data.archivedAt && { archivedAt: data.archivedAt }),
+      id: data['id'],
+      name: data['name'] || '',
+      status: data['status'] as TaskStatus,
+      toolName: data['toolName'] || '',
+      userId: data['userId'] || '',
+      ...(data['conversationId'] && { conversationId: data['conversationId'] }),
+      createdAt: data['createdAt'] || '',
+      ...(data['startedAt'] && { startedAt: data['startedAt'] }),
+      ...(data['completedAt'] && { completedAt: data['completedAt'] }),
+      ...(data['runtimeMs'] && { runtimeMs: Number(data['runtimeMs']) }),
+      ...(data['errorMessage'] && { errorMessage: data['errorMessage'] }),
+      messageCount: Number(data['messageCount']) || 0,
+      toolCallCount: Number(data['toolCallCount']) || 0,
+      tokensIn: Number(data['tokensIn']) || 0,
+      tokensOut: Number(data['tokensOut']) || 0,
+      archived: data['archived'] === "true",
+      ...(data['archivedAt'] && { archivedAt: data['archivedAt'] }),
       ...(sections && { sections })
     };
     return task;
@@ -161,7 +156,7 @@ export class TaskRecordKeeper {
       case "tool_call_start":
         updates["toolCallCount"] = 1; // Will be incremented
         break;
-      case "task_completed":
+      case "task_completed": {
         updates["status"] = "completed";
         updates["completedAt"] = event.timestamp;
         const startedAt = await this.redis.hget(taskKey, "startedAt");
@@ -172,21 +167,22 @@ export class TaskRecordKeeper {
         // Move from active to completed
         await this.redis.multi()
           .zrem(this.key("tasks:active"), taskId)
-          .zrem(this.key("tasks:user:active"), `${event.data["userId"] || ""}:${taskId}`)
+          .zrem(this.key("tasks:user:active"), `${String(event.data["userId"]) || ""}:${taskId}`)
           .zadd(this.key("tasks:completed"), Date.parse(event.timestamp), taskId)
-          .zadd(this.key("tasks:user:completed"), Date.parse(event.timestamp), `${event.data["userId"] || ""}:${taskId}`)
+          .zadd(this.key("tasks:user:completed"), Date.parse(event.timestamp), `${String(event.data["userId"]) || ""}:${taskId}`)
           .exec();
+        }
         break;
       case "error":
         updates["status"] = "errored";
-        updates["errorMessage"] = String(event.data["error"] || "Unknown error");
+        updates["errorMessage"] = String(String(event.data["error"]) || "Unknown error");
         updates["completedAt"] = event.timestamp;
         // Move from active to completed (even errored tasks go to completed)
         await this.redis.multi()
           .zrem(this.key("tasks:active"), taskId)
-          .zrem(this.key("tasks:user:active"), `${event.data["userId"] || ""}:${taskId}`)
+          .zrem(this.key("tasks:user:active"), `${String(event.data["userId"]) || ""}:${taskId}`)
           .zadd(this.key("tasks:completed"), Date.parse(event.timestamp), taskId)
-          .zadd(this.key("tasks:user:completed"), Date.parse(event.timestamp), `${event.data["userId"] || ""}:${taskId}`)
+          .zadd(this.key("tasks:user:completed"), Date.parse(event.timestamp), `${String(event.data["userId"]) || ""}:${taskId}`)
           .exec();
         break;
     }

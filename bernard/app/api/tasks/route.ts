@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { getRedis } from "@/lib/infra/redis";
+import { logger } from "@/lib/logging";
 
 export const runtime = "nodejs";
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
       hasMore: result.hasMore
     });
   } catch (error) {
-    console.error("Error listing tasks:", error);
+    logger.error({ event: "tasks.list.error", error: error instanceof Error ? error.message : String(error) }, "Error listing tasks");
     return new Response(JSON.stringify({ error: "Failed to list tasks" }), {
       status: 500
     });
@@ -53,8 +54,8 @@ export async function POST(req: NextRequest) {
 
   let body: { action?: string; taskId?: string };
   try {
-    body = await req.json();
-  } catch (error) {
+    body = (await req.json()) as { action?: string; taskId?: string };
+  } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 });
   }
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     let success = false;
 
     switch (action) {
-      case "cancel":
+      case "cancel": {
         // Load the task to verify ownership before canceling
         const task = await recordKeeper.getTask(taskId);
 
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
 
         success = await recordKeeper.cancelTask(taskId);
         break;
+      }
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
     }
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ success: true });
   } catch (error) {
-    console.error("Error performing task action:", error);
+    logger.error({ event: "tasks.action.error", action, taskId, error: error instanceof Error ? error.message : String(error) }, "Error performing task action");
     return new Response(JSON.stringify({ error: "Failed to perform action" }), {
       status: 500
     });
@@ -135,7 +137,7 @@ export async function DELETE(req: NextRequest) {
 
     return Response.json({ success: true });
   } catch (error) {
-    console.error("Error deleting task:", error);
+    logger.error({ event: "tasks.delete.error", taskId, error: error instanceof Error ? error.message : String(error) }, "Error deleting task");
     return new Response(JSON.stringify({ error: "Failed to delete task" }), {
       status: 500
     });

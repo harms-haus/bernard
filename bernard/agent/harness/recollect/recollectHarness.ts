@@ -1,7 +1,6 @@
-import { SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
+import { HumanMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
-import type { RouterContext } from "../../../lib/conversation/context";
 import { getEmbeddingModel } from "../../../lib/config/embeddings";
 import { ConversationSearchService } from "../../../lib/conversation/search";
 import type { RecordKeeper } from "../../recordKeeper/conversation.keeper";
@@ -9,6 +8,8 @@ import { getEmbeddingsForResults } from "./embeddings";
 import { rerankByUniqueness, rerankByRelevance } from "./rerank";
 import { getChunkMessagePositions } from "./positions";
 import crypto from "node:crypto";
+import type { RouterContext } from "@/lib/conversation/context";
+import type { RedisClientType } from "redis";
 
 function uniqueId(prefix: string) {
   return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
@@ -29,41 +30,34 @@ export type RecollectionHarnessContext = {
  * Yields recollection events and optionally adds results to router context.
  */
 export async function* runRecollectionHarness(context: RecollectionHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { conversationId, routerContext, messages, recordKeeper } = context;
+  const { messages, recordKeeper } = context;
 
   try {
     // 1. Extract query text from user messages
     const queryText = extractQueryFromMessages(messages);
     if (!queryText || queryText.trim().length === 0) {
-      console.log('[runRecollectionHarness] No query text found, skipping recollection');
       return;
     }
-
-    console.log(`[runRecollectionHarness] Starting recollection for query: "${queryText.slice(0, 100)}${queryText.length > 100 ? '...' : ''}"`);
 
     // 2. Compute query embedding
     const embedder = await getEmbeddingModel({});
     const queryEmbedding = await embedder.embedQuery(queryText);
-    console.log(`[runRecollectionHarness] Computed query embedding (${queryEmbedding.length} dimensions)`);
 
     // 3. Search for similar conversations
-    const redis = recordKeeper.getRedisClient() as any; // Type compatibility for RedisClientType
+    const redis = recordKeeper.getRedisClient();
     const searchService = new ConversationSearchService(redis, recordKeeper);
 
     const searchResults = await searchService.searchSimilar(queryText, 50); // Get up to 50 results
-    console.log(`[runRecollectionHarness] Found ${searchResults.results.length} similar conversation chunks`);
 
     if (searchResults.results.length === 0) {
-      console.log('[runRecollectionHarness] No similar content found, skipping recollection');
       return;
     }
 
     // 4. Get embeddings for search results
     const indexPrefix = "bernard:conv:index"; // From search.ts
-    const resultEmbeddings = await getEmbeddingsForResults(redis, searchResults.results, indexPrefix);
+    const resultEmbeddings = await getEmbeddingsForResults(redis as unknown as RedisClientType, searchResults.results, indexPrefix);
 
     if (resultEmbeddings.size === 0) {
-      console.warn('[runRecollectionHarness] Failed to get embeddings for results, skipping reranking');
       return;
     }
 
@@ -72,11 +66,9 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
 
     // 6. Take top 10 most unique results
     const topResults = rerankedResults.slice(0, 10);
-    console.log(`[runRecollectionHarness] Selected top ${topResults.length} most unique results`);
 
     // 7. Resort the top results by relevance to the user's message
     const relevanceRerankedResults = rerankByRelevance(queryEmbedding, resultEmbeddings, topResults);
-    console.log(`[runRecollectionHarness] Reranked top ${relevanceRerankedResults.length} results by relevance to query`);
 
     // 8. Process each result and yield recollection events
     for (const result of relevanceRerankedResults) {
@@ -84,7 +76,6 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
         // Check if the conversation still exists - skip if it was deleted
         const conversationExists = await recordKeeper.getConversation(result.conversationId);
         if (!conversationExists) {
-          console.log(`[runRecollectionHarness] Skipping recollection for deleted conversation ${result.conversationId}`);
           continue;
         }
 
@@ -111,7 +102,7 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
               messageCount: fullConversation.messageCount
             };
           }
-        } catch (err) {
+        } catch {
           // Ignore metadata fetch errors
         }
 
@@ -132,15 +123,11 @@ export async function* runRecollectionHarness(context: RecollectionHarnessContex
         // Yield the recollection event
         yield recollectionEvent;
 
-        console.log(`[runRecollectionHarness] Yielded recollection for conversation ${result.conversationId} chunk ${result.chunkIndex} (messages ${positions.startIndex}-${positions.endIndex})`);
-
       } catch (err) {
         console.warn(`[runRecollectionHarness] Failed to process result for ${result.conversationId}:${result.chunkIndex}:`, err);
         // Continue with next result
       }
     }
-
-    console.log(`[runRecollectionHarness] Completed recollection harness with ${relevanceRerankedResults.length} results`);
 
   } catch (err) {
     console.error('[runRecollectionHarness] Failed to run recollection harness:', err);
@@ -160,18 +147,14 @@ function extractQueryFromMessages(messages: BaseMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (!message) continue;
-    const messageType = (message as any).type || (message as any)._type || (message as any)._getType?.() || 'unknown';
 
-    if (messageType === 'human' || messageType === 'user') {
+    if (message instanceof HumanMessage) {
       return typeof message.content === 'string' ? message.content : '';
     }
   }
 
   // Fallback: concatenate all user messages
-  const userMessages = messages.filter(msg => {
-    const messageType = (msg as any).type || (msg as any)._type || (msg as any)._getType?.() || 'unknown';
-    return messageType === 'human' || messageType === 'user';
-  });
+  const userMessages = messages.filter(msg => msg instanceof HumanMessage);
 
   return userMessages
     .map(msg => typeof msg.content === 'string' ? msg.content : '')

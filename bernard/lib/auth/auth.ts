@@ -5,6 +5,7 @@ import { SessionStore } from "./sessionStore";
 import { UserStore, type UserRecord } from "./userStore";
 import { getRedis } from "../infra/redis";
 import { TokenStore } from "./tokenStore";
+import { logger } from "../logging";
 
 export type AuthenticatedUser = {
   user: UserRecord;
@@ -73,15 +74,15 @@ const isAdminBearer = (req: NextRequest) => {
  * Accepts an optional Redis client to aid testing or dependency injection.
  */
 export async function getAuthenticatedUser(req: NextRequest, redis?: Redis): Promise<AuthenticatedUser | null> {
-  console.log('🔍 Auth: getAuthenticatedUser called');
+  logger.debug({ event: 'auth.getAuthenticatedUser.start' }, '🔍 Auth: getAuthenticatedUser called');
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
-  console.log('🔍 Auth: Session cookie:', sessionCookie ? 'present' : 'missing');
+  logger.debug({ event: 'auth.getAuthenticatedUser.cookie', present: !!sessionCookie }, '🔍 Auth: Session cookie checked');
   
   if (!sessionCookie) {
-    console.log('🔍 Auth: No session cookie, checking for admin API key');
+    logger.debug({ event: 'auth.getAuthenticatedUser.no_cookie' }, '🔍 Auth: No session cookie, checking for admin API key');
     // Check if this is an admin request with ADMIN_API_KEY
     if (isAdminBearer(req)) {
-      console.log('✅ Auth: Admin API key detected');
+      logger.info({ event: 'auth.admin_key.detected' }, '✅ Auth: Admin API key detected');
       const now = new Date().toISOString();
       return {
         user: {
@@ -99,9 +100,9 @@ export async function getAuthenticatedUser(req: NextRequest, redis?: Redis): Pro
   }
   
   const stores = buildStores(redis);
-  console.log('🔍 Auth: Resolving session with Redis');
+  logger.debug({ event: 'auth.getAuthenticatedUser.resolving' }, '🔍 Auth: Resolving session with Redis');
   const result = await resolveSession(sessionCookie, stores);
-  console.log('🔍 Auth: Session resolution result:', result ? 'success' : 'failed');
+  logger.debug({ event: 'auth.getAuthenticatedUser.result', success: !!result }, '🔍 Auth: Session resolution result');
   return result;
 }
 
@@ -162,15 +163,16 @@ export function clearSessionCookie() {
  * Allows relative paths (starting with "/") or absolute URLs with allowed hostnames.
  * Returns "/" as fallback for invalid redirects.
  */
-export function validateRedirectUrl(redirect: string): string {
+export function validateRedirectUrl(redirect?: string): string {
   // Default to "/" if no redirect provided
   if (!redirect || typeof redirect !== "string") {
     return "/";
   }
 
   // Check for control characters (including null bytes, newlines, etc.)
+  // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1F\x7F]/.test(redirect)) {
-    console.warn("Redirect validation failed: contains control characters");
+    logger.warn({ event: "auth.redirect.validation_failed", reason: "control_characters" }, "Redirect validation failed: contains control characters");
     return "/";
   }
 
@@ -178,7 +180,7 @@ export function validateRedirectUrl(redirect: string): string {
   if (redirect.startsWith("/")) {
     // Ensure it doesn't start with "//" (protocol-relative URLs)
     if (redirect.startsWith("//")) {
-      console.warn("Redirect validation failed: protocol-relative URL not allowed");
+      logger.warn({ event: "auth.redirect.validation_failed", reason: "protocol_relative" }, "Redirect validation failed: protocol-relative URL not allowed");
       return "/";
     }
     return redirect;
@@ -190,14 +192,14 @@ export function validateRedirectUrl(redirect: string): string {
 
     // Only allow http and https protocols
     if (!["http:", "https:"].includes(url.protocol)) {
-      console.warn(`Redirect validation failed: invalid protocol ${url.protocol}`);
+      logger.warn({ event: "auth.redirect.validation_failed", reason: "invalid_protocol", protocol: url.protocol }, `Redirect validation failed: invalid protocol ${url.protocol}`);
       return "/";
     }
 
     // Get allowed hosts from environment
     const allowedHostsEnv = process.env["ALLOWED_REDIRECT_HOSTS"];
     if (!allowedHostsEnv) {
-      console.warn("Redirect validation failed: ALLOWED_REDIRECT_HOSTS not configured");
+      logger.warn({ event: "auth.redirect.validation_failed", reason: "no_allowed_hosts_config" }, "Redirect validation failed: ALLOWED_REDIRECT_HOSTS not configured");
       return "/";
     }
 
@@ -210,13 +212,22 @@ export function validateRedirectUrl(redirect: string): string {
     // Check if the URL hostname matches any allowed host (case-insensitive)
     const redirectHost = url.hostname.toLowerCase();
     if (!allowedHosts.includes(redirectHost)) {
-      console.warn(`Redirect validation failed: hostname ${redirectHost} not in allowed hosts [${allowedHosts.join(", ")}]`);
+      logger.warn({ 
+        event: "auth.redirect.validation_failed", 
+        reason: "hostname_not_allowed", 
+        host: redirectHost,
+        allowedHosts
+      }, `Redirect validation failed: hostname ${redirectHost} not in allowed hosts`);
       return "/";
     }
 
     return redirect;
   } catch (error) {
-    console.warn("Redirect validation failed: invalid URL format", error);
+    logger.warn({ 
+      event: "auth.redirect.validation_failed", 
+      reason: "invalid_url_format",
+      error: error instanceof Error ? error.message : String(error)
+    }, "Redirect validation failed: invalid URL format");
     return "/";
   }
 }

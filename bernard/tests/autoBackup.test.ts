@@ -189,7 +189,7 @@ describe("autoBackup", () => {
     seedFile(dir, "auto-backup-recent.json", now - 1 * 60 * 60 * 1000);
     const oldPath = seedFile(dir, "auto-backup-old.json", now - 2 * DAY_MS);
     seedFile(dir, "auto-backup-1.json", now - 10 * 60 * 1000);
-    const oldest = seedFile(dir, "auto-backup-2.json", now - 20 * 60 * 1000);
+    seedFile(dir, "auto-backup-2.json", now - 20 * 60 * 1000);
     seedFile(dir, "ignore.txt", now - 20 * 60 * 1000);
     __fsState.statErrors.add(oldPath);
 

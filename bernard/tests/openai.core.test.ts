@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { beforeAll, test, vi } from "vitest";
 
 import { NextRequest } from "next/server";
+import type { BaseMessage } from "@langchain/core/messages";
+import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 
 type Role = "system" | "human" | "ai" | "tool";
 
@@ -87,7 +89,7 @@ vi.mock("@/lib/agent", () => ({
 }));
 
 // Import after mocks
-let openai: Awaited<typeof import("../app/api/v1/_lib/openai")>;
+let openai: any;
 
 beforeAll(async () => {
   openai = await import("../app/api/v1/_lib/openai");
@@ -97,7 +99,7 @@ const mkMessage = (role: Role, content: unknown = "") =>
   ({
     type: role,
     content
-  }) as unknown as import("@langchain/core/messages").BaseMessage;
+  }) as unknown as BaseMessage;
 
 test("listModels returns bernard model", () => {
   const models = openai.listModels();
@@ -149,7 +151,7 @@ test("collectToolCalls stringifies args and keeps ids/names", () => {
         { id: "x", function: { name: "foo", arguments: { a: 1 } } },
         { function: { name: "bar", arguments: "raw" } }
       ]
-    } as unknown as import("@langchain/core/messages").BaseMessage
+    } as unknown as BaseMessage
   ]);
   assert.equal(calls.length, 2);
   assert.equal(calls[0].id, "x");
@@ -226,7 +228,7 @@ test("hydrateMessagesWithHistory merges history with incoming and orders by ts",
   ];
   const incoming = [mkMessage("human", "hi"), mkMessage("ai", "reply")];
   const merged = await openai.hydrateMessagesWithHistory({
-    keeper: StubRecordKeeper.instances.at(-1) as unknown as import("@/agent/recordKeeper/conversation.keeper").RecordKeeper,
+    keeper: StubRecordKeeper.instances.at(-1) as unknown as RecordKeeper,
     conversationId: "conv",
     incoming
   });

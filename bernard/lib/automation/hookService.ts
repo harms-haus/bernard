@@ -6,9 +6,7 @@ import type {
 } from "./types";
 import { getAutomationRegistry } from "./registry";
 import { enqueueAutomationJob } from "./queue";
-import { childLogger, logger } from "../logging";
 
-const log = childLogger({ component: "hook_service" }, logger);
 
 /**
  * HookService provides a centralized way to raise events that trigger automations.
@@ -29,8 +27,8 @@ export class HookService {
     try {
       this.registry = await getAutomationRegistry();
       // log.debug("Refreshed automation registry", { count: this.registry.size });
-    } catch (err) {
-      // log.error("Failed to refresh automation registry", { error: String(err) });
+    } catch {
+      // log.error("Failed to refresh automation registry");
     }
   }
 
@@ -73,7 +71,7 @@ export class HookService {
     // Queue jobs for each matching automation
     const queuePromises = matchingAutomations.map(entry => {
       return enqueueAutomationJob(entry.automation.id, event)
-        .catch(err => {
+        .catch(() => {
           // log.error("Failed to enqueue automation job", {
           //   automationId: entry.automation.id,
           //   eventName,
@@ -96,7 +94,7 @@ export class HookService {
    * Force refresh of the registry (useful for testing)
    */
   refresh(): void {
-    this.refreshRegistry();
+    void this.refreshRegistry();
   }
 }
 

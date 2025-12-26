@@ -4,31 +4,28 @@ import { getCorsHeaders } from "@/app/api/_lib/cors";
 
 import {
   BERNARD_MODEL_ID,
-  collectToolCalls,
   contentFromMessage,
   createScaffolding,
   extractUsageFromMessages,
   findLastAssistantMessage,
   isBernardModel,
   mapChatMessages,
-  hydrateMessagesWithHistory,
   validateAuth
 } from "@/app/api/v1/_lib/openai";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { OpenAIMessage } from "@/lib/conversation/messages";
-import { resolveApiKey, resolveBaseUrl, resolveModel, splitModelAndProvider } from "@/lib/config/models";
+import { resolveModel, splitModelAndProvider } from "@/lib/config/models";
 import { getSettings } from "@/lib/config/settingsCache";
 import { StreamingOrchestrator } from "@/agent/loop/orchestrator";
 import { transformAgentOutputToChunks } from "@/agent/streaming/transform";
 import { createSSEStream } from "@/agent/streaming/sse";
 import { createLLMCaller } from "@/agent/llm/factory";
-import type { AgentOutputItem } from "@/agent/streaming/types";
 import { logRawRequest } from "@/lib/logging/rawRequestLogger";
 
 export const runtime = "nodejs";
 
 // OPTIONS handler for CORS preflight
-export function OPTIONS(request: NextRequest): NextResponse {
+export function OPTIONS(_request: NextRequest): NextResponse {
   return new NextResponse(null, {
     status: 204,
     headers: getCorsHeaders(null)
@@ -78,7 +75,7 @@ export async function POST(req: NextRequest) {
   let body: ChatCompletionBody | null = null;
   try {
     body = (await req.json()) as ChatCompletionBody;
-  } catch (err) {
+  } catch {
     return new NextResponse(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: getCorsHeaders(null) });
   }
 
@@ -105,7 +102,6 @@ export async function POST(req: NextRequest) {
     return new NextResponse(JSON.stringify({ error: "Model not found", allowed: BERNARD_MODEL_ID }), { status: 404, headers: getCorsHeaders(null) });
   }
 
-  const includeUsage = body.stream_options?.include_usage === true;
   const shouldStream = body.stream === true;
   const isGhostMode = body.ghost === true;
   const start = Date.now();
@@ -127,7 +123,7 @@ export async function POST(req: NextRequest) {
     }
 
     inputMessages = mapChatMessages(body.messages);
-  } catch (err) {
+  } catch {
     return new NextResponse(
       JSON.stringify({ error: "Invalid messages" }),
       { status: 400, headers: getCorsHeaders(null) }
@@ -150,8 +146,7 @@ export async function POST(req: NextRequest) {
     requestId,
     turnId,
     responseModelName: scaffoldResponseModel,
-    routerModelName: scaffoldrouterModel,
-    isNewConversation
+    routerModelName: scaffoldrouterModel
   } = scaffold;
   const responseModelName = scaffoldResponseModel ?? responseModelConfig.id;
   const routerModelName = scaffoldrouterModel ?? routerModelConfig.id;

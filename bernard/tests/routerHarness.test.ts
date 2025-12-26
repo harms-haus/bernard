@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi, describe, beforeEach } from "vitest";
-import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import {
     runRouterHarness,
     getRouterToolDefinitions,

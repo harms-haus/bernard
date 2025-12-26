@@ -1,8 +1,32 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+
+// Types for LangChain message serialization
+interface SerializedLangChainMessage {
+  lc: number;
+  type: string;
+  id: string[];
+  kwargs: Record<string, unknown>;
+}
+
+// Extended message interface for internal properties
+interface ExtendedBaseMessage {
+  lc?: number;
+  type: string;
+  _getType?: () => string;
+  tool_call_id?: string;
+  name?: string;
+  tool_calls?: LangChainToolCall[];
+  additional_kwargs?: {
+    tool_calls?: LangChainToolCall[];
+  };
+  role?: string; // For debugging/logging purposes
+  content: unknown;
+  response_metadata?: Record<string, unknown>;
+}
 
 /**
  * ChatOpenAI-based implementation of LLMCaller
@@ -29,26 +53,29 @@ export class ChatOpenAILLMCaller implements LLMCaller {
    */
   private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
     return messages.map((msg, index) => {
+      const extendedMsg = msg as unknown as ExtendedBaseMessage;
+
       // Check if this is a serialized LangChain message
-      const isSerialized = (msg as any).lc === 1 &&
-                          (msg as any).type === "constructor" &&
-                          Array.isArray((msg as any).id) &&
-                          (msg as any).id.length >= 3 &&
-                          (msg as any).id[0] === "langchain_core" &&
-                          (msg as any).id[1] === "messages";
+      const isSerialized = extendedMsg.lc === 1 &&
+                          extendedMsg.type === "constructor" &&
+                          Array.isArray((extendedMsg as unknown as SerializedLangChainMessage).id) &&
+                          (extendedMsg as unknown as SerializedLangChainMessage).id.length >= 3 &&
+                          (extendedMsg as unknown as SerializedLangChainMessage).id[0] === "langchain_core" &&
+                          (extendedMsg as unknown as SerializedLangChainMessage).id[1] === "messages";
 
       let actualType: string;
-      let kwargs: any;
+      let kwargs: Record<string, unknown> = {};
       let content = msg.content;
 
       if (isSerialized) {
         // Extract type from serialized format
-        actualType = (msg as any).id[2]; // e.g., "ToolMessage", "AIMessage", etc.
-        kwargs = (msg as any).kwargs || {};
-        content = kwargs.content || content;
+        const serializedMsg = extendedMsg as unknown as SerializedLangChainMessage;
+        actualType = serializedMsg.id[2] || "Unknown"; // e.g., "ToolMessage", "AIMessage", etc.
+        kwargs = serializedMsg.kwargs || {};
+        content = (kwargs["content"] as string | undefined) || content;
       } else {
         // Live LangChain message object
-        actualType = (msg as any).type || (msg as any)._getType?.() || "";
+        actualType = extendedMsg.type || extendedMsg._getType?.() || "";
         kwargs = {};
       }
 
@@ -59,16 +86,21 @@ export class ChatOpenAILLMCaller implements LLMCaller {
 
       // Convert based on actual message type
       switch (actualType) {
-        case "ToolMessage":
-          const toolCallId = kwargs.tool_call_id || (msg as any).tool_call_id || `call_tool_${index}`;
-          return new ToolMessage({
+        case "ToolMessage": {
+          const toolCallId = (kwargs["tool_call_id"] as string | undefined) || extendedMsg.tool_call_id || `call_tool_${index}`;
+          const name = (kwargs["name"] as string | undefined) || extendedMsg.name;
+          const messageFields: { content: string; tool_call_id: string; name?: string } = {
             content: typeof content === "string" ? content : JSON.stringify(content),
             tool_call_id: toolCallId,
-            name: kwargs.name || (msg as any).name,
-          });
+          };
+          if (name) {
+            messageFields.name = name;
+          }
+          return new ToolMessage(messageFields);
+        }
 
-        case "AIMessage":
-          const toolCalls = kwargs.tool_calls || (msg as any).tool_calls || (msg as any).additional_kwargs?.tool_calls;
+        case "AIMessage": {
+          const toolCalls = (kwargs["tool_calls"] as LangChainToolCall[]) || extendedMsg.tool_calls || extendedMsg.additional_kwargs?.tool_calls;
           let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
 
           // Some providers require content to be non-empty string when tool_calls are present
@@ -76,25 +108,14 @@ export class ChatOpenAILLMCaller implements LLMCaller {
             cleanedContent = "";
           }
 
-          const aiFields: any = { content: cleanedContent };
+          const aiFields: { content: string; tool_calls?: LangChainToolCall[] } = { content: cleanedContent };
 
           if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-            aiFields.tool_calls = toolCalls.map((tc: any, tcIdx: number) => {
-              const name = tc.name || tc.function?.name || "unknown";
-              return {
-                id: tc.id || tc.tool_call_id || `call_${index}_${tcIdx}_${name}`,
-                type: "function",
-                function: {
-                  name,
-                  arguments: tc.args
-                    ? (typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args))
-                    : (tc.function?.arguments || "{}")
-                }
-              };
-            });
+            aiFields.tool_calls = toolCalls;
           }
 
           return new AIMessage(aiFields);
+        }
 
         case "SystemMessage":
           return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
@@ -239,12 +260,15 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         messageCount: messages.length,
         config,
         // Log a summary of messages for quick debugging
-        messageSummary: messages.map(m => ({
-          type: (m as any).type || (m as any)._getType?.() || "unknown",
-          role: (m as any).role,
-          contentLength: typeof m.content === "string" ? m.content.length : "complex",
-          hasToolCalls: !!(m as any).tool_calls?.length
-        }))
+        messageSummary: messages.map(m => {
+          const extendedMsg = m as unknown as ExtendedBaseMessage;
+          return {
+            type: extendedMsg.type || extendedMsg._getType?.() || "unknown",
+            role: extendedMsg.role,
+            contentLength: typeof m.content === "string" ? m.content.length : "complex",
+            hasToolCalls: !!extendedMsg.tool_calls?.length
+          };
+        })
       });
 
       // Log full messages for 400 errors or other provider errors

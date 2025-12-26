@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { getAuthenticatedUser } from "@/lib/auth";
+import { logger } from "@/lib/logging";
 
 export const runtime = "nodejs";
 
@@ -16,9 +17,12 @@ export async function GET(req: NextRequest) {
     const ua = req.headers.get("user-agent") ?? "unknown";
     const referer = req.headers.get("referer") ?? "none";
     // Intentionally do not log cookies/authorization headers.
-    console.log(
-      `[auth/me] ~${requestsSinceLastLog}/s ua="${ua}" referer="${referer}"`
-    );
+    logger.info({
+      event: "auth.me.rate_limit",
+      requestsPerSecond: requestsSinceLastLog,
+      ua,
+      referer
+    }, `[auth/me] ~${requestsSinceLastLog}/s ua="${ua}" referer="${referer}"`);
     requestsSinceLastLog = 0;
     lastLogAtMs = now;
   }

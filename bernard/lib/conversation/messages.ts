@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/
 import type { AIMessageFields, BaseMessage } from "@langchain/core/messages";
 import { jsonrepair } from "jsonrepair";
 
-import type { MessageRecord, ToolCallEntry } from "./types";
+import type { MessageRecord } from "./types";
 
 type ToolCall = {
   id: string;
@@ -105,7 +105,7 @@ export function parseToolInputWithDiagnostics(raw: unknown): {
   if (!candidate) return { value: raw, success: true, repaired: false };
   try {
     return { value: JSON.parse(candidate), success: true, repaired: false };
-  } catch (err) {
+  } catch {
     try {
       const repaired = jsonrepair(candidate);
       return { value: JSON.parse(repaired), success: true, repaired: true };
@@ -290,15 +290,30 @@ export function mapRecordsToMessages(records: MessageRecord[], opts: { includeTr
     .filter((msg): msg is BaseMessage => Boolean(msg));
 }
 
-function normalizeRecordToolCall(call: ToolCallEntry, index: number): ToolCall {
-  const fn = call.function ?? {};
-  const id = (call.id ?? fn.name ?? `tool_call_${index}`).toString();
-  const name = (call.name ?? fn.name ?? "tool_call").toString();
-  const rawArgs = fn.arguments ?? (call as { arguments?: unknown }).arguments ?? call.args ?? call.input;
+// Type for raw tool call data that may come from various sources
+interface RawToolCall {
+  id?: unknown;
+  name?: unknown;
+  type?: unknown;
+  function?: {
+    name?: unknown;
+    arguments?: unknown;
+  };
+  arguments?: unknown;
+  args?: unknown;
+  input?: unknown;
+}
+
+function normalizeRecordToolCall(call: unknown, index: number): ToolCall {
+  const callData = call as RawToolCall;
+  const fn = callData.function ?? {};
+  const id = typeof callData.id === 'string' ? callData.id : (typeof fn.name === 'string' ? fn.name : `tool_call_${index}`);
+  const name = typeof callData.name === 'string' ? callData.name : (typeof fn.name === 'string' ? fn.name : "tool_call");
+  const rawArgs = fn.arguments ?? callData.arguments ?? callData.args ?? callData.input;
   const normalizedArgs = typeof rawArgs === "string" ? rawArgs : safeStringify(rawArgs);
   return {
     id,
-    type: (call.type as "function" | undefined) ?? "function",
+    type: (callData.type as "function" | undefined) ?? "function",
     function: { name, arguments: normalizedArgs }
   };
 }

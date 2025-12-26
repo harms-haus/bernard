@@ -9,7 +9,7 @@ function wireEvents(worker: ReturnType<typeof createTaskWorker>) {
   const events = createTaskQueueEvents();
   const eventLog = childLogger({ component: "task_events" }, baseLog);
 
-  worker.on("active", async (job) => {
+  worker.on("active", (job) => {
     const taskId = (job.data as { taskId?: string } | undefined)?.taskId;
     const toolName = (job.data as { toolName?: string } | undefined)?.toolName;
     eventLog.info({
@@ -21,7 +21,7 @@ function wireEvents(worker: ReturnType<typeof createTaskWorker>) {
     });
   });
 
-  worker.on("completed", async (job, result) => {
+  worker.on("completed", (job, result) => {
     const taskId = (job.data as { taskId?: string } | undefined)?.taskId;
     const toolName = (job.data as { toolName?: string } | undefined)?.toolName;
     eventLog.info({
@@ -34,7 +34,7 @@ function wireEvents(worker: ReturnType<typeof createTaskWorker>) {
     });
   });
 
-  worker.on("failed", async (job, err) => {
+  worker.on("failed", (job, err) => {
     const taskId = (job?.data as { taskId?: string } | undefined)?.taskId;
     const toolName = (job?.data as { toolName?: string } | undefined)?.toolName;
     eventLog.error({
@@ -70,7 +70,7 @@ async function main() {
   // Priority: defaults < env variables < redis settings
   try {
     const settings = await getSettings();
-    const infraSettings = (settings.services as any).infrastructure || {};
+    const infraSettings = settings.services.infrastructure;
 
     // Apply Redis settings with priority over env vars
     const config = {

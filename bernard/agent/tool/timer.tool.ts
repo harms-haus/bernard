@@ -8,7 +8,7 @@ function createTimerTool(
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
   return tool(
@@ -39,7 +39,7 @@ function createTimerTool(
         const args = { name: name.trim(), time, message };
         const settings = {}; // Timer doesn't need service configurations
 
-        const { taskId, taskName } = await taskContext.createTask("timer", args, settings);
+        const { taskId } = await taskContext.createTask("timer", args, settings);
         return `Timer task started: "${name}" (ID: ${taskId}) - will wait ${time} seconds then record: "${message}"`;
 
       } catch (error) {
@@ -66,7 +66,7 @@ export function createTimerToolInstance(
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
   return createTimerTool(taskContext);

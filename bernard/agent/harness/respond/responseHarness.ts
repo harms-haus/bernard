@@ -1,12 +1,8 @@
-import { SystemMessage, AIMessage } from "@langchain/core/messages";
-import type { SystemMessage as SystemMessageType } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentOutputItem } from "../../streaming/types";
 import type { LLMCaller } from "../../llm/llm";
-import { buildResponseSystemPrompt } from "./prompts";
-import type { Archivist, MessageRecord } from "@/lib/conversation/types";
-import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
-import { deduplicateMessages } from "@/lib/conversation/dedup";
+import type { MessageRecord } from "@/lib/conversation/types";
 import type { ResponseContext } from "@/lib/conversation/context";
 import crypto from "node:crypto";
 
@@ -36,19 +32,39 @@ export type ResponseHarnessContext = {
  * Yields standardized streaming events.
  */
 export async function* runResponseHarness(context: ResponseHarnessContext): AsyncGenerator<AgentOutputItem> {
-  const { responseContext, messages, llmCaller, conversationId, abortSignal, toolDefinitions, usedTools } = context;
+  const { responseContext, messages, llmCaller, abortSignal, toolDefinitions } = context;
 
   // 1. Process incoming messages in response context
   for (const message of messages) {
     // Convert BaseMessage to MessageRecord for context processing
+    let role: 'user' | 'assistant' | 'system' | 'tool';
+    let name: string | undefined;
+    let tool_call_id: string | undefined;
+    let tool_calls: unknown[] | undefined;
+
+    if (message instanceof AIMessage) {
+      role = 'assistant';
+      tool_calls = message.tool_calls;
+    } else if (message instanceof HumanMessage) {
+      role = 'user';
+    } else if (message instanceof ToolMessage) {
+      role = 'tool';
+      name = message.name;
+      tool_call_id = message.tool_call_id;
+    } else if (message instanceof SystemMessage) {
+      role = 'system';
+    } else {
+      role = 'system'; // fallback
+    }
+
     const messageRecord: MessageRecord = {
       id: `temp_${Date.now()}_${Math.random()}`,
-      role: (message as any).type === 'ai' ? 'assistant' : (message as any).type === 'human' ? 'user' : (message as any).type === 'tool' ? 'tool' : 'system',
-      content: message.content,
+      role,
+      content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
       createdAt: new Date().toISOString(),
-      name: (message as any).name,
-      tool_call_id: (message as any).tool_call_id,
-      tool_calls: (message as any).tool_calls
+      ...(name && { name }),
+      ...(tool_call_id && { tool_call_id }),
+      ...(tool_calls && { tool_calls })
     };
     responseContext.processMessage(messageRecord);
   }
@@ -75,7 +91,7 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   yield {
     type: "llm_call",
     model: "response",
-    context: promptMessages as any,
+    context: [...promptMessages],
     tools: toolNames,
     totalContextTokens,
   };
@@ -142,8 +158,8 @@ export async function* runResponseHarness(context: ResponseHarnessContext): Asyn
   });
   yield {
     type: "llm_call_complete",
-    context: promptMessages as any,
-    result: aiMessage as any,
+    context: [...promptMessages],
+    result: aiMessage,
     actualTokens,
     latencyMs: llmDurationMs,
   };

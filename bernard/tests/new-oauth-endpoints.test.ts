@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "vitest";
 
 import { NextRequest } from "next/server";
-import Redis from "ioredis";
+import type Redis from "ioredis";
 
 import { clearSettingsCache } from "../lib/config/settingsCache";
 import { getRedis } from "../lib/infra/redis";
@@ -203,7 +203,7 @@ test("GitHub OAuth callback handles successful authentication", { timeout: TEST_
   await redis.setex(`csrf:${csrfToken}`, 600, csrfToken);
 
   // Mock the fetch calls for token exchange and user info
-  const fetchCalls = mockFetchSequence([
+  mockFetchSequence([
     new Response(JSON.stringify({ access_token: "github-token-456" }), {
       headers: { "Content-Type": "application/json" }
     }),

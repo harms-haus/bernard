@@ -18,7 +18,7 @@ async function getSettingsWithTimeout(ms = 500) {
     const timeoutPromise = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), ms);
     });
-    return (await Promise.race([settingsPromise, timeoutPromise])) as Awaited<ReturnType<typeof getSettings>> | null;
+    return (await Promise.race([settingsPromise, timeoutPromise]));
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -535,7 +535,7 @@ function parseGeocodePlaces(data: unknown): NominatimPlace[] {
 function extractGeocodeJsonError(data: unknown): string | null {
   if (data && typeof data === "object" && "error" in (data as Record<string, unknown>)) {
     const payload = data as { error?: unknown; detail?: unknown };
-    const detail = payload.detail ? ` (${String(payload.detail)})` : "";
+    const detail = payload.detail ? " (" + JSON.stringify(payload.detail) + ")" : "";
     return `${String(payload.error)}${detail}`;
   }
   return null;

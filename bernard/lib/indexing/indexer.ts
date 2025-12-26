@@ -18,10 +18,12 @@ const indexPrefix = process.env["CONVERSATION_INDEX_PREFIX"] ?? "bernard:conv:in
  */
 export class ConversationIndexer {
   private cachedStore: Promise<RedisVectorStore> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private cachedClient: any = null;
 
   constructor(private readonly redis: Redis = getRedis()) { }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async vectorClient(): Promise<any> {
     if (this.cachedClient) return this.cachedClient;
     const client = createClient({ url: redisUrl });
@@ -34,8 +36,10 @@ export class ConversationIndexer {
     if (this.cachedStore) return this.cachedStore;
     this.cachedStore = (async () => {
       const embeddings = await getEmbeddingModel({});
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const client = await this.vectorClient();
       return new RedisVectorStore(embeddings, {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         redisClient: client,
         indexName,
         keyPrefix: indexPrefix
@@ -183,9 +187,6 @@ export class ConversationIndexer {
   }
 }
 
-function log(logger: TaskLogger | undefined, message: string, meta?: Record<string, unknown>) {
-  if (logger) logger(message, meta);
-}
 
 function debugLog(logger: TaskLogger | undefined, message: string, meta?: Record<string, unknown>) {
   if (logger) logger(`DEBUG: ${message}`, meta);

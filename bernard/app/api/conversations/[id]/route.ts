@@ -1,7 +1,8 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { getRedis } from "@/lib/infra/redis";
 import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { validateAuth } from "@/app/api/v1/_lib/openai";
+import { logger } from "@/lib/logging";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { id: conversationId } = await params;
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as { ghost?: unknown };
     const { ghost } = body;
 
     if (typeof ghost !== "boolean") {
@@ -70,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     });
 
   } catch (error) {
-    console.error("Error updating conversation ghost status:", error);
+    logger.error({ event: "conversation.ghost.update.error", conversationId, error: error instanceof Error ? error.message : String(error) }, "Error updating conversation ghost status");
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" }

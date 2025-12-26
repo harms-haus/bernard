@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
+import type { BaseMessage } from "@langchain/core/messages";
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
 const MISSING_USER_AGENT_REASON =
@@ -25,7 +26,14 @@ type EnhancedGeocodeDeps = {
 type ToolRunContext = {
   recordKeeper?: RecordKeeper;
   turnId?: string;
-  conversationMessages?: any[];
+  conversationMessages?: BaseMessage[];
+};
+
+type NominatimResult = {
+  display_name: string;
+  lat: string;
+  lon: string;
+  [key: string]: unknown;
 };
 
 const loadConfig = async (): Promise<GeocodeConfig> => {
@@ -59,7 +67,7 @@ const getToolRunContext = (runOpts?: unknown): ToolRunContext => {
 /**
  * Extract potential location information from conversation context
  */
-function extractLocationFromContext(context: any[] = []): string | null {
+function extractLocationFromContext(context: BaseMessage[] = []): string | null {
   if (!context || !context.length) return null;
 
   // Look for location patterns in the conversation
@@ -74,6 +82,7 @@ function extractLocationFromContext(context: any[] = []): string | null {
   // Check messages in reverse order (most recent first)
   for (let i = context.length - 1; i >= 0; i--) {
     const message = context[i];
+    if (!message) continue;
     const content = message.content ?? "";
     const text = typeof content === "string" ? content : JSON.stringify(content);
 
@@ -119,10 +128,7 @@ function buildGeocodeUrl(query: string, limit: number = 5, country?: string, lan
 
 const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
   const {
-    fetchImpl = fetch,
     configLoader = loadConfig,
-    jsonParser,
-    conversationContext
   } = deps;
 
   const enhancedGeocodeTool = tool(
@@ -162,19 +168,21 @@ const createEnhancedGeocodeTool = (deps: EnhancedGeocodeDeps = {}) => {
             return `Geocoding failed: ${res.status} ${res.statusText}${body ? ` - ${body}` : ""}`;
           }
 
-          const data = await res.json();
+          const data = await res.json() as NominatimResult[];
 
           if (!Array.isArray(data) || data.length === 0) {
             return `No geocoding results found for "${extractedQuery}".`;
           }
 
           // Format results
-          const results = data.slice(0, limit ?? 5).map((place: any, index: number) => {
+          const results = data.slice(0, limit ?? 5).map((place, index: number) => {
             const displayName = place.display_name || "Unknown location";
-            const lat = place.lat ? parseFloat(place.lat) : null;
-            const lon = place.lon ? parseFloat(place.lon) : null;
+            const latStr = place.lat;
+            const lonStr = place.lon;
+            const lat = latStr ? parseFloat(latStr) : null;
+            const lon = lonStr ? parseFloat(lonStr) : null;
 
-            if (!lat || !lon || Number.isNaN(lat) || Number.isNaN(lon)) {
+            if (lat === null || lon === null || Number.isNaN(lat) || Number.isNaN(lon)) {
               return `${index + 1}. ${displayName} (coordinates unavailable)`;
             }
 

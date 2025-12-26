@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { requireAdminRequest } from "@/app/api/_lib/admin";
 import { getAutomationRegistry } from "@/lib/automation/registry";
 

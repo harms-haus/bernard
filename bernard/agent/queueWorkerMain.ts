@@ -8,7 +8,7 @@ function wireEvents(worker: ReturnType<typeof createAutomationWorker>) {
   const events = createAutomationQueueEvents();
   const eventLog = childLogger({ component: "automation_events", queue: automationQueueName }, baseLog);
 
-  worker.on("active", async (job) => {
+  worker.on("active", (job) => {
     const automationId = (job.data as { automationId?: string } | undefined)?.automationId;
     eventLog.info({
       event: "automation.job.start",
@@ -18,7 +18,7 @@ function wireEvents(worker: ReturnType<typeof createAutomationWorker>) {
     });
   });
 
-  worker.on("completed", async (job, result) => {
+  worker.on("completed", (job, result) => {
     const automationId = (job.data as { automationId?: string } | undefined)?.automationId;
     eventLog.info({
       event: "automation.job.completed",
@@ -29,7 +29,7 @@ function wireEvents(worker: ReturnType<typeof createAutomationWorker>) {
     });
   });
 
-  worker.on("failed", async (job, err) => {
+  worker.on("failed", (job, err) => {
     const automationId = (job?.data as { automationId?: string } | undefined)?.automationId;
     eventLog.error({
       event: "automation.job.failed",

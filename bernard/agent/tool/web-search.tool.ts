@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import { logger } from "@/lib/logging";
-import { getStatusMessagesForTool } from "@/lib/status/messages";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";
 const DEFAULT_RESULT_COUNT = 3;
@@ -243,7 +242,7 @@ async function handleSearchResponse(res: Response, count?: number): Promise<stri
   let items: SearchResultItem[] = [];
   
   // Check if this looks like a SearXNG response
-  if (data && typeof data === 'object' && data.hasOwnProperty('results')) {
+  if (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'results')) {
     items = parseSearXNGResults(data);
   }
   
@@ -280,17 +279,11 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
   ]).finally(() => {
     if (timer) clearTimeout(timer);
   });
-  return result as Awaited<ReturnType<typeof getSettings>> | null;
+  return result;
 }
 
 const webSearchToolImpl = tool(
-  async ({ query, count, starting_index }, config) => {
-    // Set status messages for web search
-    const statusService = config?.configurable?.statusService;
-    if (statusService) {
-      const statusMessages = getStatusMessagesForTool("web_search");
-      statusService.setStatusPool(statusMessages, false, false);
-    }
+  async ({ query, count, starting_index }) => {
 
     return executeSearch(query, count, starting_index);
   },

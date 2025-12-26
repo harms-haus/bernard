@@ -46,7 +46,6 @@ function chunkMessages(entries: string[]): string[] {
 
   const chunks: string[] = [];
   let current = "";
-  let chunkIndex = 0;
 
   for (const entry of entries) {
     const trimmedEntry = entry.length > chunkChars ? entry.slice(0, chunkChars) : entry;
@@ -140,7 +139,7 @@ const automation: Automation = {
       });
 
       // Filter and process messages for indexing
-      const filtered = filterMessages(messages as MessageRecord[]).slice(-messageLimit);
+      const filtered = filterMessages(messages).slice(-messageLimit);
       context.logger?.("Filtered messages", {
         conversationId,
         originalCount: messages.length,

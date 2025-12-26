@@ -460,7 +460,7 @@ test("status reporting, recall, reopening, and listing", { timeout: 5000 }, asyn
   });
 
   await t.test("getStatus reports counts and last activity", async () => {
-    const { redis, keeper } = createKeeper();
+    const { keeper } = createKeeper();
     const { conversationId } = await keeper.startRequest("token-status", "model-status");
     const statusActive = await keeper.getStatus();
     assert.equal(statusActive.activeConversations, 1);

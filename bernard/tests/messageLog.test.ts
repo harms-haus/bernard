@@ -183,7 +183,7 @@ test("append persists messages and updates counters with consistent timestamps",
   const fixedMs = 1_700_000_000_000;
   const originalDate = Date;
   const originalRandom = Math.random;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   (globalThis as any).Date = class extends Date {
     constructor(...args: ConstructorParameters<typeof Date>) {
       if (args.length) {
@@ -249,7 +249,7 @@ test("append persists messages and updates counters with consistent timestamps",
   assert.equal(redis.zsets["ns:convs:active"]?.[0]?.member, "c1");
 
   Math.random = originalRandom;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   (globalThis as any).Date = originalDate;
 
   {

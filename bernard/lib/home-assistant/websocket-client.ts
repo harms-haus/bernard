@@ -1,7 +1,8 @@
+import type {
+  Connection} from "home-assistant-js-websocket";
 import {
   createLongLivedTokenAuth,
   createConnection,
-  Connection,
   ERR_CANNOT_CONNECT,
   ERR_INVALID_AUTH,
 } from "home-assistant-js-websocket";
@@ -37,11 +38,11 @@ class HAConnectionPool {
 
       // Handle connection events
       connection.addEventListener('disconnected', () => {
-        console.log(`[HA WebSocket] Connection lost for ${baseUrl}`);
+        console.warn(`[HA WebSocket] Connection lost for ${baseUrl}`);
       });
 
       connection.addEventListener('ready', () => {
-        console.log(`[HA WebSocket] Connection ready for ${baseUrl}`);
+        console.warn(`[HA WebSocket] Connection ready for ${baseUrl}`);
       });
 
       connection.addEventListener('reconnect-error', (conn, error) => {

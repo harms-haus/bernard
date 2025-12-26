@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, test } from "vitest";
 
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import type { SystemMessage} from "@langchain/core/messages";
+import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
-import { ResponseHarness, type ResponseInput, type ResponseOutput } from "../agent/harness/respond/respond.harness";
-import type { HarnessContext, LLMCallConfig, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
+import { ResponseHarness, type ResponseInput } from "../agent/harness/respond/respond.harness";
+import type { HarnessContext, LLMCaller, LLMResponse } from "../agent/harness/lib/types";
+
+type LLMCallConfig = {
+  model: string;
+  messages: any[];
+  temperature?: number;
+  maxTokens?: number;
+  stream?: boolean;
+};
 
 const originalConsole = {
   info: console.info,
@@ -87,12 +96,12 @@ test("ResponseHarness builds messages with system prompt, thread, and memories",
   assert.ok(caller.lastInput);
   const messages = caller.lastInput?.messages ?? [];
   assert.equal((messages[0] as { type: string }).type, "system");
-  const systemContent = String((messages[0] as SystemMessage).content ?? "");
+  const systemContent = String(((messages[0] as SystemMessage).content as any) ?? "");
   assert.ok(systemContent.includes("Now:"));
   assert.ok(systemContent.toLowerCase().includes("bernard"));
   assert.ok(messages.some((msg: { type: string }) => msg.type === "human"));
   const memoryMessage = messages[messages.length - 1] as HumanMessage;
-  const memoryContent = String(memoryMessage.content ?? "");
+  const memoryContent = String((memoryMessage.content as any) ?? "");
   assert.ok(memoryContent.includes("Relevant memories"));
   assert.ok(memoryContent.includes("memo"));
 });

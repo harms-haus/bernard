@@ -1,28 +1,7 @@
-import { RedisVectorStore } from "@langchain/redis";
 import { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
-import { ConversationIndexer } from "@/lib/indexing/indexer";
 import { raiseEvent } from "@/lib/automation/hookService";
 import { getRedis } from "@/lib/infra/redis";
-import { getEmbeddingModel } from "@/lib/config/embeddings";
-import { createClient } from "redis";
-
-export interface AuthContext {
-  reqLog: {
-    log: {
-      info: (data: any) => void;
-      warn: (data: any) => void;
-      error: (data: any) => void;
-      debug: (data: any) => void;
-    };
-    success: (status: number, data: any) => void;
-    failure: (status: number, error: any, data: any) => void;
-  };
-  admin: {
-    user: {
-      id: string;
-    };
-  };
-}
+import { logger } from "@/lib/logging";
 
 export interface ClearEntireIndexResult {
   success: boolean;
@@ -38,15 +17,15 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
   let conversationsQueued = 0;
 
   try {
-    console.log('Starting clear entire index operation', { indexName, indexPrefix });
+    logger.info({ event: 'index.clear.start', indexName, indexPrefix }, 'Starting clear entire index operation');
 
     // 1. Drop the Redis search index completely
     try {
       await redis.call('FT.DROPINDEX', indexName);
-      console.log('Dropped Redis search index', { indexName });
+      logger.info({ event: 'index.drop.success', indexName }, 'Dropped Redis search index');
     } catch (error) {
       // Index might not exist, that's okay
-      console.warn('Failed to drop index (may not exist)', { indexName, error: error instanceof Error ? error.message : String(error) });
+      logger.warn({ event: 'index.drop.skip', indexName, error: error instanceof Error ? error.message : String(error) }, 'Failed to drop index (may not exist)');
     }
 
     // 2. Delete all conversation chunks and metadata from Redis
@@ -60,11 +39,12 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
     ]);
 
     const allKeys = [...metadataKeys, ...chunkKeys];
-    console.log('Found keys to delete', {
+    logger.info({
+      event: 'index.keys.found',
       metadataKeys: metadataKeys.length,
       chunkKeys: chunkKeys.length,
       total: allKeys.length
-    });
+    }, 'Found keys to delete');
 
     if (allKeys.length > 0) {
       // Delete all keys in batches to avoid blocking Redis
@@ -73,7 +53,7 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
         const batch = allKeys.slice(i, i + batchSize);
         await redis.del(batch);
       }
-      console.log('Deleted conversation chunks from Redis', { deletedKeys: allKeys.length });
+      logger.info({ event: 'index.delete.success', deletedKeys: allKeys.length }, 'Deleted conversation chunks from Redis');
     }
 
     // 3. Trigger index automation for all existing conversations
@@ -86,7 +66,7 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
       limit: 10000 // Get a large number to cover all conversations
     });
 
-    console.log('Found conversations to re-index', { count: conversations.length });
+    logger.info({ event: 'index.reindex.start', count: conversations.length }, 'Found conversations to re-index');
 
     // Trigger conversation_archived event for each conversation to run index automation
     for (const conversation of conversations) {
@@ -98,17 +78,19 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
         });
         conversationsQueued++;
       } catch (error) {
-        console.error('Failed to trigger index automation for conversation', {
+        logger.error({
+          event: 'index.reindex.error',
           conversationId: conversation.id,
           error: error instanceof Error ? error.message : String(error)
-        });
+        }, 'Failed to trigger index automation for conversation');
       }
     }
 
-    console.log('Clear entire index operation completed successfully', {
+    logger.info({
+      event: 'index.clear.complete',
       conversationsQueued,
       deletedKeys: allKeys.length
-    });
+    }, 'Clear entire index operation completed successfully');
 
     return {
       success: true,
@@ -117,10 +99,11 @@ export async function clearEntireIndex(): Promise<ClearEntireIndexResult> {
     };
 
   } catch (error) {
-    console.error('Failed to clear entire index', {
+    logger.error({
+      event: 'index.clear.error',
       error: error instanceof Error ? error.message : String(error),
       conversationsQueued
-    });
+    }, 'Failed to clear entire index');
 
     return {
       success: false,

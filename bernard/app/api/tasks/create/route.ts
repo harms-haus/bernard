@@ -5,6 +5,7 @@ import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
 import { enqueueTask } from "@/lib/task/queue";
 import type { TaskPayload } from "@/lib/task/types";
 import { getRedis } from "@/lib/infra/redis";
+import { logger } from "@/lib/logging";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -25,7 +26,12 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    body = await req.json();
+    body = (await req.json()) as {
+      toolName: string;
+      arguments: Record<string, unknown>;
+      settings?: Record<string, unknown>;
+      conversationId?: string;
+    };
   } catch (err) {
     return new Response(JSON.stringify({ error: "Invalid JSON", detail: String(err) }), {
       status: 400
@@ -78,7 +84,7 @@ export async function POST(req: NextRequest) {
       status: "created"
     });
   } catch (error) {
-    console.error("Error creating task:", error);
+    logger.error({ event: "task.create.error", error: error instanceof Error ? error.message : String(error) }, "Error creating task");
     return new Response(JSON.stringify({ error: "Failed to create task" }), {
       status: 500
     });

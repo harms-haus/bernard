@@ -37,6 +37,8 @@ export interface LibrarySection {
   thumb: string;
 }
 
+type RankedPlexMediaItem = PlexMediaItem & { _score: number };
+
 /**
  * Plex client information
  */
@@ -191,7 +193,7 @@ export async function getPlexItemMetadata(
 /**
  * Rank search results by relevance
  */
-export function rankSearchResults(results: PlexMediaItem[], query: string): PlexMediaItem[] {
+export function rankSearchResults(results: PlexMediaItem[], query: string): RankedPlexMediaItem[] {
   const normalizedQuery = query.toLowerCase().trim();
 
   return results
@@ -226,7 +228,7 @@ export function rankSearchResults(results: PlexMediaItem[], query: string): Plex
 
       return { ...result, _score: score };
     })
-    .sort((a, b) => (b as any)._score - (a as any)._score);
+    .sort((a, b) => b._score - a._score);
 }
 
 /**

@@ -13,11 +13,11 @@ export class HomeAssistantContextManager {
   * Update context from conversation messages
   */
   updateFromMessages(messages: BaseMessage[]): void {
-    console.log(`[HA DEBUG] updateFromMessages called with ${messages.length} messages`);
+    console.warn(`[HA DEBUG] updateFromMessages called with ${messages.length} messages`);
     const newContext = extractHomeAssistantContext(messages);
-    
-    console.log(`[HA DEBUG] extractHomeAssistantContext result: ${newContext ? `entities: ${newContext.entities.length}` : 'null'}`);
-    
+
+    console.warn(`[HA DEBUG] extractHomeAssistantContext result: ${newContext ? `entities: ${newContext.entities.length}` : 'null'}`);
+
     if (newContext) {
       // Merge with existing context if available
       if (this.context) {
@@ -26,9 +26,9 @@ export class HomeAssistantContextManager {
       } else {
         this.context = newContext;
       }
-      console.log(`[HA DEBUG] Context updated successfully`);
+      console.warn(`[HA DEBUG] Context updated successfully`);
     } else {
-      console.log(`[HA DEBUG] No HA context found in messages`);
+      console.warn(`[HA DEBUG] No HA context found in messages`);
     }
   }
   

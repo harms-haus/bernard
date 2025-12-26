@@ -1,5 +1,7 @@
 import { getSettings } from "./settingsCache";
-import type { BernardSettings, ModelCategorySettings, Provider } from "./settingsStore";
+import type { BernardSettings, ModelCategorySettings } from "./settingsStore";
+
+export type { ModelCategorySettings };
 
 const DEFAULT_MODEL = "gpt-3.5-turbo";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -19,7 +21,7 @@ export function setSettingsFetcher(fetcher: SettingsFetcher) {
 /**
  * Restore the default settings fetcher.
  */
-export function resetSettingsFetcher() {
+export function resetSettingsFetcher(this: void) {
   fetchSettings = getSettings;
 }
 
@@ -85,7 +87,7 @@ export async function getModelList(
   if (override.length) return override;
 
   const settings = await fetchSettings();
-  const fromSettings = listFromSettings(category, settings.models[category] as ModelCategorySettings | undefined);
+  const fromSettings = listFromSettings(category, settings.models[category]);
   if (fromSettings.length) return fromSettings;
 
   const fallback = normalizeList(opts.fallback);
@@ -141,7 +143,7 @@ export async function resolveModel(
   opts: { fallback?: string[]; override?: string | string[] } = {}
 ): Promise<ResolvedModel> {
   const settings = await fetchSettings();
-  const modelSettings = settings.models[category] as ModelCategorySettings | undefined;
+  const modelSettings = settings.models[category];
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;
 

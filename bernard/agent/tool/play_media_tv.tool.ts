@@ -16,7 +16,7 @@ function createPlayPlexMediaTool(
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
   const supportedLocations = getSupportedLocations();
@@ -99,7 +99,7 @@ export function createPlayPlexMediaToolInstance(
   taskContext?: {
     conversationId: string;
     userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: any) => Promise<{ taskId: string; taskName: string }>;
+    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
   return createPlayPlexMediaTool(haRestConfig, plexConfig, taskContext);

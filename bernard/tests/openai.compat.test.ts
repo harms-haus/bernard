@@ -50,7 +50,7 @@ test("chat/completions requires bearer token", async () => {
 
 test("completions requires bearer token", async () => {
   const req = makeNextRequest("http://localhost/api/v1/completions", { prompt: "hi" });
-  const res = await completionsPost(req);
+  const res = completionsPost(req);
   assert.equal(res.status, 401);
 });
 

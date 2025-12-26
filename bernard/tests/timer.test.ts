@@ -8,10 +8,10 @@ test("timer tool creates task with valid parameters", async () => {
   const mockTaskContext = {
     conversationId: "test-conversation",
     userId: "test-user",
-    createTask: async (toolName: string, args: Record<string, unknown>, settings: any) => {
+    createTask: async (toolName: string, args: Record<string, unknown>, _settings: any) => {
       return {
         taskId: "test-task-id",
-        taskName: `Timer: ${args.name}`
+        taskName: `Timer: ${String(args.name)}`
       };
     }
   };

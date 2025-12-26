@@ -113,9 +113,9 @@ void test(
     const result = await verifyEmbeddingConfig();
     assert.equal(result.ok, true);
     assert.equal(calls.length, 1);
-    const calledUrl = String(calls[0]?.input);
+    const calledUrl = String((calls[0] as any)?.input);
     assert.equal(calledUrl, "https://api.example.com/v1/embeddings");
-    const body = JSON.parse(String(calls[0]?.init?.body));
+    const body = JSON.parse(String((calls[0] as any)?.init?.body));
     assert.equal(body.model, "custom-model");
     assert.equal(body.input, "ping");
 

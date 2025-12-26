@@ -27,7 +27,7 @@ export async function timerTask(
 
     // Wait for the specified duration
     await new Promise(resolve => setTimeout(resolve, time * 1000));
-    console.log(`Timer "${name}" expired: ${message}`);
+    console.warn(`Timer "${name}" expired: ${message}`);
 
     // Record the timer completion with the message
     await context.recordEvent({

@@ -12,10 +12,6 @@ import {
   getSupportedLocations,
   type PlexConfig,
   type PlexMediaItem,
-  type LibrarySection,
-  type PlexClientInfo,
-  getPlexServerIdentity,
-  discoverPlexClient,
   searchPlexMedia,
   getPlexLibrarySections,
   getPlexItemMetadata,
@@ -98,9 +94,9 @@ async function ensureTvOn(
 
   try {
     // Check current power state
-    const state = await getEntityState(haRestConfig!.baseUrl, haRestConfig!.accessToken || '', haEntityId!);
+    const state = await getEntityState(haRestConfig.baseUrl, haRestConfig.accessToken || '', haEntityId);
     if (state?.state === 'on') {
-      console.log(`${deviceName} is already on`);
+      console.warn(`${deviceName} is already on`);
       return;
     }
 
@@ -242,7 +238,13 @@ async function playMediaOnPlex(
 ): Promise<void> {
   if (haPlexEntityId && haRestConfig && haRestConfig.accessToken) {
     // Build media_content_id object dynamically
-    const mediaContentId: any = {
+    const mediaContentId: {
+      library_name: string;
+      title?: string;
+      show_name?: string;
+      offset?: number;
+      inProgress?: boolean;
+    } = {
       library_name: mediaType === 'movie' ? 'Movies' : 'TV Shows'
     };
 
@@ -274,7 +276,7 @@ async function playMediaOnPlex(
     }
 
     // Build service data with appropriate content type
-    const serviceData: any = {
+    const serviceData: Record<string, unknown> = {
       media_content_type: mediaType === 'movie' ? 'MOVIE' : 'EPISODE',
       media_content_id: `plex://${JSON.stringify(mediaContentId)}`
     };

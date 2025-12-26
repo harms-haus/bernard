@@ -21,7 +21,7 @@ export async function PUT(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as unknown;
     const parsed = BackupSettingsSchema.parse(body);
     const store = settingsStore();
     const before = await store.getBackups();

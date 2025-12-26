@@ -1,12 +1,5 @@
-import { readdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
 import type { Automation, AutomationRegistryEntry, AutomationSettings } from "./types";
-import { SettingsStore, type AutomationsSettings } from "../config/settingsStore";
-import { childLogger, logger } from "../logging";
-
-const log = childLogger({ component: "automation_registry" }, logger);
+import { SettingsStore } from "../config/settingsStore";
 
 /**
  * Load all automation modules statically
@@ -42,8 +35,8 @@ async function getAutomationSettings(automationId: string): Promise<AutomationSe
   try {
     const store = new SettingsStore();
     return await store.getAutomationSettings(automationId);
-  } catch (err) {
-    // log.warn("Failed to load automation settings, using defaults", { automationId, error: String(err) });
+  } catch {
+    // log.warn("Failed to load automation settings, using defaults", { automationId });
     return {
       enabled: true,
       runCount: 0
@@ -59,8 +52,8 @@ async function saveAutomationSettings(automationId: string, settings: Automation
     const store = new SettingsStore();
     await store.setAutomationSettings(automationId, settings);
     // log.debug("Saved automation settings", { automationId, settings });
-  } catch (err) {
-    // log.error("Failed to save automation settings", { automationId, error: String(err) });
+  } catch {
+    // log.error("Failed to save automation settings", { automationId });
   }
 }
 
