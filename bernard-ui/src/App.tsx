@@ -19,6 +19,7 @@ import Automations from './pages/admin/Automations'
 import ConversationDetail from './pages/admin/ConversationDetail'
 import { Tasks } from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
+import { StatusPage } from './pages/StatusPage'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
 
 // Admin protected route component
@@ -55,6 +56,9 @@ function App() {
                 <Route path="keys" element={<Keys />} />
                 <Route path="about" element={<About />} />
               </Route>
+
+              {/* Public status page */}
+              <Route path="/status" element={<StatusPage />} />
 
               {/* Admin routes */}
               <Route

@@ -18,7 +18,7 @@ import { DarkModeToggle } from './DarkModeToggle';
 import { UserBadge } from './UserBadge';
 
 const navigation = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Status', href: '/admin', icon: LayoutDashboard },
   { name: 'Models', href: '/admin/models', icon: Settings },
   { name: 'Services', href: '/admin/services', icon: Server },
   { name: 'Automations', href: '/admin/automations', icon: Zap },

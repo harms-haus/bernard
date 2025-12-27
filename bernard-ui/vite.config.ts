@@ -7,7 +7,7 @@ export default defineConfig({
   base: '/bernard/',
   server: {
     port: 4200,
-    open: true,
+    open: false,
     proxy: {
       '/bernard/api': {
         target: 'http://localhost:3000',
