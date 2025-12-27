@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="vLLM-Embedding"
 PORT=8001
-LOG_FILE="$API_DIR/logs/vllm-embedding.log"
 PID_FILE="/tmp/vllm-embedding.pid"
 
 # Calculate utilization fraction based on target GB and total GPU memory
@@ -24,19 +23,17 @@ get_gpu_utilization() {
 start() {
     log "Starting $SERVICE_NAME..."
     kill_port $PORT "$SERVICE_NAME" || exit 1
-    mkdir -p "$(dirname "$LOG_FILE")"
 
     # 0.3GB is plenty for Nomic + 2k context
     local util=$(get_gpu_utilization 0.3)
     export HF_HOME="$MODELS_DIR/huggingface"
     
     log "Launching Nomic Embedding (2k Context, ${util} GPU fraction)..."
-    nohup "$API_DIR/vllm_venv/bin/python" -m vllm.entrypoints.openai.api_server \
+    "$API_DIR/vllm_venv/bin/python" -m vllm.entrypoints.openai.api_server \
         --model nomic-ai/nomic-embed-text-v1.5 \
         --host 127.0.0.1 --port $PORT --trust-remote-code \
         --gpu-memory-utilization "$util" \
-        --max-model-len 2048 \
-        > "$LOG_FILE" 2>&1 &
+        --max-model-len 2048 &
     
     echo $! > "$PID_FILE"
     wait_for_service "$SERVICE_NAME" $PORT "/health" 90

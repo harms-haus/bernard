@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="Server"
 PORT=3456
-LOG_FILE="$API_DIR/logs/proxy.log"
 
 start_server() {
     log "Starting Unified Fastify Server..."
@@ -14,13 +13,9 @@ start_server() {
     # Kill any existing processes on the port
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
-    # Ensure logs directory exists
-    mkdir -p "$(dirname "$LOG_FILE")"
-
     # Start the server
     cd "$SERVER_DIR"
-    nohup npm run dev \
-        > "$LOG_FILE" 2>&1 &
+    npm run dev &
 
     echo $! > "/tmp/bernard-server.pid"
 

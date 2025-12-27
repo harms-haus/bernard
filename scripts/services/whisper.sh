@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="Whisper"
 PORT=8002
-LOG_FILE="$API_DIR/logs/whisper.log"
 
 start_whisper() {
     log "Starting Whisper transcription server..."
@@ -14,13 +13,9 @@ start_whisper() {
     # Kill any existing processes on the port
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
-    # Ensure logs directory exists
-    mkdir -p "$(dirname "$LOG_FILE")"
-
     # Start Whisper in background
     cd "$SERVER_DIR"
-    nohup npm run dev:whisper \
-        > "$LOG_FILE" 2>&1 &
+    npm run dev:whisper &
 
     echo $! > "/tmp/whisper.pid"
 

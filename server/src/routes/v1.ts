@@ -41,10 +41,10 @@ export async function registerV1Routes(fastify: FastifyInstance) {
       owned_by: "openai"
     });
     models.push({
-      id: "kokoro-v1.0",
+      id: "tts-1",
       object: "model",
       created: 1677649963,
-      owned_by: "kokoro"
+      owned_by: "openai"
     });
 
     return { object: "list", data: models };

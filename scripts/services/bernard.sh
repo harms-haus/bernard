@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="Bernard"
 PORT=3000
-LOG_FILE="$ROOT_DIR/logs/bernard.log"
 
 start_bernard() {
     log "Starting Bernard application..."
@@ -20,9 +19,6 @@ start_bernard() {
 
     # Give processes time to die gracefully
     sleep 2
-
-    # Ensure logs directory exists
-    mkdir -p "$(dirname "$LOG_FILE")"
 
     # Cleanup function for this startup
     cleanup_workers() {
@@ -49,16 +45,16 @@ start_bernard() {
     # Start Bernard workers first
     log "Starting Bernard queue worker..."
     cd "$BERNARD_DIR"
-    nohup npm run queues:worker >> "$LOG_FILE" 2>&1 &
+    npm run queues:worker &
     echo $! > "/tmp/bernard-queue.pid"
 
     log "Starting Bernard task worker..."
-    nohup npm run tasks:worker >> "$LOG_FILE" 2>&1 &
+    npm run tasks:worker &
     echo $! > "/tmp/bernard-task.pid"
 
     # Start Next.js
     log "Starting Next.js server..."
-    nohup npm run dev -- --port $PORT >> "$LOG_FILE" 2>&1 &
+    npm run dev -- --port $PORT &
     echo $! > "/tmp/bernard-nextjs.pid"
 
     # Give workers a moment to connect to Redis

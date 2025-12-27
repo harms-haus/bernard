@@ -33,11 +33,13 @@ export async function POST(req: NextRequest) {
       tokenId: record.id
     });
     return Response.json({
-      id: record.id,
-      name: record.name,
-      status: record.status,
-      createdAt: record.createdAt,
-      token: record.token
+      token: {
+        id: record.id,
+        name: record.name,
+        status: record.status,
+        createdAt: record.createdAt,
+        token: record.token
+      }
     });
   } catch (err) {
     auth.reqLog.failure(400, err, { action: "tokens.create" });

@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="Kokoro"
 PORT=8880
-LOG_FILE="$API_DIR/logs/kokoro.log"
 
 start_kokoro() {
     log "Starting Kokoro TTS server..."
@@ -14,14 +13,10 @@ start_kokoro() {
     # Kill any existing processes on the port
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
-    # Ensure logs directory exists
-    mkdir -p "$(dirname "$LOG_FILE")"
-
     # Start Kokoro in background
     cd "$API_DIR/kokoro/api"
     source "$API_DIR/kokoro/venv/bin/activate"
-    nohup python -m src.main --host 127.0.0.1 --port $PORT \
-        > "$LOG_FILE" 2>&1 &
+    python -m src.main --host 127.0.0.1 --port $PORT &
 
     echo $! > "/tmp/kokoro.pid"
 

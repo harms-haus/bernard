@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 SERVICE_NAME="Bernard-UI"
 PORT=4200
-LOG_FILE="$ROOT_DIR/logs/bernard-ui.log"
 
 start_bernard_ui() {
     log "Starting Bernard UI frontend..."
@@ -20,13 +19,9 @@ start_bernard_ui() {
     # Give processes time to die gracefully
     sleep 2
 
-    # Ensure logs directory exists
-    mkdir -p "$(dirname "$LOG_FILE")"
-
     # Start Vite
     cd "$UI_DIR"
-    nohup npm run dev -- --port $PORT \
-        > "$LOG_FILE" 2>&1 &
+    npm run dev -- --port $PORT &
 
     echo $! > "/tmp/bernard-ui.pid"
 

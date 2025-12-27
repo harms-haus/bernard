@@ -24,7 +24,7 @@ This guide sets up a fully self-hosted, GPU-accelerated OpenAI-compatible API pr
             vLLM Server   Whisper.cpp         Kokoro FastAPI
             (Port 8001)   (Port 8002)         (Port 8880)
             
-            - Embedding    - Whisper-1        - Kokoro-v1.0
+            - Embedding    - Whisper-1        - tts-1
             - nomic-embed  - Live server      - TTS Server
               text         - JSON API         - JSON API
 
@@ -724,7 +724,7 @@ async def list_models():
                 "owned_by": "openai-compat"
             },
             {
-                "id": "kokoro-v1.0",
+                "id": "tts-1",
                 "object": "model",
                 "owned_by": "openai-compat"
             }
@@ -974,7 +974,7 @@ curl -X POST http://localhost:8000/v1/audio/transcriptions \
 curl -X POST http://localhost:8000/v1/audio/speech \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "kokoro-v1.0",
+    "model": "tts-1",
     "input": "Hello! This is a test.",
     "voice": "af"
   }' \
