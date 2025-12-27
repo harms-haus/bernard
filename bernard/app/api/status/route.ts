@@ -49,7 +49,7 @@ interface StatusResponse {
 
 const SERVICES: ServiceInfo[] = [
   { name: "Redis", port: 6379, description: "Database and caching service" },
-  { name: "vLLM", port: 8001, endpoint: "/health", logFile: "api/logs/vllm.log", description: "AI embedding service" },
+  { name: "vLLM", port: 8001, endpoint: "/health", logFile: "api/logs/vllm-embedding.log", description: "AI embedding service" },
   { name: "Kokoro", port: 8880, endpoint: "/health", logFile: "api/logs/kokoro.log", description: "Text-to-speech service" },
   { name: "Whisper", port: 8002, endpoint: "/health", logFile: "api/logs/whisper.log", description: "Speech-to-text service" },
   { name: "Bernard", port: 3000, endpoint: "/", logFile: "logs/bernard.log", description: "Main application server" },

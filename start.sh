@@ -137,7 +137,7 @@ cleanup_existing() {
 
     # Use individual service scripts to stop services
     "$ROOT_DIR/scripts/services/redis.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/vllm.sh" stop 2>/dev/null || true
+    "$ROOT_DIR/scripts/services/vllm-embedding.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/kokoro.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/whisper.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
@@ -172,7 +172,7 @@ cleanup() {
     "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard-ui.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/redis.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/vllm.sh" stop 2>/dev/null || true
+    "$ROOT_DIR/scripts/services/vllm-embedding.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/kokoro.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/whisper.sh" stop 2>/dev/null || true
 
@@ -200,9 +200,10 @@ SERVICES_PIDS=()
 
 # Check GPU memory before starting GPU services
 if check_gpu_memory; then
-    # Start vLLM
-    "$ROOT_DIR/scripts/services/vllm.sh" start &
+    # Start vLLM Embedding
+    "$ROOT_DIR/scripts/services/vllm-embedding.sh" start &
     SERVICES_PIDS+=($!)
+    
     VLLM_STARTED=true
 else
     warning "Skipping VLLM due to low GPU memory"

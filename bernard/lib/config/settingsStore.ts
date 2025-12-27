@@ -271,9 +271,22 @@ export function defaultModels(): ModelsSettings {
   const ollamaProvider: Provider = {
     id: "ollama-provider",
     name: "Ollama",
-    type: "openai",
-    baseUrl: process.env["OLLAMA_BASE_URL"] ?? "http://localhost:11434/v1",
+    type: "ollama",
+    baseUrl: process.env["OLLAMA_BASE_URL"] ?? "http://localhost:11434",
     apiKey: process.env["OLLAMA_API_KEY"] ?? "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastTestedAt: undefined,
+    testStatus: undefined,
+    testError: undefined
+  };
+
+  const vllmEmbeddingProvider: Provider = {
+    id: "vllm-embedding-provider",
+    name: "vLLM Embedding",
+    type: "openai",
+    baseUrl: process.env["EMBEDDING_BASE_URL"] ?? "http://localhost:8001/v1",
+    apiKey: process.env["EMBEDDING_API_KEY"] ?? "",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     lastTestedAt: undefined,
@@ -325,13 +338,13 @@ export function defaultModels(): ModelsSettings {
   };
 
   const embedding: ModelCategorySettings = {
-    primary: process.env["EMBEDDING_MODELS"]?.split(",")[0]?.trim() ?? "nomic-embed-text",
-    providerId: ollamaProvider.id,
+    primary: process.env["EMBEDDING_MODEL"] ?? process.env["EMBEDDING_MODELS"]?.split(",")[0]?.trim() ?? "nomic-embed-text-v1.5",
+    providerId: vllmEmbeddingProvider.id,
     options: {}
   };
 
   return {
-    providers: [ollamaProvider, defaultProvider],
+    providers: [ollamaProvider, vllmEmbeddingProvider, defaultProvider],
     response,
     router,
     memory,

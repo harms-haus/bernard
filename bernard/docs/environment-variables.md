@@ -89,6 +89,16 @@ Bernard uses the following priority order for web search configuration:
 
 📖 [Admin UI Models Documentation](#) (link to be added)
 
+## AI Services (vLLM) Configuration
+
+Bernard uses vLLM for high-performance inference of local models, including embedding models.
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `VLLM_PORT` | Port for the embedding vLLM instance | `8001` | `8001` |
+| `EMBEDDING_BASE_URL` | Base URL for embedding service | `http://localhost:8001/v1` | `http://localhost:8001/v1` |
+| `EMBEDDING_MODEL` | Model ID for embeddings | `nomic-ai/nomic-embed-text-v1.5` | `nomic-ai/nomic-embed-text-v1.5` |
+
 ## External Service Configuration
 
 ### Memory and Indexing
@@ -361,6 +371,9 @@ node -e "
 | `SEARXNG_TIMEOUT_MS` | Search | ❌ | SearXNG timeout |
 | `SEARXNG_USER_AGENT` | Search | ❌ | SearXNG user agent |
 | `SESSION_TTL_SECONDS` | Session | ❌ | Session TTL |
+| `VLLM_PORT` | vLLM | ❌ | Port for embedding vLLM |
+| `EMBEDDING_BASE_URL` | vLLM | ❌ | Base URL for embeddings |
+| `EMBEDDING_MODEL` | vLLM | ❌ | Model for embeddings |
 
 | `WEATHER_API_KEY` | Weather | ❌ | Weather API key |
 | `WEATHER_API_URL` | Weather | ❌ | Weather API URL |

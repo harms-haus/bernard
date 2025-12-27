@@ -10,7 +10,7 @@ const execAsync = promisify(exec);
 
 const SERVICE_SCRIPTS: Record<string, string> = {
   redis: "scripts/services/redis.sh",
-  vllm: "scripts/services/vllm.sh",
+  vllm: "scripts/services/vllm-embedding.sh",
   kokoro: "scripts/services/kokoro.sh",
   whisper: "scripts/services/whisper.sh",
   bernard: "scripts/services/bernard.sh",
