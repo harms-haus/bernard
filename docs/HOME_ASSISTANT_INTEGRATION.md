@@ -116,22 +116,22 @@ The Home Assistant integration adds three new tools to Bernard that allow it to 
 ### Integration Points
 
 #### 1. Connection Management
-- **File**: `orchestrator.ts`
+- **File**: `services/bernard/agent/loop/orchestrator.ts`
 - **Changes**: Added `shutdown()` method that closes all WebSocket connections
 - **Purpose**: Proper cleanup of persistent connections on application shutdown
 
 #### 2. router Harness Integration
-- **File**: `routerHarness.ts`
+- **File**: `services/bernard/agent/harness/router/routerHarness.ts`
 - **Changes**: Updated to call `haContextManager.updateFromMessages()` before each iteration
 - **Purpose**: Ensures Home Assistant context is current with conversation state
 
 #### 3. Tool Registration
-- **File**: `tools/index.ts`
+- **File**: `services/bernard/agent/tool/index.ts`
 - **Changes**: Added `listHAEntitiesTool`, `executeServicesTool`, and `getHistoricalStateTool` to the router tools array
 - **Purpose**: Makes HA tools available to the agent for selection
 
 #### 4. API Response Handling
-- **File**: `api/v1/chat/completions/route.ts`
+- **File**: `services/bernard/app/api/v1/chat/completions/route.ts`
 - **Changes**: Modified to include Home Assistant service calls in tool_calls array
 - **Purpose**: Returns service calls to Home Assistant for execution when API not available
 
@@ -326,21 +326,21 @@ When Home Assistant service calls are made, they are included in the API respons
 ## Files Created/Modified
 
 ### New Files
-1. `agent/harness/router/tools/ha-websocket-client.ts` - WebSocket connection pool manager
-2. `agent/harness/router/tools/ha-entities.ts` - Entity parsing and utilities
-3. `agent/harness/router/tools/ha-list-entities.ts` - List entities tool with WebSocket API and visibility filtering
-4. `agent/harness/router/tools/ha-execute-services.ts` - Execute services tool with WebSocket API preference
-5. `agent/harness/router/tools/ha-historical-state.ts` - Historical state retrieval tool
-6. `agent/harness/router/tools/ha-context.ts` - Context management
-7. `tests/ha-tools.test.ts` - Unit tests (29 tests)
-8. `tests/ha-simple-integration.test.ts` - Integration tests (5 tests)
+1. `services/bernard/agent/tool/ha-websocket-client.ts` - WebSocket connection pool manager
+2. `services/bernard/agent/tool/ha-entities.ts` - Entity parsing and utilities
+3. `services/bernard/agent/tool/ha-list-entities.ts` - List entities tool with WebSocket API and visibility filtering
+4. `services/bernard/agent/tool/ha-execute-services.ts` - Execute services tool with WebSocket API preference
+5. `services/bernard/agent/tool/ha-historical-state.ts` - Historical state retrieval tool
+6. `services/bernard/agent/tool/ha-context.ts` - Context management
+7. `services/bernard/tests/ha-tools.test.ts` - Unit tests (29 tests)
+8. `services/bernard/tests/ha-simple-integration.test.ts` - Integration tests (5 tests)
 
 ### Modified Files
-1. `agent/harness/router/tools/index.ts` - Added HA tools to registry including historical state tool
-2. `agent/harness/router/routerHarness.ts` - Integrated context updates
-3. `agent/loop/orchestrator.ts` - Added WebSocket connection cleanup on shutdown
-4. `app/api/v1/chat/completions/route.ts` - Added HA service call handling
-5. `package.json` - Added home-assistant-js-websocket dependency
+1. `services/bernard/agent/tool/index.ts` - Added HA tools to registry including historical state tool
+2. `services/bernard/agent/harness/router/routerHarness.ts` - Integrated context updates
+3. `services/bernard/agent/loop/orchestrator.ts` - Added WebSocket connection cleanup on shutdown
+4. `services/bernard/app/api/v1/chat/completions/route.ts` - Added HA service call handling
+5. `services/bernard/package.json` - Added home-assistant-js-websocket dependency
 
 ## Implementation Notes
 

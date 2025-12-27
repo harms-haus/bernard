@@ -11,26 +11,22 @@ AI coding agent instructions for **bernard**
 ## Architecture
 
 **Project Structure:**
+- `api/` - Fastify proxy server (primary API entry point)
+- `services/` - Core AI engines and application components
+  - `bernard/` - Main agent application codebase (Next.js)
+    - `agent/` - Agent components
+      - `tool/` - Tool implementations
+      - `task/` - Background task implementations
+    - `recordKeeper/conversation.keeper.ts` - Conversation record keeping
+    - `recordKeeper/task.keeper.ts` - Task record keeping
+    - `lib/` - Next.js specific utilities
+  - `bernard-ui/` - Frontend interface (React/Vite)
+  - `kokoro/` - Kokoro TTS engine
+  - `whisper.cpp/` - Whisper STT engine
+  - `vllm/venv/` - Embedding engine
+- `lib/shared/` - Shared utilities for settings, auth, and infrastructure
 - `docs/` - Documentation
-- `bernard/` - Main application codebase
-  - `agent/` - Agent components
-    - `tool/` - Tool implementations
-    - `task/` - Background task implementations
-  - `recordKeeper/conversation.keeper.ts` - Conversation record keeping
-  - `recordKeeper/task.keeper.ts` - Task record keeping
-  - `lib/` - Shared utilities organized by domain
-    - `home-assistant/` - Home Assistant integrations
-    - `plex/` - Plex media server integrations
-    - `weather/` - Weather and geocoding utilities
-    - `website/` - Website content utilities
-- `bernard-ui/` - Frontend interface
-- `docs/agent/` - Agent architecture documentation
-- `docs/plans/` - Temporary implementation plans and specifications
-- `docs/records/` - RecordKeeper and other documents about recording
-- `docs/ui/admin/` - Admin area documentation
-- `docs/ui/frontend/` - Non-admin area documentation
-- `docs/ui/user/` - User profile and settings
-- `docs/temp/` - Temporary documentation about fixes, summaries, etc. ONLY write these if requested.
+- `docs/services/` - Detailed guides for individual services
 
 ## Core Architecture Patterns
 
@@ -95,30 +91,30 @@ async function* runHarnessWithStreaming(input, context) {
 
 ### Prerequisites
 - Node.js LTS + npm
-- Environment configuration (copy sample env and fill required keys)
+- Redis server
+- Environment configuration (`api/.env`)
+
+### Service Management (from root)
+```bash
+# Start all services
+./start.sh
+
+# Start individual services (via scripts/ and scripts/services/)
+./scripts/api.sh start
+./scripts/services/bernard.sh start
+./scripts/services/kokoro.sh start
+```
 
 ### Development Commands
 ```bash
-# Install dependencies
-npm install
+# Agent (Next.js)
+cd services/bernard && npm run dev
 
-# Development server
-npm run dev
+# API (Fastify)
+cd api && npm run dev
 
-# Build production
-npm run build && npm run start
-
-# Code quality
-npm run lint
-
-# Tests
-npm run tests
-
-# Test with coverage
-npm run tests:coverage
-
-# Queue worker
-npm run queues:worker
+# UI (Vite)
+cd services/bernard-ui && npm run dev
 ```
 
 ### Testing Strategy

@@ -4,11 +4,11 @@ set -uo pipefail
 
 # Base directories
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BERNARD_DIR="$ROOT_DIR/bernard"
-UI_DIR="$ROOT_DIR/bernard-ui"
-SERVER_DIR="$ROOT_DIR/server"
-MODELS_DIR="$ROOT_DIR/models"
+SERVICES_DIR="$ROOT_DIR/services"
+BERNARD_DIR="$SERVICES_DIR/bernard"
+UI_DIR="$SERVICES_DIR/bernard-ui"
 API_DIR="$ROOT_DIR/api"
+MODELS_DIR="$ROOT_DIR/models"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -68,8 +68,8 @@ log "Running build checks in parallel..."
 npm run type-check:src --prefix "$BERNARD_DIR" > "$BERNARD_TSC_LOG" 2>&1 &
 BERNARD_TSC_PID=$!
 
-# Server build (includes type check)
-npm run build --prefix "$SERVER_DIR" > "$SERVER_BUILD_LOG" 2>&1 &
+# API build (includes type check)
+npm run build --prefix "$API_DIR" > "$SERVER_BUILD_LOG" 2>&1 &
 SERVER_BUILD_PID=$!
 
 # Bernard lint
@@ -101,8 +101,8 @@ if [ $BERNARD_TSC_EXIT -ne 0 ]; then
 fi
 
 if [ $SERVER_BUILD_EXIT -ne 0 ]; then
-    FAILED_CHECKS+=("Server Build")
-    error "Server build failed:"
+    FAILED_CHECKS+=("API Build")
+    error "API build failed:"
     cat "$SERVER_BUILD_LOG"
 fi
 
@@ -142,7 +142,7 @@ cleanup_existing() {
     "$ROOT_DIR/scripts/services/whisper.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard-ui.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/server.sh" stop 2>/dev/null || true
+    "$ROOT_DIR/scripts/api.sh" stop 2>/dev/null || true
 
     success "Existing processes cleaned up."
 }
@@ -168,7 +168,7 @@ cleanup() {
     pkill -9 -f "taskWorker.ts" 2>/dev/null || true
 
     # Stop services in reverse order (server first, then dependencies)
-    "$ROOT_DIR/scripts/services/server.sh" stop 2>/dev/null || true
+    "$ROOT_DIR/scripts/api.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/bernard-ui.sh" stop 2>/dev/null || true
     "$ROOT_DIR/scripts/services/redis.sh" stop 2>/dev/null || true
@@ -241,7 +241,7 @@ fi
 
 # Start Unified Fastify Server
 log "Starting Unified Server on port 3456..."
-if ! "$ROOT_DIR/scripts/services/server.sh" start; then
+if ! "$ROOT_DIR/scripts/api.sh" start; then
     error "Failed to start unified server"
     exit 1
 fi

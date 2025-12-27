@@ -2,7 +2,7 @@
 # Bernard UI frontend service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="Bernard-UI"
 PORT=4200
