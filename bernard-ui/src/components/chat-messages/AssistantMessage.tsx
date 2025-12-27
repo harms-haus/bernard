@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Button } from '../ui/button';
 import { Copy, RefreshCw, Ghost } from 'lucide-react';
 import { useDarkMode } from '../../hooks/useDarkMode';

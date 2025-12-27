@@ -101,19 +101,24 @@ export interface TasksListResponse {
 }
 
 class APIClient {
+  private readonly authBaseUrl: string;
+  private readonly apiBaseUrl: string;
   private readonly baseUrl: string;
   private currentUserInFlight: Promise<User | null> | null = null;
   private currentUserCache: { user: User | null; cachedAtMs: number } | null = null;
 
-  constructor(baseUrl: string = '/bernard/api') {
+  constructor(authBaseUrl: string = '', apiBaseUrl: string = '/bernard/api', baseUrl: string = '/bernard/api') {
+    this.authBaseUrl = authBaseUrl;
+    this.apiBaseUrl = apiBaseUrl;
     this.baseUrl = baseUrl;
   }
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    baseUrl?: string
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${baseUrl || this.apiBaseUrl}${endpoint}`;
     const defaultOptions: RequestInit = {
       credentials: 'include',
       headers: {
@@ -128,6 +133,17 @@ class APIClient {
     });
 
     if (!response.ok) {
+      // 304 Not Modified is actually successful for cached responses
+      if (response.status === 304) {
+        // For 304 responses, we should have cached data, but since we don't cache auth responses,
+        // treat this as an error to force a fresh request
+        const error: Error & { status?: number; details?: unknown } = new Error(
+          `HTTP ${response.status} - cached response not available`
+        );
+        error.status = response.status;
+        throw error;
+      }
+
       const errorText = await response.text().catch(() => '');
       const error: Error & { status?: number; details?: unknown } = new Error(
         errorText || `HTTP ${response.status}`
@@ -153,23 +169,23 @@ class APIClient {
     return this.request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials)
-    });
+    }, this.authBaseUrl);
   }
 
   async githubLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.baseUrl}/auth/github/login`, '_self');
+    window.open(`${this.authBaseUrl}/api/auth/github/login`, '_self');
   }
 
   async googleLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.baseUrl}/auth/google/login`, '_self');
+    window.open(`${this.authBaseUrl}/api/auth/google/login`, '_self');
   }
 
   async logout(): Promise<void> {
     return this.request<void>('/auth/logout', {
       method: 'POST'
-    });
+    }, this.authBaseUrl);
   }
 
   async getCurrentUser(): Promise<User | null> {
@@ -189,7 +205,7 @@ class APIClient {
       return this.currentUserInFlight;
     }
 
-    this.currentUserInFlight = this.request<{ user: User | null }>('/auth/me')
+    this.currentUserInFlight = this.request<{ user: User | null }>('/auth/me', undefined, this.authBaseUrl)
       .then((response) => {
         this.currentUserCache = { user: response.user, cachedAtMs: Date.now() };
         return response.user;
@@ -204,14 +220,14 @@ class APIClient {
   async generateAccessToken(): Promise<GenerateAccessTokenResponse> {
     return this.request<GenerateAccessTokenResponse>('/auth/token', {
       method: 'POST'
-    });
+    }, this.authBaseUrl);
   }
 
   async updateProfile(data: UpdateProfileRequest): Promise<User> {
     const response = await this.request<{ user: User }>('/auth/profile', {
       method: 'PATCH',
       body: JSON.stringify(data)
-    });
+    }, this.authBaseUrl);
     return response.user;
   }
 
@@ -435,4 +451,4 @@ class APIClient {
   }
 }
 
-export const apiClient = new APIClient();
+export const apiClient = new APIClient('/bernard');

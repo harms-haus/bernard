@@ -1,11 +1,9 @@
-import { useDarkMode } from '../../hooks/useDarkMode';
 
 interface ThinkingMessageProps {
   statusMessage?: string;
 }
 
 export function ThinkingMessage({ statusMessage }: ThinkingMessageProps) {
-  const { isDarkMode } = useDarkMode();
 
   return (
     <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-full relative group">

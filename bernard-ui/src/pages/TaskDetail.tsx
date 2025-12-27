@@ -100,7 +100,7 @@ const TaskMessageBlock = ({ event, formatDate }: { event: TaskEvent; formatDate:
       </span>
     </div>
     <div className="text-sm text-blue-700 dark:text-blue-300">
-      {event.data.content || 'A message was recorded during task execution.'}
+      {event.data.content && typeof event.data.content === 'string' ? event.data.content : 'A message was recorded during task execution.'}
     </div>
   </div>
 );

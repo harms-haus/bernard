@@ -31,7 +31,7 @@ interface ToolCall {
 
 interface TraceEvent {
   id: string;
-  type: 'llm_call' | 'tool_call';
+  type: 'llm_call' | 'tool_call' | 'recollection';
   data: any;
   timestamp: Date;
   status: 'loading' | 'completed';
@@ -55,7 +55,6 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
-  const [showToolDetails, setShowToolDetails] = React.useState<Record<string, boolean>>({});
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
   const [isGhostMode, setIsGhostMode] = React.useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = React.useState(true);
@@ -485,16 +484,6 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  const toggleToolDetails = (messageId: string) => {
-    setShowToolDetails(prev => ({
-      ...prev,
-      [messageId]: !prev[messageId]
-    }));
-  };
 
   const handleNewChat = async () => {
     // Check if there are unsaved messages
@@ -858,8 +847,6 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                           ) : (
                             <AssistantMessage
                               content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
-                              isStreaming={false}
-                              onStopStreaming={() => {}}
                             />
                           )}
                         </div>

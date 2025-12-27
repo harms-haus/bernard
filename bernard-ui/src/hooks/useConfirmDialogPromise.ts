@@ -51,30 +51,13 @@ export function useConfirmDialogPromise() {
       });
       
       // Set up a timeout to ensure the Promise resolves if the dialog doesn't call onClose properly
-      const timeoutId = setTimeout(() => {
+      setTimeout(() => {
         if (!resolved && isMountedRef.current) {
           safeResolve(false);
         }
       }, 30000); // 30 second timeout as a safety net
       
-      // Create a cleanup function that will be called when the Promise resolves
-      const cleanup = () => {
-        if (!resolved && isMountedRef.current) {
-          safeResolve(false);
-        }
-        clearTimeout(timeoutId);
-      };
-      
-      // Override the close function to include cleanup
-      const originalClose = close;
-      const wrappedClose = () => {
-        cleanup();
-        originalClose();
-      };
-      
-      // Replace the close function by monkey-patching (not ideal but necessary with current API)
-      // We'll store the cleanup function in a closure and call it when needed
-      // For now, we'll rely on the timeout and component unmount cleanup
+      // We'll rely on the timeout and component unmount cleanup
     });
   }, [confirmDialog]);
 }

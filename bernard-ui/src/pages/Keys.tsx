@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { useAuth } from '../hooks/useAuth';
 import { apiClient, Token } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { Copy, Plus, RefreshCw, Trash2, Key, Check, MoreVertical, Eye, EyeOff } from 'lucide-react';
+import { Copy, Plus, RefreshCw, Trash2, Key, MoreVertical, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TokenWithSecret extends Token {
@@ -17,7 +16,6 @@ interface TokenWithSecret extends Token {
 }
 
 export function Keys() {
-  const { state } = useAuth();
   const [tokens, setTokens] = React.useState<TokenWithSecret[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -26,7 +24,6 @@ export function Keys() {
   const [newTokenName, setNewTokenName] = React.useState('');
   const [creating, setCreating] = React.useState(false);
   const [latestSecret, setLatestSecret] = React.useState<{ name: string; token: string } | null>(null);
-  const [copiedTokenId, setCopiedTokenId] = React.useState<string | null>(null);
   const [showActualToken, setShowActualToken] = React.useState(false);
 
   React.useEffect(() => {
@@ -115,11 +112,9 @@ export function Keys() {
     }
   };
 
-  const copyToClipboard = async (text: string, tokenId: string) => {
+  const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedTokenId(tokenId);
-      setTimeout(() => setCopiedTokenId(null), 2000);
       toast.success('Token copied to clipboard');
     } catch {
       toast.error('Failed to copy to clipboard');
@@ -227,7 +222,7 @@ export function Keys() {
                             <DropdownMenuItem onClick={() => handleToggleStatus(token)}>
                               {token.status === 'active' ? 'Disable' : 'Enable'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => copyToClipboard(token.id, token.id)}>
+                            <DropdownMenuItem onClick={() => copyToClipboard(token.id)}>
                               <Copy className="mr-2 h-4 w-4" />
                               Copy ID
                             </DropdownMenuItem>
@@ -328,7 +323,7 @@ export function Keys() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => copyToClipboard(latestSecret.token, 'secret')}
+                        onClick={() => copyToClipboard(latestSecret.token)}
                         className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                       >
                         <Copy className="h-4 w-4" />

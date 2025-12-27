@@ -81,10 +81,10 @@ export function extractTraceEventsFromMessages(messages: MessageRecord[]): Trace
               promptTokens: content.tokens.in || 0,
               completionTokens: content.tokens.out || 0,
               totalTokens: (content.tokens.in || 0) + (content.tokens.out || 0)
-            } : (message.metadata?.tokens ? {
-              promptTokens: message.metadata.tokens.in || 0,
-              completionTokens: message.metadata.tokens.out || 0,
-              totalTokens: (message.metadata.tokens.in || 0) + (message.metadata.tokens.out || 0)
+            } : ((message.metadata as any)?.tokens ? {
+              promptTokens: (message.metadata as any).tokens.in || 0,
+              completionTokens: (message.metadata as any).tokens.out || 0,
+              totalTokens: ((message.metadata as any).tokens.in || 0) + ((message.metadata as any).tokens.out || 0)
             } : (message.metadata?.result as any)?.actualTokens)
           }
         };

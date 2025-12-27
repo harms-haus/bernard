@@ -94,7 +94,7 @@ fastify.post('/v1/audio/transcriptions', async (request, reply) => {
 });
 
 const port = 8002;
-const host = '0.0.0.0';
+const host = '127.0.0.1';
 
 try {
   await fastify.listen({ port, host });

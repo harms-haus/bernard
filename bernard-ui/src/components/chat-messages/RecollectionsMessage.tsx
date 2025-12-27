@@ -51,20 +51,6 @@ export function RecollectionsMessage({ recollections }: RecollectionsMessageProp
     }
   };
 
-  // Helper to shorten conversation ID for display
-  const shortenConversationId = (id: string) => {
-    if (id.length <= 8) return id;
-    return `${id.slice(0, 4)}...${id.slice(-4)}`;
-  };
-
-  // Helper to format score
-  const formatScore = (score: number) => score.toFixed(3);
-
-  // Helper to get preview of content
-  const getContentPreview = (content: string, maxLength = 100) => {
-    if (content.length <= maxLength) return content;
-    return content.slice(0, maxLength) + '...';
-  };
 
   return (
     <div className={`max-w-xs lg:max-w-md rounded-sm ml-0 px-2 py-1 border ${styles.container} ${styles.border}`}>
@@ -92,11 +78,10 @@ export function RecollectionsMessage({ recollections }: RecollectionsMessageProp
       {isExpanded && (
         <div className={`mt-3 pt-3 border-t ${styles.border}`}>
           <div className="space-y-2">
-            {recollections.map((recollection, index) => (
+            {recollections.map((recollection) => (
               <RecollectionItemComponent
                 key={recollection.recollectionId}
                 recollection={recollection}
-                index={index}
                 styles={styles}
               />
             ))}
@@ -109,11 +94,10 @@ export function RecollectionsMessage({ recollections }: RecollectionsMessageProp
 
 interface RecollectionItemComponentProps {
   recollection: RecollectionItem;
-  index: number;
   styles: any;
 }
 
-function RecollectionItemComponent({ recollection, index, styles }: RecollectionItemComponentProps) {
+function RecollectionItemComponent({ recollection, styles }: RecollectionItemComponentProps) {
   const [isItemExpanded, setIsItemExpanded] = React.useState(false);
 
   const handleToggleItemExpanded = () => {
@@ -234,3 +218,4 @@ function RecollectionItemComponent({ recollection, index, styles }: Recollection
     </div>
   );
 }
+

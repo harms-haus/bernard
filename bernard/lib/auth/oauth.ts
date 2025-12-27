@@ -5,11 +5,11 @@ import { buildSessionCookie, clearSessionCookie } from "./auth";
 import { getRedis } from "../infra/redis";
 import { SessionStore } from "./sessionStore";
 import { UserStore } from "./userStore";
-import { getSettings } from "../config/settingsCache";
+import { SettingsStore } from "../config/settingsStore";
 import { logger } from "../logging";
 
-type OAuthProvider = "default" | "google" | "github";
-	export type ProviderConfig = {
+export type OAuthProvider = "default" | "google" | "github";
+export type ProviderConfig = {
   authUrl: string;
   tokenUrl: string;
   userInfoUrl: string;
@@ -22,14 +22,23 @@ type OAuthProvider = "default" | "google" | "github";
 const STATE_TTL_SECONDS = 10 * 60;
 const STATE_NAMESPACE = "bernard:oauth:state";
 
-const base64UrlEncode = (buffer: Buffer) =>
-  buffer
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+const base64Encode = (buffer: Buffer) => buffer.toString("base64");
 
-const createCodeVerifier = () => base64UrlEncode(crypto.randomBytes(64));
+const base64UrlEncode = (buffer: Buffer) =>
+  buffer.toString("base64")
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+
+const createCodeVerifier = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const length = 64; // Between 43-128 as required by RFC 7636
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
 
 const createChallenge = (verifier: string) => base64UrlEncode(crypto.createHash("sha256").update(verifier).digest());
 
@@ -71,13 +80,14 @@ const fallbackProviderConfig = (provider: OAuthProvider): ProviderConfig => {
 };
 
 export const getProviderConfig = async (provider: OAuthProvider): Promise<ProviderConfig> => {
-  const settings = await getSettings().catch(() => null);
+  const settingsStore = new SettingsStore();
+  const settings = await settingsStore.getOAuth().catch(() => null);
   const fromSettings =
     provider === "google"
-      ? settings?.oauth.google
+      ? settings?.google
       : provider === "github"
-        ? settings?.oauth.github
-        : settings?.oauth.default;
+        ? settings?.github
+        : settings?.default;
 
   if (fromSettings?.authUrl && fromSettings.tokenUrl && fromSettings.userInfoUrl && fromSettings.redirectUri) {
     const { authUrl, tokenUrl, userInfoUrl, redirectUri, scope, clientId, clientSecret } = fromSettings;
@@ -99,10 +109,13 @@ const stateKey = (provider: OAuthProvider, state: string) => `${STATE_NAMESPACE}
 export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
   const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
   logger.info({ event: 'oauth.start', provider, redirectUri }, `OAuth start: redirectUri=${redirectUri}`);
-  const state = base64UrlEncode(crypto.randomBytes(24));
+  const state = base64Encode(crypto.randomBytes(24));
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createChallenge(codeVerifier);
-  const returnTo = new URL(req.url).searchParams.get("redirect") ?? "/";
+
+  const url = new URL(req.url);
+  const returnTo = url.searchParams.get('redirect') ?? "/";
+
   const redis = getRedis();
   await redis.set(stateKey(provider, state), JSON.stringify({ codeVerifier, returnTo }), "EX", STATE_TTL_SECONDS);
 
@@ -115,7 +128,18 @@ export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest)
   authorizeUrl.searchParams.set("code_challenge", codeChallenge);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
 
-  return Response.redirect(authorizeUrl.toString(), 302);
+  // Add Google-specific parameters
+  if (provider === "google") {
+    authorizeUrl.searchParams.set("access_type", "offline");
+    authorizeUrl.searchParams.set("prompt", "consent");
+  }
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorizeUrl.toString()
+    }
+  });
 }
 
 const parseState = async (provider: OAuthProvider, state: string): Promise<{ codeVerifier: string; returnTo: string } | null> => {
@@ -199,20 +223,39 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
+
   if (!code || !state) {
-    return new Response(JSON.stringify({ error: "Missing code or state" }), { status: 400 });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/login?error=no_code",
+        "Set-Cookie": clearSessionCookie()
+      }
+    });
   }
 
   try {
     const storedState = await parseState(provider, state);
     if (!storedState) {
-      return new Response(JSON.stringify({ error: "Unknown or expired state" }), { status: 400 });
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/login?error=invalid_state",
+          "Set-Cookie": clearSessionCookie()
+        }
+      });
     }
     await deleteState(provider, state);
     const config = await getProviderConfig(provider);
     const token = await exchangeCode(provider, config, code, storedState.codeVerifier);
     if (!token.access_token) {
-      return new Response(JSON.stringify({ error: "No access token returned" }), { status: 400 });
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/login?error=no_token",
+          "Set-Cookie": clearSessionCookie()
+        }
+      });
     }
     const { id, displayName } = await fetchUserInfo(provider, config.userInfoUrl, token.access_token);
     const redis = getRedis();
@@ -220,13 +263,17 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
     const sessionStore = new SessionStore(redis);
     const user = await userStore.upsertOAuthUser(id, displayName);
     if (user.status !== "active") {
-      return new Response(JSON.stringify({ error: "Account is disabled or deleted" }), {
-        status: 403,
-        headers: { "Set-Cookie": clearSessionCookie() }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/login?error=account_disabled",
+          "Set-Cookie": clearSessionCookie()
+        }
       });
     }
     const session = await sessionStore.create(user.id);
     const maxAge = Number(process.env["SESSION_TTL_SECONDS"] ?? 60 * 60 * 24 * 7);
+
     return new Response(null, {
       status: 302,
       headers: {
@@ -235,16 +282,18 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
       }
     });
   } catch (err) {
-    logger.error({ 
-      event: 'oauth.callback.error', 
-      provider, 
-      error: err instanceof Error ? err.message : String(err) 
+    logger.error({
+      event: 'oauth.callback.error',
+      provider,
+      error: err instanceof Error ? err.message : String(err)
     }, `Auth callback failed (${provider})`);
-    const message = (err as Error).message ?? "Authentication failed";
-    const status = message.toLowerCase().includes("deleted") ? 403 : 500;
-    return new Response(JSON.stringify({ error: message }), {
-      status,
-      headers: { "Set-Cookie": clearSessionCookie() }
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/login?error=auth_failed",
+        "Set-Cookie": clearSessionCookie()
+      }
     });
   }
 }
+

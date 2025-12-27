@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
 interface UserMessageProps {

@@ -1,10 +1,14 @@
+import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { logger } from './lib/logger.js';
 import { registerV1Routes } from './routes/v1.js';
 import { registerBernardRoutes } from './routes/bernard.js';
 import { registerIndexRoutes } from './routes/index.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { getAuthenticatedUser } from './lib/auth/auth.js';
 
 const fastify = Fastify({
   logger: false, // Disable Fastify's built-in logging, we'll do our own
@@ -17,7 +21,35 @@ await fastify.register(cors, {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 });
 
+await fastify.register(cookie);
+
 await fastify.register(multipart);
+
+// Authentication middleware for protected routes
+fastify.addHook('preHandler', async (request, reply) => {
+  const { url } = request;
+
+  // Skip auth for public routes
+  if (
+    url === '/' ||
+    url.startsWith('/health') ||
+    url.startsWith('/auth/') ||
+    url.startsWith('/bernard/') // Bernard UI is handled separately
+  ) {
+    return;
+  }
+
+  // Check authentication for protected routes
+  const authUser = await getAuthenticatedUser(request);
+  if (!authUser) {
+    logger.warn({ url, method: request.method }, 'Unauthorized access attempt');
+    return reply.status(401).send({ error: 'Authentication required' });
+  }
+
+  // Attach user to request for downstream handlers
+  (request as any).user = authUser.user;
+  (request as any).sessionId = authUser.sessionId;
+});
 
 // Custom request logging
 fastify.addHook('onResponse', (request, reply, done) => {
@@ -60,6 +92,7 @@ fastify.setErrorHandler((error: any, request, reply) => {
 await fastify.register(registerIndexRoutes);
 await fastify.register(registerV1Routes, { prefix: '/v1' });
 await fastify.register(registerBernardRoutes, { prefix: '/bernard' });
+await fastify.register(registerAuthRoutes, { prefix: '/bernard/auth' });
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

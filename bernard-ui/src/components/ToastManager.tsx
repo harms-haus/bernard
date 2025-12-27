@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ToastProvider, ToastViewport, Toast, ToastAction, ToastTitle, ToastDescription } from './ui/toast';
+import { ToastProvider, ToastViewport, Toast } from './ui/toast';
 
 export type ToastVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
 

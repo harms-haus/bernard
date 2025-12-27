@@ -93,11 +93,9 @@ test("Google OAuth endpoint redirects to Google with correct parameters", { time
   assert.equal(url.searchParams.get("access_type"), "offline");
   assert.equal(url.searchParams.get("prompt"), "consent");
   
-  // Check that state contains redirect information
+  // Check that state parameter exists
   const state = url.searchParams.get("state");
   assert.ok(state);
-  const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-  assert.equal(stateData.redirect, "/dashboard");
 });
 
 test("GitHub OAuth endpoint redirects to GitHub with correct parameters", { timeout: TEST_TIMEOUT }, async () => {
@@ -128,11 +126,9 @@ test("GitHub OAuth endpoint redirects to GitHub with correct parameters", { time
   assert.equal(url.searchParams.get("redirect_uri"), config.redirectUri);
   assert.equal(url.searchParams.get("scope"), config.scope);
   
-  // Check that state contains redirect information
+  // Check that state parameter exists
   const state = url.searchParams.get("state");
   assert.ok(state);
-  const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-  assert.equal(stateData.redirect, "/settings");
 });
 
 test("Google OAuth callback handles successful authentication", { timeout: TEST_TIMEOUT }, async () => {
@@ -146,6 +142,14 @@ test("Google OAuth callback handles successful authentication", { timeout: TEST_
     clientSecret: "google-client-secret"
   };
   await seedSettingsOauth(config);
+
+  // Set up OAuth state data in Redis
+  const redis = getRedis() as Redis;
+  const state = "test-google-state-123";
+  await redis.set(`bernard:oauth:state:google:${state}`, JSON.stringify({
+    codeVerifier: "test-code-verifier",
+    returnTo: "/dashboard"
+  }));
 
   // Mock the fetch calls for token exchange and user info
   const fetchCalls = mockFetchSequence([
@@ -161,8 +165,6 @@ test("Google OAuth callback handles successful authentication", { timeout: TEST_
       headers: { "Content-Type": "application/json" }
     })
   ]);
-
-  const state = Buffer.from(JSON.stringify({ redirect: "/dashboard" })).toString("base64");
   
   // Import the Google OAuth callback endpoint
   const googleCallbackModule = await import("../app/api/auth/google/callback/route");
@@ -202,6 +204,13 @@ test("GitHub OAuth callback handles successful authentication", { timeout: TEST_
   const csrfToken = "test-csrf-token-456";
   await redis.setex(`csrf:${csrfToken}`, 600, csrfToken);
 
+  // Set up OAuth state data in Redis
+  const state = "test-github-state-456";
+  await redis.set(`bernard:oauth:state:github:${state}`, JSON.stringify({
+    codeVerifier: "test-code-verifier",
+    returnTo: "/profile"
+  }));
+
   // Mock the fetch calls for token exchange and user info
   mockFetchSequence([
     new Response(JSON.stringify({ access_token: "github-token-456" }), {
@@ -216,8 +225,6 @@ test("GitHub OAuth callback handles successful authentication", { timeout: TEST_
       headers: { "Content-Type": "application/json" }
     })
   ]);
-
-  const state = Buffer.from(JSON.stringify({ redirect: "/profile", csrf: csrfToken })).toString("base64");
   
   // Import the GitHub OAuth callback endpoint
   const githubCallbackModule = await import("../app/api/auth/github/callback/route");
@@ -275,6 +282,13 @@ test("GitHub OAuth callback handles token exchange failure", { timeout: TEST_TIM
   const csrfToken = "test-csrf-token-failure";
   await redis.setex(`csrf:${csrfToken}`, 600, csrfToken);
 
+  // Set up OAuth state data in Redis
+  const state = "test-github-failure-state";
+  await redis.set(`bernard:oauth:state:github:${state}`, JSON.stringify({
+    codeVerifier: "test-code-verifier",
+    returnTo: "/profile"
+  }));
+
   // Mock a failed token exchange
   mockFetchSequence([
     new Response(JSON.stringify({ error: "invalid_code" }), {
@@ -282,8 +296,6 @@ test("GitHub OAuth callback handles token exchange failure", { timeout: TEST_TIM
       headers: { "Content-Type": "application/json" }
     })
   ]);
-
-  const state = Buffer.from(JSON.stringify({ redirect: "/profile", csrf: csrfToken })).toString("base64");
 
   // Import the GitHub OAuth callback endpoint
   const githubCallbackModule = await import("../app/api/auth/github/callback/route");
@@ -293,7 +305,7 @@ test("GitHub OAuth callback handles token exchange failure", { timeout: TEST_TIM
 
   assert.equal(response.status, 302);
   const location = response.headers.get("Location");
-  assert.equal(location, "/login?error=token_exchange_failed");
+  assert.equal(location, "/login?error=auth_failed");
 });
 
 test("validateRedirectUrl validates redirects correctly", async () => {

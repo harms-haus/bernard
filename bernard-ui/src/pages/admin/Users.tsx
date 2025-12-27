@@ -15,7 +15,6 @@ import {
   Plus,
   Save,
   Trash2,
-  UserPlus,
   UserCheck,
   UserX,
   Edit,

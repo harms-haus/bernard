@@ -261,7 +261,7 @@ if check_gpu_memory; then
     (source "$API_DIR/vllm_venv/bin/activate" && \
      python -m vllm.entrypoints.openai.api_server \
         --model nomic-ai/nomic-embed-text-v1.5 \
-        --host 0.0.0.0 --port 8001 --trust-remote-code \
+        --host 127.0.0.1 --port 8001 --trust-remote-code \
         --gpu-memory-utilization 0.05 2>&1 | sed "s/^/${CYAN}[VLLM]${NC} /" ; if [ $? -ne 0 ]; then echo "VLLM failed to start, continuing..."; fi) &
     PIDS+=($!)
     # Wait a moment for vLLM to initialize its port
@@ -272,7 +272,7 @@ fi
 
 # Kokoro (TTS Service)
 API_DIR="$ROOT_DIR/api" && (cd "$API_DIR/kokoro/api" && source "$API_DIR/kokoro/venv/bin/activate" && \
- PYTHONPATH="." python -m src.main --host 0.0.0.0 --port 8880 2>&1 | sed "s/^/${MAGENTA}[KOKORO]${NC} /" ; if [ $? -ne 0 ]; then echo "Kokoro failed to start, continuing..."; fi) &
+ PYTHONPATH="." python -m src.main --host 127.0.0.1 --port 8880 2>&1 | sed "s/^/${MAGENTA}[KOKORO]${NC} /" ; if [ $? -ne 0 ]; then echo "Kokoro failed to start, continuing..."; fi) &
 PIDS+=($!)
 
 # Whisper (TS)
@@ -306,5 +306,4 @@ sleep 2
 
 # Unified Fastify Server (Foreground)
 log "Starting Unified Server on port 3456..."
-export PORT=3456
 npm run dev --prefix "$SERVER_DIR"
