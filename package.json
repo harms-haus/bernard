@@ -1,0 +1,30 @@
+{
+  "name": "bernard",
+  "version": "1.0.0",
+  "description": "",
+  "main": "test-ha-tools.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harms-haus/bernard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/harms-haus/bernard/issues"
+  },
+  "homepage": "https://github.com/harms-haus/bernard#readme",
+  "dependencies": {
+    "@types/node": "^25.0.3",
+    "ioredis": "^5.8.2",
+    "typescript": "^5.9.3",
+    "zod": "^4.2.1"
+  }
+}

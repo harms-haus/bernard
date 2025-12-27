@@ -2,7 +2,7 @@
 # Kokoro TTS service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="Kokoro"
 PORT=8880
@@ -14,8 +14,8 @@ start_kokoro() {
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
     # Start Kokoro in background
-    cd "$API_DIR/kokoro/api"
-    source "$API_DIR/kokoro/venv/bin/activate"
+    cd "$SERVICES_DIR/kokoro/api"
+    source "$SERVICES_DIR/kokoro/.venv/bin/activate"
     python -m src.main --host 127.0.0.1 --port $PORT &
 
     echo $! > "/tmp/kokoro.pid"

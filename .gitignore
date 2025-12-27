@@ -49,10 +49,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
-api/venv/
-api/*venv/
-api/vllm_venv/
-api/kokoro/venv/
+services/*/venv/
+services/*venv/
 *.venv/
 
 # AI/ML Models and Weights

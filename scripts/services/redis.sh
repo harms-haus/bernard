@@ -2,7 +2,7 @@
 # Redis service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="Redis"
 PORT=6379
@@ -103,3 +103,4 @@ case "${1:-start}" in
         exit 1
         ;;
 esac
+

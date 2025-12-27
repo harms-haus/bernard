@@ -2,7 +2,7 @@
 # Bernard main application service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="Bernard"
 PORT=3000

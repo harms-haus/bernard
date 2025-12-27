@@ -2,7 +2,7 @@
 # Whisper transcription service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="Whisper"
 PORT=8002
@@ -14,7 +14,7 @@ start_whisper() {
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
     # Start Whisper in background
-    cd "$SERVER_DIR"
+    cd "$API_DIR"
     npm run dev:whisper &
 
     echo $! > "/tmp/whisper.pid"

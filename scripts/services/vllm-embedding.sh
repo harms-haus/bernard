@@ -2,7 +2,7 @@
 # vLLM Embedding service management script
 
 # Source common utilities
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
 SERVICE_NAME="vLLM-Embedding"
 PORT=8001
@@ -29,7 +29,7 @@ start() {
     export HF_HOME="$MODELS_DIR/huggingface"
     
     log "Launching Nomic Embedding (2k Context, ${util} GPU fraction)..."
-    "$API_DIR/vllm_venv/bin/python" -m vllm.entrypoints.openai.api_server \
+    "$SERVICES_DIR/vllm/.venv/bin/python" -m vllm.entrypoints.openai.api_server \
         --model nomic-ai/nomic-embed-text-v1.5 \
         --host 127.0.0.1 --port $PORT --trust-remote-code \
         --gpu-memory-utilization "$util" \
