@@ -5,6 +5,10 @@
     "tests/**/*",
     "coverage/**/*",
     "**/*.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    "app/**/*",
+    "lib/auth/**/*",
+    "next-env.d.ts",
+    ".next/**/*"
   ]
 }

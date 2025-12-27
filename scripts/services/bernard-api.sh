@@ -1,45 +1,45 @@
 #!/usr/bin/env bash
-# Bernard main application service management script
+# Bernard API service management script
 
 # Source common utilities
 source "$(dirname "${BASH_SOURCE[0]}")/../common.sh"
 
-SERVICE_NAME="Bernard"
-PORT=3001
+SERVICE_NAME="Bernard API"
+PORT=3000
 
-start_bernard() {
-    log "Starting Bernard application..."
+start_bernard_api() {
+    log "Starting Bernard API..."
 
     # Kill any existing processes on the port
     kill_port $PORT "$SERVICE_NAME" || exit 1
 
-    # Kill existing Bernard processes
-    pkill -f "bernard.*dev" || true
-    pkill -f "tsx.*server" || true
+    # Kill existing Bernard API processes
+    pkill -f "bernard-api.*dev" || true
+    pkill -f "bernard-api.*start" || true
 
     # Give processes time to die gracefully
     sleep 2
 
-    # Start Vite server
-    log "Starting Bernard Vite server..."
-    cd "$BERNARD_DIR"
-    PORT=3001 npm run dev &
-    echo $! > "/tmp/bernard-vite.pid"
+    # Start Bernard API
+    log "Starting Bernard API server..."
+    cd "$BERNARD_API_DIR"
+    PORT=3000 npm run dev &
+    echo $! > "/tmp/bernard-api.pid"
 
     # Wait for service to be ready
     wait_for_service "$SERVICE_NAME" $PORT "/health" 60
 }
 
-stop_bernard() {
-    log "Stopping Bernard..."
+stop_bernard_api() {
+    log "Stopping Bernard API..."
 
-    # Kill Bernard processes more aggressively
-    pkill -f "bernard.*dev" || true
-    pkill -f "tsx.*server" || true
+    # Kill Bernard API processes
+    pkill -f "bernard-api.*dev" || true
+    pkill -f "bernard-api.*start" || true
 
     # Kill by PID file if it exists
-    if [ -f "/tmp/bernard-vite.pid" ]; then
-        local pid=$(cat "/tmp/bernard-vite.pid")
+    if [ -f "/tmp/bernard-api.pid" ]; then
+        local pid=$(cat "/tmp/bernard-api.pid")
         if kill -0 "$pid" 2>/dev/null; then
             log "Sending SIGTERM to PID $pid..."
             kill -TERM "$pid" 2>/dev/null || true
@@ -49,33 +49,29 @@ stop_bernard() {
                 kill -9 "$pid" 2>/dev/null || true
             fi
         fi
-        rm -f "/tmp/bernard-vite.pid"
+        rm -f "/tmp/bernard-api.pid"
     fi
 
-    # Final cleanup - kill any remaining Bernard processes
-    pkill -9 -f "bernard.*dev" || true
-    pkill -9 -f "tsx.*server" || true
-
-    success "Bernard stopped"
+    success "Bernard API stopped"
 }
 
-restart_bernard() {
-    log "Restarting Bernard..."
-    stop_bernard
+restart_bernard_api() {
+    log "Restarting Bernard API..."
+    stop_bernard_api
     sleep 2
-    start_bernard
+    start_bernard_api
 }
 
 # Main command handling
 case "${1:-start}" in
     start)
-        start_bernard
+        start_bernard_api
         ;;
     stop)
-        stop_bernard
+        stop_bernard_api
         ;;
     restart)
-        restart_bernard
+        restart_bernard_api
         ;;
     status)
         get_service_status "$SERVICE_NAME" $PORT "/health"

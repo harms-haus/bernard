@@ -3,29 +3,11 @@ import { SettingsStore } from "../config/settingsStore";
 
 /**
  * Load all automation modules statically
+ * NOTE: Automations have been removed per LangGraph redesign
  */
 async function loadAutomations(): Promise<Map<string, Automation>> {
-  const automationCache = new Map();
-
-  try {
-    // Import automations statically
-    const { automation: summarizeAutomation } = await import('@/agent/automations/summarizeConversation');
-    const { automation: tagAutomation } = await import('@/agent/automations/tagConversation');
-    const { automation: flagAutomation } = await import('@/agent/automations/flagConversation');
-    const { automation: indexAutomation } = await import('@/agent/automations/indexConversation');
-
-    // Add them to the cache
-    [summarizeAutomation, tagAutomation, flagAutomation, indexAutomation].forEach(automation => {
-      if (automation && automation.id && automation.name) {
-        automationCache.set(automation.id, automation);
-      }
-    });
-
-  } catch (err) {
-    console.error("Failed to load automations:", err);
-  }
-
-  return automationCache;
+  // Automations removed - return empty map
+  return new Map();
 }
 
 /**

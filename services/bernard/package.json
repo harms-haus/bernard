@@ -4,17 +4,15 @@
   "description": "bernard agent API with LangGraph tools and token auth",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "tsx watch server.ts",
+    "build": "vite build",
+    "start": "node dist/server.js",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "type-check:src": "tsc --noEmit --project tsconfig.check.json",
     "tests": "vitest run",
     "tests:watch": "vitest --watch",
-    "tests:coverage": "vitest run --coverage",
-    "queues:worker": "tsx agent/queueWorker.ts",
-    "tasks:worker": "tsx agent/taskWorker.ts"
+    "tests:coverage": "vitest run --coverage"
   },
   "keywords": [
     "langgraph",
@@ -39,11 +37,8 @@
     "jsdom": "^27.3.0",
     "jsonrepair": "^3.13.1",
     "@mozilla/readability": "^0.5.0",
-    "next": "^16.0.7",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.3",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1",
     "redis": "^4.7.0",
     "wikipedia": "^2.4.2",
     "zod": "^4.2.1"

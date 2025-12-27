@@ -1,10 +1,8 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type Redis from "ioredis";
-import type { z } from "zod";
+import * as path from "node:path";
 import { appSettings } from "@shared/config/appSettings";
 import type { Section, BernardSettings, ModelsSettings, Provider, ServicesSettings, OAuthSettings, BackupSettings, LimitsSettings, AutomationsSettings, AutomationSettings } from "@shared/config/appSettings";
-import { getRedis } from "@/lib/infra/redis";
+import { getRedis } from "@shared/infra/redis";
 
 export { 
   ProviderSchema, 
@@ -31,24 +29,11 @@ const API_ENV_PATH = path.join(process.cwd(), "../../api/.env");
 appSettings.loadEnv(API_ENV_PATH);
 
 export class SettingsStore {
-  private _redisInstance: Pick<Redis, "get" | "set"> | null = null;
-  
   constructor(
-    _redis?: Pick<Redis, "get" | "set">,
+    private readonly _redis: Pick<Redis, "get" | "set"> = getRedis(),
     _opts: { namespace?: string; onChange?: (section: Section) => void } = {}
   ) {
-    // Store redis instance if provided, otherwise lazy-load on first use
-    if (_redis) {
-      this._redisInstance = _redis;
-    }
     // appSettings uses the same redis and namespace by default
-  }
-
-  private get redis(): Pick<Redis, "get" | "set"> {
-    if (!this._redisInstance) {
-      this._redisInstance = getRedis();
-    }
-    return this._redisInstance;
   }
 
   async getModels(): Promise<ModelsSettings> {
@@ -127,39 +112,4 @@ export class SettingsStore {
   async setAutomationSettings(name: string, settings: AutomationSettings): Promise<void> {
     return appSettings.setAutomationSettings(name, settings);
   }
-}
-
-export const ensureDirectory = (dir: string) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-};
-
-export const parseJson = <T>(raw: string | null, schema: z.ZodSchema<T>): T | null => {
-  if (!raw) return null;
-  try {
-    return schema.parse(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-};
-
-export function normalizeList(raw?: string | string[] | null): string[] {
-  return appSettings.normalizeList(raw);
-}
-
-export function defaultModels(): ModelsSettings {
-  return appSettings.getDefaultModels();
-}
-
-export function defaultServices(): ServicesSettings {
-  return appSettings.getDefaultServices();
-}
-
-export function defaultBackups(): BackupSettings {
-  return appSettings.getDefaultBackups();
-}
-
-export function defaultOauth(): OAuthSettings {
-  return appSettings.getDefaultOauth();
 }

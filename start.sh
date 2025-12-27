@@ -6,6 +6,7 @@ set -uo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICES_DIR="$ROOT_DIR/services"
 BERNARD_DIR="$SERVICES_DIR/bernard"
+BERNARD_API_DIR="$SERVICES_DIR/bernard-api"
 UI_DIR="$SERVICES_DIR/bernard-ui"
 API_DIR="$ROOT_DIR/api"
 MODELS_DIR="$ROOT_DIR/models"
@@ -15,8 +16,6 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 log() { echo -e "${BLUE}[SYSTEM]${NC} $1"; }
@@ -24,241 +23,126 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
-# Allow function to be sourced independently
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Script is being executed directly
-    set -uo pipefail
-else
-    # Script is being sourced
-    set +u
-fi
+# 1. Build Checks (Parallel with visible logs)
+log "Starting build checks in parallel..."
 
-# Check GPU memory availability (used by vLLM script)
-check_gpu_memory() {
-    if command -v nvidia-smi >/dev/null 2>&1; then
-        local free_mem=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits)
-        local total_mem=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits)
-
-        if [ "$free_mem" -lt 1000 ]; then  # Less than 1GB free
-            warning "Low GPU memory: ${free_mem}MiB free out of ${total_mem}MiB"
-            warning "GPU-intensive services may fail. Consider killing other GPU processes."
-            return 1
-        else
-            log "GPU memory: ${free_mem}MiB free out of ${total_mem}MiB"
-            return 0
-        fi
-    else
-        log "No NVIDIA GPU detected, skipping GPU memory check"
-        return 0
-    fi
+# Function to prefix output
+prefix_output() {
+    local prefix=$1
+    while IFS= read -r line; do
+        echo "[$prefix] $line"
+    done
 }
-# 1. Build Checks (Fail Fast)
-log "Starting build checks..."
 
-# Create temp files for capturing output
-BERNARD_TSC_LOG=$(mktemp)
-SERVER_BUILD_LOG=$(mktemp)
-BERNARD_LINT_LOG=$(mktemp)
-BERNARD_BUILD_LOG=$(mktemp)
-
-# Start all build checks in parallel
-log "Running build checks in parallel..."
-
-# Bernard type check
-npm run type-check:src --prefix "$BERNARD_DIR" > "$BERNARD_TSC_LOG" 2>&1 &
+(npm run type-check:src --prefix "$BERNARD_DIR" 2>&1 | prefix_output "BERNARD-TSC") &
 BERNARD_TSC_PID=$!
-
-# API build (includes type check)
-npm run build --prefix "$API_DIR" > "$SERVER_BUILD_LOG" 2>&1 &
-SERVER_BUILD_PID=$!
-
-# Bernard lint
-npm run lint --prefix "$BERNARD_DIR" > "$BERNARD_LINT_LOG" 2>&1 &
-BERNARD_LINT_PID=$!
-
-# Bernard build
-npm run build --prefix "$BERNARD_DIR" > "$BERNARD_BUILD_LOG" 2>&1 &
+(npm run type-check --prefix "$BERNARD_API_DIR" 2>&1 | prefix_output "BERNARD-API-TSC") &
+BERNARD_API_TSC_PID=$!
+(npm run build --prefix "$BERNARD_DIR" 2>&1 | prefix_output "BERNARD-BUILD") &
 BERNARD_BUILD_PID=$!
+(npm run build --prefix "$BERNARD_API_DIR" 2>&1 | prefix_output "BERNARD-API-BUILD") &
+BERNARD_API_BUILD_PID=$!
 
-# Wait for all to complete
-log "Waiting for build checks to complete..."
+# Wait for all build processes and capture exit codes
 wait $BERNARD_TSC_PID
 BERNARD_TSC_EXIT=$?
-wait $SERVER_BUILD_PID
-SERVER_BUILD_EXIT=$?
-wait $BERNARD_LINT_PID
-BERNARD_LINT_EXIT=$?
+wait $BERNARD_API_TSC_PID
+BERNARD_API_TSC_EXIT=$?
 wait $BERNARD_BUILD_PID
 BERNARD_BUILD_EXIT=$?
+wait $BERNARD_API_BUILD_PID
+BERNARD_API_BUILD_EXIT=$?
 
-# Check results and report failures
-FAILED_CHECKS=()
-
-if [ $BERNARD_TSC_EXIT -ne 0 ]; then
-    FAILED_CHECKS+=("Bernard Type Check")
-    error "Bernard type check failed:"
-    cat "$BERNARD_TSC_LOG"
-fi
-
-if [ $SERVER_BUILD_EXIT -ne 0 ]; then
-    FAILED_CHECKS+=("API Build")
-    error "API build failed:"
-    cat "$SERVER_BUILD_LOG"
-fi
-
-if [ $BERNARD_LINT_EXIT -ne 0 ]; then
-    FAILED_CHECKS+=("Bernard Lint")
-    error "Bernard linting failed:"
-    cat "$BERNARD_LINT_LOG"
-fi
-
-if [ $BERNARD_BUILD_EXIT -ne 0 ]; then
-    FAILED_CHECKS+=("Bernard Build")
-    error "Bernard build failed:"
-    cat "$BERNARD_BUILD_LOG"
-fi
-
-# Clean up temp files
-rm -f "$BERNARD_TSC_LOG" "$SERVER_BUILD_LOG" "$BERNARD_LINT_LOG" "$BERNARD_BUILD_LOG"
-
-# Exit if any checks failed
-if [ ${#FAILED_CHECKS[@]} -ne 0 ]; then
-    error "Build checks failed: ${FAILED_CHECKS[*]}"
+# Check for errors
+if [ $BERNARD_TSC_EXIT -ne 0 ] || [ $BERNARD_API_TSC_EXIT -ne 0 ] || [ $BERNARD_BUILD_EXIT -ne 0 ] || [ $BERNARD_API_BUILD_EXIT -ne 0 ]; then
+    error "Build checks failed"
+    [ $BERNARD_TSC_EXIT -ne 0 ] && error "  - Bernard type check failed"
+    [ $BERNARD_API_TSC_EXIT -ne 0 ] && error "  - Bernard API type check failed"
+    [ $BERNARD_BUILD_EXIT -ne 0 ] && error "  - Bernard build failed"
+    [ $BERNARD_API_BUILD_EXIT -ne 0 ] && error "  - Bernard API build failed"
     exit 1
 fi
 
-success "Build checks passed!"
+success "Build checks completed!"
 
-# 2. Cleanup and Process Management
+# Source common utilities for service health checking
+source "$ROOT_DIR/scripts/common.sh"
 
-# Pre-startup cleanup - kill any existing Bernard processes
-cleanup_existing() {
-    log "Cleaning up existing Bernard processes..."
+# 2. Start Redis
+log "Starting Redis..."
+"$ROOT_DIR/scripts/services/redis.sh" start 2>&1 | prefix_output "REDIS"
 
-    # Use individual service scripts to stop services
-    "$ROOT_DIR/scripts/services/redis.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/vllm-embedding.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/kokoro.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/whisper.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/bernard-ui.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/api.sh" stop 2>/dev/null || true
+# 3. Start Bernard API
+log "Starting Bernard API..."
+"$ROOT_DIR/scripts/services/bernard-api.sh" start 2>&1 | prefix_output "BERNARD-API" &
+BERNARD_API_START_PID=$!
 
-    success "Existing processes cleaned up."
-}
+# 4. Start Other Services (Parallel with visible logs)
+log "Starting other services in parallel..."
+"$ROOT_DIR/scripts/services/bernard.sh" start 2>&1 | prefix_output "BERNARD" &
+BERNARD_START_PID=$!
+"$ROOT_DIR/scripts/services/bernard-ui.sh" start 2>&1 | prefix_output "BERNARD-UI" &
+BERNARD_UI_START_PID=$!
+"$ROOT_DIR/scripts/services/whisper.sh" start 2>&1 | prefix_output "WHISPER" &
+WHISPER_START_PID=$!
+"$ROOT_DIR/scripts/services/kokoro.sh" start 2>&1 | prefix_output "KOKORO" &
+KOKORO_START_PID=$!
+"$ROOT_DIR/scripts/services/vllm-embedding.sh" start 2>&1 | prefix_output "VLLM-EMBEDDING" &
+VLLM_START_PID=$!
 
-# Run pre-startup cleanup
-cleanup_existing
+# 5. Wait for all services to be ready (or fail)
+log "Waiting for all services to start..."
+SERVICES_FAILED=0
 
-PIDS=()
-cleanup() {
-    echo -e "\n${YELLOW}Shutting down all services...${NC}"
+# Wait for Bernard API (port 3000, /health endpoint)
+wait_for_service "Bernard API" 3000 "/health" 60 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-    # Kill tracked PIDs first
-    for pid in "${PIDS[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            echo "Killing PID $pid..."
-            kill "$pid" 2>/dev/null || true
-        fi
-    done
+# Wait for Bernard (port 3001, /health endpoint)
+wait_for_service "Bernard" 3001 "/health" 60 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-    # Aggressive cleanup of Bernard workers that might be stuck in Redis reconnection loops
-    echo "Force terminating any stuck Bernard workers..."
-    pkill -9 -f "queueWorker.ts" 2>/dev/null || true
-    pkill -9 -f "taskWorker.ts" 2>/dev/null || true
+# Wait for Bernard UI (port 4200, / endpoint)
+wait_for_service "Bernard-UI" 4200 "/" 30 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-    # Stop services in reverse order (server first, then dependencies)
-    "$ROOT_DIR/scripts/api.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/bernard.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/bernard-ui.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/redis.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/vllm-embedding.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/kokoro.sh" stop 2>/dev/null || true
-    "$ROOT_DIR/scripts/services/whisper.sh" stop 2>/dev/null || true
+# Wait for Whisper (port 8002, /health endpoint)
+wait_for_service "Whisper" 8002 "/health" 30 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-    success "All services stopped."
-    exit 0
-}
+# Wait for Kokoro (port 8880, /health endpoint)
+wait_for_service "Kokoro" 8880 "/health" 30 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-trap cleanup SIGINT SIGTERM EXIT
+# Wait for vLLM Embedding (port 8001, /health endpoint)
+wait_for_service "vLLM-Embedding" 8001 "/health" 90 || SERVICES_FAILED=$((SERVICES_FAILED + 1))
 
-# 3. Setup Infrastructure
-log "Setting up infrastructure..."
-
-# Setup Redis with RediSearch
-if ! "$ROOT_DIR/scripts/services/redis.sh" start; then
-    error "Failed to setup Redis. Conversation indexing will not work."
-    warning "Continuing startup anyway..."
-fi
-
-# 5. Start Background Services
-log "Starting backend services in parallel..."
-
-# Track service startup results
-VLLM_STARTED=false
-SERVICES_PIDS=()
-
-# Check GPU memory before starting GPU services
-if check_gpu_memory; then
-    # Start vLLM Embedding
-    "$ROOT_DIR/scripts/services/vllm-embedding.sh" start &
-    SERVICES_PIDS+=($!)
-    
-    VLLM_STARTED=true
+if [ $SERVICES_FAILED -gt 0 ]; then
+    warning "$SERVICES_FAILED service(s) failed to start, but continuing..."
 else
-    warning "Skipping VLLM due to low GPU memory"
+    success "All services started successfully!"
 fi
 
-# Start Kokoro (TTS Service)
-"$ROOT_DIR/scripts/services/kokoro.sh" start &
-SERVICES_PIDS+=($!)
+# 6. Start API Gateway
+log "Starting API Gateway..."
+"$ROOT_DIR/scripts/api.sh" start 2>&1 | prefix_output "API-GATEWAY" &
+API_START_PID=$!
 
-# Start Whisper (TS)
-"$ROOT_DIR/scripts/services/whisper.sh" start &
-SERVICES_PIDS+=($!)
+# Wait for API Gateway to be ready
+wait_for_service "Server" 3456 "/health" 30 || {
+    error "API Gateway failed to start"
+    SERVICES_FAILED=$((SERVICES_FAILED + 1))
+}
 
-# 6. Start Application Servers
-log "Starting application servers..."
-
-# Start Bernard (includes workers and Next.js)
-"$ROOT_DIR/scripts/services/bernard.sh" start &
-SERVICES_PIDS+=($!)
-
-# Wait for all services to complete their startup
-log "Waiting for all services to complete startup..."
-for pid in "${SERVICES_PIDS[@]}"; do
-    if ! wait "$pid" 2>/dev/null; then
-        warning "Service with PID $pid failed to start, continuing..."
-    fi
-done
-
-success "All services startup attempts completed"
-
-# Start Bernard UI (Vite)
-if ! "$ROOT_DIR/scripts/services/bernard-ui.sh" start; then
-    warning "Bernard UI failed to start, continuing..."
-fi
-
-# Start Unified Fastify Server
-log "Starting Unified Server on port 3456..."
-if ! "$ROOT_DIR/scripts/api.sh" start; then
-    error "Failed to start unified server"
-    exit 1
-fi
-
-# Open browser to the unified server
+# 7. Launch Browser
 log "Opening browser to http://localhost:3456/bernard/chat..."
 if command -v xdg-open >/dev/null 2>&1; then
     xdg-open "http://localhost:3456/bernard/chat" >/dev/null 2>&1 &
 elif command -v open >/dev/null 2>&1; then
     open "http://localhost:3456/bernard/chat" >/dev/null 2>&1 &
-else
-    warning "Could not find a command to open the browser. Please manually open http://localhost:3456/bernard/chat"
 fi
 
-# Wait indefinitely to keep the script running while services are active
-log "All services started. Press Ctrl+C to stop all services."
-# Wait indefinitely for interrupt signals
-while true; do
-    sleep 1
-done
+# 8. Application startup complete
+if [ $SERVICES_FAILED -eq 0 ]; then
+    success "Application startup complete!"
+else
+    warning "Application startup complete with $SERVICES_FAILED service(s) failed"
+fi
+
+# Keep script running
+while true; do sleep 1; done
