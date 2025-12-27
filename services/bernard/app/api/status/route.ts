@@ -52,7 +52,7 @@ const SERVICES: ServiceInfo[] = [
   { name: "vLLM", port: 8001, endpoint: "/health", logFile: "api/logs/vllm-embedding.log", description: "AI embedding service" },
   { name: "Kokoro", port: 8880, endpoint: "/health", logFile: "api/logs/kokoro.log", description: "Text-to-speech service" },
   { name: "Whisper", port: 8002, endpoint: "/health", logFile: "api/logs/whisper.log", description: "Speech-to-text service" },
-  { name: "Bernard", port: 3000, endpoint: "/", logFile: "logs/bernard.log", description: "Main application server" },
+  { name: "Bernard", port: 3001, endpoint: "/health", logFile: "logs/bernard.log", description: "Main application server" },
   { name: "Bernard-UI", port: 4200, endpoint: "/", logFile: "logs/bernard-ui.log", description: "Frontend interface" },
   { name: "Server", port: 3456, endpoint: "/health", logFile: "api/logs/proxy.log", description: "Unified API server" },
 ];

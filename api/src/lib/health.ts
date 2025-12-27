@@ -10,7 +10,7 @@ export interface ServiceStatus {
 }
 
 const services: Record<string, string> = {
-  bernard: process.env.BERNARD_URL || 'http://localhost:3000',
+  bernard: process.env.BERNARD_URL || 'http://localhost:3001',
   vllm: process.env.VLLM_URL || 'http://localhost:8001',
   whisper: process.env.WHISPER_URL || 'http://localhost:8002',
   kokoro: process.env.KOKORO_URL || 'http://localhost:8880',
@@ -20,7 +20,7 @@ const services: Record<string, string> = {
 export async function checkServiceHealth(name: string, url: string): Promise<ServiceStatus> {
   const timestamp = new Date().toISOString();
   try {
-    const healthUrl = name === 'bernard' ? `${url}/api/health` :
+    const healthUrl = name === 'bernard' ? `${url}/health` :
                      name === 'vllm' ? `${url}/health` :
                      name === 'whisper' ? `${url}/health` :
                      name === 'kokoro' ? `${url}/health` : url;

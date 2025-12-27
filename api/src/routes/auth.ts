@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { startOAuthLogin, type OAuthProvider } from '@/lib/auth/oauth'
+import { startOAuthLogin, handleOAuthCallback, type OAuthProvider } from '@/lib/auth/oauth'
 import { getAuthenticatedUser, requireAdmin, clearSessionCookie } from '@/lib/auth/auth'
 import { logger } from '@/lib/logger'
 
 export async function registerAuthRoutes(fastify: FastifyInstance) {
-  // GET /auth/:provider/login - Proxy OAuth login to Next.js app
+  // GET /auth/:provider/login - Start OAuth login flow
   fastify.get('/:provider/login', async (request, reply) => {
     const { provider } = request.params as { provider: string };
 
@@ -12,9 +12,18 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid provider' });
     }
 
-    // Proxy to Next.js app
-    const redirectUrl = `${request.protocol}://${request.hostname}/bernard/api/auth/${provider}/login${request.url.search}`;
-    return reply.redirect(redirectUrl);
+    return startOAuthLogin(provider as OAuthProvider, request, reply);
+  });
+
+  // GET /auth/:provider/callback - Handle OAuth callback
+  fastify.get('/:provider/callback', async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+
+    if (!['github', 'google'].includes(provider)) {
+      return reply.status(400).send({ error: 'Invalid provider' });
+    }
+
+    return handleOAuthCallback(provider as OAuthProvider, request, reply);
   });
 
 

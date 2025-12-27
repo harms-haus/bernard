@@ -3,7 +3,7 @@ import proxy from '@fastify/http-proxy';
 import axios from 'axios';
 import { logger } from '@/lib/logger'
 
-const BERNARD_URL = process.env.BERNARD_URL || 'http://localhost:3000';
+const BERNARD_URL = process.env.BERNARD_URL || 'http://localhost:3001';
 const VLLM_URL = process.env.VLLM_URL || 'http://localhost:8001';
 const KOKORO_URL = process.env.KOKORO_URL || 'http://localhost:8880';
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8002';
