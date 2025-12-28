@@ -10,32 +10,30 @@ export interface ServiceStatus {
 }
 
 const services: Record<string, string> = {
-  bernard: process.env.BERNARD_URL || 'http://localhost:3001',
-  'bernard-api': process.env.BERNARD_API_URL || 'http://localhost:3000',
-  vllm: process.env.VLLM_URL || 'http://localhost:8001',
-  whisper: process.env.WHISPER_URL || 'http://localhost:8002',
-  kokoro: process.env.KOKORO_URL || 'http://localhost:8880',
-  ui: process.env.UI_URL || 'http://localhost:4200',
+  bernard: process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:8850',
+  'bernard-api': process.env.BERNARD_API_URL || 'http://127.0.0.1:8800',
+  vllm: process.env.VLLM_URL || 'http://127.0.0.1:8860',
+  whisper: process.env.WHISPER_URL || 'http://127.0.0.1:8870',
+  kokoro: process.env.KOKORO_URL || 'http://127.0.0.1:8880',
+  ui: process.env.BERNARD_UI_URL || 'http://127.0.0.1:8810',
 };
 
 export async function checkServiceHealth(name: string, url: string): Promise<ServiceStatus> {
   const timestamp = new Date().toISOString();
   try {
-    const healthUrl = name === 'bernard' ? `${url}/health` :
-                     name === 'bernard-api' ? `${url}/health` :
-                     name === 'vllm' ? `${url}/health` :
-                     name === 'whisper' ? `${url}/health` :
-                     name === 'kokoro' ? `${url}/health` : url;
+    const healthUrl = name === 'whisper' ? `${url}/health` : // Whisper.cpp health
+                     name === 'vllm' ? `${url}/health` :    // vLLM health
+                     `${url}/health`;                       // Others usually have /health
     
     const response = await axios.get(healthUrl, { timeout: 2000 });
     return {
       name,
       url,
-      status: response.status < 500 ? 'up' : 'error' as any,
+      status: response.status < 500 ? 'up' : 'degraded',
       lastChecked: timestamp,
     };
   } catch (error: any) {
-    // If it's the UI dev server, it might not have a health endpoint but we can check if it's reachable
+    // If it's the UI, check root reachability
     if (name === 'ui') {
        try {
          await axios.get(url, { timeout: 1000 });
@@ -57,4 +55,3 @@ export async function getAllServicesHealth() {
   const checks = Object.entries(services).map(([name, url]) => checkServiceHealth(name, url));
   return Promise.all(checks);
 }
-

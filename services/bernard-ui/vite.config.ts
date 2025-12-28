@@ -12,11 +12,23 @@ export default defineConfig({
     },
   },
   server: {
-    port: 4200,
+    port: 8810,
+    host: '127.0.0.1',
     open: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3456',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '/bernard/api')
+      },
+      '/auth': {
+        target: 'http://127.0.0.1:3456',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/bernard/api': {
+        target: 'http://127.0.0.1:3456',
         changeOrigin: true,
         secure: false,
       }
