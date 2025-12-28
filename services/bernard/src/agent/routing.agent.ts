@@ -3,7 +3,7 @@ import { SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { LLMCaller } from "@/agent/llm/llm";
-import { buildRouterSystemPrompt } from "@/agent/harness/router/prompts";
+import { buildRouterSystemPrompt } from "./prompts/router";
 
 /**
  * Context for routing agent

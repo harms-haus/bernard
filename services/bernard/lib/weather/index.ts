@@ -6,7 +6,11 @@ export {
   fetchWeatherJson,
   weatherError,
   resolveUnits,
-  likelyImperial
+  likelyImperial,
+  chooseUnits,
+  parseTarget,
+  parseDateRange,
+  getImperialUnits
 } from "./common";
 
 export type {

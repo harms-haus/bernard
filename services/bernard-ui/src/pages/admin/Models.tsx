@@ -321,15 +321,6 @@ export default function Models() {
     try {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
 
-      // Check if backend is returning different model names
-      const categories: ModelCategory[] = ['response', 'router', 'utility', 'aggregation', 'embedding'];
-      categories.forEach(category => {
-        const frontendModel = settings[category]?.primary;
-        const backendModel = updatedSettings[category]?.primary;
-        if (frontendModel !== backendModel) {
-        }
-      });
-
       setSettings(updatedSettings);
 
       // Reset the embedding dimension warning after successful save

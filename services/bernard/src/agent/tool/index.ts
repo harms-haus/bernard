@@ -12,8 +12,6 @@ import { wikipediaSearchTool } from "./wikipedia-search.tool";
 import { wikipediaEntryTool } from "./wikipedia-entry.tool";
 import type { HomeAssistantContextManager } from "@/lib/home-assistant";
 import { createPlayPlexMediaToolInstance } from "./play_media_tv.tool";
-import { recallTool } from "./recall.tool";
-import { recallConversationTool } from "./recall_conversation.tool";
 import { recallTaskTool } from "./recall_task.tool";
 import { createTimerToolInstance } from "./timer.tool";
 
@@ -57,8 +55,6 @@ export function getRouterTools(
     wikipediaSearchTool,
     wikipediaEntryTool,
     getWebsiteContentTool,
-    recallTool,
-    recallConversationTool,
     recallTaskTool,
     respondTool,
   ];
@@ -89,8 +85,6 @@ export {
   wikipediaSearchTool,
   wikipediaEntryTool,
   getWebsiteContentTool,
-  recallTool,
-  recallConversationTool,
   recallTaskTool,
   createListHAEntitiesToolInstance,
   createExecuteHomeAssistantServicesToolInstance,

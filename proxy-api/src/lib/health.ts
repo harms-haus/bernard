@@ -1,4 +1,3 @@
-import { FastifyInstance } from 'fastify';
 import axios from 'axios';
 
 export interface ServiceStatus {
@@ -38,7 +37,9 @@ export async function checkServiceHealth(name: string, url: string): Promise<Ser
        try {
          await axios.get(url, { timeout: 1000 });
          return { name, url, status: 'up', lastChecked: timestamp };
-       } catch (e) {}
+       } catch {
+         // UI is down or unreachable
+       }
     }
 
     return {

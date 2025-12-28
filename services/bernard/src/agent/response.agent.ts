@@ -2,7 +2,7 @@ import type { BernardStateType } from "./graph/state";
 import { SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { LLMCaller } from "@/agent/llm/llm";
-import { buildResponseSystemPrompt } from "@/agent/harness/respond/prompts";
+import { buildResponseSystemPrompt } from "./prompts/response";
 import type { ToolWithInterpretation } from "@/agent/tool";
 
 /**

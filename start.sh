@@ -2,7 +2,16 @@
 
 # Load environment variables
 if [ -f .env ]; then
-    export $(cat .env | xargs)
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*#.*$ ]] && continue
+        [[ -z "${line//[[:space:]]/}" ]] && continue
+        
+        # Only export if it looks like a variable assignment
+        if [[ "$line" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]]; then
+            export "$line"
+        fi
+    done < .env
 fi
 
 log() {
@@ -26,10 +35,10 @@ build_service() {
 }
 
 # 1. Build TypeScript Services
-build_service "services/bernard" "BERNARD"
-build_service "services/bernard-api" "BERNARD-API"
-build_service "services/bernard-ui" "BERNARD-UI"
-build_service "proxy-api" "PROXY-API"
+build_service "services/bernard" "BERNARD" || exit 1
+build_service "services/bernard-api" "BERNARD-API" || exit 1
+build_service "services/bernard-ui" "BERNARD-UI" || exit 1
+build_service "proxy-api" "PROXY-API" || exit 1
 
 # 2. Shutdown all existing services
 log "Shutting down existing services..."
