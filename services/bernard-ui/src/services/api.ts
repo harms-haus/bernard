@@ -174,12 +174,12 @@ class APIClient {
 
   async githubLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.authBaseUrl}/api/auth/github/login`, '_self');
+    window.open(`${this.authBaseUrl}/auth/github/login`, '_self');
   }
 
   async googleLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.authBaseUrl}/api/auth/google/login`, '_self');
+    window.open(`${this.authBaseUrl}/auth/google/login`, '_self');
   }
 
   async logout(): Promise<void> {
@@ -451,4 +451,4 @@ class APIClient {
   }
 }
 
-export const apiClient = new APIClient('');
+export const apiClient = new APIClient('/api');

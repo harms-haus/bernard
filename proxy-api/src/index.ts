@@ -34,7 +34,11 @@ fastify.addHook('preHandler', async (request, reply) => {
     url === '/' ||
     url.startsWith('/health') ||
     url.startsWith('/auth/') ||
-    url.startsWith('/bernard/') // Bernard UI is handled separately
+    url.startsWith('/api/auth/') || // OAuth endpoints
+    url.startsWith('/bernard/') || // Bernard UI is handled separately
+    url.startsWith('/@vite/') || // Vite client resources
+    url.startsWith('/src/') || // Vite source files
+    url === '/@react-refresh' // Vite React refresh
   ) {
     return;
   }
@@ -90,8 +94,9 @@ fastify.setErrorHandler((error: any, request, reply) => {
 
 // Register routes
 await fastify.register(registerIndexRoutes); // This handles / and /health
+await fastify.register(registerAuthRoutes, { prefix: '/auth' });
 await fastify.register(registerV1Routes, { prefix: '/v1' });
-await fastify.register(registerBernardRoutes, { prefix: '/' }); // Now handles /api, /settings, and /* (UI)
+await fastify.register(registerBernardRoutes); // Handles /bernard/api and /bernard/
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

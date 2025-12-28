@@ -3,24 +3,24 @@ import proxy from '@fastify/http-proxy';
 import axios from 'axios';
 import { logger } from '@/lib/logger'
 
-const BERNARD_API_URL = process.env.BERNARD_API_URL || 'http://localhost:3000';
-const VLLM_URL = process.env.VLLM_URL || 'http://localhost:8001';
-const KOKORO_URL = process.env.KOKORO_URL || 'http://localhost:8880';
-const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8002';
+const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:8850';
+const VLLM_URL = process.env.VLLM_URL || 'http://127.0.0.1:8860';
+const KOKORO_URL = process.env.KOKORO_URL || 'http://127.0.0.1:8880';
+const WHISPER_URL = process.env.WHISPER_URL || 'http://127.0.0.1:8870';
 
 export async function registerV1Routes(fastify: FastifyInstance) {
   // 1. Aggregated Models List
   fastify.get('/models', async (request, reply) => {
     const models: any[] = [];
     
-    // Fetch from Bernard API
+    // Fetch from Bernard Agent
     try {
-      const resp = await axios.get(`${BERNARD_API_URL}/v1/models`, { timeout: 2000 });
+      const resp = await axios.get(`${BERNARD_AGENT_URL}/api/v1/models`, { timeout: 2000 });
       if (resp.data?.data) {
         models.push(...resp.data.data);
       }
     } catch (e) {
-      logger.warn('Failed to fetch models from Bernard API');
+      logger.warn('Failed to fetch models from Bernard Agent');
     }
 
     // Fetch from vLLM
@@ -50,31 +50,20 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     return { object: "list", data: models };
   });
 
-  // 2. Chat Completions -> Bernard API
+  // 2. Chat Completions -> Bernard Agent
+  // Bernard Agent handles /api/v1/chat/completions
   fastify.register(proxy, {
-    upstream: `${BERNARD_API_URL}/v1`,
+    upstream: BERNARD_AGENT_URL,
     prefix: '/chat/completions',
-    rewritePrefix: '/chat/completions',
+    rewritePrefix: '/api/v1/chat/completions',
     http2: false,
     errorHandler: (reply: any, error: any) => {
-      logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_API_URL });
-      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard-api' });
+      logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_AGENT_URL });
+      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
     }
   } as any);
 
-  // 3. Completions -> Bernard API
-  fastify.register(proxy, {
-    upstream: `${BERNARD_API_URL}/v1`,
-    prefix: '/completions',
-    rewritePrefix: '/completions',
-    http2: false,
-    errorHandler: (reply: any, error: any) => {
-      logger.error({ msg: 'Proxy Error (Completions)', error: error.message, upstream: BERNARD_API_URL });
-      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard-api' });
-    }
-  } as any);
-
-  // 4. Embeddings -> vLLM
+  // 3. Embeddings -> vLLM
   fastify.register(proxy, {
     upstream: VLLM_URL,
     prefix: '/embeddings',
@@ -86,11 +75,12 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     }
   } as any);
 
-  // 5. Audio Transcriptions -> Whisper (TS implementation)
+  // 4. Audio Transcriptions -> Whisper.cpp
+  // Whisper.cpp server uses /inference for the main endpoint
   fastify.register(proxy, {
     upstream: WHISPER_URL,
     prefix: '/audio/transcriptions',
-    rewritePrefix: '/v1/audio/transcriptions',
+    rewritePrefix: '/inference',
     http2: false,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Whisper)', error: error.message, upstream: WHISPER_URL });
@@ -98,7 +88,7 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     }
   } as any);
 
-  // 6. Audio Speech -> Kokoro
+  // 5. Audio Speech -> Kokoro
   fastify.register(proxy, {
     upstream: KOKORO_URL,
     prefix: '/audio/speech',

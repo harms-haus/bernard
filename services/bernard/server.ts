@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
@@ -25,8 +26,8 @@ import { StreamingOrchestrator } from "./agent/loop/orchestrator";
 import { transformAgentOutputToChunks } from "./agent/streaming/transform";
 import { createSSEStream } from "./agent/streaming/sse";
 
-const PORT = process.env["PORT"] ? parseInt(process.env["PORT"], 10) : 3001;
-const HOST = process.env["HOST"] || "0.0.0.0";
+const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
+const HOST = process.env["HOST"] || "127.0.0.1";
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
