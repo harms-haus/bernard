@@ -10,16 +10,16 @@ const WHISPER_URL = process.env.WHISPER_URL || 'http://127.0.0.1:8870';
 
 export async function registerV1Routes(fastify: FastifyInstance) {
   // 1. Aggregated Models List
-  fastify.get('/models', async (request, reply) => {
+  fastify.get('/models', async (_request, _reply) => {
     const models: any[] = [];
     
     // Fetch from Bernard Agent
     try {
-      const resp = await axios.get(`${BERNARD_AGENT_URL}/api/v1/models`, { timeout: 2000 });
+      const resp = await axios.get(`${BERNARD_AGENT_URL}/v1/models`, { timeout: 2000 });
       if (resp.data?.data) {
         models.push(...resp.data.data);
       }
-    } catch (e) {
+    } catch {
       logger.warn('Failed to fetch models from Bernard Agent');
     }
 
@@ -29,7 +29,7 @@ export async function registerV1Routes(fastify: FastifyInstance) {
       if (resp.data?.data) {
         models.push(...resp.data.data);
       }
-    } catch (e) {
+    } catch {
       logger.warn('Failed to fetch models from vLLM');
     }
 
@@ -55,7 +55,7 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   fastify.register(proxy, {
     upstream: BERNARD_AGENT_URL,
     prefix: '/chat/completions',
-    rewritePrefix: '/api/v1/chat/completions',
+    rewritePrefix: '/v1/chat/completions',
     http2: false,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_AGENT_URL });

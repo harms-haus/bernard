@@ -4,7 +4,8 @@ import type Redis from "ioredis";
 import { createClient } from "redis";
 
 import { getEmbeddingModel } from "../config/embeddings";
-import { clearVectorClientCache } from "../conversation/search";
+// Stub for removed search functionality
+const clearVectorClientCache = () => Promise.resolve();
 import { getRedis } from "../infra/redis";
 
 type TaskLogger = (message: string, meta?: Record<string, unknown>) => void;
@@ -125,7 +126,7 @@ export class ConversationIndexer {
       this.cachedClient = null;
 
       // Also clear the global vector client cache used by ConversationSearchService
-      clearVectorClientCache();
+      void clearVectorClientCache();
 
       try {
         // Since we don't track actual vector store keys, we drop and recreate the search index

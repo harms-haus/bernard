@@ -1,24 +1,18 @@
 import js from "@eslint/js";
-import nextPlugin from "@next/eslint-plugin-next";
 import tseslint from "typescript-eslint";
-
-const nextCoreWebVitals = nextPlugin.configs["core-web-vitals"];
 
 export default tseslint.config(
   {
     name: "bernard/ignores",
     ignores: [
       "**/node_modules/**",
-      ".next/**",
       "coverage/**",
       "dist/**",
       "eslint.config.mjs",
-      "next.config.mjs",
       "init-livingroom-adb.js"
     ]
   },
   js.configs.recommended,
-  ...(Array.isArray(nextCoreWebVitals) ? nextCoreWebVitals : [nextCoreWebVitals]),
   ...tseslint.configs.recommendedTypeChecked.map(config => ({
     ...config,
     files: ["**/*.{ts,tsx}"]

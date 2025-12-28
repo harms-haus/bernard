@@ -1,6 +1,5 @@
 import type { IncomingMessage } from "node:http";
 
-import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import { BERNARD_MODEL_ID, isBernardModel } from "../openai";
 
 type UsageLike = {
@@ -91,21 +90,15 @@ export function buildUsage(meta: UsageLike) {
 /**
  * Finalize an agent request, recording latency and success/error metadata.
  */
-export async function finalizeTurn(opts: {
-  keeper: RecordKeeper;
+export function finalizeTurn(opts: {
   turnId: string;
   requestId: string;
   start: number;
   status: "ok" | "error";
   errorType?: string;
-}): Promise<number> {
+}): number {
   const latencyMs = Date.now() - opts.start;
-  await opts.keeper.endTurn(opts.turnId, {
-    status: opts.status,
-    latencyMs,
-    ...(opts.errorType ? { errorType: opts.errorType } : {})
-  });
-  await opts.keeper.completeRequest(opts.requestId, latencyMs);
+  // No-op: conversation keeping has been removed
   return latencyMs;
 }
 

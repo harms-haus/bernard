@@ -2,8 +2,8 @@ import type { BaseMessage, ToolCall} from "@langchain/core/messages";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { MessageRecord } from "./types";
 import { createMessageFingerprint, deduplicateMessages } from "./dedup";
-import { buildRouterSystemPrompt } from "@/agent/harness/router/prompts";
-import { buildResponseSystemPrompt } from "@/agent/harness/respond/prompts";
+import { buildRouterSystemPrompt } from "@/agent/prompts/router";
+import { buildResponseSystemPrompt } from "@/agent/prompts/response";
 import type { ToolWithInterpretation } from "@/agent/tool";
 import { normalizeRecordContent } from "./messages";
 

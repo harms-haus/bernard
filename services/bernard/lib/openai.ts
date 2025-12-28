@@ -7,12 +7,7 @@ import { validateAccessToken, bearerToken } from "@/lib/auth/auth";
 import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/conversation/messages";
 
 export type { OpenAIMessage };
-import { ConversationSummaryService } from "@/lib/conversation/summary";
-import { RecordKeeper, type MessageRecord } from "@/agent/recordKeeper/conversation.keeper";
-import { getPrimaryModel } from "@/lib/config/models";
-import { getRedis } from "@/lib/infra/redis";
-import { messageRecordToBaseMessage } from "@/lib/conversation/messages";
-import { isFollowUpSuggestionMessage } from "@/lib/conversation/followUpDetection";
+// ... removed unused getPrimaryModel import
 
 export const BERNARD_MODEL_ID = "bernard-v1";
 
@@ -45,45 +40,6 @@ export async function validateAuth(req: IncomingMessage) {
   return { token: result.access.token, user: result.access.user };
 }
 
-export type AgentScaffolding = {
-  keeper: RecordKeeper;
-  conversationId: string;
-  requestId: string;
-  turnId: string;
-  responseModelName: string;
-  routerModelName: string;
-  isNewConversation: boolean;
-};
-
-export async function createScaffolding(opts: {
-  token: string;
-  responseModelOverride?: string;
-  conversationId?: string;
-  userId?: string;
-  ghost?: boolean;
-}) {
-  const redis = getRedis();
-  let summarizer: ConversationSummaryService | undefined;
-  try {
-    summarizer = await ConversationSummaryService.create();
-  } catch {
-    // summarizer is optional
-  }
-  const keeper = new RecordKeeper(redis, summarizer ? { summarizer } : {});
-  await keeper.closeIfIdle();
-
-  const responseModelName = opts.responseModelOverride ?? (await getPrimaryModel("response"));
-  const routerModelName = await getPrimaryModel("router", { fallback: [responseModelName] });
-
-  const { requestId, conversationId, isNewConversation } = await keeper.startRequest(opts.token, responseModelName, {
-    ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
-    ...(opts.userId ? { userId: opts.userId } : {}),
-    ...(opts.ghost !== undefined ? { ghost: opts.ghost } : {})
-  });
-  const turnId = await keeper.startTurn(requestId, conversationId, opts.token, responseModelName);
-
-  return { keeper, conversationId, requestId, turnId, responseModelName, routerModelName, isNewConversation } satisfies AgentScaffolding;
-}
 
 export function isBernardModel(model?: string | null) {
   return !model || model === BERNARD_MODEL_ID;
@@ -214,110 +170,6 @@ export function isToolMessage(message: BaseMessage) {
   return (message as { type: string }).type === "tool";
 }
 
-type TimelineEntry = {
-  message: BaseMessage;
-  ts: number;
-  roleRank: number;
-  seq: number;
-};
 
-function roleOrder(message: BaseMessage): number {
-  const type = (message as { type: string }).type;
-  switch (type) {
-    case "human":
-      return 0;
-    case "ai":
-      return 1;
-    case "tool":
-      return 2;
-    case "system":
-      return 3;
-    default:
-      return 4;
-  }
-}
-
-function shouldIncludeHistoryRecord(record: MessageRecord): boolean {
-  // Exclude follow-up suggestion messages from history
-  if (isFollowUpSuggestionMessage(record)) {
-    return false;
-  }
-
-  if (record.role !== "system") return true;
-
-  // Exclude all system messages from history when preparing LLM context.
-  // Harnesses provide their own fresh system prompts.
-  // This also excludes traces and errors which are recorded as system messages.
-  return false;
-}
-
-function toTimelineEntry(record: MessageRecord, index: number): TimelineEntry | null {
-  if (!shouldIncludeHistoryRecord(record)) return null;
-  const message = messageRecordToBaseMessage(record, { includeTraces: true });
-  if (!message) return null;
-  const ts = Date.parse(record.createdAt ?? "");
-  return {
-    message,
-    ts: Number.isFinite(ts) ? ts : Number.NaN,
-    roleRank: roleOrder(message),
-    seq: index
-  };
-}
-
-function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
-  const aHasTs = Number.isFinite(a.ts);
-  const bHasTs = Number.isFinite(b.ts);
-  if (aHasTs && bHasTs && a.ts !== b.ts) return a.ts - b.ts;
-  if (aHasTs && !bHasTs) return -1;
-  if (!aHasTs && bHasTs) return 1;
-  // When timestamps are equal or missing, preserve original sequence to avoid reordering turns.
-  if (!aHasTs && !bHasTs) return a.seq - b.seq;
-  if (a.roleRank !== b.roleRank) return a.roleRank - b.roleRank;
-  return a.seq - b.seq;
-}
-
-async function mergeHistoryWithIncoming(history: MessageRecord[], incoming: BaseMessage<MessageStructure, MessageType>[]): Promise<BaseMessage<MessageStructure, MessageType>[]> {
-  const historyEntries = history
-    .map((record, index) => toTimelineEntry(record, index))
-    .filter((entry): entry is TimelineEntry => Boolean(entry));
-
-  const hasFiniteHistoryTs = historyEntries.some((entry) => Number.isFinite(entry.ts));
-  const historyWithTs = hasFiniteHistoryTs
-    ? historyEntries
-    : historyEntries.map((entry, idx) => ({ ...entry, ts: idx }));
-
-  const latestTs = historyWithTs.reduce((max, entry) => {
-    return Number.isFinite(entry.ts) ? Math.max(max, entry.ts) : max;
-  }, Number.NEGATIVE_INFINITY);
-
-  const baseTs = Number.isFinite(latestTs) ? latestTs + 1 : historyWithTs.length;
-  const startSeq = historyEntries.length;
-
-  const incomingEntries: TimelineEntry[] = incoming.map((message, idx) => ({
-    message,
-    ts: baseTs + idx,
-    roleRank: roleOrder(message),
-    seq: startSeq + idx
-  }));
-
-  const combined = [...historyWithTs, ...incomingEntries];
-  combined.sort(compareEntries);
-
-  const messages = combined.map((entry) => entry.message);
-
-  // Import and apply deduplication to prevent duplicate messages
-  const { deduplicateMessages } = await import("@/lib/conversation/dedup");
-  return deduplicateMessages(messages);
-}
-
-export async function hydrateMessagesWithHistory(opts: {
-  keeper: RecordKeeper;
-  conversationId: string;
-  incoming: BaseMessage<MessageStructure, MessageType>[];
-}): Promise<BaseMessage<MessageStructure, MessageType>[]> {
-  const history = await opts.keeper.getMessages(opts.conversationId);
-  if (!history.length) return opts.incoming;
-  return mergeHistoryWithIncoming(history, opts.incoming);
-}
 
 

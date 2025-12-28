@@ -2,7 +2,6 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { getSettings } from "@/lib/config/settingsCache";
-import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
 import type { BaseMessage } from "@langchain/core/messages";
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
@@ -24,7 +23,6 @@ type EnhancedGeocodeDeps = {
 };
 
 type ToolRunContext = {
-  recordKeeper?: RecordKeeper;
   turnId?: string;
   conversationMessages?: BaseMessage[];
 };
@@ -53,12 +51,10 @@ const loadConfig = async (): Promise<GeocodeConfig> => {
 
 const getToolRunContext = (runOpts?: unknown): ToolRunContext => {
   const configurable = (runOpts as { configurable?: ToolRunContext } | undefined)?.configurable;
-  const recordKeeper = configurable?.recordKeeper;
   const turnId = configurable?.turnId;
   const conversationMessages = configurable?.conversationMessages;
 
   return {
-    ...(recordKeeper ? { recordKeeper } : {}),
     ...(turnId ? { turnId } : {}),
     ...(conversationMessages ? { conversationMessages } : {})
   };

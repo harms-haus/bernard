@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import {
   MoreVertical,
   Play,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
   Eye,
   EyeOff,
   Server,
@@ -83,13 +80,7 @@ const STATUS_COLORS = {
   offline: 'bg-red-500'
 };
 
-const STATUS_BADGE_VARIANTS = {
-  online: 'default' as const,
-  degraded: 'secondary' as const,
-  offline: 'destructive' as const
-};
-
-export function StatusDashboard({ showRestartButtons = false, showLogs = false }: StatusDashboardProps) {
+export function StatusDashboard({ showRestartButtons: _showRestartButtons = false, showLogs: _showLogs = false }: StatusDashboardProps) {
   const [status, setStatus] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [restartingService, setRestartingService] = useState<string | null>(null);
@@ -187,19 +178,6 @@ export function StatusDashboard({ showRestartButtons = false, showLogs = false }
       return `${minutes}m ${secs}s`;
     } else {
       return `${secs}s`;
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'online':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'degraded':
-        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      case 'offline':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      default:
-        return <XCircle className="w-5 h-5 text-gray-400" />;
     }
   };
 

@@ -233,6 +233,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
       let buffer = '';
       let assistantMessage: MessageRecord | null = null;
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -779,7 +780,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
 
                   // Process items with recollection grouping
                   const renderedItems: React.ReactNode[] = [];
-                  let skipIndices = new Set<number>();
+                  const skipIndices = new Set<number>();
 
                   // Render historical recollections at the beginning if any exist
                   if (allHistoricalRecollections.length > 0) {
@@ -805,7 +806,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                       if (recollectionMessageIds.has(message.id)) continue;
 
                       // Check if this is a user message followed by recollection events
-                      let recollectionsAfterUser: any[] = [];
+                      const recollectionsAfterUser: any[] = [];
                       if (message.role === 'user') {
                         // Look ahead for consecutive recollection events
                         for (let j = i + 1; j < allItems.length; j++) {
@@ -865,47 +866,6 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
                         );
                         renderedItems.push(recollectionsElement);
                       }
-                    } else if (type === 'trace') {
-                      const traceEvent = item as TraceEvent;
-                      const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
-                      const traceElement = (
-                        <div key={traceEvent.id} className="flex justify-start">
-                          <div className="flex-1 ml-12">
-                            {traceEvent.type === 'llm_call' ? (
-                              <LLMCallMessage
-                                model={traceEvent.data?.model}
-                                context={traceEvent.data?.context || []}
-                                tools={traceEvent.data?.tools}
-                                toolCallCount={getToolCallCountForLLMCall(traceEventIndex)}
-                                status={traceEvent.status}
-                                result={traceEvent.result}
-                                totalContextTokens={traceEvent.data?.totalContextTokens}
-                                actualTokens={traceEvent.result?.actualTokens}
-                                durationMs={traceEvent.durationMs}
-                              />
-                            ) : traceEvent.type === 'tool_call' ? (
-                              <ToolCallMessage
-                                toolCall={traceEvent.data?.toolCall || { id: '', function: { name: 'Unknown', arguments: '{}' } }}
-                                status={traceEvent.status}
-                                result={traceEvent.result}
-                                durationMs={traceEvent.durationMs}
-                              />
-                            ) : traceEvent.type === 'recollection' ? (
-                              // Recollection events are handled separately - grouped after user messages
-                              null
-                            ) : (
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {traceEvent.type}: {JSON.stringify(traceEvent.data)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-
-                      if (traceEvent.type !== 'recollection') {
-                        renderedItems.push(traceElement);
-                      }
-
                     } else if (type === 'trace') {
                       const traceEvent = item as TraceEvent;
                       const traceEventIndex = traceEvents.findIndex(te => te.id === traceEvent.id);
