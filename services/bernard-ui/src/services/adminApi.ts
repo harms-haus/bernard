@@ -288,7 +288,7 @@ export interface APIError extends Error {
 class AdminApiClient {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string = '/bernard/api') {
+  constructor(baseUrl: string = '/api') {
     this.baseUrl = baseUrl;
   }
 

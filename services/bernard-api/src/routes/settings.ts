@@ -3,7 +3,7 @@ import { SettingsStore, ServicesSettingsSchema, BackupSettingsSchema, OAuthSetti
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 
-export async function registerSettingsRoutes(fastify: FastifyInstance) {
+export function registerSettingsRoutes(fastify: FastifyInstance) {
   const store = new SettingsStore();
 
   // GET /settings - Get all settings
@@ -48,8 +48,7 @@ export async function registerSettingsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "Admin access required" });
       }
 
-      const body = request.body as unknown;
-      const parsed = ServicesSettingsSchema.parse(body);
+      const parsed = ServicesSettingsSchema.parse(request.body);
       const before = await store.getServices();
       const saved = await store.setServices(parsed);
       const changed = Object.keys(parsed).filter(
@@ -94,8 +93,7 @@ export async function registerSettingsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "Admin access required" });
       }
 
-      const body = request.body as unknown;
-      const parsed = BackupSettingsSchema.parse(body);
+      const parsed = BackupSettingsSchema.parse(request.body);
       const before = await store.getBackups();
       await store.setBackups(parsed);
       const changed = Object.keys(parsed).filter(
@@ -140,8 +138,7 @@ export async function registerSettingsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "Admin access required" });
       }
 
-      const body = request.body as unknown;
-      const parsed = OAuthSettingsSchema.parse(body);
+      const parsed = OAuthSettingsSchema.parse(request.body);
       const before = await store.getOAuth();
       await store.setOAuth(parsed);
       const changed = Object.keys(parsed).filter(

@@ -16,9 +16,6 @@ start_redis() {
         exit 1
     fi
 
-    # Kill any existing processes on the port
-    kill_port $PORT "$SERVICE_NAME" || exit 1
-
     # Check if container is already running
     if docker ps --format 'table {{.Names}}' | grep -q "^bernard-redis$"; then
         log "Redis container is already running"
@@ -29,6 +26,8 @@ start_redis() {
     log "Checking for existing bernard-redis container..."
     # Start any existing bernard-redis container (but don't remove it)
     if docker ps -a --format 'table {{.Names}}' | grep -q "^bernard-redis$"; then
+        # Kill any existing processes on the port before starting container
+        kill_port $PORT "$SERVICE_NAME" || exit 1
         log "Starting existing bernard-redis container..."
         if docker start bernard-redis; then
             wait_for_redis
@@ -38,6 +37,9 @@ start_redis() {
             exit 1
         fi
     fi
+
+    # Kill any existing processes on the port before starting new container
+    kill_port $PORT "$SERVICE_NAME" || exit 1
 
     # Start the Redis Stack container with RediSearch
     log "Starting new Redis with RediSearch container..."

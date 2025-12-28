@@ -2,11 +2,14 @@ import "dotenv/config";
 import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
+import proxy from "@fastify/http-proxy";
 import { logger } from "./lib/logger";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerAuthRoutes } from "./routes/auth";
 import { getAuthenticatedUser } from "./lib/auth";
 import type { AuthenticatedUser } from "./lib/auth";
+
+const BERNARD_AGENT_URL = process.env["BERNARD_AGENT_URL"] || "http://localhost:3001";
 
 const fastify = Fastify({
   logger: false, // Disable Fastify's built-in logging, we'll do our own
@@ -96,12 +99,30 @@ fastify.get("/health", async (request, reply) => {
   return reply.send({ status: "ok", service: "bernard-api" });
 });
 
+// 1. Agent Chat Proxy -> Bernard Agent (3001)
+// This is exposed as /api/chat from the gateway, which is stripped to /chat here
+await fastify.register(proxy, {
+  upstream: BERNARD_AGENT_URL,
+  prefix: "/chat",
+  rewritePrefix: "/api/chat", // The agent service expects /api/chat
+  http2: false,
+});
+
+// 2. OpenAI V1 Proxy -> Bernard Agent (3001)
+// Handles /v1/chat/completions, etc.
+await fastify.register(proxy, {
+  upstream: BERNARD_AGENT_URL,
+  prefix: "/v1",
+  rewritePrefix: "/api/v1", // We'll update the agent to handle /api/v1
+  http2: false,
+});
+
 // Register routes
 await fastify.register(registerSettingsRoutes, { prefix: "/settings" });
 await fastify.register(registerAuthRoutes, { prefix: "/auth" });
 
 const port = Number(process.env["PORT"]) || 3000;
-const host = process.env["HOST"] || "0.0.0.0";
+const host = process.env["HOST"] || "localhost";
 
 try {
   await fastify.listen({ port, host });

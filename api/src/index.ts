@@ -89,10 +89,9 @@ fastify.setErrorHandler((error: any, request, reply) => {
 });
 
 // Register routes
-await fastify.register(registerIndexRoutes);
+await fastify.register(registerIndexRoutes); // This handles / and /health
 await fastify.register(registerV1Routes, { prefix: '/v1' });
-// Auth routes are now registered inside registerBernardRoutes to ensure they match before the proxy
-await fastify.register(registerBernardRoutes, { prefix: '/bernard' });
+await fastify.register(registerBernardRoutes, { prefix: '/' }); // Now handles /api, /settings, and /* (UI)
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

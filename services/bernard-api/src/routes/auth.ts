@@ -1,8 +1,29 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getAuthenticatedUser, requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { startOAuthLogin, handleOAuthCallback, type OAuthProvider, type OAuthStartQuery, type OAuthCallbackQuery } from "../lib/oauth";
 
-export async function registerAuthRoutes(fastify: FastifyInstance) {
+export function registerAuthRoutes(fastify: FastifyInstance) {
+  // GET /auth/:provider/login - Start OAuth flow
+  fastify.get<{ Params: { provider: string }; Querystring: OAuthStartQuery }>("/:provider/login", async (request, reply) => {
+    const { provider } = request.params;
+    if (!["github", "google"].includes(provider)) {
+      return reply.status(400).send({ error: "Invalid provider" });
+    }
+    logger.info({ provider, url: request.url }, "Handling OAuth login");
+    return startOAuthLogin(provider as OAuthProvider, request, reply);
+  });
+
+  // GET /auth/:provider/callback - Handle OAuth callback
+  fastify.get<{ Params: { provider: string }; Querystring: OAuthCallbackQuery }>("/:provider/callback", async (request, reply) => {
+    const { provider } = request.params;
+    if (!["github", "google"].includes(provider)) {
+      return reply.status(400).send({ error: "Invalid provider" });
+    }
+    logger.info({ provider, url: request.url }, "Handling OAuth callback");
+    return handleOAuthCallback(provider as OAuthProvider, request, reply);
+  });
+
   // GET /auth/me - Get current user info
   fastify.get("/me", async (request: FastifyRequest, reply: FastifyReply) => {
     try {

@@ -1,10 +1,9 @@
 import type { BernardStateType } from "./graph/state";
-import { SystemMessage, AIMessage } from "@langchain/core/messages";
+import { SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { LLMCaller } from "@/agent/llm/llm";
 import { buildRouterSystemPrompt } from "@/agent/harness/router/prompts";
-import type { ToolWithInterpretation } from "@/agent/tool";
 
 /**
  * Context for routing agent

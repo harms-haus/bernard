@@ -1,4 +1,10 @@
-import type { NextRequest } from "next/server";
+import type { IncomingMessage } from "node:http";
+
+interface HttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  body?: string;
+}
 import { 
   base64Encode,
   createCodeVerifier,
@@ -47,14 +53,15 @@ export const getProviderConfig = async (provider: OAuthProvider): Promise<Provid
   return config;
 };
 
-export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest) {
+export async function startOAuthLogin(provider: OAuthProvider, req: IncomingMessage): Promise<HttpResponse> {
   const { authUrl, clientId, redirectUri, scope } = await getProviderConfig(provider);
   logger.info({ event: 'oauth.start', provider, redirectUri }, `OAuth start: redirectUri=${redirectUri}`);
   const state = base64Encode(Buffer.from(crypto.randomUUID()));
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createChallenge(codeVerifier);
 
-  const url = new URL(req.url);
+  // Parse URL from request
+  const url = new URL(req.url || "", `http://${req.headers.host}`);
   const returnTo = url.searchParams.get('redirect') ?? "/";
 
   const redis = getRedis();
@@ -74,12 +81,12 @@ export async function startOAuthLogin(provider: OAuthProvider, req: NextRequest)
     authorizeUrl.searchParams.set("prompt", "consent");
   }
 
-  return new Response(null, {
+  return {
     status: 302,
     headers: {
       Location: authorizeUrl.toString()
     }
-  });
+  };
 }
 
 const parseState = async (provider: OAuthProvider, state: string): Promise<{ codeVerifier: string; returnTo: string } | null> => {
@@ -99,43 +106,43 @@ const deleteState = async (provider: OAuthProvider, state: string) => {
   await redis.del(stateKey(provider, state));
 };
 
-export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequest) {
-  const url = new URL(req.url);
+export async function handleOAuthCallback(provider: OAuthProvider, req: IncomingMessage): Promise<HttpResponse> {
+  const url = new URL(req.url || "", `http://${req.headers.host}`);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
 
   if (!code || !state) {
-    return new Response(null, {
+    return {
       status: 302,
       headers: {
         Location: "/login?error=no_code",
         "Set-Cookie": clearSessionCookie()
       }
-    });
+    };
   }
 
   try {
     const storedState = await parseState(provider, state);
     if (!storedState) {
-      return new Response(null, {
+      return {
         status: 302,
         headers: {
           Location: "/login?error=invalid_state",
           "Set-Cookie": clearSessionCookie()
         }
-      });
+      };
     }
     await deleteState(provider, state);
     const config = await getProviderConfig(provider);
     const token = await exchangeCode(provider, config, code, storedState.codeVerifier);
     if (!token.access_token) {
-      return new Response(null, {
+      return {
         status: 302,
         headers: {
           Location: "/login?error=no_token",
           "Set-Cookie": clearSessionCookie()
         }
-      });
+      };
     }
     const { id, displayName, email, avatarUrl } = await fetchUserInfo(provider, config.userInfoUrl, token.access_token);
     const redis = getRedis();
@@ -143,36 +150,36 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: NextRequ
     const sessionStore = new SessionStore(redis);
     const user = await userStore.upsertOAuthUser(id, displayName, email, avatarUrl);
     if (user.status !== "active") {
-      return new Response(null, {
+      return {
         status: 302,
         headers: {
           Location: "/login?error=account_disabled",
           "Set-Cookie": clearSessionCookie()
         }
-      });
+      };
     }
     const session = await sessionStore.create(user.id);
     const maxAge = Number(process.env["SESSION_TTL_SECONDS"] ?? 60 * 60 * 24 * 7);
 
-    return new Response(null, {
+    return {
       status: 302,
       headers: {
         Location: storedState.returnTo ?? "/",
         "Set-Cookie": buildSessionCookie(session.id, maxAge)
       }
-    });
+    };
   } catch (err) {
     logger.error({
       event: 'oauth.callback.error',
       provider,
       error: err instanceof Error ? err.message : String(err)
     }, `Auth callback failed (${provider})`);
-    return new Response(null, {
+    return {
       status: 302,
       headers: {
         Location: "/login?error=auth_failed",
         "Set-Cookie": clearSessionCookie()
       }
-    });
+    };
   }
 }

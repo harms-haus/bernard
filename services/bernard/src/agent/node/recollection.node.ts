@@ -1,6 +1,4 @@
 import type { BernardStateType } from "../graph/state";
-import type { BaseMessage } from "@langchain/core/messages";
-import { SystemMessage } from "@langchain/core/messages";
 
 /**
  * Recollection Node - Gathers relevant memories using LangGraph Memory
@@ -8,10 +6,10 @@ import { SystemMessage } from "@langchain/core/messages";
  * This node uses LangGraph's Memory system to retrieve relevant memories
  * based on the current conversation context.
  */
-export async function recollectionNode(
+export function recollectionNode(
   state: BernardStateType,
-  config: { configurable?: { thread_id?: string; user_id?: string } }
-): Promise<Partial<BernardStateType>> {
+  _config: { configurable?: { thread_id?: string; user_id?: string } }
+): Partial<BernardStateType> {
   // For now, this is a placeholder that will be enhanced with LangGraph Memory
   // The memory system will be integrated via the graph's store parameter
   
@@ -29,7 +27,6 @@ export async function recollectionNode(
   if (!lastMessage) {
     return { memories: [] };
   }
-  const query = lastMessage.content as string;
   
   // TODO: Integrate with LangGraph Memory store for semantic search
   // For now, return empty memories - this will be enhanced when we add Memory store

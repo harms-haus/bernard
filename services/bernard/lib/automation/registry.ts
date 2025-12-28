@@ -5,7 +5,7 @@ import { SettingsStore } from "../config/settingsStore";
  * Load all automation modules statically
  * NOTE: Automations have been removed per LangGraph redesign
  */
-async function loadAutomations(): Promise<Map<string, Automation>> {
+function loadAutomations(): Map<string, Automation> {
   // Automations removed - return empty map
   return new Map();
 }
@@ -43,7 +43,7 @@ async function saveAutomationSettings(automationId: string, settings: Automation
  * Get the complete automation registry with settings
  */
 export async function getAutomationRegistry(): Promise<Map<string, AutomationRegistryEntry>> {
-  const automations = await loadAutomations();
+  const automations = loadAutomations();
   const registry = new Map<string, AutomationRegistryEntry>();
 
   for (const [id, automation] of automations) {

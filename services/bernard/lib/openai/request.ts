@@ -1,8 +1,7 @@
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import type { IncomingMessage } from "node:http";
 
 import type { RecordKeeper } from "@/agent/recordKeeper/conversation.keeper";
-import { BERNARD_MODEL_ID, isBernardModel } from "@/app/api/v1/_lib/openai";
+import { BERNARD_MODEL_ID, isBernardModel } from "../openai";
 
 type UsageLike = {
   prompt_tokens?: number;
@@ -12,29 +11,42 @@ type UsageLike = {
 };
 
 type JsonParseOk<T> = { ok: T };
-type JsonParseError = { error: NextResponse };
+type JsonParseError = { error: { status: number; message: string; detail?: string } };
 export type JsonParseResult<T> = JsonParseOk<T> | JsonParseError;
 
 /**
  * Safely parse a JSON request body and return a typed result or an error response.
  */
-export async function parseJsonBody<T>(req: NextRequest): Promise<JsonParseResult<T>> {
-  try {
-    const body = (await req.json()) as T;
-    return { ok: body };
-  } catch (err) {
-    return {
-      error: new NextResponse(JSON.stringify({ error: "Invalid JSON", detail: String(err) }), { status: 400 })
-    };
-  }
+export async function parseJsonBody<T>(req: IncomingMessage): Promise<JsonParseResult<T>> {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      body += chunk.toString("utf8");
+    });
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body) as T;
+        resolve({ ok: parsed });
+      } catch (err) {
+        resolve({
+          error: { status: 400, message: "Invalid JSON", detail: err instanceof Error ? err.message : String(err) }
+        });
+      }
+    });
+    req.on("error", (err: Error) => {
+      resolve({
+        error: { status: 400, message: "Request read error", detail: err.message }
+      });
+    });
+  });
 }
 
 /**
  * Ensure the requested model is Bernard's public model.
  */
-export function ensureBernardModel(model?: string | null): NextResponse | null {
+export function ensureBernardModel(model?: string | null): { status: number; message: string; allowed: string } | null {
   if (isBernardModel(model)) return null;
-  return new NextResponse(JSON.stringify({ error: "Model not found", allowed: BERNARD_MODEL_ID }), { status: 404 });
+  return { status: 404, message: "Model not found", allowed: BERNARD_MODEL_ID };
 }
 
 /**
@@ -43,11 +55,11 @@ export function ensureBernardModel(model?: string | null): NextResponse | null {
 export function rejectUnsupportedKeys<T extends Record<string, unknown>>(
   body: T,
   unsupported: Array<keyof T>
-): NextResponse | null {
+): { status: number; message: string; parameter: string } | null {
   for (const key of unsupported) {
     const value = body[key];
     if (value !== undefined && value !== null) {
-      return new NextResponse(JSON.stringify({ error: `Unsupported parameter: ${String(key)}` }), { status: 400 });
+      return { status: 400, message: `Unsupported parameter: ${String(key)}`, parameter: String(key) };
     }
   }
   return null;

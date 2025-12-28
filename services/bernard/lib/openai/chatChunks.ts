@@ -1,6 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
-import { collectToolCalls, contentFromMessage } from "@/app/api/v1/_lib/openai";
+import { collectToolCalls, contentFromMessage } from "../openai";
 
 export type ToolChunk = {
   tool_calls: Array<{

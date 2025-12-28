@@ -1,5 +1,4 @@
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
-import type { BaseMessage } from "@langchain/core/messages";
 
 /**
  * Bernard LangGraph State Definition
