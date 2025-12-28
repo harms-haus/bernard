@@ -107,7 +107,7 @@ class APIClient {
   private currentUserInFlight: Promise<User | null> | null = null;
   private currentUserCache: { user: User | null; cachedAtMs: number } | null = null;
 
-  constructor(authBaseUrl: string = '', apiBaseUrl: string = '/bernard/api', baseUrl: string = '/bernard/api') {
+  constructor(authBaseUrl: string = '', apiBaseUrl: string = '/api', baseUrl: string = '/api') {
     this.authBaseUrl = authBaseUrl;
     this.apiBaseUrl = apiBaseUrl;
     this.baseUrl = baseUrl;
@@ -451,4 +451,4 @@ class APIClient {
   }
 }
 
-export const apiClient = new APIClient('/bernard');
+export const apiClient = new APIClient('');

@@ -5,7 +5,6 @@ import { routingAgentNode, type RoutingAgentContext } from "../routing.agent";
 import { responseAgentNode, type ResponseAgentContext } from "../response.agent";
 import { createToolNode } from "./toolNode";
 import { AIMessage } from "@langchain/core/messages";
-import type { StructuredToolInterface } from "@langchain/core/tools";
 
 /**
  * Create the Bernard voice assistant graph

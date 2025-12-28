@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { getAllServicesHealth } from '@/lib/health'
 
 export async function registerIndexRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/status', async (request, reply) => {
     const health = await getAllServicesHealth();
     
     const html = `
@@ -56,8 +56,8 @@ export async function registerIndexRoutes(fastify: FastifyInstance) {
     <div class="card">
         <h2>Quick Access</h2>
         <div class="links">
-            <a href="/bernard/chat" class="btn">💬 Chat Interface</a>
-            <a href="/bernard/admin" class="btn">⚙️ Admin Dashboard</a>
+            <a href="/chat" class="btn">💬 Chat Interface</a>
+            <a href="/admin" class="btn">⚙️ Admin Dashboard</a>
             <a href="/v1/models" class="btn btn-secondary">📋 List Models (v1)</a>
         </div>
     </div>

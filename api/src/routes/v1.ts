@@ -3,7 +3,7 @@ import proxy from '@fastify/http-proxy';
 import axios from 'axios';
 import { logger } from '@/lib/logger'
 
-const BERNARD_URL = process.env.BERNARD_URL || 'http://localhost:3001';
+const BERNARD_API_URL = process.env.BERNARD_API_URL || 'http://localhost:3000';
 const VLLM_URL = process.env.VLLM_URL || 'http://localhost:8001';
 const KOKORO_URL = process.env.KOKORO_URL || 'http://localhost:8880';
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8002';
@@ -13,14 +13,14 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   fastify.get('/models', async (request, reply) => {
     const models: any[] = [];
     
-    // Fetch from Bernard (Next.js)
+    // Fetch from Bernard API
     try {
-      const resp = await axios.get(`${BERNARD_URL}/api/v1/models`, { timeout: 2000 });
+      const resp = await axios.get(`${BERNARD_API_URL}/v1/models`, { timeout: 2000 });
       if (resp.data?.data) {
         models.push(...resp.data.data);
       }
     } catch (e) {
-      logger.warn('Failed to fetch models from Bernard');
+      logger.warn('Failed to fetch models from Bernard API');
     }
 
     // Fetch from vLLM
@@ -50,27 +50,27 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     return { object: "list", data: models };
   });
 
-  // 2. Chat Completions -> Next.js
+  // 2. Chat Completions -> Bernard API
   fastify.register(proxy, {
-    upstream: `${BERNARD_URL}/api/v1`,
+    upstream: `${BERNARD_API_URL}/v1`,
     prefix: '/chat/completions',
     rewritePrefix: '/chat/completions',
     http2: false,
     errorHandler: (reply: any, error: any) => {
-      logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_URL });
-      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
+      logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_API_URL });
+      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard-api' });
     }
   } as any);
 
-  // 3. Completions -> Next.js
+  // 3. Completions -> Bernard API
   fastify.register(proxy, {
-    upstream: `${BERNARD_URL}/api/v1`,
+    upstream: `${BERNARD_API_URL}/v1`,
     prefix: '/completions',
     rewritePrefix: '/completions',
     http2: false,
     errorHandler: (reply: any, error: any) => {
-      logger.error({ msg: 'Proxy Error (Completions)', error: error.message, upstream: BERNARD_URL });
-      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
+      logger.error({ msg: 'Proxy Error (Completions)', error: error.message, upstream: BERNARD_API_URL });
+      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard-api' });
     }
   } as any);
 

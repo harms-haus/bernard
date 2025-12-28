@@ -1,10 +1,12 @@
-import type { NextRequest } from "next/server";
+import type { IncomingMessage } from "node:http";
 
 import type { BaseMessage, MessageStructure, MessageType } from "@langchain/core/messages";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
-import { validateAccessToken } from "@/lib/auth";
+import { validateAccessToken, bearerToken } from "@/lib/auth/auth";
 import { extractTokenUsage, mapOpenAIToMessages, type OpenAIMessage } from "@/lib/conversation/messages";
+
+export type { OpenAIMessage };
 import { ConversationSummaryService } from "@/lib/conversation/summary";
 import { RecordKeeper, type MessageRecord } from "@/agent/recordKeeper/conversation.keeper";
 import { getPrimaryModel } from "@/lib/config/models";
@@ -32,8 +34,11 @@ export function listModels(): ModelInfo[] {
   ];
 }
 
-export async function validateAuth(req: NextRequest) {
-  const result = await validateAccessToken(req);
+export async function validateAuth(req: IncomingMessage) {
+  const authHeader = req.headers.authorization;
+  const token = bearerToken(authHeader) || ""; // In agent service, we might also check cookies if needed
+  
+  const result = await validateAccessToken(token);
   if ("error" in result) {
     return result;
   }

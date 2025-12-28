@@ -106,13 +106,13 @@ export function StatusDashboard({ showRestartButtons = false, showLogs = false }
       if (includeLogs && isAdmin) params.set('logs', 'true');
 
       const query = params.toString();
-      const url = `/bernard/api/status${query ? `?${query}` : ''}`;
+      const url = `/api/status${query ? `?${query}` : ''}`;
 
       const response = await fetch(url);
       if (!response.ok) {
         if (response.status === 401) {
           // If we get a 401, try fetching without services/logs
-          const basicResponse = await fetch('/bernard/api/status');
+          const basicResponse = await fetch('/api/status');
           if (basicResponse.ok) {
             const data = await basicResponse.json();
             setStatus(data);
@@ -136,7 +136,7 @@ export function StatusDashboard({ showRestartButtons = false, showLogs = false }
     if (!isAdmin) return;
     setRestartingService(serviceName);
     try {
-      const response = await fetch('/bernard/api/admin/services/restart', {
+      const response = await fetch('/api/admin/services/restart', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

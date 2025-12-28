@@ -55,12 +55,12 @@ vi.mock("@/app/api/v1/_lib/openai", () => ({
   isBernardModel: (model?: string | null) => state.modelOk && (!model || model === BERNARD_MODEL_ID)
 }));
 
-vi.mock("@/app/api/v1/_lib/openai/modelBuilders", () => ({
+vi.mock("@/lib/openai/modelBuilders", () => ({
   buildRouterLLM: (cfg: unknown) => ({ router: cfg }),
   buildResponseLLM: (cfg: unknown, request: unknown) => ({ response: cfg, request })
 }));
 
-vi.mock("@/app/api/v1/_lib/openai/chatChunks", () => ({
+vi.mock("@/lib/openai/chatChunks", () => ({
   chunkContent: (content: string) => content.split(" "),
   buildToolChunks: (transcript: BaseMsg[]) => {
     return transcript.length

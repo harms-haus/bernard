@@ -144,7 +144,7 @@ export default function TaskDetail() {
 
     setLoading(true);
     try {
-      const response = await fetch(`/bernard/api/tasks/${id}`, {
+      const response = await fetch(`/api/tasks/${id}`, {
         credentials: 'include'
       });
 

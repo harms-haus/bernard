@@ -5,8 +5,8 @@ import type { BaseMessage } from "@langchain/core/messages";
 
 import { NextRequest } from "next/server";
 
-import { chunkContent, buildToolChunks } from "../app/api/v1/_lib/openai/chatChunks";
-import { buildRouterLLM, buildResponseLLM } from "../app/api/v1/_lib/openai/modelBuilders";
+import { chunkContent, buildToolChunks } from "../lib/openai/chatChunks";
+import { buildRouterLLM, buildResponseLLM } from "../lib/openai/modelBuilders";
 import {
   buildUsage,
   ensureBernardModel,

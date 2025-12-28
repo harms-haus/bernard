@@ -45,9 +45,10 @@ export function createToolNode(tools: StructuredToolInterface[]) {
         }
 
         try {
-          const result = await tool.invoke(toolCall.args);
+          const result = await tool.invoke(toolCall.args) as unknown;
+          const content = typeof result === "string" ? result : JSON.stringify(result);
           return new ToolMessage({
-            content: typeof result === "string" ? result : JSON.stringify(result),
+            content,
             tool_call_id: toolCallId,
             name: toolName,
           });
@@ -61,9 +62,6 @@ export function createToolNode(tools: StructuredToolInterface[]) {
         }
       })
     );
-
-    // Track which tools were used
-    const usedToolNames = toolCalls.map((tc) => tc.name).filter((name): name is string => Boolean(name));
 
     return {
       messages: toolResults,

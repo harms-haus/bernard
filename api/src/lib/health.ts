@@ -11,6 +11,7 @@ export interface ServiceStatus {
 
 const services: Record<string, string> = {
   bernard: process.env.BERNARD_URL || 'http://localhost:3001',
+  'bernard-api': process.env.BERNARD_API_URL || 'http://localhost:3000',
   vllm: process.env.VLLM_URL || 'http://localhost:8001',
   whisper: process.env.WHISPER_URL || 'http://localhost:8002',
   kokoro: process.env.KOKORO_URL || 'http://localhost:8880',
@@ -21,6 +22,7 @@ export async function checkServiceHealth(name: string, url: string): Promise<Ser
   const timestamp = new Date().toISOString();
   try {
     const healthUrl = name === 'bernard' ? `${url}/health` :
+                     name === 'bernard-api' ? `${url}/health` :
                      name === 'vllm' ? `${url}/health` :
                      name === 'whisper' ? `${url}/health` :
                      name === 'kokoro' ? `${url}/health` : url;

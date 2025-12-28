@@ -5,6 +5,7 @@
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
 SERVICES_DIR="$ROOT_DIR/services"
 BERNARD_DIR="$SERVICES_DIR/bernard"
+BERNARD_API_DIR="$SERVICES_DIR/bernard-api"
 UI_DIR="$SERVICES_DIR/bernard-ui"
 API_DIR="$ROOT_DIR/api"
 MODELS_DIR="$ROOT_DIR/models"

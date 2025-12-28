@@ -34,7 +34,7 @@ export const buildStores = (redis?: Redis) => buildSharedStores(redis ?? getRedi
  * Accepts an optional Redis client to aid testing or dependency injection.
  */
 export async function getAuthenticatedUser(req: FastifyRequest, redis?: Redis): Promise<AuthenticatedUser | null> {
-  const sessionCookie = (req.cookies as any).bernard_session;
+  const sessionCookie = req.cookies?.bernard_session;
   const bearer = bearerToken(req);
 
   if (!sessionCookie && !bearer) return null;
@@ -96,6 +96,32 @@ export async function requireAdmin(req: FastifyRequest): Promise<AuthenticatedUs
 }
 
 /**
+ * Build a Set-Cookie header value for a session with secure attributes.
+ */
+export function buildSessionCookie(sessionId: string, maxAgeSeconds: number) {
+  const secure = process.env["NODE_ENV"] === "production";
+  const parts = [
+    `${SESSION_COOKIE}=${sessionId}`,
+    "Path=/",
+    `Max-Age=${maxAgeSeconds}`,
+    "HttpOnly",
+    "SameSite=Lax"
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+/**
+ * Build a Set-Cookie header value that immediately clears the session.
+ */
+export function clearSessionCookie() {
+  const secure = process.env["NODE_ENV"] === "production";
+  const parts = [`${SESSION_COOKIE}=`, "Path=/", "Max-Age=0", "HttpOnly", "SameSite=Lax"];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+/**
  * Validate access using an API bearer token or session cookie.
  * Returns an AccessGrant on success or a 401 Response on failure.
  */
@@ -104,7 +130,7 @@ export async function validateAccessToken(
   opts?: { redis?: Redis }
 ): Promise<{ access: AccessGrant } | { error: Response }> {
   const bearer = bearerToken(req);
-  const sessionCookie = (req.cookies as any)[SESSION_COOKIE];
+  const sessionCookie = req.cookies?.[SESSION_COOKIE];
 
   if (!bearer && !sessionCookie) {
     return { error: new Response(JSON.stringify({ error: "Missing bearer or session token" }), { status: 401 }) };

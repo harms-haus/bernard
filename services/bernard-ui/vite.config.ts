@@ -5,7 +5,7 @@ import path from 'node:path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/bernard/',
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -15,18 +15,10 @@ export default defineConfig({
     port: 4200,
     open: false,
     proxy: {
-      '/bernard/api': {
+      '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
-        configure: (proxy, _options) => {
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            // Add CORS headers
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-          });
-        }
       }
     }
   }
