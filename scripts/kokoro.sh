@@ -34,7 +34,7 @@ start() {
     stop
     log "Starting $SERVICE_NAME..."
     export PYTHONPATH=$DIR:$DIR/api
-    cd $DIR && uv run --no-sync uvicorn api.src.main:app --host 127.0.0.1 --port $PORT > ../../logs/kokoro.log 2>&1 &
+    mkdir -p "$(dirname "$DIR/../../logs/kokoro.log")" && cd $DIR && uv run --no-sync uvicorn api.src.main:app --host 127.0.0.1 --port $PORT 2>&1 | tee ../../logs/kokoro.log &
     
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..60}; do
@@ -48,10 +48,22 @@ start() {
     return 1
 }
 
+check() {
+    log "Checking $SERVICE_NAME health..."
+    if curl -sf http://127.0.0.1:$PORT/health > /dev/null 2>&1; then
+        log "$SERVICE_NAME is healthy!"
+        return 0
+    else
+        log "$SERVICE_NAME is not responding on port $PORT"
+        return 1
+    fi
+}
+
 case "$1" in
     start) start ;;
     stop) stop ;;
     init) init ;;
     clean) clean ;;
-    *) echo "Usage: $0 {start|stop|init|clean}" ;;
+    check) check ;;
+    *) echo "Usage: $0 {start|stop|init|clean|check}" ;;
 esac

@@ -1,4 +1,28 @@
 import axios from 'axios';
+import http from 'http';
+import https from 'https';
+
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 2000,
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 2000,
+  rejectUnauthorized: false,
+});
+
+const axiosInstance = axios.create({
+  httpAgent,
+  httpsAgent,
+  timeout: 2000,
+  maxRedirects: 0,
+});
 
 export interface ServiceStatus {
   name: string;
@@ -24,7 +48,7 @@ export async function checkServiceHealth(name: string, url: string): Promise<Ser
                      name === 'vllm' ? `${url}/health` :    // vLLM health
                      `${url}/health`;                       // Others usually have /health
     
-    const response = await axios.get(healthUrl, { timeout: 2000 });
+    const response = await axiosInstance.get(healthUrl);
     return {
       name,
       url,
@@ -32,13 +56,12 @@ export async function checkServiceHealth(name: string, url: string): Promise<Ser
       lastChecked: timestamp,
     };
   } catch (error: any) {
-    // If it's the UI, check root reachability
     if (name === 'ui') {
        try {
-         await axios.get(url, { timeout: 1000 });
+         await axiosInstance.get(url);
          return { name, url, status: 'up', lastChecked: timestamp };
+       // eslint-disable-next-line no-empty
        } catch {
-         // UI is down or unreachable
        }
     }
 
