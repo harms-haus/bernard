@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVICE_NAME="    WHISPER    "
+SERVICE_NAME="WHISPER"
 COLOR="\033[0;37m"
 NC="\033[0m"
 PORT=8870
@@ -8,9 +8,7 @@ DIR="services/whisper.cpp"
 MODEL="models/whisper/ggml-small.bin"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-log() {
-    echo -e "${COLOR}[${SERVICE_NAME}]${NC} $1"
-}
+source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
@@ -39,17 +37,17 @@ check() {
 
     log "Checking whisper server binary..."
     if [ -f "$DIR/build/bin/whisper-server" ]; then
-        log "✓ Whisper server binary found"
+        success "Whisper server binary found"
     else
-        log "✗ Whisper server binary not found at $DIR/build/bin/whisper-server"
+        error "Whisper server binary not found at $DIR/build/bin/whisper-server"
         all_passed=false
     fi
 
     log "Checking whisper model..."
     if [ -f "$MODEL" ]; then
-        log "✓ Whisper model found at $MODEL"
+        success "Whisper model found at $MODEL"
     else
-        log "✗ Whisper model not found at $MODEL"
+        error "Whisper model not found at $MODEL"
         all_passed=false
     fi
 
@@ -67,7 +65,7 @@ start() {
     log "Starting $SERVICE_NAME..."
     mkdir -p "$SCRIPT_DIR/logs"
     export LD_LIBRARY_PATH="$DIR/build/src:$DIR/build/ggml/src:$DIR/build/ggml/src/ggml-cuda:$LD_LIBRARY_PATH"
-    $DIR/build/bin/whisper-server --host 127.0.0.1 --port $PORT -m $MODEL --no-gpu 2>&1 | tee "$SCRIPT_DIR/logs/whisper.log" &
+    $DIR/build/bin/whisper-server --host 127.0.0.1 --port $PORT -m $MODEL --convert 2>&1 | tee "$SCRIPT_DIR/logs/whisper.log" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..40}; do

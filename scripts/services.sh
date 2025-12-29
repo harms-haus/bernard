@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log() {
-    echo -e "\033[1;34m[    SERVICES   ]\033[0m $1"
+    echo -e "\033[1;34m[    SERVICES   ]\033[0m    $1"
 }
 
 RED='\033[0;31m'
@@ -69,7 +69,11 @@ tail_logs() {
             local spaces_before=$((spaces / 2))
             local spaces_after=$((spaces - spaces_before))
             local padded="[$(printf "%*s%s%*s" $spaces_before "" "$upper_name" $spaces_after "")]"
-            tail -f "$log_file" 2>/dev/null | sed "s/^/${service_color}${padded}${NC} /" &
+            if [ -t 1 ]; then
+                tail -f "$log_file" 2>/dev/null | sed "s/^/${service_color}${padded}${NC} /" &
+            else
+                tail -f "$log_file" 2>/dev/null | sed "s/^/${padded} /" &
+            fi
             pids+=($!)
         fi
     done
@@ -262,16 +266,16 @@ start() {
     echo
     log "Service Status:"
     echo "---------------------------------------------------------------------"
-    printf "%-15s | %-8s | %-15s | %-6s\n" "Service Name" "Status" "Host Name" "Port"
+    printf "%-12s | %-8s | %-15s | %-6s\n" "Service Name" "Status" "Host Name" "Port"
     echo "---------------------------------------------------------------------"
 
     for service in "REDIS" "BERNARD-API" "PROXY-API" "BERNARD" "BERNARD-UI" "VLLM" "WHISPER" "KOKORO"; do
         if [ "${service_status[$service]}" -eq 0 ]; then
-            status="${GREEN}up${NC}"
+            status=$(colorize "${GREEN}up${NC}" "up")
         else
-            status="${RED}down${NC}"
+            status=$(colorize "${RED}down${NC}" "down")
         fi
-        printf "%-15s | %-8s | %-15s | %-6s\n" "$service" "$status" "${service_hosts[$service]}" "${service_ports[$service]}"
+        printf "%-12s | %-8s | %-15s | %-6s\n" "$service" "$status" "${service_hosts[$service]}" "${service_ports[$service]}"
     done
 
     echo "---------------------------------------------------------------------"

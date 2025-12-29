@@ -1,14 +1,12 @@
 #!/bin/bash
 
-SERVICE_NAME="    BERNARD    "
+SERVICE_NAME="BERNARD"
 COLOR="\033[0;32m"
 NC="\033[0m"
 PORT=8850
 DIR="services/bernard"
 
-log() {
-    echo -e "${COLOR}[${SERVICE_NAME}]${NC} $1"
-}
+source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
