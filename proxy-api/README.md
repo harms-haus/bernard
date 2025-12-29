@@ -21,13 +21,7 @@ npm install
 
 ### 2. Environment Configuration
 
-Copy the example environment file and configure your settings:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your actual values:
+The service loads environment variables from the root `.env` file. Configure the following OAuth settings in the root `.env` file:
 
 #### OAuth Setup (Required for GitHub login)
 

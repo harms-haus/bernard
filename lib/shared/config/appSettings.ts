@@ -510,8 +510,22 @@ export class SettingsManager {
 
     const settings: OAuthSettings = {
       default: base,
-      google: { ...base, authUrl: this.getFromEnv("OAUTH_GOOGLE_AUTH_URL") ?? base.authUrl, clientId: this.getFromEnv("OAUTH_GOOGLE_CLIENT_ID") ?? "" },
-      github: { ...base, authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? base.authUrl, clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "" }
+      google: {
+        ...base,
+        authUrl: this.getFromEnv("OAUTH_GOOGLE_AUTH_URL") ?? base.authUrl,
+        tokenUrl: this.getFromEnv("OAUTH_GOOGLE_TOKEN_URL") ?? base.tokenUrl,
+        userInfoUrl: this.getFromEnv("OAUTH_GOOGLE_USERINFO_URL") ?? base.userInfoUrl,
+        clientId: this.getFromEnv("OAUTH_GOOGLE_CLIENT_ID") ?? "",
+        redirectUri: this.getFromEnv("OAUTH_GOOGLE_REDIRECT_URI") ?? base.redirectUri
+      },
+      github: {
+        ...base,
+        authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? base.authUrl,
+        tokenUrl: this.getFromEnv("OAUTH_GITHUB_TOKEN_URL") ?? base.tokenUrl,
+        userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? base.userInfoUrl,
+        clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "",
+        redirectUri: this.getFromEnv("OAUTH_GITHUB_REDIRECT_URI") ?? base.redirectUri
+      }
     };
 
     const clientSecret = this.getFromEnv("OAUTH_CLIENT_SECRET");

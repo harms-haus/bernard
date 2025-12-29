@@ -26,9 +26,8 @@ export {
   type Section
 } from "@shared/config/appSettings";
 
-// Initialize appSettings with api/.env path
-const API_ENV_PATH = path.join(process.cwd(), "../../api/.env");
-appSettings.loadEnv(API_ENV_PATH);
+// Initialize appSettings with root .env path
+appSettings.loadEnv(path.join(process.cwd(), "../../.env"));
 
 export class SettingsStore {
   private _redisInstance: Pick<Redis, "get" | "set"> | null = null;

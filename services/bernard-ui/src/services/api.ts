@@ -118,6 +118,10 @@ class APIClient {
     options: RequestInit = {},
     baseUrl?: string
   ): Promise<T> {
+    // For auth endpoints, use the current host
+    if (endpoint.startsWith('/auth/') && !baseUrl) {
+      baseUrl = `${window.location.protocol}//${window.location.host}`;
+    }
     const url = `${baseUrl || this.apiBaseUrl}${endpoint}`;
     const defaultOptions: RequestInit = {
       credentials: 'include',
@@ -174,12 +178,14 @@ class APIClient {
 
   async githubLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.authBaseUrl}/auth/github/login`, '_self');
+    const baseUrl = `${window.location.protocol}//${window.location.host}`;
+    window.open(`${baseUrl}/auth/github/login`, '_self');
   }
 
   async googleLogin(): Promise<void> {
     // Use direct navigation to bypass React Router
-    window.open(`${this.authBaseUrl}/auth/google/login`, '_self');
+    const baseUrl = `${window.location.protocol}//${window.location.host}`;
+    window.open(`${baseUrl}/auth/google/login`, '_self');
   }
 
   async logout(): Promise<void> {
@@ -451,4 +457,4 @@ class APIClient {
   }
 }
 
-export const apiClient = new APIClient('/api');
+export const apiClient = new APIClient('', '/bernard/api', '/bernard/api');

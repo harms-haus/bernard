@@ -1,8 +1,8 @@
 import { appSettings } from "@shared/config/appSettings";
 import path from "node:path";
 
-// Initialize appSettings with local .env path
-appSettings.loadEnv(path.join(process.cwd(), ".env"));
+// Initialize appSettings with root .env path
+appSettings.loadEnv(path.join(process.cwd(), "../.env"));
 
 export { 
   appSettings,
