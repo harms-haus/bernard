@@ -95,7 +95,7 @@ export default function Models() {
         adminApiClient.listProviders()
       ]);
       setSettings(settingsData);
-      setProviders(providersData);
+      setProviders(Array.isArray(providersData) ? providersData : []);
 
       // Initialize embedding dimension
       setEmbeddingDimension(settingsData.embedding?.dimension?.toString() || '');
@@ -121,7 +121,7 @@ export default function Models() {
       if (editingProvider) {
         // Update existing provider
         const updatedProvider = await adminApiClient.updateProvider(editingProvider.id, providerForm);
-        setProviders(providers.map(p => p.id === updatedProvider.id ? updatedProvider : p));
+        setProviders(Array.isArray(providers) ? providers.map(p => p.id === updatedProvider.id ? updatedProvider : p) : [updatedProvider]);
         // Also update the provider in settings
         setSettings(prev => prev ? {
           ...prev,
@@ -131,7 +131,7 @@ export default function Models() {
       } else {
         // Create new provider
         const newProvider = await adminApiClient.createProvider(providerForm);
-        setProviders([...providers, newProvider]);
+        setProviders(Array.isArray(providers) ? [...providers, newProvider] : [newProvider]);
         // Also add the provider to settings
         setSettings(prev => prev ? {
           ...prev,
@@ -163,7 +163,7 @@ export default function Models() {
       onConfirm: async () => {
         try {
           await adminApiClient.deleteProvider(providerId);
-          setProviders(providers.filter(p => p.id !== providerId));
+          setProviders(Array.isArray(providers) ? providers.filter(p => p.id !== providerId) : []);
           // Clear any selected models from this provider and remove provider from settings
           setSettings(prev => {
             if (!prev) return prev;
@@ -586,7 +586,7 @@ export default function Models() {
                 </tr>
               </thead>
               <tbody>
-                {providers.map(provider => {
+                {Array.isArray(providers) && providers.map(provider => {
                   const models = getModelsForProvider(provider.id);
                   
                   return (
@@ -671,7 +671,7 @@ export default function Models() {
                         <ProviderSelector
                           value={settings?.[category.key]?.providerId || ''}
                           onChange={(providerId) => handleProviderChange(category.key, providerId)}
-                          providers={providers}
+                          providers={Array.isArray(providers) ? providers : []}
                           disabled={false}
                           placeholder="Select a provider..."
                         />

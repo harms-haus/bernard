@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { SettingsStore, ServicesSettingsSchema, BackupSettingsSchema, OAuthSettingsSchema } from "../lib/settingsStore";
+import { SettingsStore, ServicesSettingsSchema, BackupSettingsSchema, OAuthSettingsSchema, ModelsSettingsSchema } from "../lib/settingsStore";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 
@@ -20,6 +20,42 @@ export function registerSettingsRoutes(fastify: FastifyInstance) {
     } catch (error) {
       logger.error({ error }, "Failed to get settings");
       return reply.status(500).send({ error: "Internal server error" });
+    }
+  });
+
+  // GET /settings/models - Get models settings
+  fastify.get("/models", async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const admin = await requireAdmin(request);
+      if (!admin) {
+        return reply.status(403).send({ error: "Admin access required" });
+      }
+
+      const models = await store.getModels();
+      logger.info({ action: "settings.models.read", adminId: admin.user.id });
+      return reply.send(models);
+    } catch (error) {
+      logger.error({ error }, "Failed to get models settings");
+      return reply.status(500).send({ error: "Internal server error" });
+    }
+  });
+
+  // PUT /settings/models - Update models settings
+  fastify.put("/models", async (request: FastifyRequest<{ Body: unknown }>, reply: FastifyReply) => {
+    try {
+      const admin = await requireAdmin(request);
+      if (!admin) {
+        return reply.status(403).send({ error: "Admin access required" });
+      }
+
+      const parsed = ModelsSettingsSchema.parse(request.body);
+      const saved = await store.setModels(parsed);
+      logger.info({ action: "settings.models.update", adminId: admin.user.id });
+      return reply.send(saved);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.error({ error, action: "settings.models.update" }, "Failed to update models settings");
+      return reply.status(400).send({ error: "Invalid models payload", reason });
     }
   });
 
