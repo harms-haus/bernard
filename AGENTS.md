@@ -96,13 +96,33 @@ async function* runHarnessWithStreaming(input, context) {
 
 ### Service Management (from root)
 ```bash
-# Start all services
-./start.sh
+# Start all services (default: monitor logs, Ctrl+C to stop all)
+./scripts/services.sh start
 
-# Start individual services (via scripts/ and scripts/services/)
-./scripts/api.sh start
-./scripts/services/bernard.sh start
-./scripts/services/kokoro.sh start
+# Start all services and exit immediately (services run in background)
+./scripts/services.sh start --exit-after-start
+
+# Stop all services
+./scripts/services.sh stop
+
+# Initialize all services (install dependencies)
+./scripts/services.sh init
+
+# Clean all services (remove dependencies)
+./scripts/services.sh clean
+
+# Check all services (run build checks)
+./scripts/services.sh check
+
+# Individual service control
+./scripts/redis.sh {start|stop|init|clean|check}
+./scripts/bernard-api.sh {start|stop|init|clean|check}
+./scripts/proxy-api.sh {start|stop|init|clean|check}
+./scripts/bernard.sh {start|stop|init|clean|check}
+./scripts/bernard-ui.sh {start|stop|init|clean|check}
+./scripts/vllm.sh {start|stop|init|clean|check}
+./scripts/whisper.sh {start|stop|init|clean|check}
+./scripts/kokoro.sh {start|stop|init|clean|check}
 ```
 
 ### Development Commands
