@@ -22,11 +22,11 @@ export async function registerBernardRoutes(fastify: FastifyInstance) {
 
   // 2. Bernard UI Proxy
   // Maps /bernard/* to bernard-ui:8810
-  // Strips /bernard prefix as UI base is now '/' (Option A)
+  // Keeps /bernard prefix as UI base is '/bernard/' (Option B)
   fastify.register(proxy, {
     upstream: UI_URL,
     prefix: '/bernard',
-    rewritePrefix: '',
+    rewritePrefix: '/bernard',
     http2: false,
     websocket: true,
     errorHandler: (reply: any, error: any) => {

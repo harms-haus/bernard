@@ -1,22 +1,12 @@
 #!/bin/bash
 
-SERVICE_NAME="     REDIS     "
+SERVICE_NAME="REDIS"
 COLOR="\033[0;31m"
 NC="\033[0m"
 PORT=6379
 CONTAINER_NAME="bernard-redis"
 
-log() {
-    echo -e "${COLOR}[${SERVICE_NAME}]${NC} $1"
-}
-
-error() {
-    echo -e "${COLOR}[${SERVICE_NAME} ERROR]${NC} $1"
-}
-
-success() {
-    echo -e "${COLOR}[${SERVICE_NAME} SUCCESS]${NC} $1"
-}
+source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping Redis container..."
@@ -41,9 +31,9 @@ check() {
 
     log "Checking docker installation..."
     if command -v docker > /dev/null 2>&1; then
-        log "✓ Docker found"
+        success "Docker found"
     else
-        log "✗ Docker not found"
+        error "Docker not found"
         all_passed=false
     fi
 

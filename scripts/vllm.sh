@@ -1,13 +1,11 @@
 #!/bin/bash
 
-SERVICE_NAME="VLLM-EMBEDDINGS"
+SERVICE_NAME="VLLM-EMBED"
 COLOR="\033[0;34m"
 NC="\033[0m"
 PORT=8860
 
-log() {
-    echo -e "${COLOR}[${SERVICE_NAME}]${NC} $1"
-}
+source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
@@ -31,25 +29,25 @@ check() {
 
     log "Checking venv initialization..."
     if [ -d "services/vllm/.venv" ]; then
-        log "✓ Venv initialized"
+        success "Venv initialized"
     else
-        log "✗ Venv not initialized"
+        error "Venv not initialized"
         all_passed=false
     fi
 
     log "Checking vllm installation..."
     if ./services/vllm/.venv/bin/python -c "import vllm" 2>/dev/null; then
-        log "✓ vllm installed"
+        success "vllm installed"
     else
-        log "✗ vllm not installed in venv"
+        error "vllm not installed in venv"
         all_passed=false
     fi
 
     log "Checking nomic-embed-text model..."
     if [ -d "$HOME/.cache/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5" ]; then
-        log "✓ nomic-embed-text model found"
+        success "nomic-embed-text model found"
     else
-        log "✗ nomic-embed-text model not found in huggingface cache"
+        error "nomic-embed-text model not found in huggingface cache"
         all_passed=false
     fi
 

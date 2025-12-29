@@ -10,40 +10,46 @@ run_check_step() {
     local log_file="$3"
     local service_name="$4"
     local dir="$5"
-    
+
+    # Calculate padded tag
+    local spaces=$((15 - ${#service_name}))
+    local before=$((spaces / 2))
+    local after=$((spaces - before))
+    local tag=$(printf "[%*s%s%*s]" $before "" "$service_name" $after "")
+
     if [ ! -d "$dir" ]; then
-        echo "[$service_name] ✗ Directory not found: $dir" | tee -a "$log_file"
-        echo "[$service_name] ✗ $step_name failed - directory does not exist" | tee -a "$log_file"
+        echo "${tag} ✗  Directory not found: $dir" | tee -a "$log_file"
+        echo "${tag} ✗  $step_name failed - directory does not exist" | tee -a "$log_file"
         return 1
     fi
-    
-    echo "[$service_name] Running $step_name in $dir..." | tee -a "$log_file"
-    
+
+    echo "${tag}    Running $step_name in $dir..." | tee -a "$log_file"
+
     (
         if ! cd "$dir"; then
-            echo "[$service_name] Failed to change to directory: $dir" | tee -a "$log_file"
+            echo "${tag} ✗  Failed to change to directory: $dir" | tee -a "$log_file"
             exit 1
         fi
-        
+
         if [[ "$step_command" == npm* ]]; then
             local npm_script=$(echo "$step_command" | sed 's/npm run //' | sed 's/npm //')
             if ! npm run | grep -q "^  $npm_script$"; then
-                echo "[$service_name] npm script not found: $npm_script" | tee -a "$log_file"
-                echo "[$service_name] Available scripts:" | tee -a "$log_file"
+                echo "${tag} ✗  npm script not found: $npm_script" | tee -a "$log_file"
+                echo "${tag}    Available scripts:" | tee -a "$log_file"
                 npm run | tee -a "$log_file"
                 exit 1
             fi
         fi
-        
+
         eval "$step_command"
     ) >> "$log_file" 2>&1
     local step_result=$?
-    
+
     if [ $step_result -eq 0 ]; then
-        echo "[$service_name] ✓ $step_name passed" | tee -a "$log_file"
+        echo "${tag} ✓  $step_name passed" | tee -a "$log_file"
         return 0
     else
-        echo "[$service_name] ✗ $step_name failed (exit code: $step_result)" | tee -a "$log_file"
+        echo "${tag} ✗  $step_name failed (exit code: $step_result)" | tee -a "$log_file"
         return 1
     fi
 }
@@ -61,7 +67,12 @@ start_console_logging_on_health() {
         while true; do
             if curl -sf "http://127.0.0.1:$port$health_path" > /dev/null 2>&1; then
                 # Service is reachable - start tailing log to console
-                echo "[$service_name] Service reachable, streaming logs to console..." | tee -a "$log_file"
+                # Calculate padded tag
+    local spaces=$((15 - ${#service_name}))
+    local before=$((spaces / 2))
+    local after=$((spaces - before))
+    local tag=$(printf "[%*s%s%*s]" $before "" "$service_name" $after "")
+    echo "${tag}    Service reachable, streaming logs to console..." | tee -a "$log_file"
                 tail -f "$log_file" 2>/dev/null &
                 TAIL_PID=$!
                 # Monitor PID file while tailing

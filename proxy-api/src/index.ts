@@ -23,7 +23,7 @@ await fastify.register(cors, {
 
 await fastify.register(cookie);
 
-await fastify.register(multipart);
+// await fastify.register(multipart); // Disabled to allow proxy to forward raw multipart
 
 // Authentication middleware for protected routes
 fastify.addHook('preHandler', async (request, reply) => {
