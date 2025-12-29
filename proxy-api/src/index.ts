@@ -2,9 +2,9 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
-import multipart from '@fastify/multipart';
 import { logger } from './lib/logger';
 import { registerV1Routes } from './routes/v1';
+import { registerApiRoutes } from './routes/api';
 import { registerBernardRoutes } from './routes/bernard';
 import { registerIndexRoutes } from './routes/index';
 import { registerAuthRoutes } from './routes/auth';
@@ -34,7 +34,6 @@ fastify.addHook('preHandler', async (request, reply) => {
     url === '/' ||
     url.startsWith('/health') ||
     url.startsWith('/auth/') ||
-    url.startsWith('/api/auth/') || // OAuth endpoints
     url.startsWith('/bernard/') || // Bernard UI is handled separately
     url.startsWith('/@vite/') || // Vite client resources
     url.startsWith('/src/') || // Vite source files
@@ -96,7 +95,8 @@ fastify.setErrorHandler((error: any, request, reply) => {
 await fastify.register(registerIndexRoutes); // This handles / and /health
 await fastify.register(registerAuthRoutes, { prefix: '/auth' });
 await fastify.register(registerV1Routes, { prefix: '/v1' });
-await fastify.register(registerBernardRoutes); // Handles /bernard/api and /bernard/
+await fastify.register(registerApiRoutes, { prefix: '/api' });
+await fastify.register(registerBernardRoutes); // Handles /bernard/
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

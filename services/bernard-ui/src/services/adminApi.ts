@@ -297,16 +297,17 @@ class AdminApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    const defaultOptions: RequestInit = {
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      }
-    };
+
+    const headers: Record<string, string> = {};
+
+    // Only set Content-Type if there's a body
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(url, {
-      ...defaultOptions,
+      credentials: 'include',
+      headers: { ...headers, ...options.headers },
       ...options
     });
 

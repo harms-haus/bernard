@@ -5,6 +5,11 @@ import cookie from "@fastify/cookie";
 import { logger } from "./lib/logger";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerProviderRoutes } from "./routes/providers";
+import { registerTokenRoutes } from "./routes/tokens";
+import { registerUserRoutes } from "./routes/users";
+import { registerTaskRoutes } from "./routes/tasks";
+import { registerAdminServicesRoutes } from "./routes/adminServices";
 import { getAuthenticatedUser } from "./lib/auth";
 import type { AuthenticatedUser } from "./lib/auth";
 
@@ -37,7 +42,7 @@ fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyRepl
   if (
     url === "/" ||
     url?.startsWith("/health") ||
-    url?.startsWith("/auth/validate")
+    url?.startsWith("/api/auth/validate")
   ) {
     return;
   }
@@ -59,8 +64,8 @@ fastify.addHook("onResponse", (request: FastifyRequest, reply: FastifyReply, don
   const { method, url } = request;
   const { statusCode } = reply;
   const duration = reply.elapsedTime.toFixed(2);
-  
-  if (url === "/" || url?.startsWith("/health")) {
+
+  if (url === "/" || url?.startsWith("/health") || url?.startsWith("/api/health")) {
     // Silent for root/health
   } else {
     if (statusCode >= 400) {
@@ -96,9 +101,130 @@ fastify.get("/health", async (request, reply) => {
   return reply.send({ status: "ok", service: "bernard-api" });
 });
 
+// Status endpoint
+fastify.get("/api/status", async (request: FastifyRequest, reply: FastifyReply) => {
+  const includeServices = request.query && (request.query as any).services === 'true';
+  const includeLogs = request.query && (request.query as any).logs === 'true';
+
+  const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:8850';
+  const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+
+  const statusData: {
+    status: 'online' | 'degraded' | 'offline';
+    uptimeSeconds: number;
+    startedAt: string;
+    version?: string;
+    lastActivityAt: string;
+    activeConversations: number;
+    tokensActive: number;
+    queueSize: number;
+    notes?: string;
+    services?: Array<{
+      name: string;
+      port: number;
+      description: string;
+      status: 'online' | 'degraded' | 'offline';
+      error?: string;
+      logs?: string[];
+    }>;
+  } = {
+    status: 'online',
+    uptimeSeconds: Math.floor(process.uptime()),
+    startedAt: new Date(Date.now() - Math.floor(process.uptime() * 1000)).toISOString(),
+    version: process.env.npm_package_version,
+    lastActivityAt: new Date().toISOString(),
+    activeConversations: 0,
+    tokensActive: 0,
+    queueSize: 0,
+  };
+
+  if (includeServices) {
+    const services: Array<{
+      name: string;
+      port: number;
+      description: string;
+      status: 'online' | 'degraded' | 'offline';
+      error?: string;
+      logs?: string[];
+    }> = [];
+
+    // Check Redis
+    try {
+      const Redis = (await import('ioredis')).default;
+      const redisClient = new Redis(REDIS_URL);
+      const ping = await redisClient.ping();
+      services.push({
+        name: 'Redis',
+        port: parseInt(new URL(REDIS_URL).port || '6379'),
+        description: 'Cache and session storage',
+        status: ping === 'PONG' ? 'online' : 'degraded',
+      });
+      await redisClient.quit();
+    } catch (error) {
+      services.push({
+        name: 'Redis',
+        port: parseInt(new URL(REDIS_URL).port || '6379'),
+        description: 'Cache and session storage',
+        status: 'offline' as const,
+        error: error instanceof Error ? error.message : String(error),
+        logs: includeLogs ? ['Failed to connect to Redis'] : undefined,
+      });
+    }
+
+    // Check Bernard Agent
+    try {
+      const response = await fetch(`${BERNARD_AGENT_URL}/health`, { signal: AbortSignal.timeout(2000) });
+      services.push({
+        name: 'Bernard',
+        port: parseInt(new URL(BERNARD_AGENT_URL).port || '8850'),
+        description: 'AI agent and chat processing',
+        status: response.ok ? 'online' as const : 'degraded' as const,
+      });
+    } catch (error) {
+      services.push({
+        name: 'Bernard',
+        port: parseInt(new URL(BERNARD_AGENT_URL).port || '8850'),
+        description: 'AI agent and chat processing',
+        status: 'offline' as const,
+        error: error instanceof Error ? error.message : String(error),
+        logs: includeLogs ? ['Failed to connect to Bernard agent'] : undefined,
+      });
+    }
+
+    // Check Bernard API itself
+    services.push({
+      name: 'Server',
+      port: Number(process.env.BERNARD_API_PORT) || 8800,
+      description: 'This API server',
+      status: 'online' as const,
+    });
+
+    statusData.services = services;
+
+    // Determine overall status
+    const offlineServices = services.filter(s => s.status === 'offline');
+    const degradedServices = services.filter(s => s.status === 'degraded');
+
+    if (offlineServices.length > 0) {
+      statusData.status = 'offline';
+      statusData.notes = `Offline services: ${offlineServices.map(s => s.name).join(', ')}`;
+    } else if (degradedServices.length > 0) {
+      statusData.status = 'degraded';
+      statusData.notes = `Degraded services: ${degradedServices.map(s => s.name).join(', ')}`;
+    }
+  }
+
+  return reply.send(statusData);
+});
+
 // Register routes
-await fastify.register(registerSettingsRoutes, { prefix: "/settings" });
-await fastify.register(registerAuthRoutes, { prefix: "/auth" });
+await fastify.register(registerSettingsRoutes, { prefix: "/api/settings" });
+await fastify.register(registerAuthRoutes, { prefix: "/api/auth" });
+await fastify.register(registerProviderRoutes, { prefix: "/api/providers" });
+await fastify.register(registerTokenRoutes, { prefix: "/api/tokens" });
+await fastify.register(registerUserRoutes, { prefix: "/api/users" });
+await fastify.register(registerTaskRoutes, { prefix: "/api/tasks" });
+await fastify.register(registerAdminServicesRoutes);
 
 const port = Number(process.env["BERNARD_API_PORT"]) || 8800;
 const host = process.env["HOST"] || "127.0.0.1";

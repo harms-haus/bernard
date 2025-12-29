@@ -20,14 +20,8 @@ export default defineConfig({
         target: 'http://127.0.0.1:3456',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '/bernard/api')
       },
       '/auth': {
-        target: 'http://127.0.0.1:3456',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/bernard/api': {
         target: 'http://127.0.0.1:3456',
         changeOrigin: true,
         secure: false,

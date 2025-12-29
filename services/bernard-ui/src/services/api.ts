@@ -107,7 +107,7 @@ class APIClient {
   private currentUserInFlight: Promise<User | null> | null = null;
   private currentUserCache: { user: User | null; cachedAtMs: number } | null = null;
 
-  constructor(authBaseUrl: string = '', apiBaseUrl: string = '/api', baseUrl: string = '/api') {
+  constructor(authBaseUrl: string = '', apiBaseUrl: string = '/api', baseUrl: string = '') {
     this.authBaseUrl = authBaseUrl;
     this.apiBaseUrl = apiBaseUrl;
     this.baseUrl = baseUrl;
@@ -308,7 +308,7 @@ class APIClient {
   }
 
   async chat(messages: ConversationMessage[]): Promise<ChatResponse> {
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(`/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -331,7 +331,7 @@ class APIClient {
   }
 
   async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal): Promise<ReadableStream> {
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+    const response = await fetch(`/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -381,7 +381,7 @@ class APIClient {
   }
 
   async updateConversationGhostStatus(conversationId: string, ghost: boolean): Promise<{ conversationId: string; ghost: boolean; updated: boolean }> {
-    const response = await fetch(`${this.baseUrl}/api/conversations/${conversationId}`, {
+    const response = await fetch(`${this.baseUrl}/conversations/${conversationId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -433,7 +433,7 @@ class APIClient {
       offset: String(offset)
     });
 
-    const response = await fetch(`${this.baseUrl}/api/tasks?${params}`, {
+    const response = await fetch(`${this.baseUrl}/tasks?${params}`, {
       headers: this.getAuthHeaders()
     });
 
@@ -445,7 +445,7 @@ class APIClient {
   }
 
   async getTask(taskId: string): Promise<TaskDetail> {
-    const response = await fetch(`${this.baseUrl}/api/tasks/${taskId}`, {
+    const response = await fetch(`${this.baseUrl}/tasks/${taskId}`, {
       headers: this.getAuthHeaders()
     });
 
@@ -457,4 +457,4 @@ class APIClient {
   }
 }
 
-export const apiClient = new APIClient('', '/bernard/api', '/bernard/api');
+export const apiClient = new APIClient('', '/api', '/api');

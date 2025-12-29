@@ -18,7 +18,7 @@ import { RecollectionsMessage } from './chat-messages/RecollectionsMessage';
 import { MessageRecord } from '../../../bernard/lib/conversation/types';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
-import { parseTraceChunk, updateTraceEventWithCompletion, extractTraceEventsFromMessages } from '../utils/traceEventParser';
+import { parseTraceChunk, updateTraceEventWithCompletion } from '../utils/traceEventParser';
 
 interface ToolCall {
   id: string;
@@ -142,38 +142,10 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
 
     const loadCurrentConversation = async () => {
       try {
-        // Fetch the most recent conversation (limit 1, include messages)
-        const conversations = await apiClient.getConversationHistory(1, true);
-        if (conversations && conversations.length > 0) {
-          const currentConversation = conversations[0];
-          if (currentConversation.messages && currentConversation.messages.length > 0) {
-            // Extract trace events from messages
-            const extractedTraceEvents = extractTraceEventsFromMessages(currentConversation.messages);
-
-            // Filter out system messages that contain trace data (they should be displayed as trace events)
-            const filteredMessages = currentConversation.messages.filter((message: MessageRecord) => {
-              // Keep user, assistant, and tool messages
-              if (message.role === 'user' || message.role === 'assistant' || message.role === 'tool') {
-                return true;
-              }
-
-              // For system messages, check if they contain trace data
-              if (message.role === 'system' && typeof message.content === 'object' && message.content) {
-                const content = message.content as any;
-                // If it's a system message with trace type, filter it out (it's extracted as a trace event)
-                return !['llm_call', 'tool_call', 'llm_call_complete', 'tool_call_complete'].includes(content.type);
-              }
-
-              // Keep other system messages
-              return true;
-            });
-
-            setMessages(filteredMessages);
-            setTraceEvents(extractedTraceEvents);
-            setCurrentConversationId(currentConversation.id);
-            setIsGhostMode(currentConversation.ghost || false);
-          }
-        }
+        // Conversation history is no longer kept - skip loading previous conversations
+        // This was intentionally removed to simplify the architecture
+        console.log('Conversation history loading skipped - history feature disabled');
+        return;
       } catch (error) {
         console.error('Failed to load current conversation:', error);
         // Don't show error toast on initial load - it's not critical
