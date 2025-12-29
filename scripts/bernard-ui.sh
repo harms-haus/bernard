@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVICE_NAME="BERNARD-UI"
+SERVICE_NAME="   BERNARD-UI  "
 COLOR="\033[0;35m"
 NC="\033[0m"
 PORT=8810
@@ -32,46 +32,54 @@ clean() {
 }
 
 check() {
+    # Source shared utilities
+    source "$(dirname "$0")/check-utils.sh"
+    
     log "Running checks for $SERVICE_NAME..."
-    local all_passed=true
-
-    log "Running type-check..."
-    cd $DIR && npm run type-check > /tmp/bernard-ui-typecheck.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Type-check passed"
+    
+    # Create log directory and files
+    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.log"
+    STATUS_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.status"
+    PID_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.pid"
+    
+    # Clear previous status and write PID
+    > "$STATUS_FILE"
+    echo "$$" > "$PID_FILE"
+    
+    # Start health monitoring and console logging in background
+    # Bernard-UI uses root path for health check
+    local health_path="/"
+    start_console_logging_on_health "$SERVICE_NAME" "$PORT" "$health_path" "$LOG_FILE" "$PID_FILE"
+    
+    # Run check steps synchronously (don't exit on failure)
+    run_check_step "type-check" "npm run type-check" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local typecheck_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "typecheck" "$typecheck_result"
+    
+    run_check_step "lint" "npm run lint" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local lint_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "lint" "$lint_result"
+    
+    run_check_step "build" "npm run build" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local build_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "build" "$build_result"
+    
+    # Clean up PID file
+    rm -f "$PID_FILE"
+    
+    # Finalize status
+    finalize_status "$SERVICE_NAME" "$STATUS_FILE"
+    
+    # Return overall status
+    if grep -q "overall=pass" "$STATUS_FILE"; then
+        log "All checks passed!"
+        return 0
     else
-        log "✗ Type-check failed"
-        cat /tmp/bernard-ui-typecheck.log
-        all_passed=false
-    fi
-
-    log "Running lint..."
-    cd $DIR && npm run lint > /tmp/bernard-ui-lint.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Lint passed"
-    else
-        log "✗ Lint failed"
-        cat /tmp/bernard-ui-lint.log
-        all_passed=false
-    fi
-
-    log "Running build..."
-    cd $DIR && npm run build > /tmp/bernard-ui-build.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Build passed"
-    else
-        log "✗ Build failed"
-        cat /tmp/bernard-ui-build.log
-        all_passed=false
-    fi
-
-    if [ "$all_passed" = false ]; then
-        log "Some checks failed. Halting."
+        log "Some checks failed."
         return 1
     fi
-
-    log "All checks passed!"
-    return 0
 }
 
 start() {
@@ -86,7 +94,8 @@ start() {
         exit 1
     fi
 
-    cd $DIR && npm run dev 2>&1 | tee ../../logs/bernard-ui.log &
+    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
+    cd $DIR && npm run dev 2>&1 | sed "s/\[BERNARD-UI\]/[  BERNARD-UI  ]/g" | tee "$LOG_DIR/bernard-ui.log" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..40}; do

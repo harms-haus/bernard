@@ -11,13 +11,9 @@ log() {
 
 stop() {
     log "Stopping $SERVICE_NAME..."
-    PID=$(lsof -t -i:$PORT)
-    if [ ! -z "$PID" ]; then
-        kill -9 $PID
-        log "Stopped $SERVICE_NAME (PID: $PID)"
-    else
-        log "$SERVICE_NAME not running on port $PORT"
-    fi
+    pkill -f "vllm.*api_server" || true
+    pkill -f "vllm.*EngineCore" || true
+    log "$SERVICE_NAME stopped"
 }
 
 init() {
@@ -96,7 +92,7 @@ start() {
         --host 127.0.0.1 --port $PORT --trust-remote-code \
         --gpu-memory-utilization "$util" \
         --max-model-len 2048 \
-        2>&1 | tee logs/vllm-embedding.log &
+        2>&1 | tee "$LOG_DIR/vllm-embeddings.log" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..120}; do

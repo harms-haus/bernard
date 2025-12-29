@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVICE_NAME="WHISPER"
+SERVICE_NAME="    WHISPER    "
 COLOR="\033[0;37m"
 NC="\033[0m"
 PORT=8870
@@ -67,7 +67,7 @@ start() {
     log "Starting $SERVICE_NAME..."
     mkdir -p "$SCRIPT_DIR/logs"
     export LD_LIBRARY_PATH="$DIR/build/src:$DIR/build/ggml/src:$DIR/build/ggml/src/ggml-cuda:$LD_LIBRARY_PATH"
-    $DIR/build/bin/whisper-server --host 127.0.0.1 --port $PORT -m $MODEL 2>&1 | tee "$SCRIPT_DIR/logs/whisper.log" &
+    $DIR/build/bin/whisper-server --host 127.0.0.1 --port $PORT -m $MODEL --no-gpu 2>&1 | tee "$SCRIPT_DIR/logs/whisper.log" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..40}; do

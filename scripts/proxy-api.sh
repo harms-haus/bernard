@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVICE_NAME="PROXY-API"
+SERVICE_NAME="   PROXY-API   "
 COLOR="\033[0;36m"
 NC="\033[0m"
 PORT=3456
@@ -32,53 +32,52 @@ clean() {
 }
 
 check() {
+    # Source shared utilities
+    source "$(dirname "$0")/check-utils.sh"
+
     log "Running checks for $SERVICE_NAME..."
-    local all_passed=true
 
-    log "Running type-check..."
-    cd "$DIR" || { log "✗ Failed to cd to $DIR"; all_passed=false; return 1; } && npm run type-check > /tmp/proxy-api-typecheck.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Type-check passed"
+    # Create log directory and files
+    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.log"
+    STATUS_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.status"
+
+    # Clear previous status
+    > "$STATUS_FILE"
+
+    # Run check steps synchronously (don't exit on failure)
+    run_check_step "type-check" "npm run type-check" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local typecheck_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "typecheck" "$typecheck_result"
+
+    run_check_step "lint" "npm run lint" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local lint_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "lint" "$lint_result"
+
+    run_check_step "build" "npm run build" "$LOG_FILE" "$SERVICE_NAME" "$DIR"
+    local build_result=$?
+    track_result "$SERVICE_NAME" "$STATUS_FILE" "build" "$build_result"
+
+    # Finalize status
+    finalize_status "$SERVICE_NAME" "$STATUS_FILE"
+
+    # Return overall status
+    if grep -q "overall=pass" "$STATUS_FILE"; then
+        log "All checks passed!"
+        return 0
     else
-        log "✗ Type-check failed"
-        cat /tmp/proxy-api-typecheck.log
-        all_passed=false
-    fi
-
-    log "Running lint..."
-    cd "$DIR" || { log "✗ Failed to cd to $DIR"; all_passed=false; return 1; } && npm run lint > /tmp/proxy-api-lint.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Lint passed"
-    else
-        log "✗ Lint failed"
-        cat /tmp/proxy-api-lint.log
-        all_passed=false
-    fi
-
-    log "Running build..."
-    cd "$DIR" || { log "✗ Failed to cd to $DIR"; all_passed=false; return 1; } && npm run build > /tmp/proxy-api-build.log 2>&1
-    if [ $? -eq 0 ]; then
-        log "✓ Build passed"
-    else
-        log "✗ Build failed"
-        cat /tmp/proxy-api-build.log
-        all_passed=false
-    fi
-
-    if [ "$all_passed" = false ]; then
-        log "Some checks failed. Halting."
+        log "Some checks failed."
         return 1
     fi
-
-    log "All checks passed!"
-    return 0
 }
 
 start() {
     stop
     log "Starting $SERVICE_NAME..."
-    mkdir -p "../logs"
-    cd "$DIR" && npm run dev 2>&1 | tee "../logs/proxy.log" &
+    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
+    mkdir -p "$LOG_DIR"
+    cd "$DIR" && npm run dev 2>&1 | sed "s/\[PROXY-API\]/[   PROXY-API  ]/g" | tee "$LOG_DIR/proxy.log" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..40}; do

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVICE_NAME="REDIS"
+SERVICE_NAME="     REDIS     "
 COLOR="\033[0;31m"
 NC="\033[0m"
 PORT=6379
