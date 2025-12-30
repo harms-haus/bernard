@@ -1,5 +1,5 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { BernardState } from "./state";
+import { BernardState, MAX_ROUTER_ITERATIONS } from "./state";
 import { recollectionNode } from "../node/recollection.node";
 import { routingAgentNode, type RoutingAgentContext } from "../routing.agent";
 import { responseAgentNode, type ResponseAgentContext } from "../response.agent";
@@ -25,6 +25,11 @@ export function createBernardGraph(
   function shouldContinue(state: typeof BernardState.State): typeof END | "tools" | "response" {
     const lastMessage = state.messages[state.messages.length - 1];
 
+    // Force response if maximum iterations reached to prevent infinite loops
+    if (state.iterationCount >= MAX_ROUTER_ITERATIONS) {
+      return "response";
+    }
+
     // Check if it's an AIMessage before accessing tool_calls
     if (!lastMessage || !AIMessage.isInstance(lastMessage)) {
       return "response";
@@ -44,7 +49,11 @@ export function createBernardGraph(
     state: typeof BernardState.State,
     config: { configurable?: { thread_id?: string } }
   ) => {
-    return routingAgentNode(state, config, routingContext);
+    const result = await routingAgentNode(state, config, routingContext);
+    return {
+      ...result,
+      iterationCount: (state.iterationCount ?? 0) + 1,
+    };
   };
 
   // Create response node with context binding
