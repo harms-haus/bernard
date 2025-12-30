@@ -21,6 +21,7 @@ import { getRouterTools } from "@/agent/tool";
 import type { RoutingAgentContext } from "@/agent/routing.agent";
 import type { ResponseAgentContext } from "@/agent/response.agent";
 import { createTextChatGraph } from "@/agent/graph/text-chat.graph";
+import { getRedis } from "@/lib/infra/redis";
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -186,34 +187,130 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           }],
           usage
         }));
-      } else {
-        // For now, LangGraph doesn't support streaming in the same way
-        // Return as non-streaming response
-        const assistantMessage = findLastAssistantMessage(result.messages);
-        const content = contentFromMessage(assistantMessage) ?? "";
-        const usageMeta = extractUsageFromMessages(result.messages);
-
-        const usage = {
-          prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
-          completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
-          total_tokens: (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) + (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
-        };
+        } else {
+        // True streaming with proper message ordering
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "Transfer-Encoding": "chunked"
+        });
 
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          id: requestId,
-          object: "chat.completion",
-          created: Math.floor(Date.now() / 1000),
-          model: BERNARD_MODEL_ID,
-          choices: [{
-            index: 0,
-            finish_reason: "stop",
-            message: { role: "assistant", content }
-          }],
-          usage
-        }));
+        try {
+          // Use message-mode streaming which preserves message ordering
+          logger.debug({ threadId, messageCount: inputMessages.length }, "Starting stream");
+
+          const stream = await graph.stream(
+            { messages: inputMessages },
+            {
+              configurable: { thread_id: threadId },
+              streamMode: ["messages"] as const,
+            }
+          );
+
+          logger.debug({ threadId }, "Stream started, waiting for events");
+
+          let responseText = "";
+          let eventCount = 0;
+
+          for await (const event of stream) {
+            eventCount++;
+            logger.debug({ threadId, eventCount, channel: event[0] }, "Received stream event");
+
+            // event is [channel, value] tuple from messages mode
+            const [channel, value] = event as [string, unknown];
+            logger.debug({ threadId, channel, valueType: Array.isArray(value) ? "array" : typeof value }, "Event details");
+
+            // Only process messages channel, not other state updates
+            if (channel === "messages" && Array.isArray(value)) {
+              logger.debug({ threadId, messageCount: value.length }, "Processing messages channel");
+
+              const messages = value as Record<string, unknown>[];
+
+              // Find the latest assistant message without tool_calls (final response)
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const msg = messages[i];
+                if (!msg) continue;
+
+                // Safely get message type - LangGraph may return plain objects
+                let msgType: string | undefined;
+                try {
+                  const msgTypeGetter = (msg as { _getType?: () => string })._getType;
+                  msgType = msgTypeGetter ? msgTypeGetter() : (msg as { type?: string }).type;
+                } catch {
+                  // Fallback for malformed messages
+                  msgType = (msg as { type?: string }).type;
+                }
+                const role = (msg as { role?: string }).role;
+
+                // Check if it's an AI/assistant message without tool_calls
+                const isAiMessage = msgType === "ai" || role === "assistant";
+                const hasToolCalls = (msg as { tool_calls?: unknown[] }).tool_calls?.length;
+
+                if (isAiMessage && !hasToolCalls && "content" in msg) {
+                  const content = (msg as { content: string }).content;
+                  if (typeof content === "string" && content.length > 0) {
+                    // Emit delta for new content
+                    const delta = content.slice(responseText.length);
+                    if (delta) {
+                      responseText = content;
+
+                      const chunkData = {
+                        id: requestId,
+                        object: "chat.completion.chunk",
+                        created: Math.floor(Date.now() / 1000),
+                        model: BERNARD_MODEL_ID,
+                        choices: [{
+                          index: 0,
+                          delta: { content: delta },
+                          finish_reason: null
+                        }]
+                      };
+                      res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+                    }
+                  }
+                  break; // Only emit from the most recent response
+                }
+              }
+            }
+          }
+
+          // Send final chunk
+          const finalChunk = {
+            id: requestId,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: BERNARD_MODEL_ID,
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: "stop"
+            }]
+          };
+          res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+          res.write("data: [DONE]\n\n");
+
+        } catch (error) {
+          logger.error({ err: error }, "Streaming failed");
+          const errorChunk = {
+            id: requestId,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: BERNARD_MODEL_ID,
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: "error"
+            }]
+          };
+          res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+          res.write("data: [DONE]\n\n");
+        } finally {
+          res.end();
+        }
+        return;
       }
     } catch (error) {
       logger.error({ err: error }, "Request failed");
@@ -234,3 +331,59 @@ const server = createServer(handleRequest);
 server.listen(PORT, HOST, () => {
   logger.info({ host: HOST, port: PORT }, "Bernard server running");
 });
+
+// Graceful shutdown handling for tsx watch restarts
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  logger.info({ signal }, "Received shutdown signal, starting graceful shutdown");
+
+  // Close HTTP server with a timeout
+  const httpTimeout = setTimeout(() => {
+    logger.warn("HTTP server close timeout, forcing exit");
+    process.exit(1);
+  }, 3000);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+    clearTimeout(httpTimeout);
+    logger.info("HTTP server closed");
+  } catch (err) {
+    clearTimeout(httpTimeout);
+    logger.error({ err }, "Error closing HTTP server");
+  }
+
+  // Disconnect Redis if connected
+  try {
+    const redis = getRedis();
+    if (redis.status === "ready" || redis.status === "connect") {
+      await redis.quit();
+      logger.info("Redis connection closed");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Error closing Redis connection");
+  }
+
+  // Give the event loop a chance to clean up, then exit
+  setTimeout(() => {
+    logger.info("Exiting process");
+    process.exit(0);
+  }, 100);
+}
+
+// Register signal handlers for graceful shutdown
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

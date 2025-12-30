@@ -57,7 +57,9 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     prefix: '/chat/completions',
     rewritePrefix: '/v1/chat/completions',
     http2: false,
-    // Forward cookies for auth
+    // Enable streaming - don't buffer responses
+    disableContentHandling: true,
+    // Pass through all headers including Transfer-Encoding
     rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
       const cookie = req.headers.cookie;
       return {

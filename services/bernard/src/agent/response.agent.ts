@@ -6,12 +6,18 @@ import { buildResponseSystemPrompt } from "./prompts/response";
 import type { ToolWithInterpretation } from "@/agent/tool";
 
 /**
+ * Callback for streaming response tokens
+ */
+export type ResponseStreamCallback = (chunk: string) => void;
+
+/**
  * Context for response agent
  */
 export type ResponseAgentContext = {
   llmCaller: LLMCaller;
   toolDefinitions?: ToolWithInterpretation[];
   usedTools?: string[];
+  streamCallback?: ResponseStreamCallback;
 };
 
 /**
@@ -25,7 +31,7 @@ export async function responseAgentNode(
   config: { configurable?: { thread_id?: string } },
   context: ResponseAgentContext
 ): Promise<Partial<BernardStateType>> {
-  const { llmCaller, toolDefinitions, usedTools = [] } = context;
+  const { llmCaller, toolDefinitions, usedTools = [], streamCallback } = context;
 
   // Build response system prompt
   const systemPrompt = buildResponseSystemPrompt(
@@ -61,14 +67,24 @@ export async function responseAgentNode(
   if (responseConfig.options?.maxTokens !== undefined) {
     llmConfig.maxTokens = responseConfig.options.maxTokens;
   }
-  const response = await llmCaller.complete(
-    messages,
-    llmConfig
-  );
+
+  let responseText = "";
+
+  // Use streaming if callback is provided
+  if (streamCallback) {
+    for await (const chunk of llmCaller.streamText(messages, llmConfig)) {
+      responseText += chunk;
+      streamCallback(chunk);
+    }
+  } else {
+    // Fallback to non-streaming
+    const response = await llmCaller.complete(messages, llmConfig);
+    responseText = response.content;
+  }
 
   // Create AIMessage from response
   const { AIMessage } = await import("@langchain/core/messages");
-  const aiMessage = new AIMessage(response.content);
+  const aiMessage = new AIMessage(responseText);
 
   return {
     messages: [aiMessage],
