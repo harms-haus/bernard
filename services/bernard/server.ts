@@ -3,28 +3,29 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import pino from "pino";
-import { createTextChatGraph } from "./src/agent/graph/text-chat.graph";
-import { getRouterTools } from "./src/agent/tool";
-import { createLLMCaller } from "./src/agent/llm/factory";
-import { getSettings } from "./lib/config/settingsCache";
-import type { RoutingAgentContext } from "./src/agent/routing.agent";
-import type { ResponseAgentContext } from "./src/agent/response.agent";
+
 import {
-  BERNARD_MODEL_ID,
-  isBernardModel,
-  mapChatMessages,
-  findLastAssistantMessage,
-  contentFromMessage,
-  extractUsageFromMessages,
   listModels,
   validateAuth,
-  type OpenAIMessage
-} from "./lib/openai";
+  isBernardModel,
+  BERNARD_MODEL_ID,
+  mapChatMessages,
+  type OpenAIMessage,
+  findLastAssistantMessage,
+  contentFromMessage,
+  extractUsageFromMessages
+} from "@/lib/openai";
+import { getSettings } from "@/lib/config";
+import { createLLMCaller } from "@/agent/llm/factory";
+import { getRouterTools } from "@/agent/tool";
+import type { RoutingAgentContext } from "@/agent/routing.agent";
+import type { ResponseAgentContext } from "@/agent/response.agent";
+import { createTextChatGraph } from "@/agent/graph/text-chat.graph";
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
   base: { service: "bernard" },
-  timestamp: pino.stdTimeFunctions.isoTime
+  timestamp: pino.stdTimeFunctions.isoTime,
 });
 
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
@@ -135,19 +136,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Use chatId as thread_id or generate one
       const threadId = body.chatId || `thread_${Date.now()}`;
 
-      logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph.invoke()");
+      const timeoutMs = 5 * 60 * 1000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Graph execution timeout after 5 minutes")), timeoutMs);
+      });
 
-      // Invoke graph
-      const result = await graph.invoke(
-        {
-          messages: inputMessages,
-        },
-        {
-          configurable: {
-            thread_id: threadId,
+      logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph.invoke() with timeout");
+
+      const result = await Promise.race([
+        graph.invoke(
+          {
+            messages: inputMessages,
           },
-        }
-      );
+          {
+            configurable: {
+              thread_id: threadId,
+            },
+          }
+        ),
+        timeoutPromise,
+      ]);
 
       logger.debug({ threadId, resultMessageCount: result.messages.length }, "graph.invoke() completed");
 

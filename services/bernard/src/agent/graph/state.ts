@@ -1,10 +1,15 @@
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 
 /**
+ * Maximum number of router→tools→router loop iterations to prevent infinite loops
+ */
+export const MAX_ROUTER_ITERATIONS = 10;
+
+/**
  * Bernard LangGraph State Definition
- * 
+ *
  * This state is shared across both voice and text chat graphs.
- * It tracks messages, memories, tool results, and status updates.
+ * It tracks messages, memories, tool results, status updates, and loop iteration count.
  */
 export const BernardState = Annotation.Root({
   ...MessagesAnnotation.spec,
@@ -19,6 +24,10 @@ export const BernardState = Annotation.Root({
   status: Annotation<string>({
     reducer: (_, y) => y,
     default: () => "pending",
+  }),
+  iterationCount: Annotation<number>({
+    reducer: () => 0,
+    default: () => 0,
   }),
 });
 

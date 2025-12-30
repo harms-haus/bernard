@@ -10,13 +10,15 @@ source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
-    PID=$(lsof -t -i:$PORT)
+    PID=$(lsof -t -i:$PORT 2>/dev/null)
     if [ ! -z "$PID" ]; then
-        kill -9 $PID
+        kill -9 $PID 2>/dev/null
         log "Stopped $SERVICE_NAME (PID: $PID)"
     else
         log "$SERVICE_NAME not running on port $PORT"
     fi
+    # Also kill any remaining tsx watch processes
+    pkill -f "tsx watch server.ts" 2>/dev/null
 }
 
 init() {
@@ -75,7 +77,7 @@ start() {
     log "Starting $SERVICE_NAME..."
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
     mkdir -p "$LOG_DIR"
-    cd "$DIR" && npm run dev 2>&1 | sed "s/\[BERNARD\]/[    BERNARD    ]/g" | tee "$LOG_DIR/bernard.log" &
+    cd "$DIR" && npm run dev 2>&1 | tee "$LOG_DIR/bernard.log" | sed "s/^/\\033\[0;32m\[    BERNARD    \\033\[0m\\] /" &
 
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..60}; do
