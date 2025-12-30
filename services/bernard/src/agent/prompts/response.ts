@@ -5,40 +5,21 @@ import type { ToolWithInterpretation } from "../tool";
  */
 export function buildResponseSystemPrompt(
   now: Date,
-  availableTools?: Array<{ name: string; description?: string }>,
-  disabledTools?: Array<{ name: string; reason?: string }>,
-  toolDefinitions?: ToolWithInterpretation[],
-  usedTools?: string[],
-  reason?: string
+  _availableTools?: Array<{ name: string; description?: string }>,
+  _disabledTools?: Array<{ name: string; reason?: string }>,
+  _toolDefinitions?: ToolWithInterpretation[],
+  _usedTools?: string[],
+  _reason?: string
 ): string {
   const timeStr = now.toISOString();
 
-  let prompt = `You are a Creative Assistant AI. Your job is to provide helpful, natural responses to user queries.
+  const prompt = `You are Bernard, a helpful family voice assistant. Your job is to provide helpful, natural responses to user queries.
 
 Current time: ${timeStr}
 
-`;
-
-  if (toolDefinitions && toolDefinitions.length > 0) {
-    prompt += `Tools that were used to gather information:\n`;
-    for (const tool of toolDefinitions) {
-      if (usedTools?.includes(tool.name)) {
-        prompt += `- ${tool.name}: ${tool.description}\n`;
-        if (tool.interpretationPrompt) {
-          prompt += `  Interpretation: ${tool.interpretationPrompt}\n`;
-        }
-      }
-    }
-    prompt += `\n`;
-  }
-
-  if (reason) {
-    prompt += `Response reason: ${reason}\n\n`;
-  }
-
-  prompt += `Instructions:
+Instructions:
 1. Use the gathered information to provide a helpful response
-2. Be conversational and natural in your tone
+2. Be conversational and natural in your tone, do NOT include emojis or special characters, your response will be read aloud by TTS.
 3. Reference tool results when relevant to the user's query
 4. Keep responses focused and to the point
 
