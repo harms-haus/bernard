@@ -309,6 +309,7 @@ class APIClient {
 
   async chat(messages: ConversationMessage[]): Promise<ChatResponse> {
     const response = await fetch(`/v1/chat/completions`, {
+      credentials: 'same-origin',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -332,6 +333,7 @@ class APIClient {
 
   async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal): Promise<ReadableStream> {
     const response = await fetch(`/v1/chat/completions`, {
+      credentials: 'same-origin',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -369,6 +371,7 @@ class APIClient {
     }
     
     const response = await fetch(`${this.baseUrl}/history?${params.toString()}`, {
+      credentials: 'same-origin',
       headers: this.getAuthHeaders()
     });
 
@@ -382,6 +385,7 @@ class APIClient {
 
   async updateConversationGhostStatus(conversationId: string, ghost: boolean): Promise<{ conversationId: string; ghost: boolean; updated: boolean }> {
     const response = await fetch(`${this.baseUrl}/conversations/${conversationId}`, {
+      credentials: 'same-origin',
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -399,6 +403,7 @@ class APIClient {
 
   async deleteConversation(conversationId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+      credentials: 'same-origin',
       method: 'DELETE',
       headers: this.getAuthHeaders()
     });
@@ -411,6 +416,7 @@ class APIClient {
 
   async closeConversation(conversationId: string, reason: string = 'manual'): Promise<void> {
     const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+      credentials: 'same-origin',
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -434,6 +440,7 @@ class APIClient {
     });
 
     const response = await fetch(`${this.baseUrl}/tasks?${params}`, {
+      credentials: 'same-origin',
       headers: this.getAuthHeaders()
     });
 
@@ -446,6 +453,7 @@ class APIClient {
 
   async getTask(taskId: string): Promise<TaskDetail> {
     const response = await fetch(`${this.baseUrl}/tasks/${taskId}`, {
+      credentials: 'same-origin',
       headers: this.getAuthHeaders()
     });
 

@@ -3,6 +3,9 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/
 import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import pino from "pino";
+
+const logger = pino({ base: { service: "bernard" } });
 
 // Types for LangChain message serialization
 interface SerializedLangChainMessage {
@@ -39,18 +42,36 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       throw new Error("API key is required for ChatOpenAILLMCaller");
     }
 
+    // OpenRouter requires HTTP-Referer and Origin headers for authentication
+    // These headers help OpenRouter identify the source of the request
+    const configuration: {
+      baseURL?: string;
+      defaultHeaders?: Record<string, string>;
+    } = {};
+
+    if (baseURL) {
+      configuration.baseURL = baseURL;
+    }
+
+    // Add OpenRouter-required headers for self-hosted/local deployments
+    // These help OpenRouter validate the request source
+    configuration.defaultHeaders = {
+      "HTTP-Referer": "http://localhost:3000",
+      "Origin": "http://localhost:3000",
+    };
+
     this.client = new ChatOpenAI({
-      model: model || "gpt-3.5-turbo", // Default fallback model
+      model: model || "gpt-3.5-turbo",
       apiKey: apiKey.trim(),
-      ...(baseURL && { configuration: { baseURL } }),
+      configuration,
       verbose: false,
     });
   }
 
   /**
-   * Cleans messages to ensure they are compatible with OpenAI API and other strict providers.
-   * Maps LangChain message types to proper message classes and ensures tool_calls/IDs are consistent.
-   */
+    * Cleans messages to ensure they are compatible with OpenAI API and other strict providers.
+    * Maps LangChain message types to proper message classes and ensures tool_calls/IDs are consistent.
+    */
   private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
     return messages.map((msg, index) => {
       const extendedMsg = msg as unknown as ExtendedBaseMessage;
@@ -194,7 +215,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
 
       return result;
     } catch (error) {
-      console.error("❌ ChatOpenAI API call failed:", error);
+      logger.error({ err: error }, "ChatOpenAI API call failed");
       if (error instanceof Error && error.message.includes("Missing credentials")) {
         throw new Error("Invalid API key or missing authentication. Please check your API key configuration.");
       }
@@ -248,32 +269,15 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         }
       } catch (streamError) {
         // If we get an error during iteration, it's likely a parsing error
-        console.error("❌ Error during stream iteration:", {
-          error: streamError,
-          messages: JSON.stringify(messages, null, 2),
-        });
+        logger.error({ err: streamError }, "Error during stream iteration");
         throw streamError;
       }
     } catch (error) {
-      console.error("❌ ChatOpenAI streaming failed:", {
-        error,
-        messageCount: messages.length,
-        config,
-        // Log a summary of messages for quick debugging
-        messageSummary: messages.map(m => {
-          const extendedMsg = m as unknown as ExtendedBaseMessage;
-          return {
-            type: extendedMsg.type || extendedMsg._getType?.() || "unknown",
-            role: extendedMsg.role,
-            contentLength: typeof m.content === "string" ? m.content.length : "complex",
-            hasToolCalls: !!extendedMsg.tool_calls?.length
-          };
-        })
-      });
+      logger.error({ err: error, messageCount: messages.length }, "ChatOpenAI streaming failed");
 
       // Log full messages for 400 errors or other provider errors
       if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
-        console.error("DEBUG: Malformed messages sent to provider:", JSON.stringify(this.cleanMessages(messages), null, 2));
+        logger.debug({ messages: this.cleanMessages(messages) }, "Malformed messages sent to provider");
       }
 
       // Handle specific LangChain/ChatOpenAI errors
@@ -290,11 +294,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         if (error instanceof TypeError && (error.message.includes("Cannot use 'in' operator") || error.message.includes("output_version"))) {
           // This is a LangChain parsing bug - the API response format may not match what LangChain expects
           // This can happen with certain API providers or LangChain versions
-          console.error("LangChain streaming parser error details:", {
-            message: error.message,
-            stack: error.stack,
-            name: error.name,
-          });
+          logger.error({ err: error }, "LangChain streaming parser error");
           throw new Error(
             "Streaming response parsing failed. This may be due to:\n" +
             "1. LangChain version incompatibility with the API provider\n" +
@@ -317,9 +317,9 @@ export class ChatOpenAILLMCaller implements LLMCaller {
   }
 
   /**
-   * Complete a prompt with tool binding support, returning the full AIMessage.
-   * This is used by the router harness to extract tool_calls.
-   */
+    * Complete a prompt with tool binding support, returning the full AIMessage.
+    * This is used by the router harness to extract tool_calls.
+    */
   async completeWithTools(
     messages: BaseMessage[],
     config: LLMConfig,
@@ -356,14 +356,10 @@ export class ChatOpenAILLMCaller implements LLMCaller {
 
       return response as AIMessage;
     } catch (error) {
-      console.error("❌ ChatOpenAI API call with tools failed:", {
-        error,
-        messageCount: messages.length,
-        config,
-      });
+      logger.error({ err: error, messageCount: messages.length }, "ChatOpenAI API call with tools failed");
 
       if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
-        console.error("DEBUG: Malformed messages sent to provider (with tools):", JSON.stringify(this.cleanMessages(messages), null, 2));
+        logger.debug({ messages: this.cleanMessages(messages) }, "Malformed messages sent to provider (with tools)");
       }
 
       if (error instanceof Error && error.message.includes("Missing credentials")) {

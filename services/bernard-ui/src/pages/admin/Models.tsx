@@ -53,6 +53,7 @@ export default function Models() {
     apiKey: ''
   });
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
   const [providerModels, setProviderModels] = useState<Record<string, ModelInfo[]>>({});
   const [embeddingDimensionChanged, setEmbeddingDimensionChanged] = useState(false);
   const [embeddingDimension, setEmbeddingDimension] = useState<string>('');
@@ -223,13 +224,24 @@ export default function Models() {
 
   const loadProviderModels = async (providerId: string) => {
     try {
+      setLoadingModels(prev => ({ ...prev, [providerId]: true }));
       const models = await adminApiClient.getProviderModels(providerId);
       const updatedModels = { ...providerModels, [providerId]: models };
       setProviderModels(updatedModels);
       // Save to localStorage
       localStorage.setItem('providerModels', JSON.stringify(updatedModels));
+      
+      if (models.length === 0) {
+        toast.warning('No models found', 'The provider may not have any models available or the request failed.');
+      } else {
+        toast.success('Models loaded', `Successfully loaded ${models.length} models`);
+      }
     } catch (error) {
       console.error('Failed to load models:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error('Failed to load models', errorMessage);
+    } finally {
+      setLoadingModels(prev => ({ ...prev, [providerId]: false }));
     }
   };
 
@@ -617,9 +629,9 @@ export default function Models() {
                               <TestTube className="mr-2 h-4 w-4" />
                               {testingProvider === provider.id ? 'Testing...' : 'Test Provider'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => loadProviderModels(provider.id)}>
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Load Models
+                            <DropdownMenuItem onClick={() => loadProviderModels(provider.id)} disabled={loadingModels[provider.id]}>
+                              <RefreshCw className={`mr-2 h-4 w-4 ${loadingModels[provider.id] ? 'animate-spin' : ''}`} />
+                              {loadingModels[provider.id] ? 'Loading...' : 'Load Models'}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleEditProvider(provider)}>
                               <Edit className="mr-2 h-4 w-4" />

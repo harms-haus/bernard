@@ -37,7 +37,8 @@ fastify.addHook('preHandler', async (request, reply) => {
     url.startsWith('/bernard/') || // Bernard UI is handled separately
     url.startsWith('/@vite/') || // Vite client resources
     url.startsWith('/src/') || // Vite source files
-    url === '/@react-refresh' // Vite React refresh
+    url === '/@react-refresh' || // Vite React refresh
+    url.startsWith('/v1/') // OpenAI-compatible endpoints - auth handled by backend services
   ) {
     return;
   }

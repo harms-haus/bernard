@@ -29,9 +29,30 @@ export function listModels(): ModelInfo[] {
   ];
 }
 
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {};
+  const cookies: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const [name, value] = part.trim().split('=');
+    if (name && value) {
+      cookies[name] = value;
+    }
+  }
+  return cookies;
+}
+
 export async function validateAuth(req: IncomingMessage) {
   const authHeader = req.headers.authorization;
-  const token = bearerToken(authHeader) || ""; // In agent service, we might also check cookies if needed
+  const cookieHeader = req.headers.cookie;
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies["bernard_session"];
+  
+  // Try bearer token first, then session cookie
+  const token = bearerToken(authHeader) || sessionCookie || "";
+  
+  if (!token) {
+    return { error: { message: "Missing authentication token", status: 401 } };
+  }
   
   const result = await validateAccessToken(token);
   if ("error" in result) {

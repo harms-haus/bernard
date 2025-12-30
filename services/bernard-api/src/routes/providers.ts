@@ -189,21 +189,42 @@ export function registerProviderRoutes(fastify: FastifyInstance) {
       interface OpenAIModelsResponse {
         data?: Array<{ id: string; object: string; created: number; owned_by: string }>;
       }
-      const models = await fetch(`${provider.baseUrl}/v1/models`, {
-        headers: {
-          'Authorization': `Bearer ${provider.apiKey}`,
-          'Content-Type': 'application/json'
+      
+      let models: Array<{ id: string; object: string; created: number; owned_by: string }> = [];
+      let fetchError: string | null = null;
+      
+      const normalizedBase = provider.baseUrl.replace(/\/$/, '');
+      const modelsUrl = normalizedBase.endsWith('/v1') 
+        ? `${normalizedBase}/models` 
+        : `${normalizedBase}/v1/models`;
+      
+      try {
+        const response = await fetch(modelsUrl, {
+          headers: {
+            'Authorization': `Bearer ${provider.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          fetchError = `Provider returned ${response.status}: ${response.statusText}${errorText ? ` - ${errorText}` : ''}`;
+        } else {
+          const data = await response.json() as OpenAIModelsResponse;
+          models = data.data || [];
         }
-      }).then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`Provider returned ${res.status}: ${res.statusText}`);
-        }
-        const data = await res.json() as OpenAIModelsResponse;
-        return data.data || [];
-      }).catch((error) => {
-        logger.error({ error, providerId: id }, 'Failed to fetch models from provider');
-        return [];
-      });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        fetchError = `Failed to connect to provider: ${errorMessage}`;
+      }
+
+      if (fetchError) {
+        logger.error({ error: fetchError, providerId: id }, 'Failed to fetch models from provider');
+        return reply.status(502).send({ 
+          error: fetchError,
+          providerId: id
+        });
+      }
 
       logger.info({ action: "providers.models.read", adminId: admin.user.id, providerId: id, count: models.length });
       return reply.send(models);
