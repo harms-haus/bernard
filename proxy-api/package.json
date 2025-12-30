@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "dev:whisper": "tsx src/services/whisper.ts",
     "build": "tsc",
     "type-check": "tsc --noEmit",

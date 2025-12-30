@@ -4,6 +4,9 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { LLMCaller } from "@/agent/llm/llm";
 import { buildRouterSystemPrompt } from "./prompts/router";
+import pino from "pino";
+
+const logger = pino({ base: { service: "bernard" } });
 
 /**
  * Context for routing agent
@@ -70,11 +73,16 @@ export async function routingAgentNode(
   if (routerConfig.options?.maxTokens !== undefined) {
     llmConfig.maxTokens = routerConfig.options.maxTokens;
   }
+
+  logger.debug({ model: llmConfig.model, toolsCount: tools.length }, "Calling LLM");
+
   const aiMessage = await llmCaller.completeWithTools(
     messages,
     llmConfig,
     tools
   );
+
+  logger.debug({ toolCallsCount: aiMessage.tool_calls?.length ?? 0 }, "LLM response received");
 
   // Update status based on whether tools were called
   const hasToolCalls = aiMessage.tool_calls && aiMessage.tool_calls.length > 0;

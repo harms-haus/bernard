@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
+import pino from "pino";
 import { createTextChatGraph } from "./src/agent/graph/text-chat.graph";
 import { getRouterTools } from "./src/agent/tool";
 import { createLLMCaller } from "./src/agent/llm/factory";
@@ -20,12 +21,18 @@ import {
   type OpenAIMessage
 } from "./lib/openai";
 
+const logger = pino({
+  level: process.env["LOG_LEVEL"] ?? "info",
+  base: { service: "bernard" },
+  timestamp: pino.stdTimeFunctions.isoTime
+});
+
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
 const HOST = process.env["HOST"] || "127.0.0.1";
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  
+
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -128,6 +135,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Use chatId as thread_id or generate one
       const threadId = body.chatId || `thread_${Date.now()}`;
 
+      logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph.invoke()");
+
       // Invoke graph
       const result = await graph.invoke(
         {
@@ -139,6 +148,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           },
         }
       );
+
+      logger.debug({ threadId, resultMessageCount: result.messages.length }, "graph.invoke() completed");
 
       if (!shouldStream) {
         // Extract final assistant message from LangGraph result
@@ -197,6 +208,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }));
       }
     } catch (error) {
+      logger.error({ err: error }, "Request failed");
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }
@@ -212,6 +224,5 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 const server = createServer(handleRequest);
 
 server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
-  console.log(`🚀 Bernard server running at http://${HOST}:${PORT}`);
+  logger.info({ host: HOST, port: PORT }, "Bernard server running");
 });

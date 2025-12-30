@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import proxy from '@fastify/http-proxy';
 import axios from 'axios';
 import { logger } from '@/lib/logger'
@@ -57,6 +57,14 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     prefix: '/chat/completions',
     rewritePrefix: '/v1/chat/completions',
     http2: false,
+    // Forward cookies for auth
+    rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
+      const cookie = req.headers.cookie;
+      return {
+        ...headers,
+        ...(cookie ? { cookie } : {})
+      };
+    },
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_AGENT_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
