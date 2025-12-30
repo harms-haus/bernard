@@ -22,6 +22,7 @@ import type { RoutingAgentContext } from "@/agent/routing.agent";
 import type { ResponseAgentContext } from "@/agent/response.agent";
 import { createTextChatGraph } from "@/agent/graph/text-chat.graph";
 import { getRedis } from "@/lib/infra/redis";
+import { traceLogger } from "@/lib/tracing/trace.logger";
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -98,6 +99,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
 
       const inputMessages = mapChatMessages(body.messages as OpenAIMessage[]);
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const threadId = body.chatId || `thread_${Date.now()}`;
+
+      // Start trace for this request
+      const initialMessagesForTrace = (body.messages as Array<{ role: string; content: string }>).map(m => ({
+        role: m.role,
+        content: typeof m.content === "string" ? m.content : "[complex content]"
+      }));
+      traceLogger.startTrace(requestId, threadId, initialMessagesForTrace, shouldStream);
+      traceLogger.addEvent("request_received", { request_id: requestId, thread_id: threadId, message_count: body.messages.length });
       const settings = await getSettings();
 
       // Get model names from settings
@@ -134,9 +145,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Create text chat graph (voice mode not supported in this endpoint)
       const graph = createTextChatGraph(routingContext, responseContext);
 
-      // Use chatId as thread_id or generate one
-      const threadId = body.chatId || `thread_${Date.now()}`;
-
       const timeoutMs = 5 * 60 * 1000;
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("Graph execution timeout after 5 minutes")), timeoutMs);
@@ -172,8 +180,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           total_tokens: (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) + (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
         };
 
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
           id: requestId,
@@ -187,6 +193,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           }],
           usage
         }));
+
+        // Complete trace for non-streaming response
+        traceLogger.recordFinalResponse(content);
+        traceLogger.completeTrace();
+        await traceLogger.writeTrace();
         } else {
         // True streaming with proper message ordering
         res.writeHead(200, {
@@ -195,8 +206,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           "Connection": "keep-alive",
           "Transfer-Encoding": "chunked"
         });
-
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         try {
           // Use message-mode streaming which preserves message ordering
@@ -214,6 +223,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
           let responseText = "";
           let eventCount = 0;
+          const emittedMessageHashes = new Set<string>();
 
           for await (const event of stream) {
             eventCount++;
@@ -228,6 +238,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
               logger.debug({ threadId, messageCount: value.length }, "Processing messages channel");
 
               const messages = value as Record<string, unknown>[];
+
+              if (eventCount <= 3) {
+                logger.debug({ threadId, eventCount, messageCount: messages.length }, "First few events - messages overview");
+                for (let m = 0; m < Math.min(messages.length, 5); m++) {
+                  const msg = messages[m];
+                  const msgContent = (msg as { content?: unknown }).content;
+                  const msgType = (msg as { type?: string }).type;
+                  const msgRole = (msg as { role?: string }).role;
+                  const contentPreview = typeof msgContent === 'string' 
+                    ? msgContent.substring(0, 100).replace(/\n/g, '\\n')
+                    : String(msgContent).substring(0, 100);
+                  logger.debug({ threadId, msgIndex: m, msgType, msgRole, contentPreview, contentLength: typeof msgContent === 'string' ? msgContent.length : 'N/A' }, "Message details");
+                }
+              }
 
               // Find the latest assistant message without tool_calls (final response)
               for (let i = messages.length - 1; i >= 0; i--) {
@@ -252,23 +276,44 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
                 if (isAiMessage && !hasToolCalls && "content" in msg) {
                   const content = (msg as { content: string }).content;
                   if (typeof content === "string" && content.length > 0) {
-                    // Emit delta for new content
-                    const delta = content.slice(responseText.length);
-                    if (delta) {
-                      responseText = content;
+                    // Only emit content after we've seen tool calls or we're deep in the stream
+                    // This prevents the router's "I'm ready" message from being streamed
+                    // before the response node actually runs
+                    const seenToolCalls = messages.some(m => (m as { type?: string }).type === "tool");
+                    const shouldEmit = seenToolCalls || eventCount > 3;
 
-                      const chunkData = {
-                        id: requestId,
-                        object: "chat.completion.chunk",
-                        created: Math.floor(Date.now() / 1000),
-                        model: BERNARD_MODEL_ID,
-                        choices: [{
-                          index: 0,
-                          delta: { content: delta },
-                          finish_reason: null
-                        }]
-                      };
-                      res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+                    if (shouldEmit) {
+                      // Create a hash of the message content to detect duplicates
+                      // This handles LangGraph's known issue of emitting the same message multiple times
+                      const contentHash = `${msgType}:${typeof content === 'string' ? content : String(content)}`;
+                      
+                      // Skip if we've already emitted this exact message content
+                      if (emittedMessageHashes.has(contentHash)) {
+                        logger.debug({ threadId, contentPreview: content.substring(0, 50) }, "Skipping duplicate message content");
+                        break;
+                      }
+                      
+                      // Emit delta for new content
+                      const delta = content.slice(responseText.length);
+                      if (delta) {
+                        responseText = content;
+                        emittedMessageHashes.add(contentHash);
+
+                        const chunkData = {
+                          id: requestId,
+                          object: "chat.completion.chunk",
+                          created: Math.floor(Date.now() / 1000),
+                          model: BERNARD_MODEL_ID,
+                          choices: [{
+                            index: 0,
+                            delta: { content: delta },
+                            finish_reason: null
+                          }]
+                        };
+                        res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+                      }
+                    } else {
+                      logger.debug({ threadId, eventCount, contentPreview: content.substring(0, 50) }, "Skipping early router content");
                     }
                   }
                   break; // Only emit from the most recent response
@@ -308,12 +353,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
           res.write("data: [DONE]\n\n");
         } finally {
+          // Complete trace for streaming response (content recorded incrementally via events)
+          traceLogger.completeTrace();
+          await traceLogger.writeTrace();
           res.end();
         }
         return;
       }
     } catch (error) {
       logger.error({ err: error }, "Request failed");
+      // Complete trace on error
+      traceLogger.addEvent("request_received", { error: String(error) });
+      traceLogger.completeTrace();
+      await traceLogger.writeTrace();
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }

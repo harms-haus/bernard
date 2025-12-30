@@ -149,3 +149,5 @@ dump.rdb
 *.zip
 *.rar
 *.7z
+
+trace.json

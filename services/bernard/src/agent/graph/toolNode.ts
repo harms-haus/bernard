@@ -1,6 +1,7 @@
 import type { BernardStateType } from "./state";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import { traceLogger } from "@/lib/tracing/trace.logger";
 
 /**
  * Tool Node - Executes tool calls in parallel
@@ -44,9 +45,22 @@ export function createToolNode(tools: StructuredToolInterface[]) {
           });
         }
 
+        const startTime = Date.now();
         try {
+          // Trace tool call start
+          if (traceLogger.isActive()) {
+            traceLogger.recordToolCallStart(toolName, toolCallId, toolCall.args as Record<string, unknown>);
+          }
+
           const result = await tool.invoke(toolCall.args) as unknown;
+          const duration = Date.now() - startTime;
           const content = typeof result === "string" ? result : JSON.stringify(result);
+
+          // Trace tool call completion
+          if (traceLogger.isActive()) {
+            traceLogger.recordToolCallComplete(toolName, toolCallId, content, duration);
+          }
+
           return new ToolMessage({
             content,
             tool_call_id: toolCallId,
@@ -54,6 +68,13 @@ export function createToolNode(tools: StructuredToolInterface[]) {
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
+          const duration = Date.now() - startTime;
+
+          // Trace tool call error
+          if (traceLogger.isActive()) {
+            traceLogger.recordToolCallError(toolName, toolCallId, errorMessage, duration);
+          }
+
           return new ToolMessage({
             content: `Error: ${errorMessage}`,
             tool_call_id: toolCallId,

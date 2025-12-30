@@ -10,10 +10,37 @@ source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
-    PID=$(lsof -t -i:$PORT)
-    if [ ! -z "$PID" ]; then
-        kill -9 $PID
-        log "Stopped $SERVICE_NAME (PID: $PID)"
+
+    # Find all processes related to proxy-api by matching the command
+    # This avoids killing other tsx watch processes from other services
+    local pids=$(pgrep -f "tsx.*proxy-api" 2>/dev/null)
+
+    if [ -z "$pids" ]; then
+        # Fallback: find by port
+        pids=$(lsof -t -i:$PORT 2>/dev/null)
+    fi
+
+    if [ ! -z "$pids" ]; then
+        for pid in $pids; do
+            log "Stopping $SERVICE_NAME (PID: $pid)..."
+            kill -TERM $pid 2>/dev/null
+
+            # Wait for graceful shutdown
+            for i in {1..10}; do
+                if ! kill -0 $pid 2>/dev/null; then
+                    log "Stopped $SERVICE_NAME (PID: $pid)"
+                    break
+                fi
+                sleep 0.5
+            done
+
+            # Force kill if still running
+            if kill -0 $pid 2>/dev/null; then
+                kill -9 $pid 2>/dev/null
+                sleep 0.2
+                log "Force killed $SERVICE_NAME (PID: $pid)"
+            fi
+        done
     else
         log "$SERVICE_NAME not running on port $PORT"
     fi

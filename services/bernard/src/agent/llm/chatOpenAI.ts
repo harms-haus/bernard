@@ -4,6 +4,7 @@ import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import pino from "pino";
+import { traceLogger } from "@/lib/tracing/trace.logger";
 
 const logger = pino({ base: { service: "bernard" } });
 
@@ -154,6 +155,25 @@ export class ChatOpenAILLMCaller implements LLMCaller {
   async complete(messages: BaseMessage[], config: LLMConfig): Promise<LLMResponse> {
     try {
       const cleanedMessages = this.cleanMessages(messages);
+
+      // Trace the LLM call
+      if (traceLogger.isActive()) {
+        const messagesForTrace = cleanedMessages.map(m => {
+          const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
+          return {
+            type: extMsg.type,
+            content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
+            ...(extMsg.tool_calls ? {
+              tool_calls: extMsg.tool_calls.map(tc => ({
+                name: tc.name,
+                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
+              }))
+            } : {})
+          };
+        });
+        traceLogger.recordLLMCall("response", config.model, messagesForTrace);
+      }
+
       const invokeOptions: {
         signal?: AbortSignal;
         temperature?: number;
@@ -211,6 +231,24 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       const finishReason = metadata?.["finish_reason"] as "stop" | "length" | "content_filter" | undefined;
       if (finishReason) {
         result.finishReason = finishReason;
+      }
+
+      // Trace the LLM response
+      if (traceLogger.isActive()) {
+        const traceResponse: { content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; finish_reason?: string } = {
+          content: contentStr,
+        };
+        if (result.usage) {
+          traceResponse.usage = {
+            prompt_tokens: result.usage.promptTokens,
+            completion_tokens: result.usage.completionTokens,
+            total_tokens: result.usage.totalTokens
+          };
+        }
+        if (result.finishReason) {
+          traceResponse.finish_reason = result.finishReason;
+        }
+        traceLogger.recordLLMResponse("response", traceResponse);
       }
 
       return result;
@@ -352,7 +390,40 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       }
 
       const cleanedMessages = this.cleanMessages(messages);
+
+      // Trace the router LLM call
+      if (traceLogger.isActive()) {
+        const messagesForTrace = cleanedMessages.map(m => {
+          const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
+          return {
+            type: extMsg.type,
+            content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
+            ...(extMsg.tool_calls ? {
+              tool_calls: extMsg.tool_calls.map(tc => ({
+                name: tc.name,
+                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
+              }))
+            } : {})
+          };
+        });
+        traceLogger.recordLLMCall("router", config.model, messagesForTrace);
+      }
+
       const response = await boundClient.invoke(cleanedMessages, invokeOptions);
+
+      // Trace the router LLM response
+      if (traceLogger.isActive()) {
+        const aiMsg = response as AIMessage;
+        const content = typeof aiMsg.content === "string" ? aiMsg.content : JSON.stringify(aiMsg.content);
+        const traceResponse: { content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; finish_reason?: string } = {
+          content,
+        };
+        const finishReason = aiMsg.response_metadata?.["finish_reason"] as string | undefined;
+        if (finishReason) {
+          traceResponse.finish_reason = finishReason;
+        }
+        traceLogger.recordLLMResponse("router", traceResponse);
+      }
 
       return response as AIMessage;
     } catch (error) {
