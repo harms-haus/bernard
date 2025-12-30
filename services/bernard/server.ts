@@ -214,7 +214,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
           let responseText = "";
           let eventCount = 0;
-          const emittedMessageHashes = new Set<string>(); // Track emitted messages to avoid duplicates from LangGraph streaming bug
 
           for await (const event of stream) {
             eventCount++;
@@ -229,20 +228,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
               logger.debug({ threadId, messageCount: value.length }, "Processing messages channel");
 
               const messages = value as Record<string, unknown>[];
-
-              if (eventCount <= 3) {
-                logger.debug({ threadId, eventCount, messageCount: messages.length }, "First few events - messages overview");
-                for (let m = 0; m < Math.min(messages.length, 5); m++) {
-                  const msg = messages[m];
-                  const msgContent = (msg as { content?: unknown }).content;
-                  const msgType = (msg as { type?: string }).type;
-                  const msgRole = (msg as { role?: string }).role;
-                  const contentPreview = typeof msgContent === 'string' 
-                    ? msgContent.substring(0, 100).replace(/\n/g, '\\n')
-                    : String(msgContent).substring(0, 100);
-                  logger.debug({ threadId, msgIndex: m, msgType, msgRole, contentPreview, contentLength: typeof msgContent === 'string' ? msgContent.length : 'N/A' }, "Message details");
-                }
-              }
 
               // Find the latest assistant message without tool_calls (final response)
               for (let i = messages.length - 1; i >= 0; i--) {
@@ -267,44 +252,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
                 if (isAiMessage && !hasToolCalls && "content" in msg) {
                   const content = (msg as { content: string }).content;
                   if (typeof content === "string" && content.length > 0) {
-                    // Only emit content after we've seen tool calls or we're deep in the stream
-                    // This prevents the router's "I'm ready" message from being streamed
-                    // before the response node actually runs
-                    const seenToolCalls = messages.some(m => (m as { type?: string }).type === "tool");
-                    const shouldEmit = seenToolCalls || eventCount > 3;
+                    // Emit delta for new content
+                    const delta = content.slice(responseText.length);
+                    if (delta) {
+                      responseText = content;
 
-                    if (shouldEmit) {
-                      // Create a hash of the message content to detect duplicates
-                      // This handles LangGraph's known issue of emitting the same message multiple times
-                      const contentHash = `${msgType}:${typeof content === 'string' ? content : String(content)}`;
-                      
-                      // Skip if we've already emitted this exact message content
-                      if (emittedMessageHashes.has(contentHash)) {
-                        logger.debug({ threadId, contentPreview: content.substring(0, 50) }, "Skipping duplicate message content");
-                        break;
-                      }
-                      
-                      // Emit delta for new content
-                      const delta = content.slice(responseText.length);
-                      if (delta) {
-                        responseText = content;
-                        emittedMessageHashes.add(contentHash);
-
-                        const chunkData = {
-                          id: requestId,
-                          object: "chat.completion.chunk",
-                          created: Math.floor(Date.now() / 1000),
-                          model: BERNARD_MODEL_ID,
-                          choices: [{
-                            index: 0,
-                            delta: { content: delta },
-                            finish_reason: null
-                          }]
-                        };
-                        res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
-                      }
-                    } else {
-                      logger.debug({ threadId, eventCount, contentPreview: content.substring(0, 50) }, "Skipping early router content");
+                      const chunkData = {
+                        id: requestId,
+                        object: "chat.completion.chunk",
+                        created: Math.floor(Date.now() / 1000),
+                        model: BERNARD_MODEL_ID,
+                        choices: [{
+                          index: 0,
+                          delta: { content: delta },
+                          finish_reason: null
+                        }]
+                      };
+                      res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
                     }
                   }
                   break; // Only emit from the most recent response

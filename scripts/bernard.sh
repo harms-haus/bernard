@@ -12,24 +12,13 @@ stop() {
     log "Stopping $SERVICE_NAME..."
     PID=$(lsof -t -i:$PORT 2>/dev/null)
     if [ ! -z "$PID" ]; then
-        kill -TERM $PID 2>/dev/null
-        for i in {1..10}; do
-            if ! kill -0 $PID 2>/dev/null; then
-                log "Stopped $SERVICE_NAME (PID: $PID)"
-                return 0
-            fi
-            sleep 0.5
-        done
         kill -9 $PID 2>/dev/null
-        sleep 0.5
-        log "Force killed $SERVICE_NAME (PID: $PID)"
+        log "Stopped $SERVICE_NAME (PID: $PID)"
     else
         log "$SERVICE_NAME not running on port $PORT"
     fi
-
-    pkill -f "tsx watch" 2>/dev/null
-    pkill -f "node.*server.ts" 2>/dev/null
-    sleep 1
+    # Also kill any remaining tsx watch processes
+    pkill -f "tsx watch server.ts" 2>/dev/null
 }
 
 init() {
