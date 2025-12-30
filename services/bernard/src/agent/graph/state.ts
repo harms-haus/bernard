@@ -26,7 +26,7 @@ export const BernardState = Annotation.Root({
     default: () => "pending",
   }),
   iterationCount: Annotation<number>({
-    reducer: () => 0,
+    reducer: (x, y) => y,
     default: () => 0,
   }),
 });
