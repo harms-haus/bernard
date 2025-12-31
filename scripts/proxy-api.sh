@@ -98,6 +98,9 @@ check() {
 }
 
 start() {
+    # Export TZ if set in environment (must be done before starting Node.js)
+    [ -n "$TZ" ] && export TZ
+
     stop
     log "Starting $SERVICE_NAME..."
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
