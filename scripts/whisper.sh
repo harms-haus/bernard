@@ -35,10 +35,9 @@ init() {
     
     # Download whisper model
     log "Downloading whisper model..."
-    cd "$DIR"
-    mkdir -p models/whisper
-    chmod +x models/download-ggml-model.sh
-    ./models/download-ggml-model.sh small models/whisper
+    mkdir -p "$SCRIPT_DIR/../models/whisper"
+    chmod +x "$DIR/models/download-ggml-model.sh"
+    "$DIR/models/download-ggml-model.sh small" "$SCRIPT_DIR/../models/whisper"
 }
 
 clean() {

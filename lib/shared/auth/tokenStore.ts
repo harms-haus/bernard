@@ -146,7 +146,7 @@ export class TokenStore {
         return this.get(id);
       })
     );
-    return tokens.filter((t): t is ApiTokenRecord => t !== null);
+    return tokens.filter((t: ApiTokenRecord | null): t is ApiTokenRecord => t !== null);
   }
 }
 

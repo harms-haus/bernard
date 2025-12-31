@@ -16,7 +16,38 @@ stop() {
 
 init() {
     log "Initializing $SERVICE_NAME..."
-    log "Please ensure vllm is installed in services/vllm/.venv"
+
+    local vllm_dir="services/vllm"
+
+    if [ ! -d "$vllm_dir" ]; then
+        log "Creating vllm directory..."
+        mkdir -p "$vllm_dir"
+    fi
+
+    log "Creating virtual environment at $vllm_dir/.venv..."
+    if [ -d "$vllm_dir/.venv" ]; then
+        rm -rf "$vllm_dir/.venv"
+    fi
+
+    if command -v python3.11 >/dev/null 2>&1; then
+        python3.11 -m venv "$vllm_dir/.venv"
+    else
+        python3 -m venv "$vllm_dir/.venv"
+    fi
+
+    log "Installing vllm and dependencies..."
+    source "$vllm_dir/.venv/bin/activate"
+    pip install --upgrade pip
+    pip install vllm transformers torch
+
+    log "Downloading nomic-embed-text-v1.5 model..."
+    export HF_HOME="$HOME/.cache/huggingface"
+    mkdir -p "$HF_HOME"
+    python -c "from transformers import AutoModel; AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)" 2>&1 | while read line; do log "  $line"; done
+
+    deactivate
+
+    log "$SERVICE_NAME initialization complete!"
 }
 
 clean() {

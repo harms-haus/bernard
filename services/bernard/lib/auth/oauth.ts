@@ -95,7 +95,7 @@ const parseState = async (provider: OAuthProvider, state: string): Promise<{ cod
   if (!raw) return null;
   try {
     return JSON.parse(raw) as { codeVerifier: string; returnTo: string };
-  } catch (err) {
+  } catch (err: unknown) {
     logger.error({ event: 'oauth.state.parse_error', provider, error: err instanceof Error ? err.message : String(err) }, "Failed to parse OAuth state");
     return null;
   }
@@ -168,7 +168,7 @@ export async function handleOAuthCallback(provider: OAuthProvider, req: Incoming
         "Set-Cookie": buildSessionCookie(session.id, maxAge)
       }
     };
-  } catch (err) {
+  } catch (err: unknown) {
     logger.error({
       event: 'oauth.callback.error',
       provider,

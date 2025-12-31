@@ -100,7 +100,7 @@ export function createRecallTaskHandler(deps: RecallTaskDependencies) {
         sections: result.sections || {},
         messages: result.messages || []
       };
-    } catch (err) {
+    } catch (err: unknown) {
       const errorMessage = formatError(err);
       deps.logger.error(`[recall_task] recall failed: ${errorMessage}`);
       return {

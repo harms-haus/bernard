@@ -129,7 +129,7 @@ export function buildTaskExecutor() {
 
       return result;
 
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       log.error({

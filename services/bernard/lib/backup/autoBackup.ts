@@ -118,11 +118,11 @@ export function scheduleAutoBackup(reason?: string) {
       const delay = Math.max(cfg.debounceSeconds, 1) * 1000;
       pendingTimer = setTimeout(() => {
         pendingTimer = null;
-        writeBackup(pendingReason).catch((err) => console.error("Auto-backup failed", err));
+        writeBackup(pendingReason).catch((err: unknown) => console.error("Auto-backup failed", err));
         pendingReason = undefined;
       }, delay);
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       console.error("Unable to schedule auto-backup", err);
     });
 }

@@ -88,7 +88,7 @@ export class SessionStore {
         return id ? this.get(id) : null;
       })
     );
-    return sessions.filter((s): s is SessionRecord => s !== null);
+    return sessions.filter((s: SessionRecord | null): s is SessionRecord => s !== null);
   }
 
   async exportAll(): Promise<SessionRecord[]> {

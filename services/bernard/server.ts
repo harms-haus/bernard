@@ -337,7 +337,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
           res.write("data: [DONE]\n\n");
 
-        } catch (error) {
+        } catch (error: unknown) {
           logger.error({ err: error }, "Streaming failed");
           const errorChunk = {
             id: requestId,
@@ -360,7 +360,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
         return;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error({ err: error }, "Request failed");
       // Complete trace on error
       traceLogger.addEvent("request_received", { error: String(error) });
@@ -413,7 +413,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     });
     clearTimeout(httpTimeout);
     logger.info("HTTP server closed");
-  } catch (err) {
+  } catch (err: unknown) {
     clearTimeout(httpTimeout);
     logger.error({ err }, "Error closing HTTP server");
   }
@@ -425,7 +425,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await redis.quit();
       logger.info("Redis connection closed");
     }
-  } catch (err) {
+  } catch (err: unknown) {
     logger.warn({ err }, "Error closing Redis connection");
   }
 
