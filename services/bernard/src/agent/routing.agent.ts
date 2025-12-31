@@ -85,6 +85,9 @@ export async function routingAgentNode(
   const hasToolCalls = aiMessage.tool_calls && aiMessage.tool_calls.length > 0;
   const status = hasToolCalls ? "gathering_data" : "data_gathered";
 
+  // Router should only output tool calls, not text content
+  aiMessage.content = "";
+
   return {
     messages: [aiMessage],
     status
