@@ -183,8 +183,13 @@ export interface ServicesSettings {
     baseUrl: string;
     token: string;
   };
-  kokoro?: {
+  tts?: {
     baseUrl: string;
+    apiKey?: string;
+  };
+  stt?: {
+    baseUrl: string;
+    apiKey?: string;
   };
 }
 
@@ -525,6 +530,59 @@ class AdminApiClient {
     return this.request<ServicesSettings>('/settings/services', {
       method: 'PUT',
       body: JSON.stringify(body)
+    });
+  }
+
+  async testHomeAssistantConnection(): Promise<{
+    status: 'success' | 'failed';
+    error?: string;
+    errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
+    message?: string;
+    testedAt: string;
+  }> {
+    return this.request('/settings/services/test/home-assistant', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async testPlexConnection(): Promise<{
+    status: 'success' | 'failed';
+    error?: string;
+    errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
+    message?: string;
+    machineIdentifier?: string;
+    testedAt: string;
+  }> {
+    return this.request('/settings/services/test/plex', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async testTtsConnection(): Promise<{
+    status: 'success' | 'failed';
+    error?: string;
+    errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
+    message?: string;
+    testedAt: string;
+  }> {
+    return this.request('/settings/services/test/tts', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async testSttConnection(): Promise<{
+    status: 'success' | 'failed';
+    error?: string;
+    errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
+    message?: string;
+    testedAt: string;
+  }> {
+    return this.request('/settings/services/test/stt', {
+      method: 'POST',
+      body: JSON.stringify({})
     });
   }
 
