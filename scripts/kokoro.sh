@@ -28,8 +28,20 @@ stop() {
 }
 
  init() {
-    log "Initializing $SERVICE_NAME..."
-    cd $DIR && uv venv .venv && source .venv/bin/activate && uv pip install -e ".[cpu]"
+     log "Initializing $SERVICE_NAME..."
+     
+     if [ ! -f "$DIR/pyproject.toml" ]; then
+         log "Removing incomplete Kokoro installation..."
+         rm -rf "$DIR"
+         log "Cloning Kokoro TTS repository..."
+         git clone https://github.com/hexgrad/kokoro.git "$DIR"
+     fi
+     
+     cd $DIR && uv venv .venv --python $(which python3) && source .venv/bin/activate && uv pip install -e . torch --upgrade
+     
+     # Download default Kokoro model
+     log "Downloading Kokoro model..."
+     source .venv/bin/activate && python -c "from kokoro import KModel; KModel()" 2>&1 | tee -
  }
 
 clean() {

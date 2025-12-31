@@ -48,7 +48,7 @@ stop() {
 
 init() {
     log "Initializing $SERVICE_NAME..."
-    cd "$DIR" || { log "Failed to cd to $DIR"; return 1; } && npm install
+    cd "$DIR" || { log "Failed to cd to $DIR"; return 1; } && npm install --legacy-peer-deps
 }
 
 clean() {
