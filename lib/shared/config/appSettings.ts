@@ -108,6 +108,16 @@ const KokoroServiceSchema = z.object({
   baseUrl: z.string().url().default("http://localhost:8880")
 });
 
+const TtsServiceSchema = z.object({
+  baseUrl: z.string().url().optional(),
+  apiKey: z.string().optional()
+});
+
+const SttServiceSchema = z.object({
+  baseUrl: z.string().url().optional(),
+  apiKey: z.string().optional()
+});
+
 const InfrastructureServiceSchema = z.object({
   redisUrl: z.string().url().optional(),
   queuePrefix: z.string().optional(),
@@ -129,6 +139,8 @@ export const ServicesSettingsSchema = z.object({
   homeAssistant: HomeAssistantServiceSchema.optional(),
   plex: PlexServiceSchema.optional(),
   kokoro: KokoroServiceSchema.optional(),
+  tts: TtsServiceSchema.optional(),
+  stt: SttServiceSchema.optional(),
   infrastructure: InfrastructureServiceSchema
 });
 
@@ -249,6 +261,16 @@ export type KokoroServiceSettings = {
   baseUrl?: string | undefined;
 };
 
+export type TtsServiceSettings = {
+  baseUrl?: string | undefined;
+  apiKey?: string | undefined;
+};
+
+export type SttServiceSettings = {
+  baseUrl?: string | undefined;
+  apiKey?: string | undefined;
+};
+
 export type ServicesSettings = {
   memory: MemoryServiceSettings;
   search: SearchServiceSettings;
@@ -257,6 +279,8 @@ export type ServicesSettings = {
   homeAssistant?: HomeAssistantServiceSettings | undefined;
   plex?: PlexServiceSettings | undefined;
   kokoro?: KokoroServiceSettings | undefined;
+  tts?: TtsServiceSettings | undefined;
+  stt?: SttServiceSettings | undefined;
   infrastructure: InfrastructureServiceSettings;
 };
 
@@ -652,6 +676,24 @@ export class SettingsManager {
     settings.kokoro = {
       baseUrl: this.getFromEnv("KOKORO_URL") || "http://localhost:8880"
     };
+
+    const ttsUrl = this.getFromEnv("TTS_URL");
+    const ttsApiKey = this.getFromEnv("TTS_API_KEY");
+    if (ttsUrl || ttsApiKey) {
+      settings.tts = {
+        ...(ttsUrl && { baseUrl: ttsUrl }),
+        ...(ttsApiKey && { apiKey: ttsApiKey })
+      };
+    }
+
+    const sttUrl = this.getFromEnv("STT_URL");
+    const sttApiKey = this.getFromEnv("STT_API_KEY");
+    if (sttUrl || sttApiKey) {
+      settings.stt = {
+        ...(sttUrl && { baseUrl: sttUrl }),
+        ...(sttApiKey && { apiKey: sttApiKey })
+      };
+    }
 
     return settings;
   }

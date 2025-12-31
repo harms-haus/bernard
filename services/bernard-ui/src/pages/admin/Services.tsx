@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -7,13 +7,26 @@ import { Save } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { ServicesSettings } from '../../services/adminApi';
 import { useToast } from '../../components/ToastManager';
+import { ServiceTestButton, type ServiceTestStatus } from '../../components/ui/service-test-button';
 
 export default function Services() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<ServicesSettings | null>(null);
 
-  // Hook calls - must be at the top level of the component function
+  const [haTestStatus, setHaTestStatus] = useState<ServiceTestStatus>('idle');
+  const [haTestError, setHaTestError] = useState<string>('');
+  const [haTestErrorType, setHaTestErrorType] = useState<string>('');
+  const [plexTestStatus, setPlexTestStatus] = useState<ServiceTestStatus>('idle');
+  const [plexTestError, setPlexTestError] = useState<string>('');
+  const [plexTestErrorType, setPlexTestErrorType] = useState<string>('');
+  const [ttsTestStatus, setTtsTestStatus] = useState<ServiceTestStatus>('idle');
+  const [ttsTestError, setTtsTestError] = useState<string>('');
+  const [ttsTestErrorType, setTtsTestErrorType] = useState<string>('');
+  const [sttTestStatus, setSttTestStatus] = useState<ServiceTestStatus>('idle');
+  const [sttTestError, setSttTestError] = useState<string>('');
+  const [sttTestErrorType, setSttTestErrorType] = useState<string>('');
+
   const toast = useToast();
 
   useEffect(() => {
@@ -85,16 +98,148 @@ export default function Services() {
     });
   };
 
-  const updateKokoroSettings = (kokoroUpdates: Partial<NonNullable<ServicesSettings['kokoro']>>) => {
+  const updateTtsSettings = (ttsUpdates: Partial<NonNullable<ServicesSettings['tts']>>) => {
     setSettings(prev => {
       if (!prev) return null;
-      const currentKokoro = prev.kokoro || { baseUrl: '' };
+      const currentTts = prev.tts || { baseUrl: '' };
       return {
         ...prev,
-        kokoro: { ...currentKokoro, ...kokoroUpdates }
+        tts: { ...currentTts, ...ttsUpdates }
       };
     });
   };
+
+  const updateSttSettings = (sttUpdates: Partial<NonNullable<ServicesSettings['stt']>>) => {
+    setSettings(prev => {
+      if (!prev) return null;
+      const currentStt = prev.stt || { baseUrl: '' };
+      return {
+        ...prev,
+        stt: { ...currentStt, ...sttUpdates }
+      };
+    });
+  };
+
+  const runHomeAssistantTest = React.useCallback(async (showNotification = false) => {
+    setHaTestStatus('loading');
+    setHaTestError('');
+    setHaTestErrorType('');
+
+    try {
+      const result = await adminApiClient.testHomeAssistantConnection();
+
+      if (result.status === 'success') {
+        setHaTestStatus('success');
+        if (showNotification) toast.success('Home Assistant connection successful!');
+      } else {
+        setHaTestStatus(result.errorType as ServiceTestStatus || 'failed');
+        setHaTestError(result.error || 'Unknown error');
+        setHaTestErrorType(result.errorType || 'unknown');
+        if (showNotification) toast.error(`Home Assistant: ${result.error || 'Connection failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setHaTestStatus('failed');
+      setHaTestError(errorMessage);
+      setHaTestErrorType('unknown');
+      console.error('Failed to test Home Assistant connection:', error);
+      if (showNotification) toast.error(`Home Assistant: ${errorMessage}`);
+    }
+  }, [toast]);
+
+  const runPlexTest = React.useCallback(async (showNotification = false) => {
+    setPlexTestStatus('loading');
+    setPlexTestError('');
+    setPlexTestErrorType('');
+
+    try {
+      const result = await adminApiClient.testPlexConnection();
+
+      if (result.status === 'success') {
+        setPlexTestStatus('success');
+        if (showNotification) toast.success('Plex connection successful!');
+      } else {
+        setPlexTestStatus(result.errorType as ServiceTestStatus || 'failed');
+        setPlexTestError(result.error || 'Unknown error');
+        setPlexTestErrorType(result.errorType || 'unknown');
+        if (showNotification) toast.error(`Plex: ${result.error || 'Connection failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setPlexTestStatus('failed');
+      setPlexTestError(errorMessage);
+      setPlexTestErrorType('unknown');
+      console.error('Failed to test Plex connection:', error);
+    }
+  }, [toast]);
+
+  const runTtsTest = React.useCallback(async (showNotification = false) => {
+    setTtsTestStatus('loading');
+    setTtsTestError('');
+    setTtsTestErrorType('');
+
+    try {
+      const result = await adminApiClient.testTtsConnection();
+
+      if (result.status === 'success') {
+        setTtsTestStatus('success');
+        if (showNotification) toast.success('TTS connection successful!');
+      } else {
+        setTtsTestStatus(result.errorType as ServiceTestStatus || 'failed');
+        setTtsTestError(result.error || 'Unknown error');
+        setTtsTestErrorType(result.errorType || 'unknown');
+        if (showNotification) toast.error(`TTS: ${result.error || 'Connection failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setTtsTestStatus('failed');
+      setTtsTestError(errorMessage);
+      setTtsTestErrorType('unknown');
+      console.error('Failed to test TTS connection:', error);
+    }
+  }, [toast]);
+
+  const runSttTest = React.useCallback(async (showNotification = false) => {
+    setSttTestStatus('loading');
+    setSttTestError('');
+    setSttTestErrorType('');
+
+    try {
+      const result = await adminApiClient.testSttConnection();
+
+      if (result.status === 'success') {
+        setSttTestStatus('success');
+        if (showNotification) toast.success('STT connection successful!');
+      } else {
+        setSttTestStatus(result.errorType as ServiceTestStatus || 'failed');
+        setSttTestError(result.error || 'Unknown error');
+        setSttTestErrorType(result.errorType || 'unknown');
+        if (showNotification) toast.error(`STT: ${result.error || 'Connection failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setSttTestStatus('failed');
+      setSttTestError(errorMessage);
+      setSttTestErrorType('unknown');
+      console.error('Failed to test STT connection:', error);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.homeAssistant?.baseUrl && settings.homeAssistant?.accessToken && haTestStatus === 'idle') {
+      runHomeAssistantTest(false);
+    }
+    if (settings.plex?.baseUrl && settings.plex?.token && plexTestStatus === 'idle') {
+      runPlexTest(false);
+    }
+    if (settings.tts?.baseUrl && ttsTestStatus === 'idle') {
+      runTtsTest(false);
+    }
+    if (settings.stt?.baseUrl && sttTestStatus === 'idle') {
+      runSttTest(false);
+    }
+  }, [settings]);
 
   if (loading) {
     return (
@@ -120,8 +265,20 @@ export default function Services() {
       {/* Home Assistant Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Home Assistant</CardTitle>
-          <CardDescription>Connect Bernard to your Home Assistant instance</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Home Assistant</CardTitle>
+              <CardDescription>Connect Bernard to your Home Assistant instance</CardDescription>
+            </div>
+            <ServiceTestButton
+              serviceName="Home Assistant"
+              status={haTestStatus}
+              errorMessage={haTestError}
+              errorType={haTestErrorType}
+              onTest={() => runHomeAssistantTest(true)}
+              isConfigured={!!(settings?.homeAssistant?.baseUrl && settings?.homeAssistant?.accessToken)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -152,8 +309,20 @@ export default function Services() {
       {/* Plex Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Plex Media Server</CardTitle>
-          <CardDescription>Connect Bernard to your Plex Media Server for voice-controlled media playback</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Plex Media Server</CardTitle>
+              <CardDescription>Connect Bernard to your Plex Media Server for voice-controlled media playback</CardDescription>
+            </div>
+            <ServiceTestButton
+              serviceName="Plex"
+              status={plexTestStatus}
+              errorMessage={plexTestError}
+              errorType={plexTestErrorType}
+              onTest={() => runPlexTest(true)}
+              isConfigured={!!(settings?.plex?.baseUrl && settings?.plex?.token)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -197,31 +366,102 @@ export default function Services() {
         </CardContent>
       </Card>
 
-      {/* Kokoro Section */}
+      {/* TTS Service Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Kokoro TTS</CardTitle>
-          <CardDescription>Configure Kokoro Text-to-Speech service for voice synthesis</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>TTS Service</CardTitle>
+              <CardDescription>Configure Text-to-Speech service for voice synthesis</CardDescription>
+            </div>
+            <ServiceTestButton
+              serviceName="TTS"
+              status={ttsTestStatus}
+              errorMessage={ttsTestError}
+              errorType={ttsTestErrorType}
+              onTest={() => runTtsTest(true)}
+              isConfigured={!!settings?.tts?.baseUrl}
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="kokoro-baseUrl">Base URL *</Label>
+              <Label htmlFor="tts-baseUrl">Base URL *</Label>
               <Input
-                id="kokoro-baseUrl"
+                id="tts-baseUrl"
                 type="url"
-                value={settings?.kokoro?.baseUrl || ''}
-                onChange={(e) => updateKokoroSettings({ baseUrl: e.target.value })}
+                value={settings?.tts?.baseUrl || ''}
+                onChange={(e) => updateTtsSettings({ baseUrl: e.target.value })}
                 placeholder="http://localhost:8880"
                 required
               />
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              <p>
-                Kokoro is a text-to-speech service that converts text into audio.
-                The service should be running on the configured URL.
-              </p>
+            <div className="space-y-2">
+              <Label htmlFor="tts-apiKey">Access Token</Label>
+              <Input
+                id="tts-apiKey"
+                type="password"
+                value={settings?.tts?.apiKey || ''}
+                onChange={(e) => updateTtsSettings({ apiKey: e.target.value })}
+                placeholder="Optional access token"
+              />
             </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+            <p>
+              Configure a TTS endpoint. Supports Kokoro running locally or OpenAI-compatible API endpoints with access tokens.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* STT Service Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>STT Service</CardTitle>
+              <CardDescription>Configure Speech-to-Text service for voice transcription</CardDescription>
+            </div>
+            <ServiceTestButton
+              serviceName="STT"
+              status={sttTestStatus}
+              errorMessage={sttTestError}
+              errorType={sttTestErrorType}
+              onTest={() => runSttTest(true)}
+              isConfigured={!!settings?.stt?.baseUrl}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="stt-baseUrl">Base URL *</Label>
+              <Input
+                id="stt-baseUrl"
+                type="url"
+                value={settings?.stt?.baseUrl || ''}
+                onChange={(e) => updateSttSettings({ baseUrl: e.target.value })}
+                placeholder="http://localhost:8870"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stt-apiKey">Access Token</Label>
+              <Input
+                id="stt-apiKey"
+                type="password"
+                value={settings?.stt?.apiKey || ''}
+                onChange={(e) => updateSttSettings({ apiKey: e.target.value })}
+                placeholder="Optional access token"
+              />
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+            <p>
+              Configure an STT endpoint. Supports Whisper running locally or OpenAI-compatible API endpoints with access tokens.
+            </p>
           </div>
         </CardContent>
       </Card>
