@@ -4,9 +4,9 @@ SERVICE_NAME="WHISPER"
 COLOR="\033[0;37m"
 NC="\033[0m"
 PORT=8870
-DIR="services/whisper.cpp"
-MODEL="models/whisper/ggml-small.bin"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$SCRIPT_DIR/../../services/whisper.cpp"
+MODEL="$SCRIPT_DIR/../models/whisper/ggml-small.bin"
 
 source "$(dirname "$0")/logging.sh"
 
@@ -23,7 +23,22 @@ stop() {
 
 init() {
     log "Initializing $SERVICE_NAME..."
-    cd $DIR && mkdir -p build && cd build && cmake .. && make -j whisper-server
+    
+    if [ ! -f "$DIR/CMakeLists.txt" ]; then
+        log "Removing incomplete whisper.cpp installation..."
+        rm -rf "$DIR"
+        log "Cloning whisper.cpp repository..."
+        git clone https://github.com/ggerganov/whisper.cpp.git "$DIR"
+    fi
+    
+    cd "$DIR" && mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON .. && make -j whisper-server
+    
+    # Download whisper model
+    log "Downloading whisper model..."
+    cd "$DIR"
+    mkdir -p models/whisper
+    chmod +x models/download-ggml-model.sh
+    ./models/download-ggml-model.sh small models/whisper
 }
 
 clean() {

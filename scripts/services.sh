@@ -22,6 +22,7 @@ colorize() {
 cleanup_all_services() {
     log "Stopping all services..."
     ./scripts/redis.sh stop
+    ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
     ./scripts/bernard.sh stop
@@ -34,6 +35,7 @@ cleanup_all_services() {
 }
 
 COLOR_REDIS='\033[0;31m'
+COLOR_SHARED='\033[1;36m'
 COLOR_BERNARD_API='\033[0;33m'
 COLOR_PROXY_API='\033[0;36m'
 COLOR_BERNARD='\033[0;32m'
@@ -46,6 +48,7 @@ tail_logs() {
     local pids=()
     local services=(
         "redis:${COLOR_REDIS}"
+        "shared:${COLOR_SHARED}"
         "bernard-api:${COLOR_BERNARD_API}"
         "proxy-api:${COLOR_PROXY_API}"
         "bernard:${COLOR_BERNARD}"
@@ -177,6 +180,7 @@ start() {
 
     log "Shutting down existing services..."
     ./scripts/redis.sh stop
+    ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
     ./scripts/bernard.sh stop
@@ -195,6 +199,8 @@ start() {
 
     service_hosts["REDIS"]="127.0.0.1"
     service_ports["REDIS"]="6379"
+    service_hosts["SHARED"]="127.0.0.1"
+    service_ports["SHARED"]="0"
     service_hosts["BERNARD-API"]="127.0.0.1"
     service_ports["BERNARD-API"]="8800"
     service_hosts["PROXY-API"]="0.0.0.0"
@@ -209,6 +215,11 @@ start() {
     service_ports["WHISPER"]="8870"
     service_hosts["KOKORO"]="127.0.0.1"
     service_ports["KOKORO"]="8880"
+
+    # Shared library has no running service, just ensure it's built
+    log "Building shared library..."
+    ./scripts/shared.sh start
+    service_status["SHARED"]=$?
 
     start_service_with_timeout "./scripts/redis.sh" "REDIS" 20
     service_status["REDIS"]=$?
@@ -269,7 +280,7 @@ start() {
     printf "%-12s | %-8s | %-15s | %-6s\n" "Service Name" "Status" "Host Name" "Port"
     echo "---------------------------------------------------------------------"
 
-    for service in "REDIS" "BERNARD-API" "PROXY-API" "BERNARD" "BERNARD-UI" "VLLM" "WHISPER" "KOKORO"; do
+    for service in "REDIS" "SHARED" "BERNARD-API" "PROXY-API" "BERNARD" "BERNARD-UI" "VLLM" "WHISPER" "KOKORO"; do
         if [ "${service_status[$service]}" -eq 0 ]; then
             status=$(colorize "${GREEN}up${NC}" "up")
         else
@@ -297,6 +308,7 @@ start() {
 stop() {
     log "Stopping all Bernard services..."
 
+    ./scripts/shared.sh stop
     ./scripts/redis.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
@@ -312,6 +324,9 @@ stop() {
 
 init() {
     log "Initializing all Bernard services..."
+
+    log "Initializing shared library..."
+    ./scripts/shared.sh init
 
     log "Initializing Redis..."
     ./scripts/redis.sh init
@@ -343,6 +358,9 @@ init() {
 
 clean() {
     log "Cleaning all Bernard services..."
+
+    log "Cleaning shared library..."
+    ./scripts/shared.sh clean
 
     log "Cleaning Redis..."
     ./scripts/redis.sh clean
@@ -376,7 +394,7 @@ check() {
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
     mkdir -p "$LOG_DIR"
 
-    SERVICES=("bernard" "bernard-ui" "bernard-api" "proxy-api" "vllm" "whisper" "kokoro" "redis")
+    SERVICES=("shared" "bernard" "bernard-ui" "bernard-api" "proxy-api" "vllm" "whisper" "kokoro" "redis")
     PIDS=()
 
     run_service_check() {
