@@ -10,7 +10,7 @@ import { getRedis } from "../infra/redis";
 export const ProviderSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  type: z.enum(["openai", "ollama"]).default("openai"),
+  type: z.enum(["openai", "ollama"]),
   baseUrl: z.string().url(),
   apiKey: z.string().optional(),
   createdAt: z.string(),
@@ -34,7 +34,7 @@ export const ModelCategorySchema = z.object({
 });
 
 export const ModelsSettingsSchema = z.object({
-  providers: z.array(ProviderSchema).default([]),
+  providers: z.array(ProviderSchema),
   response: ModelCategorySchema,
   router: ModelCategorySchema,
   memory: ModelCategorySchema,
@@ -59,7 +59,7 @@ const AutomationSettingsSchema = z.object({
   runCount: z.number().int().min(0).default(0)
 });
 
-const AutomationsSettingsSchema = z.record(z.string(), AutomationSettingsSchema).default({});
+const AutomationsSettingsSchema = z.record(z.string(), AutomationSettingsSchema);
 
 const SearchServiceSchema = z.object({
   apiKey: z.string().optional(),
@@ -85,11 +85,7 @@ const WeatherServiceSchema = z.discriminatedUnion("provider", [
     apiUrl: z.string().url(),
     timeoutMs: z.number().int().positive().optional()
   })
-]).default({
-  provider: "open-meteo",
-  forecastUrl: "https://api.open-meteo.com/v1/forecast",
-  historicalUrl: "https://archive-api.open-meteo.com/v1/archive"
-});
+]);
 
 const GeocodingServiceSchema = z.object({
   url: z.string().url().optional(),
@@ -126,14 +122,14 @@ const InfrastructureServiceSchema = z.object({
 });
 
 export const ServicesSettingsSchema = z.object({
-  memory: MemoryServiceSchema.default({}),
-  search: SearchServiceSchema.default({}),
-  weather: WeatherServiceSchema.default({ provider: "open-meteo" }),
-  geocoding: GeocodingServiceSchema.default({}),
+  memory: MemoryServiceSchema,
+  search: SearchServiceSchema,
+  weather: WeatherServiceSchema,
+  geocoding: GeocodingServiceSchema,
   homeAssistant: HomeAssistantServiceSchema.optional(),
   plex: PlexServiceSchema.optional(),
   kokoro: KokoroServiceSchema.optional(),
-  infrastructure: InfrastructureServiceSchema.default({})
+  infrastructure: InfrastructureServiceSchema
 });
 
 const OAuthClientSchema = z.object({
@@ -160,21 +156,146 @@ export const BackupSettingsSchema = z.object({
 });
 
 const LimitsSettingsSchema = z.object({
-  currentRequestMaxTokens: z.number().int().positive().default(8000),
-  responseMaxTokens: z.number().int().positive().default(8000)
+  currentRequestMaxTokens: z.coerce.number().int().positive(),
+  responseMaxTokens: z.coerce.number().int().positive()
 });
 
 // --- Types ---
 
-export type Provider = z.output<typeof ProviderSchema>;
-export type ModelCategorySettings = z.output<typeof ModelCategorySchema>;
-export type ModelsSettings = z.output<typeof ModelsSettingsSchema>;
-export type ServicesSettings = z.output<typeof ServicesSettingsSchema>;
-export type OAuthSettings = z.output<typeof OAuthSettingsSchema>;
-export type BackupSettings = z.output<typeof BackupSettingsSchema>;
-export type LimitsSettings = z.output<typeof LimitsSettingsSchema>;
-export type AutomationSettings = z.output<typeof AutomationSettingsSchema>;
-export type AutomationsSettings = z.output<typeof AutomationsSettingsSchema>;
+export type Provider = {
+  id: string;
+  name: string;
+  type: "openai" | "ollama";
+  baseUrl: string;
+  apiKey?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  lastTestedAt?: string | undefined;
+  testStatus?: "untested" | "working" | "failed" | undefined;
+  testError?: string | undefined;
+};
+
+export type ModelCategorySettings = {
+  primary: string;
+  providerId: string;
+  options?: {
+    temperature?: number | undefined;
+    topP?: number | undefined;
+    maxTokens?: number | undefined;
+  } | undefined;
+  dimension?: number | undefined;
+};
+
+export type ModelsSettings = {
+  providers: Provider[];
+  response: ModelCategorySettings;
+  router: ModelCategorySettings;
+  memory: ModelCategorySettings;
+  utility: ModelCategorySettings;
+  aggregation?: ModelCategorySettings | undefined;
+  embedding?: ModelCategorySettings | undefined;
+};
+
+export type MemoryServiceSettings = {
+  embeddingModel?: string | undefined;
+  embeddingBaseUrl?: string | undefined;
+  embeddingApiKey?: string | undefined;
+  indexName?: string | undefined;
+  keyPrefix?: string | undefined;
+  namespace?: string | undefined;
+};
+
+export type SearchServiceSettings = {
+  apiKey?: string | undefined;
+  apiUrl?: string | undefined;
+};
+
+export type WeatherServiceSettings =
+  | { provider: "open-meteo"; forecastUrl?: string | undefined; historicalUrl?: string | undefined; timeoutMs?: number | undefined }
+  | { provider: "openweathermap"; apiKey: string; apiUrl: string; timeoutMs?: number | undefined }
+  | { provider: "weatherapi"; apiKey: string; apiUrl: string; timeoutMs?: number | undefined };
+
+export type GeocodingServiceSettings = {
+  url?: string | undefined;
+  userAgent?: string | undefined;
+  email?: string | undefined;
+  referer?: string | undefined;
+};
+
+export type HomeAssistantServiceSettings = {
+  baseUrl: string;
+  accessToken?: string | undefined;
+};
+
+export type InfrastructureServiceSettings = {
+  redisUrl?: string | undefined;
+  queuePrefix?: string | undefined;
+  taskQueueName?: string | undefined;
+  taskWorkerConcurrency?: number | undefined;
+  taskMaxRuntimeMs?: number | undefined;
+  taskAttempts?: number | undefined;
+  taskBackoffMs?: number | undefined;
+  taskKeepCompleted?: number | undefined;
+  taskKeepFailed?: number | undefined;
+  taskArchiveAfterDays?: number | undefined;
+};
+
+export type PlexServiceSettings = {
+  baseUrl: string;
+  token: string;
+};
+
+export type KokoroServiceSettings = {
+  baseUrl?: string | undefined;
+};
+
+export type ServicesSettings = {
+  memory: MemoryServiceSettings;
+  search: SearchServiceSettings;
+  weather: WeatherServiceSettings;
+  geocoding: GeocodingServiceSettings;
+  homeAssistant?: HomeAssistantServiceSettings | undefined;
+  plex?: PlexServiceSettings | undefined;
+  kokoro?: KokoroServiceSettings | undefined;
+  infrastructure: InfrastructureServiceSettings;
+};
+
+export type OAuthClientSettings = {
+  authUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  redirectUri: string;
+  scope: string;
+  clientId: string;
+  clientSecret?: string | undefined;
+};
+
+export type OAuthSettings = {
+  default: OAuthClientSettings;
+  google: OAuthClientSettings;
+  github: OAuthClientSettings;
+};
+
+export type BackupSettings = {
+  debounceSeconds: number;
+  directory: string;
+  retentionDays: number;
+  retentionCount: number;
+};
+
+export type LimitsSettings = {
+  currentRequestMaxTokens: number;
+  responseMaxTokens: number;
+};
+
+export type AutomationSettings = {
+  enabled: boolean;
+  lastRunTime?: number;
+  lastRunDuration?: number;
+  runCount: number;
+};
+
+export type AutomationsSettings = Record<string, AutomationSettings>;
 
 export type BernardSettings = {
   models: ModelsSettings;
@@ -262,7 +383,10 @@ export class SettingsManager {
       try {
         return schema.parse(JSON.parse(redisValue));
       } catch (e) {
-        console.error(`Failed to parse settings for ${section} from Redis:`, e);
+        const error = e as Error;
+        console.error(
+          `Failed to parse settings for ${section} from Redis: ${error?.message ?? "unknown error"}`
+        );
       }
     }
 
@@ -406,25 +530,35 @@ export class SettingsManager {
   getDefaultModels(): ModelsSettings {
     const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
     
-    const ollamaProvider: Provider = {
+    const ollamaBaseUrl = this.getFromEnv("OLLAMA_BASE_URL") ?? "http://localhost:11434/v1";
+    const ollamaApiKey = this.getFromEnv("OLLAMA_API_KEY");
+    const ollamaProviderBase: Omit<Provider, "apiKey"> = {
       id: "ollama-provider",
       name: "Ollama",
       type: "openai",
-      baseUrl: this.getFromEnv("OLLAMA_BASE_URL") ?? "http://localhost:11434/v1",
-      apiKey: this.getFromEnv("OLLAMA_API_KEY") ?? "",
+      baseUrl: ollamaBaseUrl,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      testStatus: "untested"
     };
+    const ollamaProvider: Provider = ollamaApiKey
+      ? { ...ollamaProviderBase, apiKey: ollamaApiKey }
+      : ollamaProviderBase;
 
-    const defaultProvider: Provider = {
+    const openrouterBaseUrl = this.getFromEnv("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1";
+    const openrouterApiKey = this.getFromEnv("OPENROUTER_API_KEY");
+    const defaultProviderBase: Omit<Provider, "apiKey"> = {
       id: "default-provider",
       name: "Default Provider",
       type: "openai",
-      baseUrl: this.getFromEnv("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1",
-      apiKey: this.getFromEnv("OPENROUTER_API_KEY") ?? "",
+      baseUrl: openrouterBaseUrl,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      testStatus: "untested"
     };
+    const defaultProvider: Provider = openrouterApiKey
+      ? { ...defaultProviderBase, apiKey: openrouterApiKey }
+      : defaultProviderBase;
 
     const responseModel = this.getFromEnv("RESPONSE_MODELS")?.split(",")[0]?.trim() ?? DEFAULT_MODEL;
 
@@ -448,58 +582,86 @@ export class SettingsManager {
   }
 
   getDefaultServices(): ServicesSettings {
-    const services: ServicesSettings = {
-      infrastructure: {
-        redisUrl: this.getFromEnv("REDIS_URL")
-      },
-      memory: {
-        embeddingModel: this.getFromEnv("EMBEDDING_MODEL"),
-        embeddingBaseUrl: this.getFromEnv("EMBEDDING_BASE_URL"),
-        embeddingApiKey: this.getFromEnv("EMBEDDING_API_KEY"),
-        indexName: this.getFromEnv("MEMORY_INDEX_NAME"),
-        keyPrefix: this.getFromEnv("MEMORY_KEY_PREFIX"),
-        namespace: this.getFromEnv("MEMORY_NAMESPACE")
-      },
-      search: {
-        apiKey: this.getFromEnv("SEARCH_API_KEY") ?? this.getFromEnv("BRAVE_API_KEY"),
-        apiUrl: this.getFromEnv("SEARCH_API_URL")
-      },
-      weather: {
-        provider: "open-meteo",
-        forecastUrl: "https://api.open-meteo.com/v1/forecast",
-        historicalUrl: "https://archive-api.open-meteo.com/v1/archive"
-      },
-      geocoding: {
-        url: this.getFromEnv("NOMINATIM_URL"),
-        userAgent: this.getFromEnv("NOMINATIM_USER_AGENT"),
-        email: this.getFromEnv("NOMINATIM_EMAIL"),
-        referer: this.getFromEnv("NOMINATIM_REFERER")
-      }
+    const redisUrl = this.getFromEnv("REDIS_URL");
+    const infrastructure: InfrastructureServiceSettings = {};
+    if (redisUrl) infrastructure.redisUrl = redisUrl;
+
+    const embeddingModel = this.getFromEnv("EMBEDDING_MODEL");
+    const embeddingBaseUrl = this.getFromEnv("EMBEDDING_BASE_URL");
+    const embeddingApiKey = this.getFromEnv("EMBEDDING_API_KEY");
+    const indexName = this.getFromEnv("MEMORY_INDEX_NAME");
+    const keyPrefix = this.getFromEnv("MEMORY_KEY_PREFIX");
+    const namespace = this.getFromEnv("MEMORY_NAMESPACE");
+    const memory: MemoryServiceSettings = {
+      ...(embeddingModel && { embeddingModel }),
+      ...(embeddingBaseUrl && { embeddingBaseUrl }),
+      ...(embeddingApiKey && { embeddingApiKey }),
+      ...(indexName && { indexName }),
+      ...(keyPrefix && { keyPrefix }),
+      ...(namespace && { namespace })
+    } as MemoryServiceSettings;
+
+    const searchApiKey = this.getFromEnv("SEARCH_API_KEY") ?? this.getFromEnv("BRAVE_API_KEY");
+    const searchApiUrl = this.getFromEnv("SEARCH_API_URL");
+    const search: SearchServiceSettings = {
+      ...(searchApiKey && { apiKey: searchApiKey }),
+      ...(searchApiUrl && { apiUrl: searchApiUrl })
+    } as SearchServiceSettings;
+
+    const weather: WeatherServiceSettings = {
+      provider: "open-meteo",
+      forecastUrl: "https://api.open-meteo.com/v1/forecast",
+      historicalUrl: "https://archive-api.open-meteo.com/v1/archive"
+    };
+
+    const geocodingUrl = this.getFromEnv("NOMINATIM_URL");
+    const geocodingUserAgent = this.getFromEnv("NOMINATIM_USER_AGENT");
+    const geocodingEmail = this.getFromEnv("NOMINATIM_EMAIL");
+    const geocodingReferer = this.getFromEnv("NOMINATIM_REFERER");
+    const geocoding: GeocodingServiceSettings = {
+      ...(geocodingUrl && { url: geocodingUrl }),
+      ...(geocodingUserAgent && { userAgent: geocodingUserAgent }),
+      ...(geocodingEmail && { email: geocodingEmail }),
+      ...(geocodingReferer && { referer: geocodingReferer })
+    } as GeocodingServiceSettings;
+
+    const settings: ServicesSettings = {
+      infrastructure,
+      memory,
+      search,
+      weather,
+      geocoding
     };
 
     const haBaseUrl = this.getFromEnv("HA_BASE_URL");
     if (haBaseUrl) {
-      services.homeAssistant = {
+      const haAccessToken = this.getFromEnv("HA_ACCESS_TOKEN");
+      const homeAssistant: HomeAssistantServiceSettings = {
         baseUrl: haBaseUrl,
-        accessToken: this.getFromEnv("HA_ACCESS_TOKEN")
+        ...(haAccessToken && { accessToken: haAccessToken })
       };
+      settings.homeAssistant = homeAssistant;
     }
 
     const plexUrl = this.getFromEnv("PLEX_URL");
     const plexToken = this.getFromEnv("PLEX_TOKEN");
     if (plexUrl && plexToken) {
-      services.plex = { baseUrl: plexUrl, token: plexToken };
+      settings.plex = { baseUrl: plexUrl, token: plexToken };
     }
 
-    services.kokoro = {
+    settings.kokoro = {
       baseUrl: this.getFromEnv("KOKORO_URL") || "http://localhost:8880"
     };
 
-    return services;
+    return settings;
   }
 
   getDefaultOauth(): OAuthSettings {
-    const base = {
+    const clientSecret = this.getFromEnv("OAUTH_CLIENT_SECRET");
+    const googleSecret = this.getFromEnv("OAUTH_GOOGLE_CLIENT_SECRET");
+    const githubSecret = this.getFromEnv("OAUTH_GITHUB_CLIENT_SECRET");
+
+    const base: OAuthClientSettings = {
       authUrl: this.getFromEnv("OAUTH_AUTH_URL") ?? "",
       tokenUrl: this.getFromEnv("OAUTH_TOKEN_URL") ?? "",
       userInfoUrl: this.getFromEnv("OAUTH_USERINFO_URL") ?? "",
@@ -507,37 +669,29 @@ export class SettingsManager {
       scope: this.getFromEnv("OAUTH_SCOPES") ?? "openid profile",
       clientId: this.getFromEnv("OAUTH_CLIENT_ID") ?? ""
     };
+    if (clientSecret) base.clientSecret = clientSecret;
 
-    const settings: OAuthSettings = {
-      default: base,
-      google: {
-        ...base,
-        authUrl: this.getFromEnv("OAUTH_GOOGLE_AUTH_URL") ?? base.authUrl,
-        tokenUrl: this.getFromEnv("OAUTH_GOOGLE_TOKEN_URL") ?? base.tokenUrl,
-        userInfoUrl: this.getFromEnv("OAUTH_GOOGLE_USERINFO_URL") ?? base.userInfoUrl,
-        clientId: this.getFromEnv("OAUTH_GOOGLE_CLIENT_ID") ?? "",
-        redirectUri: this.getFromEnv("OAUTH_GOOGLE_REDIRECT_URI") ?? base.redirectUri
-      },
-      github: {
-        ...base,
-        authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? base.authUrl,
-        tokenUrl: this.getFromEnv("OAUTH_GITHUB_TOKEN_URL") ?? base.tokenUrl,
-        userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? base.userInfoUrl,
-        clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "",
-        redirectUri: this.getFromEnv("OAUTH_GITHUB_REDIRECT_URI") ?? base.redirectUri
-      }
+    const google: OAuthClientSettings = {
+      authUrl: this.getFromEnv("OAUTH_GOOGLE_AUTH_URL") ?? base.authUrl,
+      tokenUrl: this.getFromEnv("OAUTH_GOOGLE_TOKEN_URL") ?? base.tokenUrl,
+      userInfoUrl: this.getFromEnv("OAUTH_GOOGLE_USERINFO_URL") ?? base.userInfoUrl,
+      clientId: this.getFromEnv("OAUTH_GOOGLE_CLIENT_ID") ?? "",
+      redirectUri: this.getFromEnv("OAUTH_GOOGLE_REDIRECT_URI") ?? base.redirectUri,
+      scope: base.scope
     };
+    if (googleSecret) google.clientSecret = googleSecret;
 
-    const clientSecret = this.getFromEnv("OAUTH_CLIENT_SECRET");
-    if (clientSecret) settings.default.clientSecret = clientSecret;
+    const github: OAuthClientSettings = {
+      authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? base.authUrl,
+      tokenUrl: this.getFromEnv("OAUTH_GITHUB_TOKEN_URL") ?? base.tokenUrl,
+      userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? base.userInfoUrl,
+      clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "",
+      redirectUri: this.getFromEnv("OAUTH_GITHUB_REDIRECT_URI") ?? base.redirectUri,
+      scope: base.scope
+    };
+    if (githubSecret) github.clientSecret = githubSecret;
 
-    const googleSecret = this.getFromEnv("OAUTH_GOOGLE_CLIENT_SECRET");
-    if (googleSecret) settings.google.clientSecret = googleSecret;
-
-    const githubSecret = this.getFromEnv("OAUTH_GITHUB_CLIENT_SECRET");
-    if (githubSecret) settings.github.clientSecret = githubSecret;
-
-    return settings;
+    return { default: base, google, github };
   }
 
   getDefaultBackups(): BackupSettings {
@@ -551,11 +705,10 @@ export class SettingsManager {
   }
 
   getDefaultLimits(): LimitsSettings {
-    const settings: LimitsSettings = {
+    return {
       currentRequestMaxTokens: Number(this.getFromEnv("CURRENT_REQUEST_MAX_TOKENS")) || 8000,
       responseMaxTokens: Number(this.getFromEnv("RESPONSE_MAX_TOKENS")) || 8000
-    };
-    return settings;
+    } as LimitsSettings;
   }
 }
 

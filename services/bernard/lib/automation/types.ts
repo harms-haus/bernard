@@ -87,8 +87,8 @@ export interface AutomationResult {
 // Automation settings (stored in settings file)
 export interface AutomationSettings {
   enabled: boolean;
-  lastRunTime?: number | undefined;
-  lastRunDuration?: number | undefined;
+  lastRunTime?: number;
+  lastRunDuration?: number;
   runCount: number;
 }
 

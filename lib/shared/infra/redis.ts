@@ -6,7 +6,7 @@ export function getRedis(): Redis {
   if (!globalForRedis.redis) {
     const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
     globalForRedis.redis = new Redis(url, {
-      retryStrategy: (times) => {
+      retryStrategy: (times: number) => {
         // Retry with exponential backoff, max 5 seconds delay
         const delay = Math.min(times * 200, 5000);
         return delay;

@@ -20,7 +20,7 @@ stop() {
 }
 
 init() {
-    log "Initializing $SERVICE_NAME...
+    log "Initializing $SERVICE_NAME..."
     cd $DIR && npm install --legacy-peer-deps
 }
 

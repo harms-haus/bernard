@@ -148,7 +148,7 @@ export class UserStore {
   async list(): Promise<UserRecord[]> {
     const ids = await this.redis.smembers(this.idsSet());
     const users = await Promise.all(ids.map((id: string) => this.get(id)));
-    return users.filter((u): u is UserRecord => u !== null);
+    return users.filter((u: UserRecord | null): u is UserRecord => u !== null);
   }
 
   async update(id: string, updates: { displayName?: string; isAdmin?: boolean; status?: UserStatus }): Promise<UserRecord | null> {

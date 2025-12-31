@@ -98,7 +98,7 @@ export class ConversationIndexer {
       const result = { chunks: chunkIds.length, pruned: stale.length };
       debugLog(undefined, "Indexing completed", { conversationId, ...result });
       return result;
-    } catch (err) {
+    } catch (err: unknown) {
       errorLog(undefined, "Indexing failed", { conversationId, error: err instanceof Error ? err.message : String(err) });
       throw err;
     }
@@ -135,20 +135,20 @@ export class ConversationIndexer {
           // Drop the Redis search index completely
           await this.redis.call('FT.DROPINDEX', indexName);
           debugLog(undefined, "Successfully dropped Redis search index", { indexName });
-        } catch (dropErr) {
+        } catch (dropErr: unknown) {
           // Index might not exist, which is fine
           debugLog(undefined, "Index drop failed (may not exist)", { indexName, error: String(dropErr) });
         }
 
         debugLog(undefined, "Successfully dropped Redis search index", { indexName });
 
-      } catch (err) {
+      } catch (err: unknown) {
         errorLog(undefined, "Failed to drop search index", { error: String(err) });
       }
 
       debugLog(undefined, "Index clearing completed", { totalDeleted });
       return { deleted: totalDeleted };
-    } catch (err) {
+    } catch (err: unknown) {
       errorLog(undefined, "Index clearing failed", { error: err instanceof Error ? err.message : String(err) });
       throw err;
     }
@@ -177,7 +177,7 @@ export class ConversationIndexer {
 
       debugLog(undefined, "Conversation chunk deletion completed", { conversationId, totalDeleted: chunkIds.length });
       return { deleted: chunkIds.length };
-    } catch (err) {
+    } catch (err: unknown) {
       errorLog(undefined, "Conversation chunk deletion failed", { conversationId, error: err instanceof Error ? err.message : String(err) });
       throw err;
     }

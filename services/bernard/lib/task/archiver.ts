@@ -77,7 +77,7 @@ export class TaskArchiver {
                   taskDate: taskDate.toISOString()
                 });
               }
-            } catch (error) {
+            } catch (error: unknown) {
               errors++;
               log.error({
                 event: "task.archive_error",
@@ -101,7 +101,7 @@ export class TaskArchiver {
           break;
         }
 
-      } catch (error) {
+      } catch (error: unknown) {
         errors++;
         log.error({
           event: "archive_batch_error",
@@ -179,7 +179,7 @@ export class TaskArchiver {
                   taskDate: taskDate.toISOString()
                 });
               }
-            } catch (error) {
+            } catch (error: unknown) {
               errors++;
               log.error({
                 event: "archived_task.delete_error",
@@ -203,7 +203,7 @@ export class TaskArchiver {
           break;
         }
 
-      } catch (error) {
+      } catch (error: unknown) {
         errors++;
         log.error({
           event: "cleanup_batch_error",
