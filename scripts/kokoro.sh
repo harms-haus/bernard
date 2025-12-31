@@ -10,39 +10,30 @@ source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
-    pkill -9 -f "kokoro.*main.py" || true
     pkill -9 -f "src.main" || true
-    pkill -9 -f "python.*kokoro" || true
-    
-    # Wait for processes to fully terminate and GPU memory to be released
-    sleep 2
-    
-    # Verify processes are gone and kill any stragglers
-    if pgrep -f "python.*kokoro" > /dev/null; then
-        log "Force-killing remaining Kokoro processes..."
-        killall -9 python || true
-        sleep 2
-    fi
-    
-    log "$SERVICE_NAME stopped and GPU memory released"
+    sleep 1
+    log "$SERVICE_NAME stopped"
 }
 
  init() {
-     log "Initializing $SERVICE_NAME..."
-     
-     if [ ! -f "$DIR/pyproject.toml" ]; then
-         log "Removing incomplete Kokoro installation..."
-         rm -rf "$DIR"
-         log "Cloning Kokoro TTS repository..."
-         git clone https://github.com/hexgrad/kokoro.git "$DIR"
-     fi
-     
-     cd $DIR && uv venv .venv --python $(which python3) && source .venv/bin/activate && uv pip install -e . torch --upgrade
-     
-     # Download default Kokoro model
-     log "Downloading Kokoro model..."
-     source .venv/bin/activate && python -c "from kokoro import KModel; KModel()" 2>&1 | tee -
- }
+      log "Initializing $SERVICE_NAME..."
+
+      if [ ! -f "$DIR/pyproject.toml" ]; then
+          log "Removing incomplete Kokoro installation..."
+          rm -rf "$DIR"
+          log "Cloning Kokoro-FastAPI repository..."
+          git clone https://github.com/remsky/Kokoro-FastAPI.git "$DIR"
+      fi
+
+      cd $DIR && git pull
+
+      uv venv
+      source .venv/bin/activate
+      uv pip install -e . torch --upgrade
+
+      log "Downloading Kokoro model..."
+      python docker/scripts/download_model.py --output api/src/models/v1_0
+  }
 
 clean() {
     log "Cleaning $SERVICE_NAME (no-op)..."
@@ -51,15 +42,21 @@ clean() {
 start() {
     stop
     log "Starting $SERVICE_NAME..."
-    
-    # Create log directory using absolute path
+
     LOG_DIR="$(dirname "$0")/logs"
     mkdir -p "$LOG_DIR"
-    
-    cd "$DIR" && source .venv/bin/activate
-    cd api
-    python -m src.main --host 127.0.0.1 --port $PORT 2>&1 | tee "$LOG_DIR/kokoro.log" &
-    
+
+    cd "$DIR"
+    export PYTHONPATH="$DIR:$DIR/api"
+
+    # Use absolute paths to avoid path resolution issues
+    export MODEL_DIR="/home/blake/Documents/software/bernard/services/kokoro/api/src/models"
+    export VOICES_DIR="/home/blake/Documents/software/bernard/services/kokoro/api/src/voices/v1_0"
+    export ESPEAK_DATA_PATH="/usr/lib/x86_64-linux-gnu/espeak-ng-data"
+
+    source .venv/bin/activate
+    uvicorn api.src.main:app --host 127.0.0.1 --port $PORT 2>&1 | tee "$LOG_DIR/kokoro.log" &
+
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..60}; do
         if curl -sf http://127.0.0.1:$PORT/health > /dev/null 2>&1; then
