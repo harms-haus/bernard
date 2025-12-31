@@ -42,7 +42,7 @@ fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyRepl
   if (
     url === "/" ||
     url?.startsWith("/health") ||
-    url?.startsWith("/api/auth/validate")
+    url === "/api/auth/validate" // Token validation called by other services with token in body
   ) {
     return;
   }

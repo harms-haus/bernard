@@ -3,30 +3,16 @@
  */
 export function buildRouterSystemPrompt(
   now: Date,
-  toolPrompts: Array<{ name: string; description?: string; schema?: unknown }>,
+  _toolNames: string[],
   disabledTools?: Array<{ name: string; reason?: string | undefined }>
 ): string {
-  const timeStr = now.toISOString();
+  // Use TZ-aware formatting (respects TZ environment variable)
+  const timeStr = now.toLocaleString(undefined, { timeZone: process.env.TZ || undefined });
 
   let prompt = `You are a Tool Router. Your job is to route the user's query to the appropriate tool(s). You are not allowed to chat.
 
 Current time: ${timeStr}
 
-Available tools:
-`;
-
-  for (const tool of toolPrompts) {
-    const description = tool.description || "No description available";
-    const isDisabled = disabledTools?.some(dt => dt.name === tool.name);
-    if (isDisabled && disabledTools) {
-      const disabledTool = disabledTools.find(dt => dt.name === tool.name);
-      prompt += `- ${tool.name}: ${description} (DISABLED${disabledTool?.reason ? `: ${disabledTool.reason}` : ''})\n`;
-    } else {
-      prompt += `- ${tool.name}: ${description}\n`;
-    }
-  }
-
-  prompt += `
 Instructions:
 1. Analyze the user's query to determine what information is needed and/or what actions are needed to be taken.
 2. Use available tools to gather required data and/or perform the requested actions.
@@ -34,6 +20,20 @@ Instructions:
 4. Do not generate response text - only gather data and/or perform actions.
 
 Call tools as needed, then respond with no tool calls when you are done.`;
+
+  // Include disabled tools with reasons if any exist
+  if (disabledTools && disabledTools.length > 0) {
+    const disabledList = disabledTools
+      .map((t) => `  - ${t.name}: ${t.reason || "reason not specified"}`)
+      .join("\n");
+    prompt += `
+
+## Disabled Tools
+
+The following tools are currently unavailable. If the user asks for these, inform them why and suggest how to fix it:
+
+${disabledList}`;
+  }
 
   return prompt;
 }

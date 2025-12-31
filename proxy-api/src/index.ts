@@ -8,6 +8,7 @@ import { registerApiRoutes } from './routes/api';
 import { registerBernardRoutes } from './routes/bernard';
 import { registerIndexRoutes } from './routes/index';
 import { registerAuthRoutes } from './routes/auth';
+import { registerAdminServicesRoutes } from './routes/adminServices';
 import { getAuthenticatedUser } from './lib/auth/auth';
 
 const fastify = Fastify({
@@ -37,8 +38,7 @@ fastify.addHook('preHandler', async (request, reply) => {
     url.startsWith('/bernard/') || // Bernard UI is handled separately
     url.startsWith('/@vite/') || // Vite client resources
     url.startsWith('/src/') || // Vite source files
-    url === '/@react-refresh' || // Vite React refresh
-    url.startsWith('/v1/') // OpenAI-compatible endpoints - auth handled by backend services
+    url === '/@react-refresh' // Vite React refresh
   ) {
     return;
   }
@@ -98,6 +98,7 @@ await fastify.register(registerAuthRoutes, { prefix: '/auth' });
 await fastify.register(registerV1Routes, { prefix: '/v1' });
 await fastify.register(registerApiRoutes, { prefix: '/api' });
 await fastify.register(registerBernardRoutes); // Handles /bernard/
+await fastify.register(registerAdminServicesRoutes); // Handles /admin/services/*
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

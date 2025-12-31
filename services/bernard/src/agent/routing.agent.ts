@@ -14,6 +14,7 @@ const logger = pino({ base: { service: "bernard" } });
 export type RoutingAgentContext = {
   llmCaller: LLMCaller;
   tools: StructuredToolInterface[];
+  disabledTools?: Array<{ name: string; reason: string }>;
   haContextManager?: unknown;
   haRestConfig?: unknown;
   plexConfig?: unknown;
@@ -36,17 +37,13 @@ export async function routingAgentNode(
   config: { configurable?: { thread_id?: string } },
   context: RoutingAgentContext
 ): Promise<Partial<BernardStateType>> {
-  const { llmCaller, tools } = context;
+  const { llmCaller, tools, disabledTools } = context;
 
   // Build system prompt for router
   const now = new Date();
-  const toolPrompts = tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    schema: tool.schema
-  }));
+  const toolNames = tools.map((tool) => tool.name);
 
-  const systemPrompt = buildRouterSystemPrompt(now, toolPrompts);
+  const systemPrompt = buildRouterSystemPrompt(now, toolNames, disabledTools);
 
   // Prepare messages with system prompt
   const messages: BaseMessage[] = [

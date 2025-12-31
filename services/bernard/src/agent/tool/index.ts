@@ -21,6 +21,31 @@ export type ToolWithInterpretation = StructuredToolInterface & {
   interpretationPrompt?: string;
 };
 
+/**
+ * Result of loading tools - includes both available and disabled tools
+ */
+export interface LoadedTools {
+  tools: ToolWithInterpretation[];
+  disabledTools: Array<{ name: string; reason: string }>;
+}
+
+/**
+ * Known tool names for disabled tool reporting
+ */
+const HA_TOOL_NAMES = [
+  "list_home_assistant_entities",
+  "execute_home_assistant_service",
+  "toggle_home_assistant_light",
+  "get_home_assistant_historical_state"
+] as const;
+
+const TASK_TOOL_NAMES = [
+  "play_plex_media",
+  "set_timer"
+] as const;
+
+const HA_HISTORICAL_TOOL = "get_home_assistant_historical_state";
+
 
 export function getRouterTools(
   haContextManager?: HomeAssistantContextManager,
@@ -31,34 +56,62 @@ export function getRouterTools(
     userId: string;
     createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
-): ToolWithInterpretation[] {
-  const baseTools: ToolWithInterpretation[] = [
+): LoadedTools {
+  const tools: ToolWithInterpretation[] = [];
+  const disabledTools: Array<{ name: string; reason: string }> = [];
+
+  // Base tools - always available
+  tools.push(
     webSearchTool,
     getWeatherDataTool,
     wikipediaSearchTool,
     wikipediaEntryTool,
     getWebsiteContentTool,
-    recallTaskTool,
-  ];
+    recallTaskTool
+  );
 
-  const haTools: ToolWithInterpretation[] = [];
-
-  if (haContextManager || haRestConfig) {
-    haTools.push(createListHAEntitiesToolInstance(haContextManager, haRestConfig));
-    haTools.push(createExecuteHomeAssistantServicesToolInstance(haContextManager, haRestConfig));
-    haTools.push(createToggleLightToolInstance(haContextManager, haRestConfig));
+  // Home Assistant tools - disabled if no config
+  const hasHAConfig = haContextManager || haRestConfig;
+  if (hasHAConfig) {
+    tools.push(createListHAEntitiesToolInstance(haContextManager, haRestConfig));
+    tools.push(createExecuteHomeAssistantServicesToolInstance(haContextManager, haRestConfig));
+    tools.push(createToggleLightToolInstance(haContextManager, haRestConfig));
+  } else {
+    // Add all HA tools as disabled
+    for (const toolName of HA_TOOL_NAMES) {
+      disabledTools.push({
+        name: toolName,
+        reason: "Home Assistant not configured. Set HA_BASE_URL environment variable."
+      });
+    }
   }
 
+  // Historical state tool - requires REST config specifically
   if (haRestConfig) {
-    haTools.push(createGetHistoricalStateToolInstance(haRestConfig));
+    tools.push(createGetHistoricalStateToolInstance(haRestConfig));
+  } else if (hasHAConfig) {
+    // HA is configured but no REST - historical state needs REST
+    disabledTools.push({
+      name: HA_HISTORICAL_TOOL,
+      reason: "Historical state requires HA_BASE_URL with access token for REST API."
+    });
   }
 
+  // Task-based tools (Plex, Timer) - disabled if no task context
   if (taskContext) {
-    haTools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
-    haTools.push(createTimerToolInstance(taskContext));
+    tools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
+    tools.push(createTimerToolInstance(taskContext));
+  } else {
+    // Add task tools as disabled
+    for (const toolName of TASK_TOOL_NAMES) {
+      disabledTools.push({
+        name: toolName,
+        reason: "Background task system not configured."
+      });
+    }
   }
 
-  return [...baseTools, ...haTools];
+  return { tools, disabledTools };
 }
 
 export {

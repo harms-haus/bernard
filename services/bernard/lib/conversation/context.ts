@@ -232,7 +232,8 @@ export class RouterContext extends BaseContext {
   }
 
   buildSystemPrompt(): string {
-    return buildRouterSystemPrompt(new Date(), this.toolDefinitions, this.disabledTools);
+    const toolNames = this.toolDefinitions.map(t => t.name);
+    return buildRouterSystemPrompt(new Date(), toolNames, this.disabledTools);
   }
 
   getMessages(): BaseMessage[] {

@@ -11,7 +11,8 @@ export function buildResponseSystemPrompt(
   _usedTools?: string[],
   _reason?: string
 ): string {
-  const timeStr = now.toISOString();
+  // Use TZ-aware formatting (respects TZ environment variable)
+  const timeStr = now.toLocaleString(undefined, { timeZone: process.env.TZ || undefined });
 
   const prompt = `You are Bernard, a helpful family voice assistant. Your job is to provide helpful, natural responses to user queries.
 

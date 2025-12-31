@@ -28,6 +28,15 @@ export interface TraceEvent {
 }
 
 /**
+ * Tool definition trace data
+ */
+export interface ToolDefinitionTrace {
+  name: string;
+  description?: string;
+  schema?: unknown;
+}
+
+/**
  * LLM call trace data
  */
 export interface LLMCallTrace {
@@ -40,6 +49,7 @@ export interface LLMCallTrace {
       arguments: string;
     }>;
   }>;
+  provided_tools?: ToolDefinitionTrace[];
   response?: {
     content: string;
     usage?: {
@@ -145,6 +155,7 @@ class TraceLogger {
     purpose: "router" | "response",
     model: string,
     messages: Array<{ type: string; content: string; tool_calls?: Array<{ name: string; arguments: string }> }>,
+    providedTools?: ToolDefinitionTrace[],
     iteration?: number
   ): void {
     if (!this.trace) return;
@@ -154,10 +165,14 @@ class TraceLogger {
       messages,
     };
 
+    if (providedTools && providedTools.length > 0) {
+      llmCall.provided_tools = providedTools;
+    }
+
     this.trace.llm_calls.push(llmCall);
     this.addEvent(
       purpose === "router" ? "router_llm" : "response_llm",
-      { model, message_count: messages.length },
+      { model, message_count: messages.length, provided_tools_count: providedTools?.length ?? 0 },
       iteration !== undefined ? { iteration } : undefined
     );
   }

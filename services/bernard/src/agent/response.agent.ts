@@ -16,6 +16,7 @@ export type ResponseStreamCallback = (chunk: string) => void;
 export type ResponseAgentContext = {
   llmCaller: LLMCaller;
   toolDefinitions?: ToolWithInterpretation[];
+  disabledTools?: Array<{ name: string; reason: string }>;
   usedTools?: string[];
   streamCallback?: ResponseStreamCallback;
 };
@@ -31,13 +32,13 @@ export async function responseAgentNode(
   config: { configurable?: { thread_id?: string } },
   context: ResponseAgentContext
 ): Promise<Partial<BernardStateType>> {
-  const { llmCaller, toolDefinitions, usedTools = [], streamCallback } = context;
+  const { llmCaller, toolDefinitions, disabledTools, usedTools = [], streamCallback } = context;
 
   // Build response system prompt
   const systemPrompt = buildResponseSystemPrompt(
     new Date(),
     undefined, // availableTools
-    undefined, // disabledTools
+    disabledTools,
     toolDefinitions,
     usedTools
   );
