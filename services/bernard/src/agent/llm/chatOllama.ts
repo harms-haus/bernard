@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/
 import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import { traceLogger, type ToolDefinitionTrace } from "@/lib/tracing/trace.logger";
 
 // Type for serialized LangChain messages
 interface SerializedLangChainMessage {
@@ -308,6 +309,35 @@ export class ChatOllamaLLMCaller implements LLMCaller {
       }
 
       const cleanedMessages = this.cleanMessages(messages);
+
+      // Trace the router LLM call
+      if (traceLogger.isActive()) {
+        const messagesForTrace = cleanedMessages.map(m => {
+          const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
+          return {
+            type: extMsg.type,
+            content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
+            ...(extMsg.tool_calls ? {
+              tool_calls: extMsg.tool_calls.map(tc => ({
+                name: tc.name,
+                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
+              }))
+            } : {})
+          };
+        });
+
+        // Extract provided tools info for trace
+        const providedToolsForTrace: ToolDefinitionTrace[] | undefined = tools && tools.length > 0
+          ? tools.map(tool => ({
+              name: tool.name,
+              description: tool.description,
+              schema: tool.schema
+            }))
+          : undefined;
+
+        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace);
+      }
+
       const response = await boundClient.invoke(cleanedMessages, invokeOptions);
 
       return response as AIMessage;

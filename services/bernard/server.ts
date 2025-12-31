@@ -128,18 +128,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const routerLLMCaller = createLLMCaller(routerProvider, routerModelSettings.primary);
       const responseLLMCaller = createLLMCaller(responseProvider, responseModelSettings.primary);
 
-      // Get tools
-      const tools = getRouterTools();
+      // Build HA config from settings if available
+      const haRestConfig = settings.services.homeAssistant?.baseUrl
+        ? {
+            baseUrl: settings.services.homeAssistant.baseUrl,
+            accessToken: settings.services.homeAssistant.accessToken,
+          }
+        : undefined;
+
+      // Get tools and detect any disabled tools
+      const { tools, disabledTools } = getRouterTools(undefined, haRestConfig);
 
       // Create contexts for LangGraph
       const routingContext: RoutingAgentContext = {
         llmCaller: routerLLMCaller,
         tools,
+        disabledTools,
       };
 
       const responseContext: ResponseAgentContext = {
         llmCaller: responseLLMCaller,
         toolDefinitions: tools,
+        disabledTools,
       };
 
       // Create text chat graph (voice mode not supported in this endpoint)

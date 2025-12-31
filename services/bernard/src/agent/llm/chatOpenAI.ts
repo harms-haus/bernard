@@ -4,7 +4,7 @@ import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import pino from "pino";
-import { traceLogger } from "@/lib/tracing/trace.logger";
+import { traceLogger, type ToolDefinitionTrace } from "@/lib/tracing/trace.logger";
 
 const logger = pino({ base: { service: "bernard" } });
 
@@ -406,7 +406,17 @@ export class ChatOpenAILLMCaller implements LLMCaller {
             } : {})
           };
         });
-        traceLogger.recordLLMCall("router", config.model, messagesForTrace);
+
+        // Extract provided tools info for trace
+        const providedToolsForTrace: ToolDefinitionTrace[] | undefined = tools && tools.length > 0
+          ? tools.map(tool => ({
+              name: tool.name,
+              description: tool.description,
+              schema: tool.schema
+            }))
+          : undefined;
+
+        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace);
       }
 
       const response = await boundClient.invoke(cleanedMessages, invokeOptions);
