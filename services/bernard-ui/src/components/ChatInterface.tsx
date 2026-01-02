@@ -3,6 +3,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useConfirmDialogPromise } from '../hooks/useConfirmDialogPromise';
 import { apiClient } from '../services/api';
+import {
+  generateConversationId,
+  getStoredConversationId,
+  setStoredConversationId
+} from '../utils/conversationId';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
@@ -29,7 +34,7 @@ interface ToolCall {
   };
 }
 
-interface TraceEvent {
+export interface TraceEvent {
   id: string;
   type: 'llm_call' | 'tool_call' | 'recollection';
   data: any;
@@ -44,9 +49,16 @@ interface ChatInterfaceProps {
   initialTraceEvents?: TraceEvent[];
   readOnly?: boolean;
   height?: string;
+  conversationId?: string;
 }
 
-export function ChatInterface({ initialMessages = [], initialTraceEvents = [], readOnly = false, height = "h-screen" }: ChatInterfaceProps = {}) {
+export function ChatInterface({ 
+  initialMessages = [], 
+  initialTraceEvents = [], 
+  readOnly = false, 
+  height = "h-screen",
+  conversationId 
+}: ChatInterfaceProps = {}) {
   const isAutoHeight = height === "h-auto";
   const { state } = useAuth();
   const { isDarkMode } = useDarkMode();
@@ -55,7 +67,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
   const [input, setInput] = React.useState('');
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [isInputFocused, setIsInputFocused] = React.useState(false);
-  const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
+  const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(conversationId || null);
   const [isGhostMode, setIsGhostMode] = React.useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = React.useState(true);
   const [hasScrollbarAppeared, setHasScrollbarAppeared] = React.useState(false);
@@ -133,6 +145,25 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     }
   }, []);
 
+  // Initialize conversation ID on component mount
+  React.useEffect(() => {
+    // Don't initialize if we're in read-only mode or have conversationId provided via props
+    if (readOnly || conversationId) {
+      return;
+    }
+
+    const storedId = getStoredConversationId();
+    if (storedId) {
+      // Use existing conversation ID from localStorage
+      setCurrentConversationId(storedId);
+    } else {
+      // Generate new conversation ID and store it
+      const newId = generateConversationId();
+      setStoredConversationId(newId);
+      setCurrentConversationId(newId);
+    }
+  }, [readOnly, conversationId]);
+
   // Load current conversation on component mount (only for interactive chat, not read-only conversation details)
   React.useEffect(() => {
     // Don't load current conversation if we're in read-only mode or have initial messages provided
@@ -140,12 +171,72 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
       return;
     }
 
+    // If conversationId is provided but no initial messages, we need to load them
+    // This handles the case when Chat.tsx passes conversationId but no initialMessages
+    if (conversationId) {
+      return; // Chat.tsx handles loading when conversationId is present
+    }
+
     const loadCurrentConversation = async () => {
       try {
-        // Conversation history is no longer kept - skip loading previous conversations
-        // This was intentionally removed to simplify the architecture
-        console.log('Conversation history loading skipped - history feature disabled');
-        return;
+        // Load messages from localStorage for the current conversation
+        const storedId = getStoredConversationId();
+        if (!storedId) {
+          return;
+        }
+
+        const response = await apiClient.getConversation(storedId);
+        
+        // Convert events to MessageRecord format
+        const messages: MessageRecord[] = response.events
+          .filter((event) => {
+            if (event.type === 'llm_call' || event.type === 'tool_call') {
+              return false;
+            }
+            return true;
+          })
+          .map((event) => {
+            const messageRecord: MessageRecord = {
+              id: event.id,
+              role: mapEventTypeToRole(event.type),
+              content: extractContent(event),
+              createdAt: event.timestamp,
+              metadata: event.data as Record<string, unknown>,
+            };
+
+            if (event.type === 'tool_response' && event.data) {
+              const data = event.data as Record<string, unknown>;
+              if (data.tool_call_id) {
+                messageRecord.tool_call_id = data.tool_call_id as string;
+              }
+              if (data.tool_name) {
+                messageRecord.name = data.tool_name as string;
+              }
+            }
+
+            if (event.type === 'llm_response' && event.data) {
+              const data = event.data as Record<string, unknown>;
+              if (data.tool_calls) {
+                messageRecord.tool_calls = data.tool_calls as unknown[];
+              }
+            }
+
+            return messageRecord;
+          });
+
+        // Convert events to TraceEvent format
+        const traceEvents: TraceEvent[] = response.events
+          .filter((event) => event.type === 'llm_call' || event.type === 'tool_call')
+          .map((event) => ({
+            id: event.id,
+            type: event.type === 'llm_call' ? 'llm_call' as const : 'tool_call' as const,
+            data: event.data,
+            timestamp: new Date(event.timestamp),
+            status: 'completed' as const,
+          }));
+
+        setMessages(messages);
+        setTraceEvents(traceEvents);
       } catch (error) {
         console.error('Failed to load current conversation:', error);
         // Don't show error toast on initial load - it's not critical
@@ -153,7 +244,7 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
     };
 
     loadCurrentConversation();
-  }, [readOnly, initialMessages.length]);
+  }, [readOnly, initialMessages.length, conversationId]);
 
   // Update messages and trace events when initial props change (for read-only conversation details)
   React.useEffect(() => {
@@ -164,6 +255,41 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
       setTraceEvents(initialTraceEvents);
     }
   }, [initialMessages, initialTraceEvents]);
+
+  // Helper function to map event types to message roles
+  const mapEventTypeToRole = (eventType: string): MessageRecord['role'] => {
+    switch (eventType) {
+      case 'user_message':
+        return 'user';
+      case 'assistant_message':
+      case 'llm_response':
+        return 'assistant';
+      case 'tool_response':
+        return 'tool';
+      default:
+        return 'system';
+    }
+  };
+
+  // Helper function to extract content from events
+  const extractContent = (event: { data: unknown }): string | Record<string, unknown> => {
+    if (typeof event.data === 'string') {
+      return event.data;
+    }
+
+    if (event.data && typeof event.data === 'object') {
+      const data = event.data as Record<string, unknown>;
+      if (data.content !== undefined) {
+        if (typeof data.content === 'string') {
+          return data.content;
+        }
+        return data.content as Record<string, unknown>;
+      }
+      return data;
+    }
+
+    return '';
+  };
 
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
@@ -197,7 +323,8 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
           content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
         })),
         isGhostMode,
-        abortController.signal
+        abortController.signal,
+        currentConversationId || undefined
       );
 
       const reader = stream.getReader();
@@ -459,6 +586,11 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
 
 
   const handleNewChat = async () => {
+    // If conversationId is provided via props (viewing specific conversation), don't allow new chat
+    if (conversationId) {
+      return;
+    }
+
     // Check if there are unsaved messages
     const hasUnsavedMessages = messages.length > 0;
 
@@ -474,21 +606,14 @@ export function ChatInterface({ initialMessages = [], initialTraceEvents = [], r
       if (!confirmed) return;
     }
 
-    // If there's a current conversation, close it before starting a new one
-    if (currentConversationId) {
-      try {
-        // Close the current conversation
-        await apiClient.closeConversation(currentConversationId, 'manual');
-      } catch (error) {
-        console.error('Failed to close conversation:', error);
-        // Continue anyway - we still want to start a new chat
-      }
-    }
+    // Generate new conversation ID for the new chat
+    const newConversationId = generateConversationId();
+    setStoredConversationId(newConversationId);
+    setCurrentConversationId(newConversationId);
 
     // Clear local state for new chat
     setMessages([]);
     setTraceEvents([]);
-    setCurrentConversationId(null);
     setIsGhostMode(false); // Reset ghost mode for new chat
     setHasScrollbarAppeared(false); // Reset scrollbar appearance tracking for new chat
   };

@@ -2,6 +2,20 @@ import type { BernardStateType } from "./state";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import { traceLogger } from "@/lib/tracing/trace.logger";
+import type { ConversationRecordKeeper } from "@/lib/conversation/conversationRecorder";
+import pino from "pino";
+
+const logger = pino({ base: { service: "bernard" } });
+
+/**
+ * Tool Node configuration
+ */
+export interface ToolNodeConfig {
+  /** Optional conversation recorder for event logging */
+  recorder?: ConversationRecordKeeper | undefined;
+  /** Conversation ID for recording events */
+  conversationId?: string | undefined;
+}
 
 /**
  * Tool Node - Executes tool calls in parallel
@@ -9,7 +23,7 @@ import { traceLogger } from "@/lib/tracing/trace.logger";
  * This node executes all tool calls from the last AIMessage in parallel
  * and returns ToolMessage results.
  */
-export function createToolNode(tools: StructuredToolInterface[]) {
+export function createToolNode(tools: StructuredToolInterface[], config?: ToolNodeConfig) {
   const toolsByName = Object.fromEntries(
     tools.map((tool) => [tool.name, tool])
   );
@@ -24,6 +38,37 @@ export function createToolNode(tools: StructuredToolInterface[]) {
     const toolCalls = lastMessage.tool_calls ?? [];
     if (toolCalls.length === 0) {
       return { messages: [] };
+    }
+
+    // Record tool call events before execution
+    const { recorder, conversationId } = config ?? {};
+    if (recorder && conversationId) {
+      try {
+        await Promise.all(
+          toolCalls.map((toolCall) => {
+            const toolCallId = toolCall.id ?? `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const eventData: {
+              toolCallId: string;
+              toolName: string;
+              messageId?: string;
+              arguments: string;
+            } = {
+              toolCallId,
+              toolName: toolCall.name,
+              arguments: JSON.stringify(toolCall.args)
+            };
+            if (lastMessage.id) {
+              eventData.messageId = lastMessage.id;
+            }
+            return recorder.recordEvent(conversationId, {
+              type: "tool_call",
+              data: eventData
+            });
+          })
+        );
+      } catch (error) {
+        logger.warn({ err: error }, "Failed to record tool call events");
+      }
     }
 
     // Execute all tool calls in parallel
@@ -61,6 +106,23 @@ export function createToolNode(tools: StructuredToolInterface[]) {
             traceLogger.recordToolCallComplete(toolName, toolCallId, content, duration);
           }
 
+          // Record tool response event
+          if (recorder && conversationId) {
+            try {
+              await recorder.recordEvent(conversationId, {
+                type: "tool_response",
+                data: {
+                  toolCallId,
+                  toolName,
+                  result: content,
+                  executionDurationMs: duration
+                }
+              });
+            } catch (error) {
+              logger.warn({ err: error }, "Failed to record tool response event");
+            }
+          }
+
           return new ToolMessage({
             content,
             tool_call_id: toolCallId,
@@ -73,6 +135,24 @@ export function createToolNode(tools: StructuredToolInterface[]) {
           // Trace tool call error
           if (traceLogger.isActive()) {
             traceLogger.recordToolCallError(toolName, toolCallId, errorMessage, duration);
+          }
+
+          // Record tool response event with error
+          if (recorder && conversationId) {
+            try {
+              await recorder.recordEvent(conversationId, {
+                type: "tool_response",
+                data: {
+                  toolCallId,
+                  toolName,
+                  result: `Error: ${errorMessage}`,
+                  executionDurationMs: duration,
+                  error: errorMessage
+                }
+              });
+            } catch (recordError) {
+              logger.warn({ err: recordError }, "Failed to record tool error event");
+            }
           }
 
           return new ToolMessage({

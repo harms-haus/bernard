@@ -1,235 +1,394 @@
-# AGENTS.md
+# Bernard Repository Architecture Guide
 
-AI coding agent instructions for **bernard**
+> **NOTE TO FUTURE AGENTS**: This document describes the Bernard architecture. Read before modifying. Key commands are in the [Development Commands](#development-commands) section.
 
-## Project Overview
+## Overview
 
-**Project Type:** Node.js Application
-**Primary Language:** TypeScript (74% of codebase)
-**Secondary Languages:** JavaScript (26%)
+Bernard is a family voice assistant built with LangGraph that provides an OpenAI-compatible API for intelligent conversational assistance. The system is a microservices architecture with services written in TypeScript, Python, and C++.
 
-## Architecture
+## Filesystem Layout
 
-**Project Structure:**
-- `api/` - Fastify proxy server (primary API entry point)
-- `services/` - Core AI engines and application components
-  - `bernard/` - Main agent application codebase (Next.js)
-    - `agent/` - Agent components
-      - `tool/` - Tool implementations
-      - `task/` - Background task implementations
-    - `recordKeeper/conversation.keeper.ts` - Conversation record keeping
-    - `recordKeeper/task.keeper.ts` - Task record keeping
-    - `lib/` - Next.js specific utilities
-  - `bernard-ui/` - Frontend interface (React/Vite)
-  - `kokoro/` - Kokoro TTS engine
-  - `whisper.cpp/` - Whisper STT engine
-  - `vllm/venv/` - Embedding engine
-- `lib/shared/` - Shared utilities for settings, auth, and infrastructure
-- `docs/` - Documentation
-- `docs/services/` - Detailed guides for individual services
-
-## Core Architecture Patterns
-
-### Harness-Based Agent Architecture
-
-Bernard implements a **harness-based agent architecture** where each component of the conversation flow is encapsulated in specialized, composable modules called "harnesses."
-
-#### Harness Pattern Components
-
-**Core Harnesses:**
-- **Router Harness** (`bernard/agent/harness/router/`) - Determines which tools need to be executed based on user input
-- **Response Harness** (`bernard/agent/harness/respond/`) - Generates natural language responses after tool execution
-- **Utility Harness** (`bernard/agent/harness/utility/`) - Placeholder for general-purpose tools
-
-**Orchestration Layer:**
-- **Streaming Orchestrator** (`bernard/agent/loop/orchestrator.ts`) - Coordinates harness execution and manages conversation state
-
-**Streaming Infrastructure:**
-- **Delegate Sequencer** (`bernard/agent/streaming/delegateSequencer.ts`) - Chains async generators for real-time event streaming
-- **Streaming Types** (`bernard/agent/streaming/types.ts`) - Standardized event contracts for harness communication
-
-#### Harness Behavior Contract
-
-Each harness implements the following pattern:
-```typescript
-// Standard harness interface
-interface Harness<TIn, TOut> { 
-  run(input: TIn, ctx: HarnessContext): Promise<HarnessResult<TOut>>; 
-}
-
-// Event streaming pattern for real-time updates
-async function* runHarnessWithStreaming(input, context) {
-  // Yield events as they occur, not after completion
-  yield { type: 'llm_call', context: buildPrompt(input) };
-  // ... processing
-  yield { type: 'delta', delta: 'partial result' };
-  // ... more processing
-  return finalResult;
-}
+```
+/
+├── start.sh                    # Entry point - delegates to services.sh
+├── scripts/                    # Service orchestration scripts
+│   ├── services.sh            # Main orchestrator (start, stop, init, clean, check)
+│   ├── shared.sh              # Builds lib/shared
+│   ├── redis.sh               # Redis with RediSearch container
+│   ├── bernard.sh             # Core agent service
+│   ├── bernard-api.sh         # Configuration & auth API
+│   ├── bernard-ui.sh          # React admin UI
+│   ├── proxy-api.sh           # Unified gateway (OAuth + routing)
+│   ├── vllm.sh                # Embedding service (port 8860)
+│   ├── whisper.sh             # Speech-to-text (port 8870)
+│   ├── kokoro.sh              # Text-to-speech (port 8880)
+│   └── logging.sh             # Common logging utilities
+├── lib/shared/                # Shared TypeScript library (built first)
+├── proxy-api/                 # Fastify gateway (port 3456)
+└── services/
+    ├── bernard/               # CORE: LangGraph agent service (port 8850)
+    ├── bernard-api/           # Settings, auth, token management (port 8800)
+    ├── bernard-ui/            # React admin dashboard (served via proxy)
+    ├── kokoro/                # FastAPI TTS service (Python, port 8880)
+    └── whisper.cpp/           # C++ speech recognition (port 8002)
 ```
 
-### Key Design Principles
-
-1. **Stateless Graph**: Conversation flow alternates between model output and tool execution until completion, then streams partial tokens as `text/event-stream`
-2. **Composable Components**: Each harness has a single responsibility and can be composed together
-3. **Real-time Streaming**: Events are emitted immediately as they occur, not buffered for batch processing
-4. **Token-gated Access**: Authentication handled at the API layer with bearer tokens
-5. **Event-driven Architecture**: All internal communication uses standardized event types
-
-## Documentation Categories
-
-**Architecture Documentation:**
-- [Harness Architecture](docs/agent/harnesses/router.md) - Router harness implementation details
-- [Response Harness](docs/agent/harnesses/response.md) - Response generation patterns
-- [Streaming Architecture](docs/agent/delegate-streaming.md) - Real-time event streaming design
-- [Orchestrator](docs/agent/orchestrator.md) - Conversation coordination logic
-
-**Integration Guides:**
-- [Home Assistant Integration](docs/HOME_ASSISTANT_INTEGRATION.md) - Device integration patterns
-
-## Build, Test, and Run
-
-### Prerequisites
-- Node.js LTS + npm
-- Redis server
-- Environment configuration (`api/.env`)
-
-### Service Management (from root)
-```bash
-# Start all services (default: monitor logs, Ctrl+C to stop all)
-./scripts/services.sh start
-
-# Start all services and exit immediately (services run in background)
-./scripts/services.sh start --exit-after-start
-
-# Stop all services
-./scripts/services.sh stop
-
-# Initialize all services (install dependencies)
-./scripts/services.sh init
-
-# Clean all services (remove dependencies)
-./scripts/services.sh clean
-
-# Check all services (run build checks)
-./scripts/services.sh check
-
-# Individual service control
-./scripts/redis.sh {start|stop|init|clean|check}
-./scripts/bernard-api.sh {start|stop|init|clean|check}
-./scripts/proxy-api.sh {start|stop|init|clean|check}
-./scripts/bernard.sh {start|stop|init|clean|check}
-./scripts/bernard-ui.sh {start|stop|init|clean|check}
-./scripts/vllm.sh {start|stop|init|clean|check}
-./scripts/whisper.sh {start|stop|init|clean|check}
-./scripts/kokoro.sh {start|stop|init|clean|check}
-```
-
-### Development Commands
-```bash
-# Agent (Next.js)
-cd services/bernard && npm run dev
-
-# API (Fastify)
-cd api && npm run dev
-
-# UI (Vite)
-cd services/bernard-ui && npm run dev
-```
-
-### Testing Strategy
-- Unit tests for individual harnesses with mocked LLM callers
-- Integration tests for orchestrator sequencing
-- Streaming behavior tests with fake async generators
-- End-to-end API route testing
-
-## Code Style Guidelines
-
-### TypeScript Conventions
-- Use camelCase for variables and functions
-- Use PascalCase for classes and components
-- Prefer const/let over var
-- Use async/await over callbacks when possible
-- Type all function parameters and return values
-
-### Harness Implementation Standards
-- Always implement the streaming pattern for real-time updates
-- Prefer yielding events immediately rather than buffering
-- Use standardized event types defined in `streaming/types.ts`
-- Maintain single responsibility per harness
-- Keep harnesses stateless and composable
-
-### Error Handling
-- Yield error events immediately when they occur
-- Never catch errors that should propagate to the client
-- Use structured error types for consistent handling
-- Implement graceful fallbacks in response harness
-
-## Documentation Maintenance
-
-### Critical Documentation Principle
-
-**When code and documentation disagree, update the documentation to reflect the current behavior.** Documentation must always accurately represent how the system currently works, not how it was designed or how it should work.
-
-### Documentation Guidelines
-
-1. **Timeless Descriptions**: Describe how the system currently works, not how it evolved
-   - ❌ "The new router harness replaces the legacy routing system"
-   - ✅ "The router harness determines which tools to execute based on user input"
-
-2. **Current State Focus**: Document the present implementation
-   - ❌ "This was upgraded from a callback-based system"
-   - ✅ "The system uses async generators for real-time event streaming"
-
-3. **Behavioral Accuracy**: Documentation must match actual behavior
-   - When making code changes that affect behavior, update all related documentation
-   - When updating documentation, verify it matches the current implementation
-   - Remove outdated examples and replace with current patterns
-
-4. **Example Usage**: Use existing code as examples, not prescriptions
-   - Document patterns that are actually used in the codebase
-   - Keep examples minimal and focused on the documented concept
-   - Update examples when underlying patterns change
-
-### Documentation Categories to Maintain
-
-- **Architecture patterns** - Keep harness contracts and relationships current
-- **API specifications** - Update when endpoints or behaviors change
-- **Implementation plans** - Mark completed items and remove outdated strategies
-- **Integration guides** - Keep device and service integration instructions accurate
-- **Code examples** - Ensure all examples compile and work as documented
-
-## AI Coding Assistance Notes
-
-### Important Considerations
-
-- Check package.json for available scripts before running commands
-- Be aware of Node.js version requirements
-- Consider impact on bundle size when adding dependencies
-- Project has 472 files across 131 directories
-- Check build configuration files before making structural changes
-
-### When to Ask Questions
-
-**Ask when:**
-- Genuine ambiguities exist in requirements or implementation
-- Missing required parameters for successful task completion
-- Complex intent clarification is needed beyond available context
-
-**Don't ask when:**
-- Minor details can be resolved through available tools
-- Answers are findable via search or file examination
-- Information has already been provided in the request
-- Sufficient context exists to proceed confidently
-
-### Code Change Protocol
-
-1. **Understand existing patterns** before modifying code
-2. **Update documentation** when code behavior changes
-3. **Maintain backward compatibility** where possible
-4. **Follow established harness patterns** for new functionality
-5. **Test streaming behavior** for real-time features
+**Note**: `function-gamma` and `ingress` directories are excluded from this documentation.
 
 ---
 
-*This AGENTS.md file defines the current architecture and patterns for the bernard project. Update it as the project evolves to maintain accuracy and usefulness.*
+## Core Service: Bernard (`services/bernard/`)
+
+Bernard is the heart of the repository—a LangGraph-based agent system with OpenAI-compatible endpoints.
+
+### Architecture
+
+```
+src/agent/
+├── graph/
+│   ├── bernard.graph.ts       # Main voice assistant workflow
+│   ├── text-chat.graph.ts     # Text chat variant
+│   ├── state.ts               # LangGraph state definition
+│   └── toolNode.ts            # Tool execution node
+├── routing.agent.ts           # "Data Coordinator" - decides which tools to call
+├── response.agent.ts          # "Creative Assistant" - generates final responses
+├── llm/
+│   ├── factory.ts             # LLM provider factory (OpenAI, Ollama)
+│   ├── chatOpenAI.ts          # OpenAI implementation
+│   └── chatOllama.ts          # Ollama implementation
+├── tool/
+│   ├── index.ts               # Tool registry
+│   ├── web-search.tool.ts     # SearXNG integration
+│   ├── wikipedia-*.tool.ts    # Wikipedia search/entry
+│   ├── home-assistant-*.tool.ts # HA entity control, state, services
+│   ├── weather.tool.ts        # Weather data
+│   └── timer.tool.ts          # Timer functionality
+└── node/
+    └── recollection.node.ts   # Memory retrieval
+
+lib/
+├── config/                    # Settings management (Redis-backed)
+├── auth/                      # Authentication & tokens
+├── openai.ts                  # OpenAI API compatibility layer
+├── home-assistant/            # HA WebSocket + REST integration
+├── automation/                # Background task system (BullMQ)
+├── plex/                      # Media server integration
+└── tracing/                   # Request tracing & logging
+```
+
+### Graph Flow
+
+```
+START → recollection → routing_agent → (tool_node | response_agent) → END
+                                        ↑___________|
+```
+
+- **Recollection**: Retrieves relevant memories from memory system
+- **Routing Agent**: Analyzes queries, decides which tools to call (max 10 iterations)
+- **Tool Node**: Executes tools in parallel with error handling
+- **Response Agent**: Generates final natural language response
+
+### State Schema (`state.ts`)
+
+```typescript
+BernardState {
+  messages: MessagesAnnotation       // Conversation history
+  memories: string[]                 // Retrieved context memories
+  toolResults: Record<string, string> // Cached tool results
+  status: string                     // Current workflow state
+  iterationCount: number             // Prevents infinite loops
+}
+```
+
+### Tool System
+
+Tools are LangChain `StructuredTool` implementations. Available tools:
+- Web search (SearXNG)
+- Wikipedia search & entry retrieval
+- Weather data
+- Home Assistant (lights, entities, services, historical state)
+- Plex media control
+- Timer functionality
+- Task recall system
+- Website content extraction
+
+### Server Entry Point (`server.ts`)
+
+OpenAI-compatible HTTP server on port 8850:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/v1/models` | GET | List available models |
+| `/v1/chat/completions` | POST | Chat completions (streaming or blocking) |
+
+Supports CORS, streaming responses, graceful shutdown, and request tracing.
+
+### Configuration
+
+Settings stored in Redis, configurable via:
+- Environment variables (`.env`)
+- Bernard API admin endpoints
+- Bernard UI dashboard
+
+---
+
+## Other Services
+
+### Bernard API (`services/bernard-api/`)
+- **Port**: 8800
+- **Purpose**: Central configuration, authentication, token management, request logging
+- **Tech**: Fastify, Redis
+- **Entry**: `src/index.ts`
+
+### Bernard UI (`services/bernard-ui/`)
+- **Port**: 8810 (served via proxy)
+- **Purpose**: React admin dashboard, chat interface, settings management
+- **Tech**: React 18, Radix UI, Tailwind CSS, Vite
+
+### Proxy API (`proxy-api/`)
+- **Port**: 3456
+- **Purpose**: Unified gateway with OAuth authentication and service routing
+- **Tech**: Fastify, Node.js
+- **Entry**: `src/index.ts`
+- **Routes**: `/api/*` → Bernard API, `/v1/*` → Bernard, `/bernard/*` → UI
+
+### Kokoro TTS (`services/kokoro/`)
+- **Port**: 8880
+- **Purpose**: Text-to-speech with OpenAI-compatible `/v1/audio/speech`
+- **Tech**: Python, FastAPI, PyTorch, Kokoro model (80+ voices)
+
+### Whisper.cpp (`services/whisper.cpp/`)
+- **Port**: 8002 (HTTP server mode)
+- **Purpose**: High-performance speech recognition
+- **Tech**: C++, CMake, whisper models (ggml format)
+- **Platform**: CUDA/Metal/Vulkan/OpenVINO support
+
+### VLLM (`services/vllm/`)
+- **Port**: 8860
+- **Purpose**: Embedding service (Nomic model)
+- **Tech**: Python, vLLM inference engine
+
+---
+
+## Service Startup Orchestration
+
+### Startup Order (Dependency-Aware)
+
+```
+1. SHARED        → Builds lib/shared (no port)
+2. REDIS         → Port 6379 (required by all services)
+3. BERNARD-API   → Port 8800 (auth, settings)
+4. PROXY-API     → Port 3456 (gateway, requires API)
+5. BERNARD       → Port 8850 (core agent, requires Redis)
+6. BERNARD-UI    → Port 8810 (static, served via proxy)
+7. VLLM          → Port 8860 (embeddings)
+8. WHISPER       → Port 8870 (ASR)
+9. KOKORO        → Port 8880 (TTS)
+```
+
+### Commands (`./scripts/services.sh`)
+
+| Command | Description |
+|---------|-------------|
+| `./start.sh` | Start all services with health checks |
+| `./start.sh --exit-after-start` | Start services, exit immediately (daemon mode) |
+| `./scripts/services.sh stop` | Stop all services gracefully |
+| `./scripts/services.sh init` | Install dependencies for all services |
+| `./scripts/services.sh clean` | Remove all build artifacts |
+| `./scripts/services.sh check` | Run validation on all services |
+
+### Health Checks
+
+Each service script implements:
+- `start` with timeout (20s default, configurable)
+- Health check via `/health` endpoint
+- Parallel verification after all services start
+- Detailed error logging on failure
+
+### Example Service Script Pattern
+
+```bash
+#!/bin/bash
+source "$(dirname "$0")/logging.sh"
+
+SERVICE_NAME="BERNARD"
+COLOR="\033[0;32m"
+NC="\033[0m"
+
+start() {
+    log "Starting $SERVICE_NAME..."
+    # Health check loop
+    # Log tailing
+}
+
+stop() {
+    log "Stopping $SERVICE_NAME..."
+    # Graceful shutdown + force kill
+}
+
+check() {
+    # Run: type-check → lint → build
+    # Track pass/fail for each step
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    check) check ;;
+esac
+```
+
+---
+
+## Development Commands
+
+### Bernard Core (`services/bernard/`)
+
+```bash
+cd services/bernard
+
+npm run lint          # ESLint with TypeScript rules
+npm run type-check    # TypeScript compiler (tsc --noEmit)
+npm run type-check:src # Type check excluding tests
+npm run build         # Vite build for production
+npm run tests         # Vitest test runner
+npm run tests:watch   # Watch mode
+npm run tests:coverage # With v8 coverage
+npm run dev           # tsx watch server
+```
+
+### Bernard UI (`services/bernard-ui/`)
+
+```bash
+cd services/bernard-ui
+
+npm run lint
+npm run type-check
+npm run build         # tsc && vite build
+npm run dev           # Vite dev server
+```
+
+### Bernard API (`services/bernard-api/`)
+
+```bash
+cd services/bernard-api
+
+npm run lint
+npm run type-check
+npm run build         # TypeScript compilation
+npm run dev           # tsx watch
+```
+
+### Proxy API (`proxy-api/`)
+
+```bash
+cd proxy-api
+
+npm run lint
+npm run type-check
+npm run build
+npm run dev
+```
+
+### Kokoro TTS (`services/kokoro/`)
+
+```bash
+cd services/kokoro
+
+pytest                    # Run tests
+pytest --cov=api --cov=ui # With coverage
+uv run pytest            # Via uv package manager
+```
+
+### Whisper.cpp (`services/whisper.cpp/`)
+
+```bash
+cd services/whisper.cpp
+
+make build   # CMake build
+make clean   # Remove artifacts
+make tiny.en # Build with specific model
+```
+
+### Service-Level Check
+
+```bash
+# Full validation for a service
+./scripts/bernard.sh check
+./scripts/bernard-api.sh check
+# etc.
+
+# Check all services
+./scripts/services.sh check
+```
+
+---
+
+## Common Patterns
+
+### Adding a New Tool
+
+1. Create `src/agent/tool/my-tool.tool.ts`:
+   ```typescript
+   import { StructuredTool } from "@langchain/core/tools";
+   
+   export const myTool = new StructuredTool({
+     name: "my_tool",
+     description: "Does something useful",
+     parameters: z.object({ ... }),
+     handler: async (input) => { ... }
+   });
+   ```
+
+2. Register in `src/agent/tool/index.ts`
+
+3. Add to tool registry in graph construction
+
+### Adding a New Service
+
+1. Create `scripts/new-service.sh` with standard pattern (start/stop/check)
+2. Add to `services.sh` startup order and service arrays
+3. Create health check endpoint at `/health`
+4. Document in this file
+
+### Modifying Configuration
+
+Settings are Redis-backed. Modify via:
+1. Bernard UI dashboard (easiest)
+2. Bernard API admin endpoints
+3. Direct Redis writes (advanced)
+
+---
+
+## Key Files for Reference
+
+| File | Purpose |
+|------|---------|
+| `services/bernard/server.ts` | Main HTTP server, OpenAI-compatible endpoints |
+| `services/bernard/src/agent/graph/bernard.graph.ts` | LangGraph workflow definition |
+| `services/bernard/src/agent/state.ts` | State schema for graph |
+| `services/bernard/src/agent/routing.agent.ts` | Router agent implementation |
+| `services/bernard/src/agent/tool/index.ts` | Tool registry |
+| `scripts/services.sh` | Service orchestration master script |
+| `services/bernard/package.json` | Dependencies, scripts, lint config |
+
+---
+
+## Debugging Tips
+
+- **Logs**: All services log to `logs/{service}.log`
+- **Tail all logs**: `./scripts/services.sh start` (monitors in foreground)
+- **Check service health**: `curl http://localhost:{port}/health`
+- **Redis**: `redis-cli -p 6379` for session/state inspection
+- **Build failures**: Check `logs/{service}-check.log` and `logs/{service}-check.status`
+
+---
+
+## Ignore List
+
+The following directories are excluded from this documentation and should be ignored:
+- `function-gemma`
+- `ingress`
+
+For questions about architecture decisions, consult the `docs/` directory.

@@ -1,5 +1,6 @@
 import type { BaseMessage, AIMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { ModelAdapter } from "./adapters/adapter.interface";
 
 /**
  * Configuration for LLM calls
@@ -48,5 +49,13 @@ export interface LLMCaller {
     config: LLMConfig,
     tools?: StructuredToolInterface[]
   ): Promise<AIMessage>;
+
+  /**
+   * Create a new caller with model adapters applied
+   * 
+   * @param adapters - Array of adapters to apply
+   * @returns New LLMCaller with adapters wrapped around this caller
+   */
+  adaptedBy(adapters: ModelAdapter[]): LLMCaller;
 }
 

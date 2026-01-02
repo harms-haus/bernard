@@ -1,4 +1,8 @@
 import { User, UserStatus } from '../types/auth';
+import type {
+  ConversationsListResponse,
+  ConversationDetailResponse,
+} from '../types/conversation';
 
 export interface LoginCredentials {
   email: string;
@@ -307,7 +311,7 @@ class APIClient {
     });
   }
 
-  async chat(messages: ConversationMessage[]): Promise<ChatResponse> {
+  async chat(messages: ConversationMessage[], conversationId?: string): Promise<ChatResponse> {
     const response = await fetch(`/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
@@ -320,7 +324,8 @@ class APIClient {
         messages: messages.map(msg => ({
           role: msg.role,
           content: msg.content
-        }))
+        })),
+        ...(conversationId ? { conversationId } : {})
       })
     });
 
@@ -331,7 +336,7 @@ class APIClient {
     return response.json();
   }
 
-  async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal): Promise<ReadableStream> {
+  async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal, conversationId?: string): Promise<ReadableStream> {
     const response = await fetch(`/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
@@ -346,7 +351,8 @@ class APIClient {
           content: msg.content
         })),
         stream: true,
-        ...(ghost ? { ghost: true } : {})
+        ...(ghost ? { ghost: true } : {}),
+        ...(conversationId ? { conversationId } : {})
       }),
       signal
     });
@@ -462,6 +468,31 @@ class APIClient {
     }
 
     return response.json();
+  }
+
+  // Conversation API methods
+  async listConversations(options: {
+    archived?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<ConversationsListResponse> {
+    const params = new URLSearchParams({
+      archived: String(options.archived ?? false),
+      limit: String(options.limit ?? 50),
+      offset: String(options.offset ?? 0),
+    });
+
+    return this.request<ConversationsListResponse>(`/conversations?${params}`);
+  }
+
+  async getConversation(conversationId: string): Promise<ConversationDetailResponse> {
+    return this.request<ConversationDetailResponse>(`/conversations/${conversationId}`);
+  }
+
+  async archiveConversation(conversationId: string): Promise<void> {
+    return this.request<void>(`/conversations/${conversationId}/archive`, {
+      method: 'POST',
+    });
   }
 }
 
