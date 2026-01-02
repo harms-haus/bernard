@@ -37,6 +37,39 @@ export interface ToolDefinitionTrace {
 }
 
 /**
+ * Request trace data - captures the exact request sent to the LLM
+ */
+export interface LLMRequestTrace {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: {
+    model: string;
+    messages: Array<{
+      role: string;
+      content: string;
+      tool_calls?: Array<{
+        id: string;
+        type: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    }>;
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    stop?: string | string[];
+    stream?: boolean;
+    tools?: unknown[];
+    tool_choice?: unknown;
+  };
+}
+
+/**
  * LLM call trace data
  */
 export interface LLMCallTrace {
@@ -50,6 +83,7 @@ export interface LLMCallTrace {
     }>;
   }>;
   provided_tools?: ToolDefinitionTrace[];
+  request?: LLMRequestTrace;
   response?: {
     content: string;
     usage?: {
@@ -156,7 +190,8 @@ class TraceLogger {
     model: string,
     messages: Array<{ type: string; content: string; tool_calls?: Array<{ name: string; arguments: string }> }>,
     providedTools?: ToolDefinitionTrace[],
-    iteration?: number
+    iteration?: number,
+    request?: LLMRequestTrace
   ): void {
     if (!this.trace) return;
 
@@ -167,6 +202,10 @@ class TraceLogger {
 
     if (providedTools && providedTools.length > 0) {
       llmCall.provided_tools = providedTools;
+    }
+
+    if (request) {
+      llmCall.request = request;
     }
 
     this.trace.llm_calls.push(llmCall);

@@ -19,7 +19,10 @@ export function createBernardGraph(
   responseContext: ResponseAgentContext
 ) {
   const tools = routingContext.tools;
-  const toolNode = createToolNode(tools);
+  const toolNode = createToolNode(tools, {
+    recorder: routingContext.recorder,
+    conversationId: routingContext.conversationId
+  });
 
   // Conditional edge function - determines whether to continue with tools or go to response
   function shouldContinue(state: typeof BernardState.State): typeof END | "tools" | "response" {

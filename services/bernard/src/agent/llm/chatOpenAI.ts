@@ -1,20 +1,14 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { type AIMessage } from "@langchain/core/messages";
 import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
+import type { ModelAdapter } from "./adapters/adapter.interface";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import pino from "pino";
-import { traceLogger, type ToolDefinitionTrace } from "@/lib/tracing/trace.logger";
+import { traceLogger, type ToolDefinitionTrace, type LLMRequestTrace } from "@/lib/tracing/trace.logger";
+import { AdapterCallerWrapper } from "./adapters/callerWrapper";
 
 const logger = pino({ base: { service: "bernard" } });
-
-// Types for LangChain message serialization
-interface SerializedLangChainMessage {
-  lc: number;
-  type: string;
-  id: string[];
-  kwargs: Record<string, unknown>;
-}
 
 // Extended message interface for internal properties
 interface ExtendedBaseMessage {
@@ -33,10 +27,97 @@ interface ExtendedBaseMessage {
 }
 
 /**
+ * Helper function to redact sensitive header values
+ */
+function redactHeaders(headers: Record<string, string>): Record<string, string> {
+  const redacted: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const lowerKey = key.toLowerCase();
+    // Redact authorization and api-key headers
+    if (lowerKey === "authorization" || lowerKey === "api-key" || lowerKey === "x-api-key") {
+      redacted[key] = "[redacted]";
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
+
+/**
+ * Helper function to convert messages to OpenAI format for request body
+ */
+function messagesToOpenAIMessages(messages: BaseMessage[]): Array<{
+  role: string;
+  content: string;
+  tool_calls?: Array<{
+    id: string;
+    type: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+}> {
+  return messages.map((msg) => {
+    const extMsg = msg as unknown as ExtendedBaseMessage;
+    const role = extMsg._getType?.() || extMsg.type || "user";
+    let content: string;
+
+    if (typeof extMsg.content === "string") {
+      content = extMsg.content;
+    } else if (Array.isArray(extMsg.content)) {
+      // Handle content arrays (e.g., multimodal content)
+      content = extMsg.content
+        .filter((part): part is { type: "text"; text: string } => {
+          if (typeof part !== "object" || part === null) return false;
+          const typedPart = part as { type: unknown; text: unknown };
+          return typedPart.type === "text" && typeof typedPart.text === "string";
+        })
+        .map((part) => part.text)
+        .join("\n");
+    } else {
+      content = String(extMsg.content);
+    }
+
+    const result: {
+      role: string;
+      content: string;
+      tool_calls?: Array<{
+        id: string;
+        type: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    } = { role: role.replace("ai", "assistant").replace("human", "user"), content };
+
+    // Handle tool calls for AI messages
+    if (extMsg.tool_calls || extMsg.additional_kwargs?.tool_calls) {
+      const toolCalls = extMsg.tool_calls || extMsg.additional_kwargs?.tool_calls;
+      if (toolCalls && toolCalls.length > 0) {
+        result.tool_calls = toolCalls.map((tc) => ({
+          id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
+          type: "function",
+          function: {
+            name: tc.name,
+            arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+          },
+        }));
+      }
+    }
+
+    return result;
+  });
+}
+
+/**
  * ChatOpenAI-based implementation of LLMCaller
  */
 export class ChatOpenAILLMCaller implements LLMCaller {
   private client: ChatOpenAI;
+  private baseURL: string;
+  private headers: Record<string, string>;
 
   constructor(apiKey: string, baseURL?: string, model?: string) {
     if (!apiKey || apiKey.trim() === "") {
@@ -67,111 +148,79 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       configuration,
       verbose: false,
     });
+
+    // Store configuration for request tracing
+    this.baseURL = baseURL || "https://api.openai.com/v1";
+    this.headers = configuration.defaultHeaders || {};
   }
 
   /**
-    * Cleans messages to ensure they are compatible with OpenAI API and other strict providers.
-    * Maps LangChain message types to proper message classes and ensures tool_calls/IDs are consistent.
-    */
-  private cleanMessages(messages: BaseMessage[]): BaseMessage[] {
-    return messages.map((msg, index) => {
-      const extendedMsg = msg as unknown as ExtendedBaseMessage;
+   * Build the request trace object for the current call
+   */
+  private buildRequestTrace(
+    model: string,
+    messages: BaseMessage[],
+    tools?: StructuredToolInterface[],
+    config?: LLMConfig
+  ): LLMRequestTrace {
+    const openAIMessages = messagesToOpenAIMessages(messages);
 
-      // Check if this is a serialized LangChain message
-      const isSerialized = extendedMsg.lc === 1 &&
-                          extendedMsg.type === "constructor" &&
-                          Array.isArray((extendedMsg as unknown as SerializedLangChainMessage).id) &&
-                          (extendedMsg as unknown as SerializedLangChainMessage).id.length >= 3 &&
-                          (extendedMsg as unknown as SerializedLangChainMessage).id[0] === "langchain_core" &&
-                          (extendedMsg as unknown as SerializedLangChainMessage).id[1] === "messages";
+    const body: LLMRequestTrace["body"] = {
+      model,
+      messages: openAIMessages,
+    };
 
-      let actualType: string;
-      let kwargs: Record<string, unknown> = {};
-      let content = msg.content;
+    // Add optional parameters if provided
+    if (config?.temperature !== undefined) {
+      body.temperature = config.temperature;
+    }
+    if (config?.maxTokens !== undefined) {
+      body.max_tokens = config.maxTokens;
+    }
 
-      if (isSerialized) {
-        // Extract type from serialized format
-        const serializedMsg = extendedMsg as unknown as SerializedLangChainMessage;
-        actualType = serializedMsg.id[2] || "Unknown"; // e.g., "ToolMessage", "AIMessage", etc.
-        kwargs = serializedMsg.kwargs || {};
-        content = (kwargs["content"] as string | undefined) || content;
-      } else {
-        // Live LangChain message object
-        actualType = extendedMsg.type || extendedMsg._getType?.() || "";
-        kwargs = {};
-      }
+    // Add tools if provided
+    if (tools && tools.length > 0) {
+      body.tools = tools.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.schema,
+        },
+      }));
+    }
 
-      // Ensure content is never undefined or empty array
-      if (content === undefined || content === null || (Array.isArray(content) && content.length === 0)) {
-        content = "";
-      }
-
-      // Convert based on actual message type
-      switch (actualType) {
-        case "ToolMessage": {
-          const toolCallId = (kwargs["tool_call_id"] as string | undefined) || extendedMsg.tool_call_id || `call_tool_${index}`;
-          const name = (kwargs["name"] as string | undefined) || extendedMsg.name;
-          const messageFields: { content: string; tool_call_id: string; name?: string } = {
-            content: typeof content === "string" ? content : JSON.stringify(content),
-            tool_call_id: toolCallId,
-          };
-          if (name) {
-            messageFields.name = name;
-          }
-          return new ToolMessage(messageFields);
-        }
-
-        case "AIMessage": {
-          const toolCalls = (kwargs["tool_calls"] as LangChainToolCall[]) || extendedMsg.tool_calls || extendedMsg.additional_kwargs?.tool_calls;
-          let cleanedContent = typeof content === "string" ? content : JSON.stringify(content);
-
-          // Some providers require content to be non-empty string when tool_calls are present
-          if (cleanedContent === "" && Array.isArray(toolCalls) && toolCalls.length > 0) {
-            cleanedContent = "";
-          }
-
-          const aiFields: { content: string; tool_calls?: LangChainToolCall[] } = { content: cleanedContent };
-
-          if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-            aiFields.tool_calls = toolCalls;
-          }
-
-          return new AIMessage(aiFields);
-        }
-
-        case "SystemMessage":
-          return new SystemMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
-
-        case "HumanMessage":
-          return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
-
-        default:
-          // Fallback for unknown types - assume HumanMessage
-          return new HumanMessage({ content: typeof content === "string" ? content : JSON.stringify(content) });
-      }
-    });
+    return {
+      url: `${this.baseURL}/chat/completions`,
+      method: "POST",
+      headers: redactHeaders(this.headers),
+      body,
+    };
   }
 
   async complete(messages: BaseMessage[], config: LLMConfig): Promise<LLMResponse> {
     try {
-      const cleanedMessages = this.cleanMessages(messages);
+      // Build request trace before making the call
+      const requestTrace = this.buildRequestTrace(config.model, messages);
 
       // Trace the LLM call
       if (traceLogger.isActive()) {
-        const messagesForTrace = cleanedMessages.map(m => {
+        const messagesForTrace = messages.map((m) => {
           const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
           return {
             type: extMsg.type,
             content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
-            ...(extMsg.tool_calls ? {
-              tool_calls: extMsg.tool_calls.map(tc => ({
-                name: tc.name,
-                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
-              }))
-            } : {})
+            ...(extMsg.tool_calls
+              ? {
+                  tool_calls: extMsg.tool_calls.map((tc) => ({
+                    name: tc.name,
+                    arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+                  })),
+                }
+              : {}),
           };
         });
-        traceLogger.recordLLMCall("response", config.model, messagesForTrace);
+        traceLogger.recordLLMCall("response", config.model, messagesForTrace, undefined, undefined, requestTrace);
       }
 
       const invokeOptions: {
@@ -194,7 +243,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         invokeOptions.timeout = config.timeout;
       }
 
-      const response = await this.client.invoke(cleanedMessages, invokeOptions);
+      const response = await this.client.invoke(messages, invokeOptions);
 
       // Extract usage information if available
       const metadata = response.response_metadata as Record<string, unknown> | undefined;
@@ -315,7 +364,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
 
       // Log full messages for 400 errors or other provider errors
       if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
-        logger.debug({ messages: this.cleanMessages(messages) }, "Malformed messages sent to provider");
+        logger.debug({ messages: messages }, "Malformed messages sent to provider");
       }
 
       // Handle specific LangChain/ChatOpenAI errors
@@ -365,9 +414,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
   ): Promise<AIMessage> {
     try {
       // Bind tools if provided
-      const boundClient = tools && tools.length > 0
-        ? this.client.bindTools(tools)
-        : this.client;
+      const boundClient = tools && tools.length > 0 ? this.client.bindTools(tools) : this.client;
 
       const invokeOptions: {
         signal?: AbortSignal;
@@ -389,37 +436,41 @@ export class ChatOpenAILLMCaller implements LLMCaller {
         invokeOptions.timeout = config.timeout;
       }
 
-      const cleanedMessages = this.cleanMessages(messages);
+      // Build request trace before making the call
+      const requestTrace = this.buildRequestTrace(config.model, messages, tools, config);
 
       // Trace the router LLM call
       if (traceLogger.isActive()) {
-        const messagesForTrace = cleanedMessages.map(m => {
+        const messagesForTrace = messages.map((m) => {
           const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
           return {
             type: extMsg.type,
             content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
-            ...(extMsg.tool_calls ? {
-              tool_calls: extMsg.tool_calls.map(tc => ({
-                name: tc.name,
-                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
-              }))
-            } : {})
+            ...(extMsg.tool_calls
+              ? {
+                  tool_calls: extMsg.tool_calls.map((tc) => ({
+                    name: tc.name,
+                    arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+                  })),
+                }
+              : {}),
           };
         });
 
         // Extract provided tools info for trace
-        const providedToolsForTrace: ToolDefinitionTrace[] | undefined = tools && tools.length > 0
-          ? tools.map(tool => ({
-              name: tool.name,
-              description: tool.description,
-              schema: tool.schema
-            }))
-          : undefined;
+        const providedToolsForTrace: ToolDefinitionTrace[] | undefined =
+          tools && tools.length > 0
+            ? tools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                schema: tool.schema,
+              }))
+            : undefined;
 
-        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace);
+        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace, undefined, requestTrace);
       }
 
-      const response = await boundClient.invoke(cleanedMessages, invokeOptions);
+      const response = await boundClient.invoke(messages, invokeOptions);
 
       // Trace the router LLM response
       if (traceLogger.isActive()) {
@@ -440,7 +491,7 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       logger.error({ err: error, messageCount: messages.length }, "ChatOpenAI API call with tools failed");
 
       if (error instanceof Error && (error.message.includes("400") || error.message.includes("Provider returned error"))) {
-        logger.debug({ messages: this.cleanMessages(messages) }, "Malformed messages sent to provider (with tools)");
+        logger.debug({ messages: messages }, "Malformed messages sent to provider (with tools)");
       }
 
       if (error instanceof Error && error.message.includes("Missing credentials")) {
@@ -454,5 +505,9 @@ export class ChatOpenAILLMCaller implements LLMCaller {
       }
       throw error;
     }
+  }
+
+  adaptedBy(adapters: ModelAdapter[]): LLMCaller {
+    return new AdapterCallerWrapper(this, adapters);
   }
 }

@@ -2,8 +2,10 @@ import { ChatOllama } from "@langchain/ollama";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage, ToolCall as LangChainToolCall } from "@langchain/core/messages";
 import type { LLMCaller, LLMConfig, LLMResponse } from "./llm";
+import type { ModelAdapter } from "./adapters/adapter.interface";
 import type { StructuredToolInterface } from "@langchain/core/tools";
-import { traceLogger, type ToolDefinitionTrace } from "@/lib/tracing/trace.logger";
+import { traceLogger, type ToolDefinitionTrace, type LLMRequestTrace } from "@/lib/tracing/trace.logger";
+import { AdapterCallerWrapper } from "./adapters/callerWrapper";
 
 // Type for serialized LangChain messages
 interface SerializedLangChainMessage {
@@ -14,10 +16,100 @@ interface SerializedLangChainMessage {
 }
 
 /**
+ * Helper function to convert messages to Ollama format for request body
+ */
+function messagesToOllamaFormat(messages: BaseMessage[]): Array<{
+  role: string;
+  content: string;
+  tool_calls?: Array<{
+    id: string;
+    type: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+}> {
+  return messages.map((msg) => {
+    const serializedMsg = msg as unknown as SerializedLangChainMessage;
+    const isSerialized = serializedMsg.lc === 1 && serializedMsg.type === "constructor" && Array.isArray(serializedMsg.id) && serializedMsg.id.length >= 3 && serializedMsg.id[0] === "langchain_core" && serializedMsg.id[1] === "messages";
+
+    let role: string;
+    let content: string;
+
+    if (isSerialized) {
+      const actualType = serializedMsg.id[2] || "Unknown";
+      content = (serializedMsg.kwargs?.["content"] as string) || "";
+      switch (actualType) {
+        case "AIMessage":
+          role = "assistant";
+          break;
+        case "HumanMessage":
+          role = "user";
+          break;
+        case "SystemMessage":
+          role = "system";
+          break;
+        case "ToolMessage":
+          role = "tool";
+          break;
+        default:
+          role = "user";
+      }
+    } else {
+      if (msg instanceof AIMessage) {
+        role = "assistant";
+      } else if (msg instanceof HumanMessage) {
+        role = "user";
+      } else if (msg instanceof SystemMessage) {
+        role = "system";
+      } else if (msg instanceof ToolMessage) {
+        role = "tool";
+      } else {
+        role = "user";
+      }
+      content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+    }
+
+    const result: {
+      role: string;
+      content: string;
+      tool_calls?: Array<{
+        id: string;
+        type: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    } = { role, content };
+
+    // Handle tool calls for AI messages
+    const toolCalls = isSerialized
+      ? (serializedMsg.kwargs?.["tool_calls"] as LangChainToolCall[] | undefined)
+      : (msg as AIMessage).tool_calls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      result.tool_calls = toolCalls.map((tc) => ({
+        id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
+        type: "function",
+        function: {
+          name: tc.name,
+          arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+        },
+      }));
+    }
+
+    return result;
+  });
+}
+
+/**
  * ChatOllama-based implementation of LLMCaller
  */
 export class ChatOllamaLLMCaller implements LLMCaller {
   private client: ChatOllama;
+  private baseURL: string;
 
   constructor(baseURL?: string, model?: string) {
     if (!model) {
@@ -28,6 +120,39 @@ export class ChatOllamaLLMCaller implements LLMCaller {
       ...(baseURL && { baseUrl: baseURL }),
       verbose: false,
     });
+    this.baseURL = baseURL || "http://localhost:11434";
+  }
+
+  /**
+   * Build the request trace object for the current call
+   */
+  private buildRequestTrace(
+    model: string,
+    messages: BaseMessage[],
+    tools?: StructuredToolInterface[],
+    config?: LLMConfig
+  ): LLMRequestTrace {
+    const ollamaMessages = messagesToOllamaFormat(messages);
+
+    const body: LLMRequestTrace["body"] = {
+      model,
+      messages: ollamaMessages,
+    };
+
+    // Add optional parameters if provided
+    if (config?.temperature !== undefined) {
+      body.temperature = config.temperature;
+    }
+    if (config?.maxTokens !== undefined) {
+      body.max_tokens = config.maxTokens;
+    }
+
+    return {
+      url: `${this.baseURL}/api/chat`,
+      method: "POST",
+      headers: {},
+      body,
+    };
   }
 
   /**
@@ -274,9 +399,9 @@ export class ChatOllamaLLMCaller implements LLMCaller {
   }
 
   /**
-   * Complete a prompt with tool binding support, returning the full AIMessage.
-   * This is used by the router harness to extract tool_calls.
-   */
+    * Complete a prompt with tool binding support, returning the full AIMessage.
+    * This is used by the router harness to extract tool_calls.
+    */
   async completeWithTools(
     messages: BaseMessage[],
     config: LLMConfig,
@@ -284,9 +409,7 @@ export class ChatOllamaLLMCaller implements LLMCaller {
   ): Promise<AIMessage> {
     try {
       // Bind tools if provided
-      const boundClient = tools && tools.length > 0
-        ? this.client.bindTools(tools)
-        : this.client;
+      const boundClient = tools && tools.length > 0 ? this.client.bindTools(tools) : this.client;
 
       const invokeOptions: {
         signal?: AbortSignal;
@@ -310,32 +433,38 @@ export class ChatOllamaLLMCaller implements LLMCaller {
 
       const cleanedMessages = this.cleanMessages(messages);
 
+      // Build request trace before making the call
+      const requestTrace = this.buildRequestTrace(config.model, cleanedMessages, tools, config);
+
       // Trace the router LLM call
       if (traceLogger.isActive()) {
-        const messagesForTrace = cleanedMessages.map(m => {
+        const messagesForTrace = cleanedMessages.map((m) => {
           const extMsg = m as { type: string; content: unknown; tool_calls?: LangChainToolCall[] };
           return {
             type: extMsg.type,
             content: typeof extMsg.content === "string" ? extMsg.content : "[complex content]",
-            ...(extMsg.tool_calls ? {
-              tool_calls: extMsg.tool_calls.map(tc => ({
-                name: tc.name,
-                arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args)
-              }))
-            } : {})
+            ...(extMsg.tool_calls
+              ? {
+                  tool_calls: extMsg.tool_calls.map((tc) => ({
+                    name: tc.name,
+                    arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+                  })),
+                }
+              : {}),
           };
         });
 
         // Extract provided tools info for trace
-        const providedToolsForTrace: ToolDefinitionTrace[] | undefined = tools && tools.length > 0
-          ? tools.map(tool => ({
-              name: tool.name,
-              description: tool.description,
-              schema: tool.schema
-            }))
-          : undefined;
+        const providedToolsForTrace: ToolDefinitionTrace[] | undefined =
+          tools && tools.length > 0
+            ? tools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                schema: tool.schema,
+              }))
+            : undefined;
 
-        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace);
+        traceLogger.recordLLMCall("router", config.model, messagesForTrace, providedToolsForTrace, undefined, requestTrace);
       }
 
       const response = await boundClient.invoke(cleanedMessages, invokeOptions);
@@ -349,5 +478,9 @@ export class ChatOllamaLLMCaller implements LLMCaller {
       });
       throw error;
     }
+  }
+
+  adaptedBy(adapters: ModelAdapter[]): LLMCaller {
+    return new AdapterCallerWrapper(this, adapters);
   }
 }

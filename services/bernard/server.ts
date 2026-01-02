@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import pino from "pino";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
 
 import {
   listModels,
@@ -23,6 +24,7 @@ import type { ResponseAgentContext, ResponseStreamCallback } from "@/agent/respo
 import { createTextChatGraph } from "@/agent/graph/text-chat.graph";
 import { getRedis } from "@/lib/infra/redis";
 import { traceLogger } from "@/lib/tracing/trace.logger";
+import { ConversationRecordKeeper } from "@/lib/conversation/conversationRecorder";
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -32,6 +34,13 @@ const logger = pino({
 
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
 const HOST = process.env["HOST"] || "127.0.0.1";
+
+/**
+ * Generate a unique message ID
+ */
+function generateMessageId(): string {
+  return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -63,6 +72,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   // OpenAI Chat Completions
   if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
+    const turnStartTime = Date.now();
     try {
       let bodyStr = "";
       for await (const chunk of req) {
@@ -74,6 +84,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         stream?: boolean;
         ghost?: boolean;
         chatId?: string;
+        conversationId?: string;
       };
 
       if (!body?.messages || !Array.isArray(body.messages)) {
@@ -101,6 +112,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const inputMessages = mapChatMessages(body.messages as OpenAIMessage[]);
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const threadId = body.chatId || `thread_${Date.now()}`;
+      const conversationId = body.conversationId || `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const isGhostMode = body.ghost === true;
+      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
+      const user = "user" in auth ? (auth as { user?: { name?: string; username?: string } }).user : undefined;
+      const userName = user?.name ?? user?.username ?? "";
 
       // Start trace for this request
       const initialMessagesForTrace = (body.messages as Array<{ role: string; content: string }>).map(m => ({
@@ -139,11 +155,43 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Get tools and detect any disabled tools
       const { tools, disabledTools } = getRouterTools(undefined, haRestConfig);
 
-      // Create contexts for LangGraph
+      // Initialize conversation recorder (only if not in ghost mode)
+      let recorder: ConversationRecordKeeper | undefined;
+      if (!isGhostMode) {
+        try {
+          const redis = getRedis();
+          recorder = new ConversationRecordKeeper(redis);
+          
+           // Create conversation if it doesn't exist
+          const conversationExists = await recorder.conversationExists(conversationId);
+          if (!conversationExists) {
+            await recorder.createConversation(conversationId, userId, userName || undefined, isGhostMode);
+          }
+          
+          // Record user message event
+          const lastMessage = inputMessages[inputMessages.length - 1];
+          const userMessageContent = contentFromMessage(lastMessage ?? null) ?? "";
+          const messageId = generateMessageId();
+          await recorder.recordEvent(conversationId, {
+            type: "user_message",
+            data: {
+              messageId,
+              content: userMessageContent
+            }
+          });
+        } catch (error) {
+          logger.warn({ err: error }, "Failed to initialize conversation recorder");
+          recorder = undefined;
+        }
+      }
+
+      // Create contexts for LangGraph with recorder
       const routingContext: RoutingAgentContext = {
         llmCaller: routerLLMCaller,
         tools,
         disabledTools,
+        recorder,
+        conversationId,
       };
 
       if (!shouldStream) {
@@ -152,6 +200,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           llmCaller: responseLLMCaller,
           toolDefinitions: tools,
           disabledTools,
+          recorder,
+          conversationId,
         };
 
         const graph = createTextChatGraph(routingContext, responseContext);
@@ -177,6 +227,32 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const assistantMessage = findLastAssistantMessage(result.messages);
         const content = contentFromMessage(assistantMessage) ?? "";
         const usageMeta = extractUsageFromMessages(result.messages);
+
+        // Record assistant message event
+        if (recorder && conversationId) {
+          try {
+            const totalDurationMs = Date.now() - turnStartTime;
+            const toolCallCount = result.messages.filter(m =>
+              ToolMessage.isInstance(m)
+            ).length;
+            const llmCallCount = result.messages.filter(m =>
+              AIMessage.isInstance(m)
+            ).length;
+            
+            await recorder.recordEvent(conversationId, {
+              type: "assistant_message",
+              data: {
+                messageId: generateMessageId(),
+                content,
+                totalDurationMs,
+                totalToolCalls: toolCallCount,
+                totalLLMCalls: llmCallCount
+              }
+            });
+          } catch (error) {
+            logger.warn({ err: error }, "Failed to record assistant message event");
+          }
+        }
 
         const usage = {
           prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
@@ -224,6 +300,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           toolDefinitions: tools,
           disabledTools,
           streamCallback,
+          recorder,
+          conversationId,
         };
 
         const graph = createTextChatGraph(routingContext, responseContext);
@@ -245,6 +323,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           );
 
           logger.debug({ threadId }, "graph.invoke() completed");
+
+          // Record assistant message event for streaming
+          if (recorder && conversationId) {
+            try {
+              const totalDurationMs = Date.now() - turnStartTime;
+              await recorder.recordEvent(conversationId, {
+                type: "assistant_message",
+                data: {
+                  messageId: generateMessageId(),
+                  content: "", // Content already streamed, record empty for streaming case
+                  totalDurationMs,
+                  totalToolCalls: 0, // Will be counted from events
+                  totalLLMCalls: 0
+                }
+              });
+            } catch (error) {
+              logger.warn({ err: error }, "Failed to record assistant message event");
+            }
+          }
 
           // Send final chunk
           const finalChunk = {
@@ -291,11 +388,236 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       traceLogger.completeTrace();
       await traceLogger.writeTrace();
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      }
+      return;
     }
-    return;
-  }
 
+    const conversationsMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+    if (conversationsMatch) {
+      const conversationId = decodeURIComponent(conversationsMatch[1] ?? '');
+      const auth = await validateAuth(req);
+      if ("error" in auth) {
+        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: auth.error.message }));
+        return;
+      }
+
+      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
+      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
+
+      try {
+        const redis = getRedis();
+        const recorder = new ConversationRecordKeeper(redis);
+        const conversation = await recorder.getConversation(conversationId);
+
+        if (!conversation) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Conversation not found" }));
+          return;
+        }
+
+        if (conversation.conversation.userId !== userId && !isAdmin) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Access denied" }));
+          return;
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          conversation: conversation.conversation,
+          events: conversation.events
+        }));
+        return;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to get conversation");
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+        return;
+      }
+    }
+
+    if (url.pathname === "/api/conversations" && req.method === "GET") {
+      const auth = await validateAuth(req);
+      if ("error" in auth) {
+        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: auth.error.message }));
+        return;
+      }
+
+      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
+
+      const archived = url.searchParams.get("archived") === "true";
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+
+      try {
+        const redis = getRedis();
+        const recorder = new ConversationRecordKeeper(redis);
+        const result = await recorder.listConversations(userId, { archived, limit, offset });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          conversations: result.conversations,
+          total: result.total,
+          hasMore: result.hasMore
+        }));
+        return;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to list conversations");
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+        return;
+      }
+    }
+
+    // GET /api/conversations/all - Admin only, list all conversations across all users
+    if (url.pathname === "/api/conversations/all" && req.method === "GET") {
+      const auth = await validateAuth(req);
+      if ("error" in auth) {
+        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: auth.error.message }));
+        return;
+      }
+
+      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
+      if (!isAdmin) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Admin access required" }));
+        return;
+      }
+
+      const archived = url.searchParams.get("archived") === "true";
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+
+      try {
+        const redis = getRedis();
+        const recorder = new ConversationRecordKeeper(redis);
+        const result = await recorder.listAllConversations({ archived, limit, offset });
+
+        // Transform conversations to include userAssistantCount (derived from messageCount for now)
+        // and ensure userName is included
+        const conversations = result.conversations.map((conv) => ({
+          id: conv.id,
+          name: conv.name,
+          description: conv.description,
+          userId: conv.userId,
+          userName: conv.userName,
+          createdAt: conv.createdAt,
+          lastTouchedAt: conv.lastTouchedAt,
+          archived: conv.archived,
+          messageCount: conv.messageCount,
+          userAssistantCount: Math.floor(conv.messageCount / 2), // Estimate: assume user+assistant pairs
+          toolCallCount: conv.toolCallCount,
+        }));
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          conversations,
+          total: result.total,
+          hasMore: result.hasMore
+        }));
+        return;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to list all conversations");
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+        return;
+      }
+    }
+
+    const archiveMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)\/archive$/);
+    if (archiveMatch && req.method === "POST") {
+      const conversationId = decodeURIComponent(archiveMatch[1] ?? '');
+      const auth = await validateAuth(req);
+      if ("error" in auth) {
+        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: auth.error.message }));
+        return;
+      }
+
+      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
+      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
+
+      try {
+        const redis = getRedis();
+        const recorder = new ConversationRecordKeeper(redis);
+        const conversation = await recorder.getConversationMetadata(conversationId);
+
+        if (!conversation) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Conversation not found" }));
+          return;
+        }
+
+        if (conversation.userId !== userId && !isAdmin) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Access denied" }));
+          return;
+        }
+
+        const success = await recorder.archiveConversation(conversationId, userId);
+        if (!success) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Failed to archive conversation" }));
+          return;
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          success: true,
+          archivedAt: new Date().toISOString()
+        }));
+        return;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to archive conversation");
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+        return;
+      }
+    }
+
+    const deleteMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+    if (deleteMatch && req.method === "DELETE") {
+      const conversationId = decodeURIComponent(deleteMatch[1] ?? '');
+      const auth = await validateAuth(req);
+      if ("error" in auth) {
+        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: auth.error.message }));
+        return;
+      }
+
+      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
+      const adminId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
+
+      if (!isAdmin) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Admin access required" }));
+        return;
+      }
+
+      try {
+        const redis = getRedis();
+        const recorder = new ConversationRecordKeeper(redis);
+        const success = await recorder.deleteConversation(conversationId, adminId);
+
+        if (!success) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Conversation not found" }));
+          return;
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to delete conversation");
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+        return;
+      }
+    }
 
   // 404
   res.writeHead(404, { "Content-Type": "application/json" });
