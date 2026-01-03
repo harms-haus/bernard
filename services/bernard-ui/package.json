@@ -57,7 +57,8 @@
     "remark-math": "^6.0.0",
     "sonner": "^1.0.0",
     "tailwind-merge": "^3.4.0",
-    "use-stick-to-bottom": "^1.0.46"
+    "use-stick-to-bottom": "^1.0.46",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -65,6 +66,8 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
     "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.2.1",
