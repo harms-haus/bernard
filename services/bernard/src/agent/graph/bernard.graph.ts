@@ -1,13 +1,12 @@
 import { StateGraph, START, END, MessagesAnnotation } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
-import { AIMessage } from "@langchain/core/messages";
 import { reactAgent } from "../react.agent";
 import { responseAgent } from "../response.agent";
 import type { AgentContext } from "../agentContext";
 
 /**
  * Create the Bernard assistant graph
- *  * 
+ * 
  * The react node loops back to itself after tool execution until no more tools are needed.
  */
 export function createBernardGraph(
@@ -19,12 +18,12 @@ export function createBernardGraph(
     const lastMessage = state.messages[state.messages.length - 1];
 
     // Check if it's an AIMessage before accessing tool_calls
-    if (!lastMessage || !AIMessage.isInstance(lastMessage)) {
+    if (!lastMessage || !("tool_calls" in lastMessage)) {
       return "response";
     }
 
     // If the LLM makes a tool call, then perform an action
-    if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    if (lastMessage.tool_calls && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls.length > 0) {
       return "tools";
     }
 
@@ -36,16 +35,21 @@ export function createBernardGraph(
   const reactNode = async (
     state: typeof MessagesAnnotation.State,
     config: { configurable?: { thread_id?: string } }
-  ) => {
-    return await reactAgent(state, config, context);
+  ): Promise<{ messages: BaseMessage[] }> => {
+    const agent = await reactAgent(state, config, context);
+    const response = await agent.invoke(state) as { messages: BaseMessage[] };
+    // Extract and normalize messages to avoid extra fields causing reducer issues
+    return { messages: [...response.messages] };
   };
 
   // Create response node with context binding
   const responseNode = async (
     state: typeof MessagesAnnotation.State,
     config: { configurable?: { thread_id?: string } }
-  ) => {
-    return await responseAgent(state, config, context);
+  ): Promise<{ messages: BaseMessage[] }> => {
+    const agent = await responseAgent(state, config, context);
+    const response = await agent.invoke(state, {...config, tags: ["response"]}) as { messages: BaseMessage[] };
+    return { messages: [...response.messages] };
   };
 
   // Build the graph
@@ -65,13 +69,25 @@ export function createBernardGraph(
 export async function *runBernardGraph(graph: Awaited<ReturnType<typeof createBernardGraph>>, messages: BaseMessage[], stream: boolean, threadId: string): AsyncIterable<{ type: string; content: unknown }> {
   const config = { configurable: { thread_id: threadId } };
   if (stream) {
-    const streamResult = await graph.stream({ messages }, { ...config, streamMode: ["messages", "updates"] } as const);
+    const streamResult = await graph.stream(
+      { messages }, 
+      { ...config, streamMode: ["messages", "updates"] as const }
+    );
     for await (const [mode, chunk] of streamResult) {
       if (mode === "messages") {
-        const [message] = chunk as [BaseMessage, unknown];
-        yield { type: mode, content: message.content as string };
+        const [message, metadata] = chunk;
+        if (((metadata as Record<string, unknown>)['tags'] as string[]).includes("response")) {
+          yield { type: mode, content: message.content };
+        }
       } else if (mode === "updates") {
-        yield { type: mode, content: chunk };
+        for (const [_node, data] of Object.entries(chunk)) {
+          if (data.messages && data.messages.length > 0) {
+            const [message] = data.messages;
+            if (message && typeof message.content === 'string') {
+              yield { type: mode, content: message.content };
+            }
+          }
+        }
       }
     }
   } else {    

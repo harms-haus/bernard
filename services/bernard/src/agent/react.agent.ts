@@ -64,12 +64,12 @@ const getMiddleware = (state: typeof MessagesAnnotation.State, config: { configu
 function buildReactSystemPrompt(
   now: Date,
   _toolNames: string[],
-  disabledTools?: Array<{ name: string; reason?: string | undefined }>
+  _disabledTools?: Array<{ name: string; reason?: string | undefined }>
 ): string {
   // Use TZ-aware formatting (respects TZ environment variable)
   const timeStr = now.toLocaleString(undefined, { timeZone: process.env.TZ || undefined });
 
-  let prompt = `You are a Tool Executor. Your job is to choose and call the appropriate tool(s) for the user's query. You are not allowed to chat.
+  const prompt = `You are a Tool Executor. Your job is to choose and call the appropriate tool(s) for the user's query. You are not allowed to chat.
 
 Current time: ${timeStr}
 
@@ -80,20 +80,6 @@ Instructions:
 4. Do not generate response text - only gather data and/or perform actions.
 
 Call tools as needed, then respond with no tool calls when you are done.`;
-
-  // Include disabled tools with reasons if any exist
-  if (disabledTools && disabledTools.length > 0) {
-    const disabledList = disabledTools
-      .map((t) => `  - ${t.name}: ${t.reason || "reason not specified"}`)
-      .join("\n");
-    prompt += `
-
-## Disabled Tools
-
-The following tools are currently unavailable. If the user asks for these, inform them why:
-
-${disabledList}`;
-  }
 
   return prompt;
 }

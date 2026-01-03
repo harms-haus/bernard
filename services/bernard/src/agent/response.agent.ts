@@ -16,7 +16,7 @@ export async function responseAgent(
   const { disabledTools } = context;
 
   const settings = await getSettings();
-  const modelConfig = await getModelConfig(settings.models.router);
+  const modelConfig = await getModelConfig(settings.models.response);
 
   return createAgent({
     model: modelConfig,
