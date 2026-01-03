@@ -3,7 +3,7 @@ import type { Message } from '@langchain/langgraph-sdk';
 
 interface StreamContextType {
   messages: Message[];
-  submit: (input: { messages: Message[] }, options?: { conversationId?: string }) => Promise<void>;
+  submit: (input: { messages: Message[] }, options?: { threadId?: string }) => Promise<void>;
   isLoading: boolean;
   error: Error | null;
   stop: () => void;
@@ -24,7 +24,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const submit = useCallback(async (input: { messages: Message[] }, options?: { conversationId?: string }) => {
+  const submit = useCallback(async (input: { messages: Message[] }, options?: { threadId?: string }) => {
     setIsLoading(true);
     setError(null);
     abortControllerRef.current = new AbortController();
@@ -44,7 +44,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
           model: 'bernard-v1',
           messages: messagesPayload,
           stream: true,
-          ...(options?.conversationId ? { conversationId: options.conversationId } : {})
+          ...(options?.threadId ? { chatId: options.threadId } : {})
         }),
         signal: abortControllerRef.current.signal
       });

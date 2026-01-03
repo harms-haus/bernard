@@ -30,7 +30,7 @@ function ScrollToBottomButton({ className }: { className?: string }) {
 
 export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const conversationId = searchParams.get('conversationId');
+  const threadId = searchParams.get('threadId');
   
   const { messages, submit, isLoading, stop } = useStream();
   const { getThreads } = useThreads();
@@ -54,13 +54,13 @@ export function Thread() {
       content: input.trim(),
     };
 
-    await submit({ messages: [...messages, newHumanMessage] }, { conversationId: conversationId || undefined });
+    await submit({ messages: [...messages, newHumanMessage] }, { threadId: threadId || undefined });
     setInput('');
   };
 
   const handleNewChat = () => {
-    const newId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-    setSearchParams({ conversationId: newId });
+    const newId = `thread_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    setSearchParams({ threadId: newId });
   };
 
   const handleCopyChatHistory = async () => {
@@ -87,7 +87,7 @@ export function Thread() {
     toast.success('Chat history downloaded');
   };
 
-  const chatStarted = !!conversationId || !!messages.length;
+  const chatStarted = !!threadId || !!messages.length;
 
   return (
     <div className="flex w-full h-screen overflow-hidden">
