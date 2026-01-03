@@ -20,12 +20,13 @@ import { getReactTools } from "@/agent/tool";
 import type { AgentContext } from "@/agent/agentContext";
 import { createBernardGraph, runBernardGraph } from "@/agent/graph/bernard.graph";
 import { getRedis } from "@/lib/infra/redis";
+import { getRedisCheckpointer, closeRedisCheckpointer } from "@/lib/checkpointer/redis";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import type { BernardSettings } from "@shared/config/appSettings";
 import { type onEventData, type Tracer } from "./src/agent/trace";
 import { BernardTracer } from "./src/agent/trace/bernard.tracer";
-import { MemorySaver } from "@langchain/langgraph";
 
-const checkpointer = new MemorySaver();
+let checkpointer: BaseCheckpointSaver;
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -35,6 +36,16 @@ const logger = pino({
 
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
 const HOST = process.env["HOST"] || "127.0.0.1";
+
+async function initializeCheckpointer(): Promise<void> {
+  try {
+    checkpointer = await getRedisCheckpointer();
+    logger.info("Redis checkpointer initialized");
+  } catch (error) {
+    logger.error({ error }, "Failed to initialize Redis checkpointer");
+    process.exit(1);
+  }
+}
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -259,8 +270,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
 const server = createServer(handleRequest);
 
-server.listen(PORT, HOST, () => {
-  logger.info({ host: HOST, port: PORT }, "Bernard server running");
+// Initialize checkpointer before starting server
+initializeCheckpointer().then(() => {
+  server.listen(PORT, HOST, () => {
+    logger.info({ host: HOST, port: PORT }, "Bernard server running");
+  });
+}).catch((error) => {
+  logger.error({ error }, "Failed to start Bernard server");
+  process.exit(1);
 });
 
 // Graceful shutdown handling for tsx watch restarts
@@ -313,6 +330,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   } catch (err: unknown) {
     logger.warn({ err }, "Error closing Redis connection");
+  }
+
+  // Close Redis checkpointer
+  try {
+    await closeRedisCheckpointer();
+    logger.info("Redis checkpointer closed");
+  } catch (err: unknown) {
+    logger.warn({ err }, "Error closing Redis checkpointer");
   }
 
   // Give the event loop a chance to clean up, then exit

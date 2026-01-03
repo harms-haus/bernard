@@ -26,10 +26,11 @@ function Tooltip({
   );
 }
 
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+function TooltipTrigger(
+  { ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>,
+  ref: React.Ref<HTMLButtonElement>,
+) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" ref={ref} {...props} />;
 }
 
 function TooltipContent({
