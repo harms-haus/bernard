@@ -151,3 +151,4 @@ dump.rdb
 *.7z
 
 trace.json
+services/bernard/traces

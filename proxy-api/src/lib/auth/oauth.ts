@@ -8,7 +8,7 @@ import {
 import type { OAuthProvider, ProviderConfig } from "@shared/auth/index";
 
 export type { OAuthProvider, ProviderConfig };
-import { appSettings } from "@shared/config/appSettings";
+import { appSettings } from "@/lib/config/settingsStore";
 import { getRedis } from "@/lib/infra/redis";
 import { UserStore } from "@shared/auth/index";
 import { SessionStore } from "@shared/auth/index";

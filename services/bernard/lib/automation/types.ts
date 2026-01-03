@@ -1,13 +1,7 @@
-import type { Conversation, MessageRecord } from "../conversation/types";
-import type { SummaryFlags } from "../conversation/summary";
-
 // Event Types
 export const AUTOMATION_EVENTS = {
   user_message: "user_message",
   assistant_message_complete: "assistant_message_complete",
-  conversation_archived: "conversation_archived",
-  conversation_reopened: "conversation_reopened",
-  conversation_started: "conversation_started"
 } as const;
 
 export type AutomationEventName = (typeof AUTOMATION_EVENTS)[keyof typeof AUTOMATION_EVENTS];
@@ -26,32 +20,10 @@ export type AssistantMessageCompleteEvent = {
   userMessageContent: string;
 };
 
-export type ConversationArchivedEvent = {
-  conversationId: string;
-  userId: string;
-  conversationContent: Conversation;
-};
-
-export type ConversationReopenedEvent = {
-  conversationId: string;
-  userId: string;
-  conversationContent: Conversation;
-  userMessageContent: string;
-};
-
-export type ConversationStartedEvent = {
-  conversationId: string;
-  userId: string;
-  userMessageContent: string;
-};
-
 // Union type for all event data
 export type AutomationEventData =
   | UserMessageEvent
-  | AssistantMessageCompleteEvent
-  | ConversationArchivedEvent
-  | ConversationReopenedEvent
-  | ConversationStartedEvent;
+  | AssistantMessageCompleteEvent;
 
 // Automation Event wrapper
 export type AutomationEvent = {
@@ -92,9 +64,6 @@ export interface AutomationSettings {
   runCount: number;
 }
 
-// Re-export for convenience
-export type { SummaryFlags, MessageRecord };
-
 // Automation registry entry
 export interface AutomationRegistryEntry {
   automation: Automation;
@@ -114,16 +83,4 @@ export function isUserMessageEvent(data: AutomationEventData): data is UserMessa
 
 export function isAssistantMessageCompleteEvent(data: AutomationEventData): data is AssistantMessageCompleteEvent {
   return 'messageContent' in data && 'userMessageContent' in data;
-}
-
-export function isConversationArchivedEvent(data: AutomationEventData): data is ConversationArchivedEvent {
-  return 'conversationContent' in data && !('userMessageContent' in data);
-}
-
-export function isConversationReopenedEvent(data: AutomationEventData): data is ConversationReopenedEvent {
-  return 'conversationContent' in data && 'userMessageContent' in data;
-}
-
-export function isConversationStartedEvent(data: AutomationEventData): data is ConversationStartedEvent {
-  return 'userMessageContent' in data && !('messageContent' in data) && !('conversationContent' in data);
 }

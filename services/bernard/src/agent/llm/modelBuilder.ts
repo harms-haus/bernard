@@ -31,7 +31,7 @@ export async function getModelConfig(config: ModelCategorySettings) : Promise<La
 }
 
 function createChatModel(provider: Provider, config: ModelCategorySettings): LanguageModelLike | PromiseLike<LanguageModelLike> {
-  switch (config.providerId) {
+  switch (provider.type) {
     case "openai":
       return new ChatOpenAI({
         model: config.primary,
@@ -48,7 +48,5 @@ function createChatModel(provider: Provider, config: ModelCategorySettings): Lan
         baseUrl: provider.baseUrl,
         temperature: config.options?.temperature ?? 0,
       });
-    default:
-      throw new Error(`Unsupported provider: ${config.providerId}`);
   }
 }

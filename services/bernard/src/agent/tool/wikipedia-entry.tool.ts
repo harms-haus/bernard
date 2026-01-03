@@ -5,7 +5,7 @@ import { z } from "zod";
 import wiki from "wikipedia";
 import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
-import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/conversation/tokenCounter";
+import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/tokenCounter";
 
 // Set user agent for Wikipedia API requests (required by Wikipedia's policy)
 // Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures

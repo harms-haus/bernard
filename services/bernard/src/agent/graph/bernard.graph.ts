@@ -69,9 +69,10 @@ export function createBernardGraph(
   return graph.compile({ checkpointer: context.checkpointer });
 }
 
-export async function *runBernardGraph(graph: Awaited<ReturnType<typeof createBernardGraph>>, messages: BaseMessage[], stream: boolean): AsyncIterable<{ type: string; content: unknown }> {
+export async function *runBernardGraph(graph: Awaited<ReturnType<typeof createBernardGraph>>, messages: BaseMessage[], stream: boolean, threadId: string): AsyncIterable<{ type: string; content: unknown }> {
+  const config = { configurable: { thread_id: threadId } };
   if (stream) {
-    const streamResult = await graph.stream({ messages }, { streamMode: ["messages", "updates"] } as const);
+    const streamResult = await graph.stream({ messages }, { ...config, streamMode: ["messages", "updates"] } as const);
     for await (const [mode, chunk] of streamResult) {
       if (mode === "messages") {
         const [message] = chunk as [BaseMessage, unknown];
@@ -81,7 +82,7 @@ export async function *runBernardGraph(graph: Awaited<ReturnType<typeof createBe
       }
     }
   } else {    
-    const result = await graph.invoke({ messages });
+    const result = await graph.invoke({ messages }, config);
     yield { type: "final", content: result };
   }
 }
