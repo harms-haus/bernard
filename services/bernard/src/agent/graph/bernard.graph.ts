@@ -1,11 +1,9 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
+import { StateGraph, START, END, MessagesAnnotation } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage } from "@langchain/core/messages";
-import { MAX_REACT_ITERATIONS, BernardState } from "./state";
 import { reactAgent } from "../react.agent";
 import { responseAgent } from "../response.agent";
 import type { AgentContext } from "../agentContext";
-import type { BernardStateType } from "./state";
 
 /**
  * Create the Bernard assistant graph
@@ -17,13 +15,8 @@ export function createBernardGraph(
 ) {
 
   // Conditional edge function - determines whether to continue with tools or go to response
-  function shouldContinue(state: BernardStateType): typeof END | "tools" | "response" {
+  function shouldContinue(state: typeof MessagesAnnotation.State): typeof END | "tools" | "response" {
     const lastMessage = state.messages[state.messages.length - 1];
-
-    // Force response if maximum iterations reached to prevent infinite loops
-    if (state.iterationCount >= MAX_REACT_ITERATIONS) {
-      return "response";
-    }
 
     // Check if it's an AIMessage before accessing tool_calls
     if (!lastMessage || !AIMessage.isInstance(lastMessage)) {
@@ -41,7 +34,7 @@ export function createBernardGraph(
 
   // Create react node with context binding
   const reactNode = async (
-    state: BernardStateType,
+    state: typeof MessagesAnnotation.State,
     config: { configurable?: { thread_id?: string } }
   ) => {
     return await reactAgent(state, config, context);
@@ -49,14 +42,14 @@ export function createBernardGraph(
 
   // Create response node with context binding
   const responseNode = async (
-    state: BernardStateType,
+    state: typeof MessagesAnnotation.State,
     config: { configurable?: { thread_id?: string } }
   ) => {
     return await responseAgent(state, config, context);
   };
 
   // Build the graph
-  const graph = new StateGraph(BernardState)
+  const graph = new StateGraph(MessagesAnnotation)
     .addNode("react", reactNode)
     .addNode("response", responseNode)
     .addEdge(START, "react")
