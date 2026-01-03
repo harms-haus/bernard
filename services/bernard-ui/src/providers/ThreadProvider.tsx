@@ -1,30 +1,28 @@
 import { createContext, useContext, ReactNode, useCallback, useState } from 'react';
-
-interface ThreadItem {
-  id: string;
-  name?: string;
-  createdAt: string;
-  lastTouchedAt: string;
-}
+import { apiClient, type ThreadListItem } from '../services/api';
 
 interface ThreadContextType {
-  threads: ThreadItem[];
-  getThreads: () => Promise<ThreadItem[]>;
-  setThreads: (threads: ThreadItem[]) => void;
+  threads: ThreadListItem[];
+  getThreads: () => Promise<ThreadListItem[]>;
+  setThreads: (threads: ThreadListItem[]) => void;
   threadsLoading: boolean;
 }
 
 const ThreadContext = createContext<ThreadContextType | undefined>(undefined);
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
-  const [threads, setThreads] = useState<ThreadItem[]>([]);
+  const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
 
-  const getThreads = useCallback(async (): Promise<ThreadItem[]> => {
+  const getThreads = useCallback(async (): Promise<ThreadListItem[]> => {
     setThreadsLoading(true);
     try {
-      // Thread list is managed locally via URL params
-      // This is a placeholder for potential future backend integration
+      const response = await apiClient.listThreads(50);
+      const threadList = response.threads;
+      setThreads(threadList);
+      return threadList;
+    } catch (error) {
+      console.error('Failed to fetch threads:', error);
       setThreads([]);
       return [];
     } finally {
