@@ -218,7 +218,7 @@ export function findLastAssistantMessage(messages: BaseMessage[]): BaseMessage |
 }
 
 /**
- * Collect tool calls from any message that already includes tool_calls.
+ * Collect tool calls from messages and normalize to OpenAI format.
  */
 export function collectToolCalls(messages: BaseMessage[]) {
   const calls: Array<{
@@ -227,23 +227,16 @@ export function collectToolCalls(messages: BaseMessage[]) {
     function: { name: string; arguments: string };
   }> = [];
   for (const message of messages) {
-    if ((message as { tool_calls?: unknown[] }).tool_calls) {
-      const tc = (message as { tool_calls?: unknown[] }).tool_calls;
-      if (Array.isArray(tc)) {
-        for (const call of tc) {
-          const fn = (call as { function?: { name?: string; arguments?: unknown } }).function;
-          const id = (call as { id?: string }).id ?? fn?.name ?? "tool_call";
-          const name = fn?.name ?? "tool_call";
-          const args = fn?.arguments ?? "";
-          calls.push({
-            id: String(id),
-            type: "function",
-            function: {
-              name: String(name),
-              arguments: typeof args === "string" ? args : safeStringify(args)
-            }
-          });
-        }
+    if (message instanceof AIMessage && Array.isArray(message.tool_calls)) {
+      for (const call of message.tool_calls) {
+        calls.push({
+          id: call.id ?? `${call.name}_${calls.length}`,
+          type: "function" as const,
+          function: {
+            name: call.name,
+            arguments: typeof call.args === "string" ? call.args : JSON.stringify(call.args)
+          }
+        });
       }
     }
   }
@@ -396,18 +389,4 @@ export function mapChatMessages(input: OpenAIMessage[]): BaseMessage<MessageStru
 
 export function mapCompletionPrompt(prompt: string): BaseMessage[] {
   return [new SystemMessage({ content: "" }), new HumanMessage({ content: prompt })];
-}
-
-export function summarizeToolOutputs(messages: BaseMessage[]) {
-  return messages
-    .filter((m) => (m as { type: string }).type === "tool")
-    .map((m) => {
-      const id = (m as { tool_call_id?: string }).tool_call_id ?? "tool_call";
-      const content = contentFromMessage(m) ?? "";
-      return { id, content };
-    });
-}
-
-export function isToolMessage(message: BaseMessage) {
-  return (message as { type: string }).type === "tool";
 }
