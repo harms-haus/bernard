@@ -147,7 +147,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
         const stream = runBernardGraph(graph, inputMessages, shouldStream, threadId);
 
+        // let chunkCount = 0;
         for await (const chunk of stream) {
+          // chunkCount++;
           if (chunk.type === "messages") {
             const message = chunk.content;
             const chunkData = {
@@ -163,22 +165,66 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             };
             res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
           } else if (chunk.type === "updates") {
-            const chunkData = {
-              id: requestId,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: BERNARD_MODEL_ID,
-              choices: [{
-                index: 0,
-                delta: { content: chunk.content },
-                finish_reason: null
-              }]
-            };
-            res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+            // Extract the actual text content from the updates object
+            // Format is {"nodeName": { messages: [...] }}
+            let textContent = "";
+            if (typeof chunk.content === 'object' && chunk.content !== null) {
+              const content = chunk.content as Record<string, unknown>;
+              
+              // Find the messages array inside the node update (e.g., content['response'].messages)
+              let messages: unknown[] | undefined;
+              for (const key of Object.keys(content)) {
+                const nodeUpdate = content[key] as Record<string, unknown>;
+                if (nodeUpdate['messages'] && Array.isArray(nodeUpdate['messages'])) {
+                  messages = nodeUpdate['messages'] as unknown[];
+                  break;
+                }
+              }
+
+              if (messages && messages.length > 0) {
+                // Find the last AI message with actual content
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  const msg = messages[i] as { kwargs?: { content?: unknown } };
+                  const contentStr = msg.kwargs?.content;
+                  if (typeof contentStr === 'string' && contentStr.trim().length > 0 && !contentStr.startsWith('(')) {
+                    textContent = contentStr;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (textContent) {
+              const chunkData = {
+                id: requestId,
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model: BERNARD_MODEL_ID,
+                choices: [{
+                  index: 0,
+                  delta: { content: textContent },
+                  finish_reason: null
+                }]
+              };
+              res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+            }
           }
         }
-
-        logger.debug({ threadId, messageCount: inputMessages.length }, "Streaming completed");
+        
+        // Send final chunk with finish_reason: stop and [DONE]
+        const finalChunk = {
+          id: requestId,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: BERNARD_MODEL_ID,
+          choices: [{
+            index: 0,
+            delta: {},
+            finish_reason: "stop"
+          }]
+        };
+        res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+        res.write("data: [DONE]\n\n");
       } catch (error: unknown) {
         logger.error({ err: error }, "Streaming failed");
         const errorChunk = {
@@ -201,10 +247,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     } catch (error: unknown) {
       logger.error({ err: error }, "Request failed");
       res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-      }
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
       return;
     }
+  }
 
   // 404
   res.writeHead(404, { "Content-Type": "application/json" });
@@ -310,7 +356,11 @@ function createTracer(keepConversation: boolean): Tracer {
 
   if (keepConversation) {
     tracer.onEvent((event: onEventData) => {
-      console.warn(event);
+      try {
+        console.warn(event);
+      } catch (callbackError) {
+        console.error("Tracer callback failed:", callbackError);
+      }
     });
   }
   return tracer;
