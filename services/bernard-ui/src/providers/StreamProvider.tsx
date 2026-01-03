@@ -68,7 +68,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       }
 
       // Create assistant message placeholder
-      let assistantMessage: Message = {
+      const assistantMessage: Message = {
         id: `ai_${Date.now()}`,
         type: 'ai',
         content: ''

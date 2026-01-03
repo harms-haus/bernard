@@ -48,7 +48,7 @@ const defaultComponents = {
     <tr className={cn("m-0 border-b p-0 first:border-t", className)} {...props} />
   ),
   pre: ({ className, ...props }: any) => (
-    <pre className={cn("overflow-x-auto rounded-lg bg-black text-white max-w-4xl", className)} {...props} />
+    <pre className={cn("overflow-x-auto rounded-lg bg-muted text-foreground max-w-4xl", className)} {...props} />
   ),
   code: ({ className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || '');
