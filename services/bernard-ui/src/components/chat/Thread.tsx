@@ -1,6 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -8,13 +7,26 @@ import { Avatar, AvatarFallback } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useStream } from '../../providers/StreamProvider';
 import { useThreads } from '../../providers/ThreadProvider';
+import { useDarkMode } from '../../hooks/useDarkMode';
+import { ConversationHistory } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
-import { ConversationHistory } from './ConversationHistory';
 import { cn } from '../../lib/utils';
-import { ArrowDown, PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download } from 'lucide-react';
+import { ArrowDown, PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Message } from '@langchain/langgraph-sdk';
+
+// Hook to check if sidebar is open
+function useSidebarOpen() {
+  const [isOpen, setIsOpen] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('bernard-chat-sidebar-open');
+    setIsOpen(saved === null ? true : JSON.parse(saved));
+  }, []);
+
+  return isOpen;
+}
 
 function ScrollToBottomButton({ className }: { className?: string }) {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
@@ -34,9 +46,10 @@ export function Thread() {
   
   const { messages, submit, isLoading, stop } = useStream();
   const { getThreads } = useThreads();
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const sidebarOpen = useSidebarOpen();
   
   const [input, setInput] = useState('');
-  const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
   const [isGhostMode, setIsGhostMode] = useState(false);
 
   // Refresh thread list on mount
@@ -87,28 +100,28 @@ export function Thread() {
     toast.success('Chat history downloaded');
   };
 
+  const toggleSidebar = () => {
+    window.dispatchEvent(new CustomEvent('toggle-sidebar'));
+  };
+
   const chatStarted = !!threadId || !!messages.length;
 
   return (
     <div className="flex w-full h-screen overflow-hidden">
-      <ConversationHistory open={chatHistoryOpen} onOpenChange={setChatHistoryOpen} />
+      <ConversationHistory />
       
-      <motion.div
+      <div
         className={cn(
           "flex-1 flex flex-col min-w-0 overflow-hidden relative",
           !chatStarted && "grid-rows-[1fr]"
         )}
-        animate={{
-          marginLeft: chatHistoryOpen ? 300 : 0,
-          width: chatHistoryOpen ? "calc(100% - 300px)" : "100%",
-        }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 p-2 z-10 relative border-b bg-background">
           <div className="flex items-center gap-2">
-            {!chatHistoryOpen && (
-              <Button variant="ghost" onClick={() => setChatHistoryOpen(true)}>
+            {/* Toggle sidebar button - shows when sidebar is closed */}
+            {!sidebarOpen && (
+              <Button variant="ghost" onClick={toggleSidebar} aria-label="Open chat history">
                 <PanelRightOpen className="size-5" />
               </Button>
             )}
@@ -122,6 +135,11 @@ export function Thread() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Light/Dark mode toggle */}
+            <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+              {isDarkMode ? <Sun className="h-4 w-4 text-yellow-500" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon">
@@ -151,8 +169,12 @@ export function Thread() {
         </div>
 
         {/* Messages Area */}
-        <StickToBottom className="relative flex-1 overflow-hidden">
-          <div className="absolute px-4 inset-0 overflow-y-scroll">
+        <StickToBottom 
+          className="relative flex-1 overflow-y-auto"
+          resize="smooth"
+          initial="smooth"
+        >
+          <StickToBottom.Content className="px-4">
             <div className="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full">
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-[50vh]">
@@ -174,9 +196,9 @@ export function Thread() {
               
               {isLoading && <AssistantMessageLoading />}
             </div>
-          </div>
+          </StickToBottom.Content>
           
-          <div className="sticky flex flex-col items-center gap-8 bottom-0 bg-background/80 backdrop-blur-sm">
+          <div className="sticky flex flex-col items-center gap-8 bottom-0 bg-background/80 backdrop-blur-sm z-20">
             <ScrollToBottomButton />
             
             {/* Input Area */}
@@ -213,7 +235,7 @@ export function Thread() {
             </div>
           </div>
         </StickToBottom>
-      </motion.div>
+      </div>
     </div>
   );
 }
