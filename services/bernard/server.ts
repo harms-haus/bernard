@@ -37,6 +37,103 @@ const logger = pino({
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
 const HOST = process.env["HOST"] || "127.0.0.1";
 
+// Stream metadata interface for tool calls
+interface StreamMetadata {
+  langgraph_node?: string;
+  langgraph_path?: string;
+  langgraph_step?: number;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+}
+
+// Tool call interface for individual tool call
+interface ToolCallData {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+// Helper function to format tool call chunk for OpenAI-compatible streaming
+function formatToolCallChunk(
+  toolCall: ToolCallData,
+  requestId: string,
+): string {
+  const chunk = {
+    id: requestId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: BERNARD_MODEL_ID,
+    choices: [{
+      index: 0,
+      delta: {
+        tool_calls: [toolCall],
+      },
+      finish_reason: null,
+    }],
+  };
+  return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
+// Helper function to format content chunk
+function formatContentChunk(content: string, requestId: string): string {
+  const chunk = {
+    id: requestId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: BERNARD_MODEL_ID,
+    choices: [{
+      index: 0,
+      delta: { content },
+      finish_reason: null,
+    }],
+  };
+  return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
+// Helper function to format custom tool progress event
+function formatToolProgressChunk(data: Record<string, unknown>, requestId: string): string {
+  const event = {
+    type: "tool_progress",
+    request_id: requestId,
+    data,
+  };
+  return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+// Helper function to format tool result chunk for OpenAI-compatible streaming
+// Tool results are sent as chunks with role="tool" and tool_call_id
+function formatToolResultChunk(
+  toolCallId: string,
+  content: string,
+  requestId: string,
+): string {
+  const chunk = {
+    id: requestId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: BERNARD_MODEL_ID,
+    choices: [{
+      index: 0,
+      delta: {
+        role: "tool",
+        tool_call_id: toolCallId,
+        content,
+      },
+      finish_reason: null,
+    }],
+  };
+  return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
 async function initializeCheckpointer(): Promise<void> {
   try {
     checkpointer = await getRedisCheckpointer();
@@ -161,18 +258,45 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           // chunkCount++;
           if (chunk.type === "messages") {
             const message = chunk.content;
-            const chunkData = {
-              id: requestId,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: BERNARD_MODEL_ID,
-              choices: [{
-                index: 0,
-                delta: { content: message },
-                finish_reason: null
-              }]
-            };
-            res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+            const metadata = chunk.metadata as StreamMetadata | undefined;
+
+            // Emit tool calls from metadata if present (real-time tool call visibility)
+            if (metadata?.tool_calls && metadata.tool_calls.length > 0) {
+              for (const toolCall of metadata.tool_calls) {
+                res.write(formatToolCallChunk(toolCall, requestId));
+              }
+            }
+
+            // Handle message content
+            if (typeof message === "string" && message) {
+              // Regular text content
+              res.write(formatContentChunk(message, requestId));
+            } else if (Array.isArray(message)) {
+              // Handle content arrays (e.g., from ToolMessage with tool_result blocks)
+              for (const block of message) {
+                if (block && typeof block === "object") {
+                  const blockObj = block as Record<string, unknown>;
+                  
+                  // Check for tool_result blocks (OpenAI format)
+                  if (blockObj["type"] === "tool_result") {
+                    const toolCallId = blockObj["tool_use_id"] as string;
+                    const resultContent = blockObj["content"] as string;
+                    if (toolCallId && resultContent) {
+                      res.write(formatToolResultChunk(toolCallId, resultContent, requestId));
+                    }
+                  }
+                }
+              }
+            }
+
+            // Emit message content (for structured content blocks like text)
+            if (typeof message === "object" && message !== null && !Array.isArray(message)) {
+              const msgObj = message as Record<string, unknown>;
+              const content = msgObj["content"];
+              if (typeof content === "string" && content) {
+                res.write(formatContentChunk(content, requestId));
+              }
+            }
           } else if (chunk.type === "updates") {
             // Extract the actual text content from the updates object
             // Format is {"nodeName": { messages: [...] }}
@@ -204,18 +328,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             }
 
             if (textContent) {
-              const chunkData = {
-                id: requestId,
-                object: "chat.completion.chunk",
-                created: Math.floor(Date.now() / 1000),
-                model: BERNARD_MODEL_ID,
-                choices: [{
-                  index: 0,
-                  delta: { content: textContent },
-                  finish_reason: null
-                }]
-              };
-              res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+              res.write(formatContentChunk(textContent, requestId));
+            }
+          } else if (chunk.type === "custom") {
+            // Handle custom events (tool progress) from tools
+            if (typeof chunk.content === "object" && chunk.content !== null) {
+              res.write(formatToolProgressChunk(chunk.content as Record<string, unknown>, requestId));
             }
           }
         }

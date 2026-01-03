@@ -1,5 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createProgressReporter } from "./progress.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
@@ -111,7 +113,10 @@ function validateUri(uri: string): boolean {
 /**
  * Main tool implementation
  */
-async function getWebsiteContent(input: GetWebsiteContentInput): Promise<string> {
+async function getWebsiteContent(
+  input: GetWebsiteContentInput,
+  progress?: ReturnType<typeof createProgressReporter>,
+): Promise<string> {
   const {
     uri,
     startTokens = DEFAULT_START_TOKENS,
@@ -141,6 +146,10 @@ async function getWebsiteContent(input: GetWebsiteContentInput): Promise<string>
     let cachedContent = getCachedContent(uri, forceRefresh);
 
     if (!cachedContent) {
+      if (progress) {
+        progress.progress(1, 2, `Fetching content from ${uri}`);
+      }
+
       logger.info('Fetching website content: %s', uri);
 
       // Fetch HTML
@@ -161,6 +170,8 @@ async function getWebsiteContent(input: GetWebsiteContentInput): Promise<string>
         timestamp: Date.now()
       };
       setCachedContent(uri, cachedContent);
+    } else if (progress) {
+      progress.progress(1, 2, 'Processing content');
     }
 
     // Count total tokens in the full content
@@ -190,11 +201,18 @@ async function getWebsiteContent(input: GetWebsiteContentInput): Promise<string>
       hasMore
     };
 
+    if (progress) {
+      progress.complete(`Retrieved ${result.title}: ${result.returnedTokens}/${result.totalTokens} tokens`);
+    }
+
     // Return human-readable summary
     return `**${result.title}**\n\n${result.content}\n\n---\nURL: ${result.url}${result.byline ? `\nBy: ${result.byline}` : ''}\nTokens: ${result.returnedTokens}/${result.totalTokens} (start: ${result.startTokens}, read: ${result.readTokens})${result.hasMore ? ' - More content available' : ''}`;
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (progress) {
+      progress.error(error instanceof Error ? error : new Error(errorMessage));
+    }
     logger.error('getWebsiteContent failed: %s', errorMessage);
     return `Error: Failed to retrieve website content: ${errorMessage}`;
   }
@@ -202,8 +220,26 @@ async function getWebsiteContent(input: GetWebsiteContentInput): Promise<string>
 
 // Tool definition with schema validation
 const getWebsiteContentToolImpl = tool(
-  async ({ uri, startTokens, readTokens, forceRefresh }) => {
-    return getWebsiteContent({ uri, startTokens, readTokens, forceRefresh });
+  async (
+    { uri, startTokens, readTokens, forceRefresh }: GetWebsiteContentInput,
+    config: RunnableConfig,
+  ) => {
+    const progress = createProgressReporter(config, "get_website_content");
+
+    progress.start(`Fetching content from "${uri}"`);
+
+    try {
+      const result = await getWebsiteContent({
+        uri,
+        startTokens: startTokens ?? DEFAULT_START_TOKENS,
+        readTokens: readTokens ?? DEFAULT_READ_TOKENS,
+        forceRefresh: forceRefresh ?? false,
+      }, progress);
+      return result;
+    } catch (error) {
+      progress.error(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   },
   {
     name: "get_website_content",

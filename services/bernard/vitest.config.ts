@@ -1,17 +1,17 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolve, dirname, join } from "node:path";
+import tsconfigPaths from "vite-tsconfig-paths";
 
 import { defineConfig } from "vitest/config";
 
-const rootDir = fileURLToPath(new URL("./", import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const rootDir = __dirname;
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@": rootDir
-    }
-  },
+  plugins: [tsconfigPaths()],
   test: {
-    include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+    include: [join(rootDir, "tests/**/*.test.ts"), join(rootDir, "src/**/*.test.ts")],
     environment: "node",
     globals: false,
     coverage: {

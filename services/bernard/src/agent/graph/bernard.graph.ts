@@ -159,22 +159,25 @@ export async function *runBernardGraph(
   messages: BaseMessage[],
   stream: boolean,
   threadId: string,
-): AsyncIterable<{ type: string; content: unknown }> {
+): AsyncIterable<{ type: string; content: unknown; metadata?: Record<string, unknown> }> {
   const config = { configurable: { thread_id: threadId } };
   if (stream) {
+    // Use messages, updates, and custom modes for full tool call visibility
     const streamResult = await graph.stream(
       { messages },
-      { ...config, streamMode: ["messages", "updates"] as const }
+      { ...config, streamMode: ["messages", "updates", "custom"] as const }
     );
     for await (const [mode, chunk] of streamResult) {
       if (mode === "messages") {
-        const [message, _metadata] = chunk;
+        const [message, metadata] = chunk as [BaseMessage, Record<string, unknown>];
         // Extract message content - handle both string and structured content
         if (message && typeof message.content === "string") {
-          yield { type: mode, content: message.content };
+          yield { type: mode, content: message.content, metadata };
         } else if (message && Array.isArray(message.content)) {
           // Handle content arrays (e.g., from tool results)
-          yield { type: mode, content: message.content };
+          yield { type: mode, content: message.content, metadata };
+        } else {
+          yield { type: mode, content: message, metadata };
         }
       } else if (mode === "updates") {
         for (const [_node, data] of Object.entries(chunk as Record<string, unknown>)) {
@@ -188,6 +191,9 @@ export async function *runBernardGraph(
             }
           }
         }
+      } else if (mode === "custom") {
+        // Forward custom data (tool progress) directly
+        yield { type: mode, content: chunk };
       }
     }
   } else {
