@@ -10,7 +10,9 @@ import {
   createCodeVerifier,
   createChallenge,
   exchangeCode,
-  fetchUserInfo
+  fetchUserInfo,
+  SessionStore,
+  UserStore
 } from "@shared/auth/index";
 import type { 
   OAuthProvider,
@@ -18,8 +20,6 @@ import type {
 } from "@shared/auth/index";
 import { buildSessionCookie, clearSessionCookie } from "./auth";
 import { getRedis } from "@/lib/infra/redis";
-import { SessionStore } from "./sessionStore";
-import { UserStore } from "./userStore";
 import { appSettings } from "@shared/config/appSettings";
 import { logger } from "@/lib/logging";
 
