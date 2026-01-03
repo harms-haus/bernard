@@ -1,5 +1,5 @@
-import type { BernardStateType } from "./graph/state";
-import { createAgent, modelRetryMiddleware, toolRetryMiddleware } from "langchain";
+import type { MessagesAnnotation } from "@langchain/langgraph";
+import { createAgent, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 import type { ReactAgent } from "langchain";
 import { createLoggingMiddleware, createTracingMiddleware } from "./middleware";
 import type { LanguageModelLike } from "@langchain/core/language_models/base";
@@ -8,7 +8,7 @@ import type { AgentContext } from "./agentContext";
 import { getSettings } from "@/lib/config";
 
 export async function reactAgent(
-  state: BernardStateType,
+  state: typeof MessagesAnnotation.State,
   config: { configurable?: { thread_id?: string } },
   context: AgentContext
 ): Promise<ReactAgent> {
@@ -25,7 +25,7 @@ export async function reactAgent(
   });
 }
 
-const getMiddleware = (state: BernardStateType, config: { configurable?: { thread_id?: string } }, context: AgentContext, modelConfig: LanguageModelLike) => {
+const getMiddleware = (state: typeof MessagesAnnotation.State, config: { configurable?: { thread_id?: string } }, context: AgentContext, modelConfig: LanguageModelLike) => {
   return [
     modelRetryMiddleware({
       maxRetries: 3,
@@ -36,6 +36,10 @@ const getMiddleware = (state: BernardStateType, config: { configurable?: { threa
       maxRetries: 3,
       backoffFactor: 2.0,
       initialDelayMs: 1000,
+    }),
+    toolCallLimitMiddleware({
+      runLimit: 10,
+      exitBehavior: "error",
     }),
     createLoggingMiddleware({
       logger: context.logger,

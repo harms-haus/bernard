@@ -1,4 +1,4 @@
-import type { BernardStateType } from "./graph/state";
+import type { MessagesAnnotation } from "@langchain/langgraph";
 import { createAgent, modelRetryMiddleware } from "langchain";
 import type { ReactAgent } from "langchain";
 import { createLoggingMiddleware, createTracingMiddleware } from "./middleware";
@@ -9,7 +9,7 @@ import type { ToolWithInterpretation } from "./tool";
 import { getSettings } from "@/lib/config";
 
 export async function responseAgent(
-  state: BernardStateType,
+  state: typeof MessagesAnnotation.State,
   config: { configurable?: { thread_id?: string } },
   context: AgentContext
 ): Promise<ReactAgent> {
@@ -26,7 +26,7 @@ export async function responseAgent(
   });
 }
 
-const getMiddleware = (state: BernardStateType, config: { configurable?: { thread_id?: string } }, context: AgentContext, modelConfig: LanguageModelLike) => {
+const getMiddleware = (state: typeof MessagesAnnotation.State, config: { configurable?: { thread_id?: string } }, context: AgentContext, modelConfig: LanguageModelLike) => {
   return [
     modelRetryMiddleware({
       maxRetries: 3,
