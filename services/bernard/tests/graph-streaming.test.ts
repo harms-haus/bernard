@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createBernardGraph, runBernardGraph } from "../src/agent/graph/bernard.graph";
-import { createTestContext, testMessages, toolCallMessages, echoTool, getValueTool, slowToolWithProgress, mockCheckpointer } from "./fixtures";
-import { HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
+import { createTestContext, testMessages, echoTool, getValueTool, slowToolWithProgress } from "./fixtures";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 
 describe("Graph Streaming", () => {
@@ -16,15 +16,10 @@ describe("Graph Streaming", () => {
       );
 
       let messageChunks = 0;
-      let hasContent = false;
 
-      for await (const [mode, chunk] of stream) {
+      for await (const [mode, _chunk] of stream) {
         if (mode === "messages") {
           messageChunks++;
-          const [message] = chunk as [unknown, Record<string, unknown>];
-          if (message && typeof message === "object" && "content" in message) {
-            hasContent = true;
-          }
         }
       }
 
@@ -219,7 +214,7 @@ describe("Graph Streaming", () => {
         custom: 0,
       };
 
-      for await (const [mode, chunk] of stream) {
+      for await (const [mode, _chunk] of stream) {
         if (mode === "messages" || mode === "updates" || mode === "custom") {
           events[mode as keyof typeof events]++;
         }

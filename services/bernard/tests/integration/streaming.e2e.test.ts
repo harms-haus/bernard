@@ -106,12 +106,9 @@ describe("End-to-End Streaming", () => {
       );
 
       const toolProgressEvents: Array<{ tool: string; phase: string }> = [];
-      let messageCount = 0;
 
       for await (const [mode, chunk] of stream) {
-        if (mode === "messages") {
-          messageCount++;
-        } else if (mode === "custom") {
+        if (mode === "custom") {
           const event = chunk as { tool?: string; phase?: string };
           if (event.tool === "slow_tool") {
             toolProgressEvents.push({ tool: event.tool, phase: event.phase || "unknown" });

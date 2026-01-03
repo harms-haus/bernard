@@ -37,7 +37,7 @@ function parseCheckpointKey(key: string): { threadId: string; checkpointId: stri
 export function registerThreadsRoutes(fastify: FastifyInstance) {
   fastify.get<{
     Querystring: { limit?: string; offset?: string };
-  }>("/api/threads", async (request: FastifyRequest<{ Querystring: { limit?: string; offset?: string } }>, reply: FastifyReply) => {
+  }>("/threads", async (request: FastifyRequest<{ Querystring: { limit?: string; offset?: string } }>, reply: FastifyReply) => {
     try {
       const redis = getRedis();
       await redis.connect();
@@ -141,7 +141,7 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get<{ Params: { threadId: string } }>("/api/threads/:threadId", async (
+  fastify.get<{ Params: { threadId: string } }>("/threads/:threadId", async (
     request: FastifyRequest<{ Params: { threadId: string } }>,
     reply: FastifyReply
   ) => {
@@ -194,7 +194,7 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.patch<{ Params: { threadId: string }; Body: { name?: string } }>("/api/threads/:threadId", async (
+  fastify.patch<{ Params: { threadId: string }; Body: { name?: string } }>("/threads/:threadId", async (
     request: FastifyRequest<{ Params: { threadId: string }; Body: { name?: string } }>,
     reply: FastifyReply
   ) => {
@@ -221,7 +221,7 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.delete<{ Params: { threadId: string } }>("/api/threads/:threadId", async (
+  fastify.delete<{ Params: { threadId: string } }>("/threads/:threadId", async (
     request: FastifyRequest<{ Params: { threadId: string } }>,
     reply: FastifyReply
   ) => {
