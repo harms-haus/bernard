@@ -9,7 +9,6 @@ import { registerBernardRoutes } from './routes/bernard';
 import { registerIndexRoutes } from './routes/index';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminServicesRoutes } from './routes/adminServices';
-import { registerConversationRoutes } from './routes/conversations';
 import { getAuthenticatedUser } from './lib/auth/auth';
 
 const fastify = Fastify({
@@ -98,7 +97,6 @@ await fastify.register(registerIndexRoutes); // This handles / and /health
 await fastify.register(registerAuthRoutes, { prefix: '/auth' });
 await fastify.register(registerV1Routes, { prefix: '/v1' });
 await fastify.register(registerApiRoutes, { prefix: '/api' });
-await fastify.register(registerConversationRoutes, { prefix: '/api' });
 await fastify.register(registerBernardRoutes); // Handles /bernard/
 await fastify.register(registerAdminServicesRoutes); // Handles /admin/services/*
 

@@ -1,7 +1,4 @@
 import { User, UserStatus } from '../types/auth';
-import type {
-  ConversationsListResponse,
-} from '../types/conversation';
 
 export interface ProviderType {
   id: string;
@@ -670,27 +667,6 @@ class AdminApiClient {
 
   async logout(): Promise<void> {
     return this.request<void>('/auth/logout', {
-      method: 'POST'
-    });
-  }
-
-  // Conversation management (admin)
-  async listAllConversations(options: {
-    archived?: boolean;
-    limit?: number;
-    offset?: number;
-  }): Promise<ConversationsListResponse> {
-    const params = new URLSearchParams({
-      archived: String(options.archived ?? false),
-      limit: String(options.limit ?? 50),
-      offset: String(options.offset ?? 0),
-    });
-
-    return this.request<ConversationsListResponse>(`/conversations/all?${params}`);
-  }
-
-  async archiveConversation(id: string): Promise<void> {
-    return this.request<void>(`/conversations/${id}/archive`, {
       method: 'POST'
     });
   }
