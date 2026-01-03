@@ -1,8 +1,10 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import type { RunnableConfig } from "@langchain/core/runnables";
 
 import { getSettings } from "@/lib/config/settingsCache";
 import { logger } from "@/lib/logging";
+import { createProgressReporter } from "./progress.js";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";
 const DEFAULT_RESULT_COUNT = 3;
@@ -249,7 +251,13 @@ async function handleSearchResponse(res: Response, count?: number): Promise<stri
   return formatResults(items, count);
 }
 
-async function executeSearch(query: string, count?: number, startingIndex?: number): Promise<string> {
+async function executeSearch(
+  query: string,
+  count?: number,
+  startingIndex?: number,
+  progress?: ReturnType<typeof createProgressReporter>,
+): Promise<string> {
+
   const config = await resolveSearchConfig();
   if (!config.ok) {
     return `Search tool is not configured (${config.reason})`;
@@ -261,9 +269,22 @@ async function executeSearch(query: string, count?: number, startingIndex?: numb
   const url = buildSearXNGUrl(config.apiUrl, query, count, startingIndex);
 
   try {
+    if (progress) {
+      progress.progress(1, 2, "Parsing search results");
+    }
+
     const res = await fetchSearXNGSearch(url, config.apiKey);
-    return handleSearchResponse(res, count);
+    const result = await handleSearchResponse(res, count);
+
+    if (progress) {
+      progress.complete("Search completed successfully");
+    }
+
+    return result;
   } catch (error) {
+    if (progress) {
+      progress.error(error instanceof Error ? error : new Error(String(error)));
+    }
     logger.error('Search request failed: %s', error instanceof Error ? error.message : String(error));
     return 'Search service unavailable, please try again later';
   }
@@ -283,9 +304,21 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
 }
 
 const webSearchToolImpl = tool(
-  async ({ query, count, starting_index }) => {
+  async (
+    { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
+    config: RunnableConfig,
+  ) => {
+    const progress = createProgressReporter(config, "web_search");
 
-    return executeSearch(query, count, starting_index);
+    progress.start(`Searching for "${query}"`);
+
+    try {
+      const result = await executeSearch(query, count, starting_index, progress);
+      return result;
+    } catch (error) {
+      progress.error(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   },
   {
     name: "web_search",

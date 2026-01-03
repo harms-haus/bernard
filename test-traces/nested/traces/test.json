@@ -3,10 +3,10 @@
   "thread_id": "thread-8",
   "model": "gpt-4",
   "agent": "test",
-  "started_at": "2026-01-03T21:22:34.796Z",
+  "started_at": "2026-01-03T21:18:33.020Z",
   "events": [
     {
-      "timestamp": "2026-01-03T21:22:34.796Z",
+      "timestamp": "2026-01-03T21:18:33.020Z",
       "type": "request_start",
       "data": {
         "type": "request_start",
