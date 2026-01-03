@@ -1,26 +1,32 @@
 import { createContext, useContext, ReactNode, useCallback, useState } from 'react';
-import type { ConversationListItem } from '../types/conversation';
-import { apiClient } from '../services/api';
+
+interface ThreadItem {
+  id: string;
+  name?: string;
+  createdAt: string;
+  lastTouchedAt: string;
+}
 
 interface ThreadContextType {
-  threads: ConversationListItem[];
-  getThreads: () => Promise<ConversationListItem[]>;
-  setThreads: (threads: ConversationListItem[]) => void;
+  threads: ThreadItem[];
+  getThreads: () => Promise<ThreadItem[]>;
+  setThreads: (threads: ThreadItem[]) => void;
   threadsLoading: boolean;
 }
 
 const ThreadContext = createContext<ThreadContextType | undefined>(undefined);
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
-  const [threads, setThreads] = useState<ConversationListItem[]>([]);
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
 
-  const getThreads = useCallback(async (): Promise<ConversationListItem[]> => {
+  const getThreads = useCallback(async (): Promise<ThreadItem[]> => {
     setThreadsLoading(true);
     try {
-      const response = await apiClient.listConversations({ limit: 50 });
-      setThreads(response.conversations);
-      return response.conversations;
+      // Thread list is managed locally via URL params
+      // This is a placeholder for potential future backend integration
+      setThreads([]);
+      return [];
     } finally {
       setThreadsLoading(false);
     }

@@ -1,8 +1,4 @@
 import { User, UserStatus } from '../types/auth';
-import type {
-  ConversationsListResponse,
-  ConversationDetailResponse,
-} from '../types/conversation';
 
 export interface LoginCredentials {
   email: string;
@@ -311,7 +307,7 @@ class APIClient {
     });
   }
 
-  async chat(messages: ConversationMessage[], conversationId?: string): Promise<ChatResponse> {
+  async chat(messages: ConversationMessage[], chatId?: string): Promise<ChatResponse> {
     const response = await fetch(`/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
@@ -325,7 +321,7 @@ class APIClient {
           role: msg.role,
           content: msg.content
         })),
-        ...(conversationId ? { conversationId } : {})
+        ...(chatId ? { chatId } : {})
       })
     });
 
@@ -336,7 +332,7 @@ class APIClient {
     return response.json();
   }
 
-  async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal, conversationId?: string): Promise<ReadableStream> {
+  async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal, chatId?: string): Promise<ReadableStream> {
     const response = await fetch(`/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
@@ -352,7 +348,7 @@ class APIClient {
         })),
         stream: true,
         ...(ghost ? { ghost: true } : {}),
-        ...(conversationId ? { conversationId } : {})
+        ...(chatId ? { chatId } : {})
       }),
       signal
     });
@@ -367,13 +363,13 @@ class APIClient {
     return response.body;
   }
 
-  async getConversationHistory(limit: number = 100, includeMessages: boolean = false, conversationId?: string | null): Promise<any[]> {
+  async getConversationHistory(limit: number = 100, includeMessages: boolean = false, threadId?: string | null): Promise<any[]> {
     const params = new URLSearchParams({
       limit: String(limit),
       includeMessages: String(includeMessages)
     });
-    if (conversationId) {
-      params.set('conversationId', conversationId);
+    if (threadId) {
+      params.set('threadId', threadId);
     }
     
     const response = await fetch(`${this.baseUrl}/history?${params.toString()}`, {
@@ -389,8 +385,8 @@ class APIClient {
     return data.results || [];
   }
 
-  async updateConversationGhostStatus(conversationId: string, ghost: boolean): Promise<{ conversationId: string; ghost: boolean; updated: boolean }> {
-    const response = await fetch(`${this.baseUrl}/conversations/${conversationId}`, {
+  async updateConversationGhostStatus(threadId: string, ghost: boolean): Promise<{ threadId: string; ghost: boolean; updated: boolean }> {
+    const response = await fetch(`${this.baseUrl}/conversations/${threadId}`, {
       credentials: 'same-origin',
       method: 'PATCH',
       headers: {
@@ -407,8 +403,8 @@ class APIClient {
     return response.json();
   }
 
-  async deleteConversation(conversationId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+  async deleteConversation(threadId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/admin/history/${threadId}`, {
       credentials: 'same-origin',
       method: 'DELETE',
       headers: this.getAuthHeaders()
@@ -420,8 +416,8 @@ class APIClient {
     }
   }
 
-  async closeConversation(conversationId: string, reason: string = 'manual'): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/admin/history/${conversationId}`, {
+  async closeConversation(threadId: string, reason: string = 'manual'): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/admin/history/${threadId}`, {
       credentials: 'same-origin',
       method: 'PATCH',
       headers: {
@@ -468,31 +464,6 @@ class APIClient {
     }
 
     return response.json();
-  }
-
-  // Conversation API methods
-  async listConversations(options: {
-    archived?: boolean;
-    limit?: number;
-    offset?: number;
-  }): Promise<ConversationsListResponse> {
-    const params = new URLSearchParams({
-      archived: String(options.archived ?? false),
-      limit: String(options.limit ?? 50),
-      offset: String(options.offset ?? 0),
-    });
-
-    return this.request<ConversationsListResponse>(`/conversations?${params}`);
-  }
-
-  async getConversation(conversationId: string): Promise<ConversationDetailResponse> {
-    return this.request<ConversationDetailResponse>(`/conversations/${conversationId}`);
-  }
-
-  async archiveConversation(conversationId: string): Promise<void> {
-    return this.request<void>(`/conversations/${conversationId}/archive`, {
-      method: 'POST',
-    });
   }
 }
 

@@ -1,2 +1,2 @@
 // Export utility functions from this directory
-export { generateConversationId, getStoredConversationId, setStoredConversationId, clearStoredConversationId } from './conversationId';
+// Thread utilities are managed via the chat components

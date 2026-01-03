@@ -17,8 +17,6 @@ import Services from './pages/admin/Services'
 import Users from './pages/admin/Users'
 import Automations from './pages/admin/Automations'
 import ConversationDetail from './pages/admin/ConversationDetail'
-import { Conversations } from './pages/user/Conversations'
-import UserConversationDetail from './pages/user/ConversationDetail'
 import { Tasks } from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import { StatusPage } from './pages/StatusPage'
@@ -52,8 +50,6 @@ function App() {
               >
                 <Route index element={<Home />} />
                 <Route path="chat" element={<Chat />} />
-                <Route path="conversations" element={<Conversations />} />
-                <Route path="conversations/:id" element={<UserConversationDetail />} />
                 <Route path="tasks" element={<Tasks />} />
                 <Route path="tasks/:id" element={<TaskDetail />} />
                 <Route path="profile" element={<Profile />} />

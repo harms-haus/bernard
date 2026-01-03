@@ -15,7 +15,7 @@ export function ConversationHistory({
   onOpenChange: (open: boolean) => void;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const conversationId = searchParams.get('conversationId');
+  const threadId = searchParams.get('threadId');
   const { threads, threadsLoading, getThreads } = useThreads();
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function ConversationHistory({
   }, [getThreads]);
 
   const handleThreadClick = (id: string) => {
-    setSearchParams({ conversationId: id });
+    setSearchParams({ threadId: id });
   };
 
   return (
@@ -46,7 +46,7 @@ export function ConversationHistory({
         ) : (
           <ThreadList 
             threads={threads} 
-            activeId={conversationId || null}
+            activeId={threadId || null}
             onThreadClick={handleThreadClick}
           />
         )}
@@ -64,7 +64,7 @@ export function ConversationHistory({
             ) : (
               <ThreadList 
                 threads={threads}
-                activeId={conversationId || null}
+                activeId={threadId || null}
                 onThreadClick={(id) => {
                   handleThreadClick(id);
                   onOpenChange(false);
@@ -93,7 +93,7 @@ function ThreadList({
         variant="ghost"
         className="w-full justify-start"
         onClick={() => {
-          const newId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+          const newId = `thread_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
           onThreadClick(newId);
         }}
       >
@@ -107,11 +107,11 @@ function ThreadList({
           className="text-left items-start justify-start font-normal w-full truncate"
           onClick={() => onThreadClick(t.id)}
         >
-          <span className="truncate">{t.name || `Conversation ${t.id.slice(0, 8)}`}</span>
+          <span className="truncate">{t.name || `Thread ${t.id.slice(0, 8)}`}</span>
         </Button>
       ))}
       {threads.length === 0 && (
-        <p className="text-muted-foreground text-sm p-4">No conversations yet</p>
+        <p className="text-muted-foreground text-sm p-4">No threads yet</p>
       )}
     </div>
   );

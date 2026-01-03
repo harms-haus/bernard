@@ -12,12 +12,10 @@ import {
   X,
   Shield,
   ListTodo,
-  History
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Chat', href: '/chat', icon: MessagesSquare },
-  { name: 'Conversations', href: '/conversations', icon: History },
   { name: 'Tasks', href: '/tasks', icon: ListTodo },
   { name: 'Keys', href: '/keys', icon: Key },
   { name: 'About', href: '/about', icon: Info },
