@@ -59,6 +59,39 @@ body {
   @apply focus:ring-0 focus:ring-offset-0;
 }
 
+/* KaTeX styles */
+.katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.katex {
+  font-size: 1.1em;
+}
+
+/* Scrollbar styles */
+.overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.overflow-y-scroll::-webkit-scrollbar-track,
+.overflow-x-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-scroll::-webkit-scrollbar-thumb,
+.overflow-x-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.dark .overflow-y-scroll::-webkit-scrollbar-thumb,
+.dark .overflow-x-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
 /* Custom Scrollbar Styling */
 .scrollbar-thin {
   scrollbar-width: thin;
