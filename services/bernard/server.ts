@@ -17,7 +17,7 @@ import {
 } from "@/lib/openai";
 import { getSettings } from "@/lib/config";
 import { getReactTools } from "@/agent/tool";
-import type { AgentContext } from "@/src/agent/agentContext";
+import type { AgentContext } from "@/agent/agentContext";
 import { createBernardGraph, runBernardGraph } from "@/agent/graph/bernard.graph";
 import { getRedis } from "@/lib/infra/redis";
 import type { BernardSettings } from "@shared/config/appSettings";
