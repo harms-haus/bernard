@@ -10,6 +10,7 @@ import { registerTokenRoutes } from "./routes/tokens";
 import { registerUserRoutes } from "./routes/users";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerAdminServicesRoutes } from "./routes/adminServices";
+import { registerThreadsRoutes } from "./routes/threads";
 import { getAuthenticatedUser } from "./lib/auth";
 import type { AuthenticatedUser } from "./lib/auth";
 
@@ -225,6 +226,7 @@ await fastify.register(registerTokenRoutes, { prefix: "/api/tokens" });
 await fastify.register(registerUserRoutes, { prefix: "/api/users" });
 await fastify.register(registerTaskRoutes, { prefix: "/api/tasks" });
 await fastify.register(registerAdminServicesRoutes);
+await fastify.register(registerThreadsRoutes, { prefix: "/api" });
 
 const port = Number(process.env["BERNARD_API_PORT"]) || 8800;
 const host = process.env["HOST"] || "127.0.0.1";

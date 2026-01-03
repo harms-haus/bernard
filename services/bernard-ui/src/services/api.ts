@@ -100,6 +100,20 @@ export interface TasksListResponse {
   hasMore: boolean;
 }
 
+export interface ThreadListItem {
+  id: string;
+  name?: string;
+  createdAt: string;
+  lastTouchedAt: string;
+  messageCount?: number;
+}
+
+export interface ThreadDetail {
+  id: string;
+  checkpoints: Array<{ id: string; timestamp: string }>;
+  checkpointCount: number;
+}
+
 class APIClient {
   private readonly authBaseUrl: string;
   private readonly apiBaseUrl: string;
@@ -461,6 +475,69 @@ class APIClient {
 
     if (!response.ok) {
       throw new Error('Failed to fetch task details');
+    }
+
+    return response.json();
+  }
+
+  async listThreads(limit: number = 50, offset: number = 0): Promise<{ threads: ThreadListItem[]; total: number; hasMore: boolean }> {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset)
+    });
+
+    const response = await fetch(`${this.baseUrl}/threads?${params.toString()}`, {
+      credentials: 'same-origin',
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch threads');
+    }
+
+    return response.json();
+  }
+
+  async getThread(threadId: string): Promise<ThreadDetail> {
+    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+      credentials: 'same-origin',
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch thread');
+    }
+
+    return response.json();
+  }
+
+  async updateThread(threadId: string, name: string): Promise<{ id: string; name: string; updated: boolean }> {
+    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+      credentials: 'same-origin',
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({ name })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update thread');
+    }
+
+    return response.json();
+  }
+
+  async deleteThread(threadId: string): Promise<{ id: string; deleted: boolean }> {
+    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+      credentials: 'same-origin',
+      method: 'DELETE',
+      headers: this.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to delete thread');
     }
 
     return response.json();
