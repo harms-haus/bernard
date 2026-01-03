@@ -1,4 +1,4 @@
-import { AIMessage } from "@langchain/core/messages";
+import type { AIMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { MessagesAnnotation, StateGraph, START, END } from "@langchain/langgraph";
@@ -33,10 +33,10 @@ export function createBernardGraph(
    * callModel node - Calls the LLM with tools bound
    * This replaces the implicit tool execution via reactAgent middleware
    */
-  const callModel = async (
-    state: typeof MessagesAnnotation.State,
-    config: RunnableConfig,
-  ): Promise<typeof MessagesAnnotation.Update> => {
+   const callModel = async (
+     state: typeof MessagesAnnotation.State,
+     _config: RunnableConfig,
+   ): Promise<typeof MessagesAnnotation.Update> => {
     const settings = await getSettings();
     const modelConfig = await getModelConfig(settings.models.router);
 
@@ -74,10 +74,10 @@ Call tools as needed, then respond with no tool calls when you are done.`;
   /**
    * responseNode - Calls the LLM without tools (for final response generation)
    */
-  const responseNode = async (
-    state: typeof MessagesAnnotation.State,
-    config: RunnableConfig,
-  ): Promise<typeof MessagesAnnotation.Update> => {
+   const responseNode = async (
+     state: typeof MessagesAnnotation.State,
+     _config: RunnableConfig,
+   ): Promise<typeof MessagesAnnotation.Update> => {
     const settings = await getSettings();
     const modelConfig = await getModelConfig(settings.models.response);
 

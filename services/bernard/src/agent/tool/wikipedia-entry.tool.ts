@@ -7,10 +7,6 @@ import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/tokenCounter";
 
-// Set user agent for Wikipedia API requests (required by Wikipedia's policy)
-// Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures
-wiki.setUserAgent("Bernard-AI/1.0 (https://github.com/your-repo/bernard)");
-
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
 const originalGet = axios.get;

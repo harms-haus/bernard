@@ -2,7 +2,10 @@ import type { AgentContext } from "../src/agent/agentContext";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { Tracer, onEventData } from "../src/agent/trace";
-import { HumanMessage, BaseMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
+import type { Logger } from "pino";
+import { HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
@@ -49,11 +52,15 @@ class MockCheckpointSaver {
     const checkpoint = this.checkpoints.get(threadId);
     if (!checkpoint) return undefined;
     
-    return {
+    const metadata = this.metadata.get(threadId);
+    const result: { config: RunnableConfig; checkpoint: SimpleCheckpoint; metadata?: CheckpointMetadata } = {
       config,
       checkpoint,
-      metadata: this.metadata.get(threadId),
     };
+    if (metadata !== undefined) {
+      result.metadata = metadata;
+    }
+    return result;
   }
 
   async list(config: RunnableConfig): Promise<Array<{ config: RunnableConfig; checkpoint: SimpleCheckpoint; metadata?: CheckpointMetadata }>> {
@@ -279,14 +286,14 @@ export function createTestContext(
   const mockTracer = new MockTracer();
 
   return {
-    checkpointer: mockCheckpointer as unknown as import("@langchain/langgraph").BaseCheckpointSaver,
+    checkpointer: mockCheckpointer as unknown as BaseCheckpointSaver,
     tracer: mockTracer,
     logger: {
       info: () => {},
       debug: () => {},
       warn: () => {},
       error: () => {},
-    } as unknown as import("pino").Logger,
+    } as unknown as Logger,
     tools: tools as StructuredToolInterface[],
     disabledTools,
   };

@@ -6,10 +6,6 @@ import { createProgressReporter } from "./progress.js";
 
 import wiki from "wikipedia";
 
-// Set user agent for Wikipedia API requests (required by Wikipedia's policy)
-// Note: Wikipedia now requires both Api-User-Agent and User-Agent headers for anti-bot measures
-wiki.setUserAgent("Bernard-AI/1.0 (https://github.com/your-repo/bernard)");
-
 import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 

@@ -1,5 +1,5 @@
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 import { defineConfig } from "vitest/config";
