@@ -2,9 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { SettingsStore } from "../config/settingsStore";
-import { TokenStore } from "../auth/tokenStore";
-import { UserStore } from "../auth/userStore";
-import { SessionStore } from "../auth/sessionStore";
+import { TokenStore, UserStore, SessionStore } from "@shared/auth";
 import { getRedis } from "../infra/redis";
 
 /**
