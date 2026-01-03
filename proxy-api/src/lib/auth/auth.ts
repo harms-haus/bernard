@@ -9,8 +9,8 @@ import {
   AuthenticatedUser,
   AccessGrant
 } from "@shared/auth/index";
-import { getRedis } from "@/lib/infra/redis";
-import { logger } from "@/lib/logger";
+import { getRedis } from "../infra/redis";
+import { logger } from "../../lib/logger";
 
 export type { AuthenticatedUser, AccessGrant };
 

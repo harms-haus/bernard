@@ -8,12 +8,12 @@ import {
 import type { OAuthProvider, ProviderConfig } from "@shared/auth/index";
 
 export type { OAuthProvider, ProviderConfig };
-import { appSettings } from "@/lib/config/settingsStore";
-import { getRedis } from "@/lib/infra/redis";
+import { appSettings } from "../config/settingsStore";
+import { getRedis } from "../infra/redis";
 import { UserStore } from "@shared/auth/index";
 import { SessionStore } from "@shared/auth/index";
 import { buildSessionCookie, clearSessionCookie } from "./auth";
-import { logger } from "@/lib/logger";
+import { logger } from "../../lib/logger";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 const STATE_TTL_SECONDS = 10 * 60;

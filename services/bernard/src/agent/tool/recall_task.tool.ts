@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { getRedis } from "@/lib/infra/redis";
-import { TaskRecordKeeper } from "@/src/agent/task/task.keeper";
+import { TaskRecordKeeper } from "@/agent/task/task.keeper";
 import { withTimeout } from "@/lib/infra/timeouts";
 
 const RECALL_TIMEOUT_MS = Number(process.env["TASK_RECALL_TIMEOUT_MS"]) || 5_000;

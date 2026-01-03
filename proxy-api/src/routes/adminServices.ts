@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { requireAdmin } from "@/lib/auth/auth";
-import { logger } from "@/lib/logger";
+import { requireAdmin } from "../lib/auth/auth";
+import { logger } from "../lib/logger";
 
 const execAsync = promisify(exec);
 
