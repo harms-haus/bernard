@@ -20,7 +20,7 @@ import { ToolUseMessage } from './chat-messages/ToolUseMessage';
 import { LLMCallMessage } from './chat-messages/LLMCallMessage';
 import { ToolCallMessage } from './chat-messages/ToolCallMessage';
 import { RecollectionsMessage } from './chat-messages/RecollectionsMessage';
-import { MessageRecord } from '../../../bernard/lib/conversation/types';
+import type { MessageRecord } from '../types/messageRecord';
 import { ThinkingMessage } from './chat-messages/ThinkingMessage';
 import { useToast } from './ToastManager';
 import { parseTraceChunk, updateTraceEventWithCompletion } from '../utils/traceEventParser';

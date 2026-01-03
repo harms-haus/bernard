@@ -7,7 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { ChatInterface } from '@/components/ChatInterface';
 import type { ConversationMetadata, ConversationEvent } from '@/types/conversation';
-import type { MessageRecord } from '../../../../bernard/lib/conversation/types';
+import type { MessageRecord } from '../../../../bernard-ui/src/types/messageRecord';
 import { useToast } from '@/components/ToastManager';
 
 const formatDateTime = (dateString: string) => {

@@ -20,7 +20,6 @@ import { getReactTools } from "@/agent/tool";
 import type { AgentContext } from "@/src/agent/agentContext";
 import { createBernardGraph, runBernardGraph } from "@/agent/graph/bernard.graph";
 import { getRedis } from "@/lib/infra/redis";
-import { ConversationRecordKeeper } from "@/lib/conversation/conversationRecorder";
 import type { BernardSettings } from "@shared/config/appSettings";
 import { type onEventData, type Tracer } from "./src/agent/trace";
 import { BernardTracer } from "./src/agent/trace/bernard.tracer";
@@ -146,7 +145,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
         logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph stream");
 
-        const stream = runBernardGraph(graph, inputMessages, shouldStream);
+        const stream = runBernardGraph(graph, inputMessages, shouldStream, threadId);
 
         for await (const chunk of stream) {
           if (chunk.type === "messages") {
@@ -205,232 +204,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
       }
       return;
-    }
-
-    const conversationsMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
-    if (conversationsMatch) {
-      const conversationId = decodeURIComponent(conversationsMatch[1] ?? '');
-      const auth = await validateAuth(req);
-      if ("error" in auth) {
-        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: auth.error.message }));
-        return;
-      }
-
-      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
-      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
-
-      try {
-        const redis = getRedis();
-        const recorder = new ConversationRecordKeeper(redis);
-        const conversation = await recorder.getConversation(conversationId);
-
-        if (!conversation) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Conversation not found" }));
-          return;
-        }
-
-        if (conversation.conversation.userId !== userId && !isAdmin) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Access denied" }));
-          return;
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          conversation: conversation.conversation,
-          events: conversation.events
-        }));
-        return;
-      } catch (error) {
-        logger.error({ err: error }, "Failed to get conversation");
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Internal server error" }));
-        return;
-      }
-    }
-
-    if (url.pathname === "/api/conversations" && req.method === "GET") {
-      const auth = await validateAuth(req);
-      if ("error" in auth) {
-        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: auth.error.message }));
-        return;
-      }
-
-      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
-
-      const archived = url.searchParams.get("archived") === "true";
-      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
-      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
-
-      try {
-        const redis = getRedis();
-        const recorder = new ConversationRecordKeeper(redis);
-        const result = await recorder.listConversations(userId, { archived, limit, offset });
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          conversations: result.conversations,
-          total: result.total,
-          hasMore: result.hasMore
-        }));
-        return;
-      } catch (error) {
-        logger.error({ err: error }, "Failed to list conversations");
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Internal server error" }));
-        return;
-      }
-    }
-
-    // GET /api/conversations/all - Admin only, list all conversations across all users
-    if (url.pathname === "/api/conversations/all" && req.method === "GET") {
-      const auth = await validateAuth(req);
-      if ("error" in auth) {
-        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: auth.error.message }));
-        return;
-      }
-
-      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
-      if (!isAdmin) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Admin access required" }));
-        return;
-      }
-
-      const archived = url.searchParams.get("archived") === "true";
-      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
-      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
-
-      try {
-        const redis = getRedis();
-        const recorder = new ConversationRecordKeeper(redis);
-        const result = await recorder.listAllConversations({ archived, limit, offset });
-
-        // Transform conversations to include userAssistantCount (derived from messageCount for now)
-        // and ensure userName is included
-        const conversations = result.conversations.map((conv) => ({
-          id: conv.id,
-          name: conv.name,
-          description: conv.description,
-          userId: conv.userId,
-          userName: conv.userName,
-          createdAt: conv.createdAt,
-          lastTouchedAt: conv.lastTouchedAt,
-          archived: conv.archived,
-          messageCount: conv.messageCount,
-          userAssistantCount: Math.floor(conv.messageCount / 2), // Estimate: assume user+assistant pairs
-          toolCallCount: conv.toolCallCount,
-        }));
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          conversations,
-          total: result.total,
-          hasMore: result.hasMore
-        }));
-        return;
-      } catch (error) {
-        logger.error({ err: error }, "Failed to list all conversations");
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Internal server error" }));
-        return;
-      }
-    }
-
-    const archiveMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)\/archive$/);
-    if (archiveMatch && req.method === "POST") {
-      const conversationId = decodeURIComponent(archiveMatch[1] ?? '');
-      const auth = await validateAuth(req);
-      if ("error" in auth) {
-        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: auth.error.message }));
-        return;
-      }
-
-      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
-      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
-
-      try {
-        const redis = getRedis();
-        const recorder = new ConversationRecordKeeper(redis);
-        const conversation = await recorder.getConversationMetadata(conversationId);
-
-        if (!conversation) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Conversation not found" }));
-          return;
-        }
-
-        if (conversation.userId !== userId && !isAdmin) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Access denied" }));
-          return;
-        }
-
-        const success = await recorder.archiveConversation(conversationId, userId);
-        if (!success) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Failed to archive conversation" }));
-          return;
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          success: true,
-          archivedAt: new Date().toISOString()
-        }));
-        return;
-      } catch (error) {
-        logger.error({ err: error }, "Failed to archive conversation");
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Internal server error" }));
-        return;
-      }
-    }
-
-    const deleteMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
-    if (deleteMatch && req.method === "DELETE") {
-      const conversationId = decodeURIComponent(deleteMatch[1] ?? '');
-      const auth = await validateAuth(req);
-      if ("error" in auth) {
-        res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: auth.error.message }));
-        return;
-      }
-
-      const isAdmin = "user" in auth && (auth as { user?: { isAdmin?: boolean } }).user?.isAdmin === true;
-      const adminId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
-
-      if (!isAdmin) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Admin access required" }));
-        return;
-      }
-
-      try {
-        const redis = getRedis();
-        const recorder = new ConversationRecordKeeper(redis);
-        const success = await recorder.deleteConversation(conversationId, adminId);
-
-        if (!success) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Conversation not found" }));
-          return;
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true }));
-        return;
-      } catch (error) {
-        logger.error({ err: error }, "Failed to delete conversation");
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Internal server error" }));
-        return;
-      }
     }
 
   // 404
@@ -542,4 +315,3 @@ function createTracer(keepConversation: boolean): Tracer {
   }
   return tracer;
 }
-

@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
 import { logger } from "@/lib/logging";
-import { countTokensInText, sliceTokensFromText } from "@/lib/conversation/tokenCounter";
+import { countTokensInText, sliceTokensFromText } from "@/lib/tokenCounter";
 import { getCachedContent, setCachedContent } from "@/lib/website";
 
 const FETCH_TIMEOUT_MS = 10000; // 10 seconds

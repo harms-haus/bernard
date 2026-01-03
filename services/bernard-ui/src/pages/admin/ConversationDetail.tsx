@@ -17,7 +17,7 @@ import {
 import { adminApiClient } from '../../services/adminApi';
 import { ChatInterface } from '../../components/ChatInterface';
 import type { ConversationDetail, ConversationMessage } from '../../services/adminApi';
-import type { MessageRecord } from '../../../../bernard/lib/conversation/types';
+import type { MessageRecord } from '../../../../bernard-ui/src/types/messageRecord';
 import { extractTraceEventsFromMessages } from '../../utils/traceEventParser';
 import { useConfirmDialogPromise } from '../../hooks/useConfirmDialogPromise';
 import { useToast } from '../../components/ToastManager';

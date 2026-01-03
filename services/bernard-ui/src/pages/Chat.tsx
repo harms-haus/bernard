@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChatInterface, TraceEvent } from '../components/ChatInterface';
 import { apiClient } from '../services/api';
-import type { MessageRecord } from '../../../bernard/lib/conversation/types';
+import type { MessageRecord } from '../types/messageRecord';
 import { useToast } from '../components/ToastManager';
 
 export function Chat() {

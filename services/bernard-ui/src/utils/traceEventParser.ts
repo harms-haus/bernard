@@ -1,4 +1,4 @@
-import type { MessageRecord } from '../../../bernard/lib/conversation/types';
+import type { MessageRecord } from '../types/messageRecord';
 
 export interface TraceEvent {
   id: string;
