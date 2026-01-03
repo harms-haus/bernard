@@ -2,7 +2,7 @@ import { AIMessage, createMiddleware, ToolMessage } from "langchain";
 import type { Tracer } from "../trace/tracer";
 import type { ClientTool, ServerTool } from "@langchain/core/tools";
 
-export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, model: string, tools?: (ServerTool | ClientTool)[] | undefined, conversationId?: string | undefined}) => {
+export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, model: string, tools?: (ServerTool | ClientTool)[] | undefined, threadId: string}) => {
   return createMiddleware({
     name: "TracingMiddleware",
     wrapModelCall: async (request, handler) => {
@@ -13,14 +13,14 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         // record the latest user message
         data.tracer.userMessage({
           id: llmCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           content: request.messages.filter((message) => message.type === "human")[-1]?.content,
         });
 
         // record the LLM call start
         data.tracer.llmCallStart({ 
           id: llmCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           model: data.model,
           agent: data.agent,
           messages: request.messages,
@@ -34,7 +34,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         const duration = endTime - (startTime ?? 0);
         data.tracer.llmCallComplete({
           id: llmCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           model: data.model,
           agent: data.agent,
           content: response.content,
@@ -44,7 +44,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         // record the assistant message
         data.tracer.assistantMessage({
           id: llmCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           content: response.content,
         });
 
@@ -59,7 +59,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
           agent: data.agent,
           error: error instanceof Error ? error.message : String(error),
           duration: duration,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
         });
 
         // return the error message so the user can see the error
@@ -78,7 +78,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         // record the tool call start
         data.tracer.toolCallStart({
           id: toolCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           name: request.toolCall.name,
           arguments: request.toolCall.args,
         });
@@ -90,7 +90,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         // record the tool call complete
         data.tracer.toolCallComplete({
           id: toolCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           name: request.toolCall.name,
           result: result?.content,
           duration: duration,
@@ -103,7 +103,7 @@ export const createTracingMiddleware = (data: {tracer: Tracer, agent: string, mo
         // record the tool call error
         data.tracer.toolCallError({
           id: toolCallId,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           name: request.toolCall.name,
           error: error instanceof Error ? error.message : String(error),
           duration: duration,

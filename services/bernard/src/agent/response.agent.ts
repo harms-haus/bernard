@@ -38,14 +38,14 @@ const getMiddleware = (state: typeof MessagesAnnotation.State, config: { configu
       agent: "response",
       model: modelConfig.name ?? "",
       tools: [],
-      conversationId: config.configurable?.thread_id,
+      threadId: config.configurable?.thread_id ?? "unknown",
     }),
     createTracingMiddleware({
       tracer: context.tracer,
       agent: "response",
       model: modelConfig.name ?? "",
       tools: [],
-      conversationId: config.configurable?.thread_id,
+      threadId: config.configurable?.thread_id ?? "unknown",
     }),
   ];
 }

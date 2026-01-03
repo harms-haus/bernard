@@ -6,7 +6,7 @@ export type TracerEvent = "request_start" | "request_end" | "request_error" | "u
 export type requestStartData = {
   type: "request_start";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   messages: BaseMessage[];
@@ -15,7 +15,7 @@ export type requestStartData = {
 export type requestEndData = {
   type: "request_end";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   messages: BaseMessage[];
@@ -24,7 +24,7 @@ export type requestEndData = {
 export type requestErrorData = {
   type: "request_error";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   messages: BaseMessage[];
@@ -34,7 +34,7 @@ export type recollectionsData = {
   type: "recollection";
   recollections: {
     id: string;
-    conversationId?: string | undefined;
+    threadId?: string | undefined;
     content: string | (ContentBlock | ContentBlock.Text)[] | undefined;
   }[];
 };
@@ -42,14 +42,14 @@ export type recollectionsData = {
 export type userMessageData = {
   type: "user_message";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   content: string | (ContentBlock | ContentBlock.Text)[] | undefined;
 };
 
 export type llmCallStartData = {
   type: "llm_call_start";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   messages: BaseMessage[];
@@ -59,7 +59,7 @@ export type llmCallStartData = {
 export type llmCallCompleteData = {
   type: "llm_call_complete";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   content: string | (ContentBlock | ContentBlock.Text)[] | undefined;
@@ -69,7 +69,7 @@ export type llmCallCompleteData = {
 export type llmCallErrorData = {
   type: "llm_call_error";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   error: string;
@@ -79,7 +79,7 @@ export type llmCallErrorData = {
 export type toolCallStartData = {
   type: "tool_call_start";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   name: string;
   arguments: Record<string, unknown>;
 };
@@ -87,7 +87,7 @@ export type toolCallStartData = {
 export type toolCallCompleteData = {
   type: "tool_call_complete";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   name: string;
   result: string | (ContentBlock | ContentBlock.Text)[] | undefined;
   duration: number;
@@ -96,7 +96,7 @@ export type toolCallCompleteData = {
 export type toolCallErrorData = {
   type: "tool_call_error";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   name: string;
   error: string;
   duration: number;
@@ -105,14 +105,14 @@ export type toolCallErrorData = {
 export type assistantMessageData = {
   type: "assistant_message";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   content: string | (ContentBlock | ContentBlock.Text)[] | undefined;
 };
 
 export type requestCompleteData = {
   type: "request_stop";
   id: string;
-  conversationId?: string | undefined;
+  threadId: string;
   model: string;
   agent: string;
   messages: BaseMessage[];

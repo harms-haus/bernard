@@ -25,6 +25,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-1",
+        threadId: "thread-1",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -32,11 +33,13 @@ describe("BernardTracer", () => {
 
       tracer.userMessage({
         id: "msg-1",
+        threadId: "thread-1",
         content: "user message",
       });
 
       tracer.llmCallStart({
         id: "llm-1",
+        threadId: "thread-1",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -58,13 +61,14 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-2",
+        threadId: "thread-2",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
       });
 
-      tracer.userMessage({ id: "msg-1", content: "test" });
-      tracer.assistantMessage({ id: "msg-2", content: "test" });
+      tracer.userMessage({ id: "msg-1", threadId: "thread-2", content: "test" });
+      tracer.assistantMessage({ id: "msg-2", threadId: "thread-2", content: "test" });
 
       await tracer.flush();
 
@@ -83,6 +87,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-4",
+        threadId: "thread-4",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -97,6 +102,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-5",
+        threadId: "thread-5",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -114,6 +120,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-6",
+        threadId: "thread-6",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -133,6 +140,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-7",
+        threadId: "thread-7",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -152,6 +160,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-8",
+        threadId: "thread-8",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -168,6 +177,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-9",
+        threadId: "thread-9",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("first")],
@@ -181,6 +191,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-10",
+        threadId: "thread-10",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("second")],
@@ -199,6 +210,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-11",
+        threadId: "thread-11",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -216,7 +228,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-12",
-        conversationId: "conv-123",
+        threadId: "thread-12",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -228,7 +240,7 @@ describe("BernardTracer", () => {
       const trace = JSON.parse(fileContent);
 
       expect(trace.request_id).toBe("test-req-12");
-      expect(trace.conversation_id).toBe("conv-123");
+      expect(trace.thread_id).toBe("thread-12");
       expect(trace.model).toBe("gpt-4");
       expect(trace.agent).toBe("test");
       expect(trace.started_at).toBeTruthy();
@@ -240,6 +252,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-13",
+        threadId: "thread-13",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -249,6 +262,7 @@ describe("BernardTracer", () => {
 
       tracer.requestComplete({
         id: "test-req-13",
+        threadId: "thread-13",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -275,6 +289,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-14",
+        threadId: "thread-14",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -294,6 +309,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-15",
+        threadId: "thread-15",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -318,6 +334,7 @@ describe("BernardTracer", () => {
       expect(() => {
         tracer.requestStart({
           id: "test-req-16",
+          threadId: "thread-16",
           model: "gpt-4",
           agent: "test",
           messages: [new HumanMessage("test")],
@@ -335,6 +352,7 @@ describe("BernardTracer", () => {
       tracer.recollections({
         recollections: [{
           id: "rec-1",
+          threadId: "thread-17",
           content: "memory content",
         }],
       });
@@ -353,6 +371,7 @@ describe("BernardTracer", () => {
 
       tracer.llmCallComplete({
         id: "llm-1",
+        threadId: "thread-18",
         model: "gpt-4",
         agent: "test",
         content: "response",
@@ -372,6 +391,7 @@ describe("BernardTracer", () => {
 
       tracer.llmCallError({
         id: "llm-1",
+        threadId: "thread-19",
         model: "gpt-4",
         agent: "test",
         error: "API error",
@@ -391,6 +411,7 @@ describe("BernardTracer", () => {
 
       tracer.toolCallStart({
         id: "tool-1",
+        threadId: "thread-20",
         name: "search",
         arguments: { query: "test" },
       });
@@ -408,6 +429,7 @@ describe("BernardTracer", () => {
 
       tracer.toolCallComplete({
         id: "tool-1",
+        threadId: "thread-21",
         name: "search",
         result: "search results",
         duration: 300,
@@ -426,6 +448,7 @@ describe("BernardTracer", () => {
 
       tracer.toolCallError({
         id: "tool-1",
+        threadId: "thread-22",
         name: "search",
         error: "Tool failed",
         duration: 100,
@@ -444,6 +467,7 @@ describe("BernardTracer", () => {
 
       tracer.assistantMessage({
         id: "msg-1",
+        threadId: "thread-23",
         content: "assistant response",
       });
 
@@ -460,6 +484,7 @@ describe("BernardTracer", () => {
 
       tracer.requestError({
         id: "test-req-17",
+        threadId: "thread-24",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -481,6 +506,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-18",
+        threadId: "thread-25",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -502,6 +528,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-19",
+        threadId: "thread-26",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -517,6 +544,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-22",
+        threadId: "thread-27",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -538,6 +566,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-23",
+        threadId: "thread-28",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
@@ -552,13 +581,14 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-24",
+        threadId: "thread-29",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("test")],
       });
 
       for (let i = 0; i < 10; i++) {
-        tracer.userMessage({ id: `msg-${i}`, content: `message ${i}` });
+        tracer.userMessage({ id: `msg-${i}`, threadId: "thread-29", content: `message ${i}` });
       }
 
       await tracer.flush();
@@ -576,7 +606,7 @@ describe("BernardTracer", () => {
 
       tracer.requestStart({
         id: "test-req-26",
-        conversationId: "conv-456",
+        threadId: "thread-30",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("What's the weather?")],
@@ -584,11 +614,13 @@ describe("BernardTracer", () => {
 
       tracer.userMessage({
         id: "msg-1",
+        threadId: "thread-30",
         content: "What's the weather?",
       });
 
       tracer.llmCallStart({
         id: "llm-1",
+        threadId: "thread-30",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("What's the weather?")],
@@ -596,6 +628,7 @@ describe("BernardTracer", () => {
 
       tracer.llmCallComplete({
         id: "llm-1",
+        threadId: "thread-30",
         model: "gpt-4",
         agent: "test",
         content: "Let me check the weather for you.",
@@ -604,17 +637,20 @@ describe("BernardTracer", () => {
 
       tracer.assistantMessage({
         id: "msg-2",
+        threadId: "thread-30",
         content: "Let me check the weather for you.",
       });
 
       tracer.toolCallStart({
         id: "tool-1",
+        threadId: "thread-30",
         name: "weather",
         arguments: { location: "San Francisco" },
       });
 
       tracer.toolCallComplete({
         id: "tool-1",
+        threadId: "thread-30",
         name: "weather",
         result: "72°F, sunny",
         duration: 250,
@@ -622,7 +658,7 @@ describe("BernardTracer", () => {
 
       tracer.requestComplete({
         id: "test-req-26",
-        conversationId: "conv-456",
+        threadId: "thread-30",
         model: "gpt-4",
         agent: "test",
         messages: [new HumanMessage("What's the weather?"), new AIMessage("Let me check the weather for you.")],
@@ -642,7 +678,7 @@ describe("BernardTracer", () => {
       expect(trace.events[5].type).toBe("tool_call_start");
       expect(trace.events[6].type).toBe("tool_call_complete");
       expect(trace.request_id).toBe("test-req-26");
-      expect(trace.conversation_id).toBe("conv-456");
+      expect(trace.thread_id).toBe("thread-30");
       expect(trace.duration_ms).toBeGreaterThan(0);
     });
   });

@@ -26,7 +26,7 @@ interface QueuedEvent {
 
 interface RequestTrace {
   request_id: string;
-  conversation_id?: string | undefined;
+  thread_id: string;
   model: string;
   agent: string;
   started_at: string;
@@ -76,7 +76,7 @@ export class BernardTracer implements Tracer {
 
     this.currentTrace = {
       request_id: data.id,
-      conversation_id: data.conversationId,
+      thread_id: data.threadId,
       model: data.model,
       agent: data.agent,
       started_at: new Date().toISOString(),

@@ -3,7 +3,7 @@ import { createMiddleware } from "langchain";
 import type { ClientTool, ServerTool } from "@langchain/core/tools";
 import type { Logger } from "pino";
 
-export const createLoggingMiddleware = (data: {logger: Logger, agent: string, model: string, tools?: (ServerTool | ClientTool)[] | undefined, conversationId?: string | undefined}) => {
+export const createLoggingMiddleware = (data: {logger: Logger, agent: string, model: string, tools?: (ServerTool | ClientTool)[] | undefined, threadId?: string}) => {
   return createMiddleware({
     name: "LoggingMiddleware",
     wrapModelCall: async (request, handler) => {
@@ -12,7 +12,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
         agent: data.agent,
         model: data.model,
         tools: data.tools,
-        conversationId: data.conversationId,
+        threadId: data.threadId,
         request: request,
       }, "LLM call started");
       try {
@@ -23,7 +23,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
           agent: data.agent,
           model: data.model,
           tools: data.tools,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           request: request,
         }, "LLM call completed");
         return response;
@@ -33,7 +33,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
           agent: data.agent,
           model: data.model,
           tools: data.tools,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           request: request,
         }, "LLM call error");
         throw error;
@@ -45,7 +45,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
         agent: data.agent,
         model: data.model,
         tools: data.tools,
-        conversationId: data.conversationId,
+        threadId: data.threadId,
         request: request,
       }, "Tool call started");
         
@@ -57,7 +57,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
           agent: data.agent,
           model: data.model,
           tools: data.tools,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           request: request,
         }, "Tool call completed");
         return response;
@@ -67,7 +67,7 @@ export const createLoggingMiddleware = (data: {logger: Logger, agent: string, mo
           agent: data.agent,
           model: data.model,
           tools: data.tools,
-          conversationId: data.conversationId,
+          threadId: data.threadId,
           request: request,
         }, "Tool call error");
         throw error;

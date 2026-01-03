@@ -88,7 +88,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         stream?: boolean;
         ghost?: boolean;
         chatId?: string;
-        conversationId?: string;
       };
 
       if (!body?.messages || !Array.isArray(body.messages)) {
@@ -114,14 +113,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const shouldStream = body.stream === true;
       const inputMessages = mapChatMessages(body.messages as OpenAIMessage[]);
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const threadId = body.chatId || `thread_${Date.now()}`;
-      const conversationId = body.conversationId || `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const threadId = body.chatId || `thread_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const isGhostMode = body.ghost === true;
       const tracer = createTracer(!isGhostMode);
 
       tracer.requestStart({
         id: requestId,
-        conversationId: conversationId,
+        threadId: threadId,
         model: body.model ?? BERNARD_MODEL_ID,
         agent: "bernard",
         messages: inputMessages,
