@@ -5,61 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { ChatInterface } from '@/components/ChatInterface';
 import type { ConversationMetadata, ConversationEvent } from '@/types/conversation';
-import type { MessageRecord } from '../../../../bernard-ui/src/types/messageRecord';
 import { useToast } from '@/components/ToastManager';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
 
 const formatDateTime = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleString();
 };
 
-// Convert ConversationEvent[] to MessageRecord[] for ChatInterface compatibility
-const convertEventsForChatInterface = (events: ConversationEvent[]): MessageRecord[] => {
-  return events
-    .filter((event) => {
-      // Filter out events that aren't meant to be displayed as regular messages
-      if (event.type === 'llm_call' || event.type === 'tool_call') {
-        return false;
-      }
-      return true;
-    })
-    .map((event) => {
-      const messageRecord: MessageRecord = {
-        id: event.id,
-        role: mapEventTypeToRole(event.type),
-        content: extractContent(event),
-        createdAt: event.timestamp,
-        metadata: event.data as Record<string, unknown>,
-      };
-
-      // Handle tool responses
-      if (event.type === 'tool_response' && event.data) {
-        const data = event.data as Record<string, unknown>;
-        if (data.tool_call_id) {
-          messageRecord.tool_call_id = data.tool_call_id as string;
-        }
-        if (data.tool_name) {
-          messageRecord.name = data.tool_name as string;
-        }
-      }
-
-      // Handle LLM responses with tool calls
-      if (event.type === 'llm_response' && event.data) {
-        const data = event.data as Record<string, unknown>;
-        if (data.tool_calls) {
-          messageRecord.tool_calls = data.tool_calls as unknown[];
-        }
-      }
-
-      return messageRecord;
-    });
-};
-
-const mapEventTypeToRole = (
-  eventType: ConversationEvent['type']
-): MessageRecord['role'] => {
+function mapEventTypeToRole(eventType: ConversationEvent['type']): string {
   switch (eventType) {
     case 'user_message':
       return 'user';
@@ -71,28 +27,24 @@ const mapEventTypeToRole = (
     default:
       return 'system';
   }
-};
+}
 
-const extractContent = (event: ConversationEvent): string | Record<string, unknown> => {
+function extractEventContent(event: ConversationEvent): string {
   if (typeof event.data === 'string') {
     return event.data;
   }
-
   if (event.data && typeof event.data === 'object') {
     const data = event.data as Record<string, unknown>;
-    // Try to find a content field
     if (data.content !== undefined) {
       if (typeof data.content === 'string') {
         return data.content;
       }
-      return data.content as Record<string, unknown>;
+      return JSON.stringify(data.content, null, 2);
     }
-    // Otherwise return the whole data object as JSON
-    return data;
+    return JSON.stringify(data, null, 2);
   }
-
   return '';
-};
+}
 
 export function ConversationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -101,7 +53,7 @@ export function ConversationDetail() {
 
   const [loading, setLoading] = useState(true);
   const [conversation, setConversation] = useState<ConversationMetadata | null>(null);
-  const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [events, setEvents] = useState<ConversationEvent[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -116,7 +68,7 @@ export function ConversationDetail() {
     try {
       const response = await apiClient.getConversation(id);
       setConversation(response.conversation);
-      setMessages(convertEventsForChatInterface(response.events));
+      setEvents(response.events);
     } catch (error) {
       console.error('Failed to load conversation:', error);
       toast.error(
@@ -127,6 +79,11 @@ export function ConversationDetail() {
       setLoading(false);
     }
   };
+
+  // Filter events to show only meaningful messages
+  const displayEvents = events.filter(event => 
+    event.type !== 'llm_call' && event.type !== 'tool_call'
+  );
 
   if (loading) {
     return (
@@ -179,17 +136,52 @@ export function ConversationDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chat Interface */}
+        {/* Messages Display */}
         <div className="lg:col-span-2">
           <Card>
-            <CardContent className="p-0 mt-6">
-              <ChatInterface
-                key={conversation.id}
-                initialMessages={messages}
-                initialTraceEvents={[]}
-                readOnly={true}
-                height="h-auto"
-              />
+            <CardHeader>
+              <CardTitle>Conversation</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="flex flex-col gap-4 p-4 max-h-[600px] overflow-y-auto">
+                {displayEvents.map((event, index) => (
+                  <div
+                    key={event.id || index}
+                    className={cn(
+                      "flex gap-3",
+                      event.type === 'user_message' ? "flex-row-reverse" : "flex-row"
+                    )}
+                  >
+                    <Avatar className="h-8 w-8 mt-1">
+                      <AvatarFallback>
+                        {event.type === 'user_message' ? 'U' : 
+                         event.type === 'assistant_message' || event.type === 'llm_response' ? 'AI' : 
+                         event.type === 'tool_response' ? 'T' : 'S'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={cn(
+                      "flex flex-col gap-1 max-w-[80%]",
+                      event.type === 'user_message' ? "items-end" : "items-start"
+                    )}>
+                      <div className={cn(
+                        "px-4 py-2 rounded-lg",
+                        event.type === 'user_message' ? "bg-primary text-primary-foreground" : 
+                        event.type === 'tool_response' ? "bg-muted font-mono text-sm" : "bg-muted"
+                      )}>
+                        <p className="whitespace-pre-wrap text-sm">
+                          {extractEventContent(event)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {mapEventTypeToRole(event.type)} • {new Date(event.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {displayEvents.length === 0 && (
+                  <p className="text-muted-foreground text-center py-8">No messages in this conversation</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

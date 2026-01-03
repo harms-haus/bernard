@@ -15,41 +15,15 @@ import {
   Download
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
-import { ChatInterface } from '../../components/ChatInterface';
 import type { ConversationDetail, ConversationMessage } from '../../services/adminApi';
-import type { MessageRecord } from '../../../../bernard-ui/src/types/messageRecord';
-import { extractTraceEventsFromMessages } from '../../utils/traceEventParser';
 import { useConfirmDialogPromise } from '../../hooks/useConfirmDialogPromise';
 import { useToast } from '../../components/ToastManager';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import { cn } from '../../lib/utils';
 
 const formatDateTime = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleString();
-};
-
-// Convert ConversationMessage[] to MessageRecord[] for ChatInterface compatibility
-const convertMessagesForChatInterface = (messages: ConversationMessage[]): MessageRecord[] => {
-  return messages
-    .filter(message => {
-      // Filter out system messages that contain trace content - these are not meant to be displayed as regular messages
-      if (message.role === 'system' && typeof message.content === 'object' && message.content && 'type' in message.content) {
-        const content = message.content as any;
-        return !(content.type === 'llm_call' || content.type === 'llm_call_complete' ||
-                 content.type === 'tool_call' || content.type === 'tool_call_complete');
-      }
-      return true;
-    })
-    .map(message => ({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      name: message.name,
-      tool_call_id: message.tool_call_id,
-      tool_calls: message.tool_calls,
-      createdAt: message.createdAt,
-      tokenDeltas: message.tokenDeltas,
-      metadata: message.metadata
-    }));
 };
 
 export default function ConversationDetail() {
@@ -352,17 +326,52 @@ export default function ConversationDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chat Interface */}
+        {/* Messages Display */}
         <div className="lg:col-span-2">
           <Card>
-            <CardContent className="p-0 mt-6">
-              <ChatInterface
-                key={conversation?.id || 'loading'}
-                initialMessages={convertMessagesForChatInterface(messages)}
-                initialTraceEvents={extractTraceEventsFromMessages(messages)}
-                readOnly={true}
-                height="h-auto"
-              />
+            <CardHeader>
+              <CardTitle>Conversation</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="flex flex-col gap-4 p-4 max-h-[600px] overflow-y-auto">
+                {messages.map((message, index) => (
+                  <div
+                    key={message.id || index}
+                    className={cn(
+                      "flex gap-3",
+                      message.role === 'user' ? "flex-row-reverse" : "flex-row"
+                    )}
+                  >
+                    <Avatar className="h-8 w-8 mt-1">
+                      <AvatarFallback>
+                        {message.role === 'user' ? 'U' : message.role === 'assistant' ? 'AI' : 'T'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={cn(
+                      "flex flex-col gap-1 max-w-[80%]",
+                      message.role === 'user' ? "items-end" : "items-start"
+                    )}>
+                      <div className={cn(
+                        "px-4 py-2 rounded-lg",
+                        message.role === 'user' ? "bg-primary text-primary-foreground" : 
+                        message.role === 'tool' ? "bg-muted font-mono text-sm" : "bg-muted"
+                      )}>
+                        <p className="whitespace-pre-wrap text-sm">
+                          {typeof message.content === 'string' 
+                            ? message.content 
+                            : JSON.stringify(message.content, null, 2)}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {message.role} • {new Date(message.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {messages.length === 0 && (
+                  <p className="text-muted-foreground text-center py-8">No messages in this conversation</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
