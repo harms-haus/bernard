@@ -2,7 +2,7 @@ import type { Job } from "bullmq";
 import { getRedis } from "@/lib/infra/redis";
 import { getSettings } from "@/lib/config/settingsCache";
 import type { TaskPayload, TaskExecutionContext, TaskResult, TaskFunction } from "./types";
-import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
+import { TaskRecordKeeper } from "@/src/agent/task/task.keeper";
 import { childLogger, logger } from "@/lib/logging";
 
 // Register task functions

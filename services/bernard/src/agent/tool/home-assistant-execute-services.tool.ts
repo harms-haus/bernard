@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall, HomeAssistantContextManager } from "@/lib/home-assistant";
+import type { HomeAssistantServiceCall } from "@/lib/home-assistant";
 import {
   extractHomeAssistantContext,
   findEntity,
@@ -20,7 +20,6 @@ export type ExecuteHomeAssistantServicesDependencies = {
   findEntityImpl: typeof findEntity;
   validateEntityIdImpl: typeof validateEntityId;
   getDomainFromEntityIdImpl: typeof getDomainFromEntityId;
-  recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
   callHAServiceWebSocketImpl?: typeof callHAServiceWebSocket;
 };
 
@@ -29,9 +28,6 @@ const defaultDeps: ExecuteHomeAssistantServicesDependencies = {
   findEntityImpl: findEntity,
   validateEntityIdImpl: validateEntityId,
   getDomainFromEntityIdImpl: getDomainFromEntityId,
-  recordServiceCallImpl: () => {
-    throw new Error("recordServiceCallImpl must be provided via dependencies");
-  },
   callHAServiceWebSocketImpl: callHAServiceWebSocket
 };
 
@@ -39,18 +35,12 @@ const defaultDeps: ExecuteHomeAssistantServicesDependencies = {
  * Create the execute home assistant services tool
  */
 export function createExecuteHomeAssistantServicesTool(
-  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig,
   overrides: Partial<ExecuteHomeAssistantServicesDependencies> = {}
 ) {
   const deps: ExecuteHomeAssistantServicesDependencies = {
     ...defaultDeps,
     ...overrides,
-    recordServiceCallImpl: haContextManager ? (serviceCall: HomeAssistantServiceCall) => {
-      haContextManager.recordServiceCall(serviceCall);
-    } : () => {
-      throw new Error("Home Assistant context manager not available for recording service calls");
-    }
   };
   
   return tool(
@@ -63,7 +53,7 @@ export function createExecuteHomeAssistantServicesTool(
       
       for (const serviceCall of list) {
         try {
-          const result = await executeSingleServiceCall(serviceCall, deps, haContextManager, restConfig);
+          const result = await executeSingleServiceCall(serviceCall, deps, restConfig);
           results.push(result);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -123,7 +113,6 @@ async function callHAServiceWebSocket(
 async function executeSingleServiceCall(
   serviceCall: { domain: string; service: string; service_data: { entity_id: string | string[] } },
   deps: ExecuteHomeAssistantServicesDependencies,
-  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig
 ): Promise<string> {
   const { domain, service, service_data } = serviceCall;
@@ -162,9 +151,9 @@ async function executeSingleServiceCall(
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to execute Home Assistant service via WebSocket: ${errorMessage}`);
     }
-  } else if (haContextManager?.hasContext()) {
+  } else {
     // Fallback behavior: Record the service call for Home Assistant to process
-    const haServiceCall: HomeAssistantServiceCall = {
+    const _haServiceCall: HomeAssistantServiceCall = {
       domain,
       service,
       service_data: {
@@ -172,36 +161,13 @@ async function executeSingleServiceCall(
       }
     };
 
-    await deps.recordServiceCallImpl(haServiceCall);
-
     return `Service ${domain}.${service} scheduled for execution on entities: ${entityIdsArray.join(', ')}`;
-  } else {
-    throw new Error("Home Assistant WebSocket configuration is missing and context is not available. Please configure Home Assistant WebSocket API settings or provide Home Assistant entity information in the system prompt.");
   }
 }
 
 /**
  * The execute home assistant services tool instance factory
  */
-export function createExecuteHomeAssistantServicesToolInstance(haContextManager?: HomeAssistantContextManager, restConfig?: HARestConfig) {
-  return createExecuteHomeAssistantServicesTool(haContextManager, restConfig);
-}
-
-/**
- * Service call storage for recording calls
- */
-export class ServiceCallRecorder {
-  private serviceCalls: HomeAssistantServiceCall[] = [];
-  
-  record(serviceCall: HomeAssistantServiceCall): void {
-    this.serviceCalls.push(serviceCall);
-  }
-  
-  getRecordedCalls(): HomeAssistantServiceCall[] {
-    return [...this.serviceCalls];
-  }
-  
-  clear(): void {
-    this.serviceCalls = [];
-  }
+export function createExecuteHomeAssistantServicesToolInstance(restConfig?: HARestConfig) {
+  return createExecuteHomeAssistantServicesTool(restConfig);
 }

@@ -3,28 +3,30 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 import pino from "pino";
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import path from "node:path";
 
+import type {
+  OpenAIMessage,
+} from "@/lib/openai";
 import {
   listModels,
   validateAuth,
   isBernardModel,
   BERNARD_MODEL_ID,
   mapChatMessages,
-  type OpenAIMessage,
-  findLastAssistantMessage,
-  contentFromMessage,
-  extractUsageFromMessages
 } from "@/lib/openai";
 import { getSettings } from "@/lib/config";
-import { createLLMCaller } from "@/agent/llm/factory";
-import { getRouterTools } from "@/agent/tool";
-import type { RoutingAgentContext } from "@/agent/routing.agent";
-import type { ResponseAgentContext, ResponseStreamCallback } from "@/agent/response.agent";
-import { createTextChatGraph } from "@/agent/graph/text-chat.graph";
+import { getReactTools } from "@/agent/tool";
+import type { AgentContext } from "@/src/agent/agentContext";
+import { createBernardGraph, runBernardGraph } from "@/agent/graph/bernard.graph";
 import { getRedis } from "@/lib/infra/redis";
-import { traceLogger } from "@/lib/tracing/trace.logger";
 import { ConversationRecordKeeper } from "@/lib/conversation/conversationRecorder";
+import type { BernardSettings } from "@shared/config/appSettings";
+import { type onEventData, type Tracer } from "./src/agent/trace";
+import { BernardTracer } from "./src/agent/trace/bernard.tracer";
+import { MemorySaver } from "@langchain/langgraph";
+
+const checkpointer = new MemorySaver();
 
 const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -34,13 +36,6 @@ const logger = pino({
 
 const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_AGENT_PORT"], 10) : 8850;
 const HOST = process.env["HOST"] || "127.0.0.1";
-
-/**
- * Generate a unique message ID
- */
-function generateMessageId(): string {
-  return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -72,7 +67,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   // OpenAI Chat Completions
   if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-    const turnStartTime = Date.now();
     try {
       let bodyStr = "";
       for await (const chunk of req) {
@@ -99,294 +93,114 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return;
       }
 
-      const shouldStream = body.stream === true;
-
       // Validate Auth
       const auth = await validateAuth(req);
-      if ("error" in auth) {
+      if (auth && "error" in auth) {
         res.writeHead(auth.error.status || 401, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: auth.error.message }));
         return;
       }
 
+      const shouldStream = body.stream === true;
       const inputMessages = mapChatMessages(body.messages as OpenAIMessage[]);
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const threadId = body.chatId || `thread_${Date.now()}`;
       const conversationId = body.conversationId || `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const isGhostMode = body.ghost === true;
-      const userId = "user" in auth ? (auth as { user?: { id?: string } }).user?.id ?? "anonymous" : "anonymous";
-      const user = "user" in auth ? (auth as { user?: { name?: string; username?: string } }).user : undefined;
-      const userName = user?.name ?? user?.username ?? "";
+      const tracer = createTracer(!isGhostMode);
 
-      // Start trace for this request
-      const initialMessagesForTrace = (body.messages as Array<{ role: string; content: string }>).map(m => ({
-        role: m.role,
-        content: typeof m.content === "string" ? m.content : "[complex content]"
-      }));
-      traceLogger.startTrace(requestId, threadId, initialMessagesForTrace, shouldStream);
-      traceLogger.addEvent("request_received", { request_id: requestId, thread_id: threadId, message_count: body.messages.length });
+      tracer.requestStart({
+        id: requestId,
+        conversationId: conversationId,
+        model: body.model ?? BERNARD_MODEL_ID,
+        agent: "bernard",
+        messages: inputMessages,
+      });
+
+      // fail fast if model or provider not found
       const settings = await getSettings();
+      const setingsValidation = validateSettings(settings);
 
-      // Get model names from settings
-      const routerModelSettings = settings.models.router;
-      const responseModelSettings = settings.models.response;
-
-      // Get the providers
-      const routerProvider = settings.models.providers?.find(p => p.id === routerModelSettings.providerId);
-      const responseProvider = settings.models.providers?.find(p => p.id === responseModelSettings.providerId);
-
-      if (!routerProvider || !responseProvider) {
+      if (!setingsValidation.success) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Provider not found" }));
+        res.end(JSON.stringify({ error: setingsValidation.error ?? "Unknown error" }));
         return;
       }
 
-      const routerLLMCaller = createLLMCaller(routerProvider, routerModelSettings.primary);
-      const responseLLMCaller = createLLMCaller(responseProvider, responseModelSettings.primary);
-
-      // Build HA config from settings if available
-      const haRestConfig = settings.services.homeAssistant?.baseUrl
-        ? {
-            baseUrl: settings.services.homeAssistant.baseUrl,
-            accessToken: settings.services.homeAssistant.accessToken,
-          }
-        : undefined;
-
       // Get tools and detect any disabled tools
-      const { tools, disabledTools } = getRouterTools(undefined, haRestConfig);
-
-      // Initialize conversation recorder (only if not in ghost mode)
-      let recorder: ConversationRecordKeeper | undefined;
-      if (!isGhostMode) {
-        try {
-          const redis = getRedis();
-          recorder = new ConversationRecordKeeper(redis);
-          
-           // Create conversation if it doesn't exist
-          const conversationExists = await recorder.conversationExists(conversationId);
-          if (!conversationExists) {
-            await recorder.createConversation(conversationId, userId, userName || undefined, isGhostMode);
-          }
-          
-          // Record user message event
-          const lastMessage = inputMessages[inputMessages.length - 1];
-          const userMessageContent = contentFromMessage(lastMessage ?? null) ?? "";
-          const messageId = generateMessageId();
-          await recorder.recordEvent(conversationId, {
-            type: "user_message",
-            data: {
-              messageId,
-              content: userMessageContent
-            }
-          });
-        } catch (error) {
-          logger.warn({ err: error }, "Failed to initialize conversation recorder");
-          recorder = undefined;
-        }
-      }
+      const { tools, disabledTools } = await getReactTools();
 
       // Create contexts for LangGraph with recorder
-      const routingContext: RoutingAgentContext = {
-        llmCaller: routerLLMCaller,
+      const agentContext: AgentContext = {
+        checkpointer,
         tools,
         disabledTools,
-        recorder,
-        conversationId,
+        logger,
+        tracer,
       };
 
-      if (!shouldStream) {
-        // Non-streaming: create context without callback
-        const responseContext: ResponseAgentContext = {
-          llmCaller: responseLLMCaller,
-          toolDefinitions: tools,
-          disabledTools,
-          recorder,
-          conversationId,
-        };
+      try {
+        logger.debug({ threadId, messageCount: inputMessages.length }, "Creating graph");
 
-        const graph = createTextChatGraph(routingContext, responseContext);
+        const graph = createBernardGraph(agentContext);
 
-        const timeoutMs = 5 * 60 * 1000;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("Graph execution timeout after 5 minutes")), timeoutMs);
-        });
+        logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph stream");
 
-        logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph.invoke() with timeout");
+        const stream = runBernardGraph(graph, inputMessages, shouldStream);
 
-        const result = await Promise.race([
-          graph.invoke(
-            { messages: inputMessages },
-            { configurable: { thread_id: threadId } }
-          ),
-          timeoutPromise,
-        ]);
-
-        logger.debug({ threadId, resultMessageCount: result.messages.length }, "graph.invoke() completed");
-
-        // Extract final assistant message from LangGraph result
-        const assistantMessage = findLastAssistantMessage(result.messages);
-        const content = contentFromMessage(assistantMessage) ?? "";
-        const usageMeta = extractUsageFromMessages(result.messages);
-
-        // Record assistant message event
-        if (recorder && conversationId) {
-          try {
-            const totalDurationMs = Date.now() - turnStartTime;
-            const toolCallCount = result.messages.filter(m =>
-              ToolMessage.isInstance(m)
-            ).length;
-            const llmCallCount = result.messages.filter(m =>
-              AIMessage.isInstance(m)
-            ).length;
-            
-            await recorder.recordEvent(conversationId, {
-              type: "assistant_message",
-              data: {
-                messageId: generateMessageId(),
-                content,
-                totalDurationMs,
-                totalToolCalls: toolCallCount,
-                totalLLMCalls: llmCallCount
-              }
-            });
-          } catch (error) {
-            logger.warn({ err: error }, "Failed to record assistant message event");
+        for await (const chunk of stream) {
+          if (chunk.type === "messages") {
+            const message = chunk.content;
+            const chunkData = {
+              id: requestId,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: BERNARD_MODEL_ID,
+              choices: [{
+                index: 0,
+                delta: { content: message },
+                finish_reason: null
+              }]
+            };
+            res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+          } else if (chunk.type === "updates") {
+            const chunkData = {
+              id: requestId,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: BERNARD_MODEL_ID,
+              choices: [{
+                index: 0,
+                delta: { content: chunk.content },
+                finish_reason: null
+              }]
+            };
+            res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
           }
         }
 
-        const usage = {
-          prompt_tokens: usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0,
-          completion_tokens: usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0,
-          total_tokens: (usageMeta.prompt_tokens ?? usageMeta.input_tokens ?? 0) + (usageMeta.completion_tokens ?? usageMeta.output_tokens ?? 0)
-        };
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
+        logger.debug({ threadId, messageCount: inputMessages.length }, "Streaming completed");
+      } catch (error: unknown) {
+        logger.error({ err: error }, "Streaming failed");
+        const errorChunk = {
           id: requestId,
-          object: "chat.completion",
+          object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model: BERNARD_MODEL_ID,
           choices: [{
             index: 0,
-            finish_reason: "stop",
-            message: { role: "assistant", content }
-          }],
-          usage
-        }));
-
-        // Complete trace for non-streaming response
-        traceLogger.recordFinalResponse(content);
-        traceLogger.completeTrace();
-        await traceLogger.writeTrace();
-        } else {
-        // Streaming: create context with streamCallback
-        const streamCallback: ResponseStreamCallback = (chunk: string) => {
-          const chunkData = {
-            id: requestId,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: BERNARD_MODEL_ID,
-            choices: [{
-              index: 0,
-              delta: { content: chunk },
-              finish_reason: null
-            }]
-          };
-          res.write(`data: ${JSON.stringify(chunkData)}\n\n`);
+            delta: {},
+            finish_reason: "error"
+          }]
         };
-
-        const responseContext: ResponseAgentContext = {
-          llmCaller: responseLLMCaller,
-          toolDefinitions: tools,
-          disabledTools,
-          streamCallback,
-          recorder,
-          conversationId,
-        };
-
-        const graph = createTextChatGraph(routingContext, responseContext);
-
-        // True streaming - emit tokens as they're generated
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          "Transfer-Encoding": "chunked"
-        });
-
-        try {
-          logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph.invoke() with streaming");
-
-          await graph.invoke(
-            { messages: inputMessages },
-            { configurable: { thread_id: threadId } }
-          );
-
-          logger.debug({ threadId }, "graph.invoke() completed");
-
-          // Record assistant message event for streaming
-          if (recorder && conversationId) {
-            try {
-              const totalDurationMs = Date.now() - turnStartTime;
-              await recorder.recordEvent(conversationId, {
-                type: "assistant_message",
-                data: {
-                  messageId: generateMessageId(),
-                  content: "", // Content already streamed, record empty for streaming case
-                  totalDurationMs,
-                  totalToolCalls: 0, // Will be counted from events
-                  totalLLMCalls: 0
-                }
-              });
-            } catch (error) {
-              logger.warn({ err: error }, "Failed to record assistant message event");
-            }
-          }
-
-          // Send final chunk
-          const finalChunk = {
-            id: requestId,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: BERNARD_MODEL_ID,
-            choices: [{
-              index: 0,
-              delta: {},
-              finish_reason: "stop"
-            }]
-          };
-          res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-          res.write("data: [DONE]\n\n");
-
-        } catch (error: unknown) {
-          logger.error({ err: error }, "Streaming failed");
-          const errorChunk = {
-            id: requestId,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: BERNARD_MODEL_ID,
-            choices: [{
-              index: 0,
-              delta: {},
-              finish_reason: "error"
-            }]
-          };
-          res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
-          res.write("data: [DONE]\n\n");
-        } finally {
-          // Complete trace for streaming response (content recorded incrementally via events)
-          traceLogger.completeTrace();
-          await traceLogger.writeTrace();
-          res.end();
-        }
-        return;
+        res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+        res.write("data: [DONE]\n\n");
+      } finally {
+        res.end();
       }
+      return;
     } catch (error: unknown) {
       logger.error({ err: error }, "Request failed");
-      // Complete trace on error
-      traceLogger.addEvent("request_received", { error: String(error) });
-      traceLogger.completeTrace();
-      await traceLogger.writeTrace();
       res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
       }
@@ -641,7 +455,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   logger.info({ signal }, "Received shutdown signal, starting graceful shutdown");
 
-  // Close HTTP server with a timeout
+  try {
+    logger.info("Flushing trace writes...");
+    const tracer = createTracer(false) as BernardTracer;
+    await tracer.flush();
+  } catch (error) {
+    logger.warn({ error }, "Failed to flush trace writes");
+  }
+
   const httpTimeout = setTimeout(() => {
     logger.warn("HTTP server close timeout, forcing exit");
     process.exit(1);
@@ -685,3 +506,40 @@ async function gracefulShutdown(signal: string): Promise<void> {
 // Register signal handlers for graceful shutdown
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+function validateSettings(settings: BernardSettings): { success: boolean, error?: string } {  
+
+  // Get model names from settings
+  const reactModelSettings = settings.models.router;
+  const responseModelSettings = settings.models.response;
+
+  if (!reactModelSettings || !responseModelSettings) {
+    return { success: false, error: "Provider not found" };
+  }
+
+  // Get the providers
+  const reactProvider = settings.models.providers?.find(p => p.id === reactModelSettings.providerId);
+  const responseProvider = settings.models.providers?.find(p => p.id === responseModelSettings.providerId);
+
+  if (!reactProvider || !responseProvider) {
+    return { success: false, error: "Provider not found" };
+  }
+
+  return { success: true };
+}
+
+function createTracer(keepConversation: boolean): Tracer {
+  const traceFilePath = process.env["TRACE_FILE_PATH"]
+    ? path.join(process.cwd(), process.env["TRACE_FILE_PATH"])
+    : undefined;
+
+  const tracer = new BernardTracer({ traceFilePath });
+
+  if (keepConversation) {
+    tracer.onEvent((event: onEventData) => {
+      console.warn(event);
+    });
+  }
+  return tracer;
+}
+

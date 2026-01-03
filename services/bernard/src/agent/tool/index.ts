@@ -1,18 +1,18 @@
-import { type StructuredToolInterface } from "@langchain/core/tools";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 
 import { webSearchTool } from "./web-search.tool";
 import { getWeatherDataTool } from "./get-weather-data.tool";
 import { getWebsiteContentTool } from "./website-content.tool";
-import { createListHAEntitiesToolInstance, type HARestConfig } from "./home-assistant-list-entities.tool";
+import { createListHAEntitiesToolInstance } from "./home-assistant-list-entities.tool";
 import { createExecuteHomeAssistantServicesToolInstance } from "./home-assistant-execute-services.tool";
 import { createGetHistoricalStateToolInstance } from "./home-assistant-historical-state.tool";
 import { createToggleLightToolInstance } from "./home-assistant-toggle-light.tool";
 import { wikipediaSearchTool } from "./wikipedia-search.tool";
 import { wikipediaEntryTool } from "./wikipedia-entry.tool";
-import type { HomeAssistantContextManager } from "@/lib/home-assistant";
 import { createPlayPlexMediaToolInstance } from "./play_media_tv.tool";
 import { recallTaskTool } from "./recall_task.tool";
 import { createTimerToolInstance } from "./timer.tool";
+import { getSettings } from "@/lib/config";
 
 /**
  * Extended tool interface that includes interpretation prompts for response generation
@@ -39,27 +39,14 @@ const HA_TOOL_NAMES = [
   "get_home_assistant_historical_state"
 ] as const;
 
-const TASK_TOOL_NAMES = [
-  "play_plex_media",
-  "set_timer"
-] as const;
-
 const HA_HISTORICAL_TOOL = "get_home_assistant_historical_state";
 
 
-export function getRouterTools(
-  haContextManager?: HomeAssistantContextManager,
-  haRestConfig?: HARestConfig,
-  plexConfig?: unknown, // Not used anymore, kept for compatibility
-  taskContext?: {
-    conversationId: string;
-    userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
-  }
-): LoadedTools {
+export async function getReactTools(): Promise<LoadedTools> {
   const tools: ToolWithInterpretation[] = [];
   const disabledTools: Array<{ name: string; reason: string }> = [];
 
+  const settings = await getSettings();
   // Base tools - always available
   tools.push(
     webSearchTool,
@@ -71,11 +58,15 @@ export function getRouterTools(
   );
 
   // Home Assistant tools - disabled if no config
-  const hasHAConfig = haContextManager || haRestConfig;
+  const haRestConfig = {
+    baseUrl: settings.services.homeAssistant?.baseUrl ?? "",
+    accessToken: settings.services.homeAssistant?.accessToken ?? ""
+  };
+  const hasHAConfig = haRestConfig.baseUrl && haRestConfig.accessToken;
   if (hasHAConfig) {
-    tools.push(createListHAEntitiesToolInstance(haContextManager, haRestConfig));
-    tools.push(createExecuteHomeAssistantServicesToolInstance(haContextManager, haRestConfig));
-    tools.push(createToggleLightToolInstance(haContextManager, haRestConfig));
+    tools.push(createListHAEntitiesToolInstance(haRestConfig));
+    tools.push(createExecuteHomeAssistantServicesToolInstance(haRestConfig));
+    tools.push(createToggleLightToolInstance(haRestConfig));
   } else {
     // Add all HA tools as disabled
     for (const toolName of HA_TOOL_NAMES) {
@@ -98,18 +89,18 @@ export function getRouterTools(
   }
 
   // Task-based tools (Plex, Timer) - disabled if no task context
-  if (taskContext) {
-    tools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
-    tools.push(createTimerToolInstance(taskContext));
-  } else {
-    // Add task tools as disabled
-    for (const toolName of TASK_TOOL_NAMES) {
-      disabledTools.push({
-        name: toolName,
-        reason: "Background task system not configured."
-      });
-    }
-  }
+  // if (taskContext) {
+  //   tools.push(createPlayPlexMediaToolInstance(haRestConfig, undefined, taskContext));
+  //   tools.push(createTimerToolInstance(taskContext));
+  // } else {
+  //   // Add task tools as disabled
+  //   for (const toolName of TASK_TOOL_NAMES) {
+  //     disabledTools.push({
+  //       name: toolName,
+  //       reason: "Background task system not configured."
+  //     });
+  //   }
+  // }
 
   return { tools, disabledTools };
 }

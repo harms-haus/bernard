@@ -1,4 +1,4 @@
-import { TaskRecordKeeper } from "@/agent/recordKeeper/task.keeper";
+import { TaskRecordKeeper } from "@/src/agent/task/task.keeper";
 import { getRedis } from "@/lib/infra/redis";
 import { childLogger, logger } from "@/lib/logging";
 

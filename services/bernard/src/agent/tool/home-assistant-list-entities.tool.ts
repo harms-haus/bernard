@@ -3,7 +3,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { getStates } from "home-assistant-js-websocket";
 
-import type { HomeAssistantEntity, HomeAssistantContextManager } from "@/lib/home-assistant";
+import type { HomeAssistantEntity } from "@/lib/home-assistant";
 import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection } from "@/lib/home-assistant";
 
 /**
@@ -132,7 +132,6 @@ async function fetchHAEntitiesWebSocket(baseUrl: string, accessToken: string): P
  * Create the list HA entities tool
  */
 export function createListHAEntitiesTool(
-  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig,
   overrides: Partial<ListHAEntitiesDependencies> = {}
 ) {
@@ -141,7 +140,7 @@ export function createListHAEntitiesTool(
   return tool(
     async ({ domain, regex }: { domain?: string; regex?: string }) => {
       // Get entities from scoped context manager if available
-      let entities = haContextManager?.getEntities() || [];
+      let entities: HomeAssistantEntity[] = [];
 
       if (entities.length === 0) {
         // Try WebSocket API first if configuration is provided
@@ -188,8 +187,8 @@ export function createListHAEntitiesTool(
 /**
  * The list HA entities tool instance factory
  */
-export function createListHAEntitiesToolInstance(haContextManager?: HomeAssistantContextManager, restConfig?: HARestConfig) {
-  return createListHAEntitiesTool(haContextManager, restConfig);
+export function createListHAEntitiesToolInstance(restConfig?: HARestConfig) {
+  return createListHAEntitiesTool(restConfig);
 }
 
 /**
