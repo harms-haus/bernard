@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall, HomeAssistantContextManager } from "@/lib/home-assistant";
+import type { HomeAssistantServiceCall } from "@/lib/home-assistant";
 import { getHAConnection } from "@/lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getEntityState, getCurrentBrightness, getSupportedColorModes } from "./home-assistant-get-entity-state.tool";
@@ -50,18 +50,12 @@ async function callHAServiceWebSocket(
  * Create the toggle home assistant light tool
  */
 export function createToggleLightTool(
-  haContextManager?: HomeAssistantContextManager,
   restConfig?: HARestConfig,
   overrides: Partial<ToggleLightDependencies> = {}
 ) {
   const deps: ToggleLightDependencies = {
     ...defaultDeps,
     ...overrides,
-    recordServiceCallImpl: haContextManager ? (serviceCall: HomeAssistantServiceCall) => {
-      haContextManager.recordServiceCall(serviceCall);
-    } : () => {
-      throw new Error("Home Assistant context manager not available for recording service calls");
-    }
   };
 
   return tool(
@@ -256,6 +250,6 @@ async function executeServiceCall(
 /**
  * The toggle light tool instance factory
  */
-export function createToggleLightToolInstance(haContextManager?: HomeAssistantContextManager, restConfig?: HARestConfig) {
-  return createToggleLightTool(haContextManager, restConfig);
+export function createToggleLightToolInstance(restConfig?: HARestConfig) {
+  return createToggleLightTool(restConfig);
 }

@@ -2,7 +2,7 @@ import type { BaseMessage, ToolCall} from "@langchain/core/messages";
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import type { MessageRecord } from "./types";
 import { createMessageFingerprint, deduplicateMessages } from "./dedup";
-import { buildRouterSystemPrompt } from "@/agent/prompts/router";
+import { buildReactSystemPrompt } from "@/src/agent/prompts/react";
 import { buildResponseSystemPrompt } from "@/agent/prompts/response";
 import type { ToolWithInterpretation } from "@/agent/tool";
 import { normalizeRecordContent } from "./messages";
@@ -233,7 +233,7 @@ export class RouterContext extends BaseContext {
 
   buildSystemPrompt(): string {
     const toolNames = this.toolDefinitions.map(t => t.name);
-    return buildRouterSystemPrompt(new Date(), toolNames, this.disabledTools);
+    return buildReactSystemPrompt(new Date(), toolNames, this.disabledTools);
   }
 
   getMessages(): BaseMessage[] {
