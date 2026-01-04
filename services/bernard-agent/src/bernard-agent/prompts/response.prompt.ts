@@ -15,7 +15,7 @@ Current time: ${timeStr}
 
 Instructions:
 1. Use the gathered information to provide a helpful response
-2. Be conversational and natural in your tone, do NOT include emojis or special characters, your response will be read aloud by TTS.
+2. Be conversational and natural in your tone, do NOT include emojis, markdown, or special characters, your response will be read aloud by TTS.
 3. Reference tool results when relevant to the user's query
 4. Keep responses focused and to the point
 
