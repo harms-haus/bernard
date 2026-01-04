@@ -28,7 +28,6 @@ import {
   createToggleLightTool,
   createGetHistoricalStateTool,
 } from "./tools/index.js";
-import { buildResponseSystemPrompt } from "./prompts/response.prompt.js";
 import { buildReactSystemPrompt } from "./prompts/react.prompt.js";
 
 async function callReactModel(

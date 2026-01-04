@@ -67,7 +67,7 @@ export function createToggleLightTool(
       color
     }: {
       entity: string;
-      on?: boolean | string | null;
+      on?: string | null;
       brightness_pct?: number | null;
       brightness_pct_delta?: number | null;
       color?: ColorInput | null;
@@ -107,9 +107,9 @@ export function createToggleLightTool(
         const serviceData: Record<string, unknown> = { entity_id: entity };
 
         // Handle 'on' parameter
-        if (on === true || on === "true" || on === "True" || on === "on") {
+        if (on === "true" || on === "True" || on === "on") {
           service = 'turn_on';
-        } else if (on === false || on === "false" || on === "False" || on === "off") {
+        } else if (on === "false" || on === "False" || on === "off") {
           service = 'turn_off';
           // For turn_off, we don't need other parameters
           return await executeServiceCall(service, serviceData, deps, restConfig);
@@ -182,7 +182,7 @@ Brightness can be set as a percentage (brightness_pct) or adjusted by a percenta
 Use on=null to toggle the light, on=true to turn on, on=false to turn off.`,
       schema: z.object({
         entity: z.string().describe("The light entity_id to control (must start with 'light.')"),
-        on: z.boolean().nullable().optional().describe("true=turn on, false=turn off, null=toggle (default: toggle if off, adjust if on)"),
+        on: z.string().nullable().optional().describe("true=turn on, false=turn off, null=toggle (default: toggle if off, adjust if on)"),
         brightness_pct: z.number().nullable().optional().describe("Set brightness as percentage (0-100), null to leave unchanged"),
         brightness_pct_delta: z.number().nullable().optional().describe("Adjust brightness by percentage delta (+/- value), null to leave unchanged"),
         color: z.union([

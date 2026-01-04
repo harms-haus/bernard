@@ -147,7 +147,6 @@ export async function resolveModel(
   const modelSettings = settings.models[category];
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;
-  let options: Record<string, any> = {};
 
   // Get provider information
   const providerId = modelSettings?.providerId;
@@ -183,7 +182,6 @@ export async function resolveModel(
   } else {
     throw new Error(`Unknown model type: ${type}`);
   }
-  return { id, options: {} };
 }
 
 
