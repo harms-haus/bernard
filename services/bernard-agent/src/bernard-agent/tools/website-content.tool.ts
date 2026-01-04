@@ -5,9 +5,9 @@ import { createProgressReporter } from "./progress.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
-import { logger } from "@/lib/logging";
-import { countTokensInText, sliceTokensFromText } from "@/lib/tokenCounter";
-import { getCachedContent, setCachedContent } from "@/lib/website";
+import { logger } from "../../lib/logging";
+import { countTokensInText, sliceTokensFromText } from "../../lib/tokenCounter";
+import { getCachedContent, setCachedContent } from "../../lib/website";
 
 const FETCH_TIMEOUT_MS = 10000; // 10 seconds
 const DEFAULT_START_TOKENS = 0;

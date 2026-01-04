@@ -1,5 +1,5 @@
 import { getStates } from "home-assistant-js-websocket";
-import { getHAConnection } from "@/lib/home-assistant";
+import { getHAConnection } from "../../lib/home-assistant";
 
 /**
  * Home Assistant entity state object

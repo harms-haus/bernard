@@ -17,7 +17,7 @@ import {
   parseDateRange,
   type DailyWeather,
   type HourlyWeather
-} from "@/lib/weather/common";
+} from "../../lib/weather/common";
 
 
 type ForecastResponse = {

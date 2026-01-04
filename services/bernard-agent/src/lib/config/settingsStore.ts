@@ -4,7 +4,7 @@ import type Redis from "ioredis";
 import type { z } from "zod";
 import { appSettings } from "@shared/config/appSettings";
 import type { Section, BernardSettings, ModelsSettings, Provider, ServicesSettings, OAuthSettings, BackupSettings, LimitsSettings, AutomationsSettings, AutomationSettings } from "@shared/config/appSettings";
-import { getRedis } from "@/lib/infra/redis";
+import { getRedis } from "@shared/infra/redis";
 
 export { 
   ProviderSchema, 

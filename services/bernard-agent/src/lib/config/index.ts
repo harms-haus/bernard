@@ -24,5 +24,3 @@ export {
   listFromSettings,
   normalizeList as normalizeModelList
 } from "./models";
-
-export * from "./embeddings";

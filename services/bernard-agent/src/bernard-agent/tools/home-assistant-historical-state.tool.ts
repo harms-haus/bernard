@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
-import { getHAConnection } from "@/lib/home-assistant";
+import { getHAConnection } from "../../lib/home-assistant";
 
 /**
  * Home Assistant historical state data
