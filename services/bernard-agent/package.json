@@ -8,7 +8,7 @@
     "#lib/*": "./src/lib/*"
   },
   "scripts": {
-    "dev": "npx @langchain/langgraph-cli dev --port 2024 --config langgraph.json",
+    "dev": "npx @langchain/langgraph-cli dev --port 2024",
     "build": "tsc --skipLibCheck",
     "build:watch": "tsc --watch",
     "type-check": "tsc --noEmit --skipLibCheck",

@@ -10,6 +10,8 @@ source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
+    # Also kill any remaining langgraph-cli processes
+    pkill -f "langgraph-cli" 2>/dev/null
     PID=$(lsof -t -i:$PORT 2>/dev/null)
     if [ ! -z "$PID" ]; then
         kill -9 $PID 2>/dev/null
@@ -17,8 +19,6 @@ stop() {
     else
         log "$SERVICE_NAME not running on port $PORT"
     fi
-    # Also kill any remaining langgraph-cli processes
-    pkill -f "langgraph-cli" 2>/dev/null
 }
 
 init() {
@@ -77,11 +77,20 @@ start() {
     log "Starting $SERVICE_NAME..."
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
     mkdir -p "$LOG_DIR"
-    cd "$DIR" && npx @langchain/langgraph-cli dev --port $PORT --config langgraph.json 2>&1 | tee "$LOG_DIR/bernard-agent.log" | sed "s/^/\033[0;32m\[${SERVICE_NAME}\033[0m\] /" &
-
+    
+    # Start in background with proper process group
+    cd "$DIR"
+    nohup npx @langchain/langgraph-cli dev --port $PORT > "$LOG_DIR/bernard-agent.log" 2>&1 &
+    BGPID=$!
+    
+    # Give the server a moment to start
+    sleep 2
+    
     log "Waiting for $SERVICE_NAME to be reachable..."
     for i in {1..60}; do
-        if curl -sf http://127.0.0.1:$PORT/health > /dev/null 2>&1; then
+        # Try both IPv4 (127.0.0.1) and IPv6 (::1) since langgraph-cli may bind to either
+        # Use /info endpoint (returns 200) instead of /health (returns 404)
+        if curl -sf http://127.0.0.1:$PORT/info > /dev/null 2>&1 || curl -sf "http://[::1]:$PORT/info" > /dev/null 2>&1; then
             log "$SERVICE_NAME is ready!"
             return 0
         fi

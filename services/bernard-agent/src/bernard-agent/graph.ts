@@ -11,10 +11,10 @@ import {
   START,
   StateGraph,
   END,
-  MemorySaver,
 } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage } from "@langchain/core/messages";
+import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 
 import { BernardStateAnnotation } from "./state.js";
 import { BernardConfigurationAnnotation, ensureBernardConfiguration } from "./configuration.js";
@@ -186,7 +186,7 @@ async function callResponseModel(
  *        │
  *        └── no tools ──► call_response_model ──► END
  */
-export function createBernardGraph() {
+export async function createBernardGraph() {
   const workflow = new StateGraph(
     BernardStateAnnotation,
     BernardConfigurationAnnotation,
@@ -201,17 +201,18 @@ export function createBernardGraph() {
       shouldCallTools,
       { tools: "tools", call_response_model: "call_response_model" }
     )
-    .addEdge("tools", "call_react_model")  // NO CHOICE - always ask for more
+    .addEdge("tools", "call_react_model")
     .addEdge("call_response_model", END);
+      
+  const checkpointer = await RedisSaver.fromUrl("redis://localhost:6379");
 
-  const checkpointer = new MemorySaver();
-
-  return workflow.compile({
+  const graph = workflow.compile({
     checkpointer,
     interruptBefore: [],
     interruptAfter: [],
   });
+  graph.name = "BernardAgent";
+  return graph;
 }
 
-export const graph = createBernardGraph();
-graph.name = "BernardAgent";
+export const graph = await createBernardGraph();
