@@ -6,6 +6,7 @@ import { TooltipIconButton } from '../TooltipIconButton';
 import { RefreshCcw, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ToolCalls, ToolResult } from './tool-calls';
 
 function ContentCopyable({ content, disabled }: { content: string; disabled: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -41,6 +42,18 @@ export function AssistantMessage({ message }: { message: Message }) {
     // TODO: Implement regeneration
   };
 
+  const isToolResult = message.type === 'tool';
+  const hasToolCalls = message && 'tool_calls' in message && message.tool_calls && message.tool_calls.length > 0;
+  const toolCallsHaveContents = hasToolCalls && message.tool_calls?.some((tc) => tc.args && Object.keys(tc.args).length > 0);
+
+  if (isToolResult) {
+    return (
+      <div className="flex items-start mr-auto gap-2 group">
+        <ToolResult message={message} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-start mr-auto gap-2 group">
       <div className="flex flex-col gap-2">
@@ -49,7 +62,11 @@ export function AssistantMessage({ message }: { message: Message }) {
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         )}
-        
+
+        {hasToolCalls && toolCallsHaveContents && (
+          <ToolCalls toolCalls={message.tool_calls} />
+        )}
+
         <div className={cn(
           "flex gap-2 items-center mr-auto transition-opacity",
           "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"

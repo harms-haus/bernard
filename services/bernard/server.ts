@@ -18,12 +18,12 @@ import {
 import { getSettings } from "@/lib/config";
 import { getReactTools } from "@/agent/tool";
 import type { AgentContext } from "@/agent/agentContext";
-import { createBernardGraph, runBernardGraph } from "@/agent/graph/bernard.graph";
+import { createBernardGraph } from "@/agent/graph/bernard.graph";
 import { getRedis } from "@/lib/infra/redis";
 import { getRedisCheckpointer, closeRedisCheckpointer } from "@/lib/checkpointer/redis";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import type { BernardSettings } from "@shared/config/appSettings";
-import { type onEventData, type Tracer } from "./src/agent/trace";
+import type { Tracer } from "./src/agent/trace";
 import { BernardTracer } from "./src/agent/trace/bernard.tracer";
 
 let checkpointer: BaseCheckpointSaver;
@@ -38,101 +38,101 @@ const PORT = process.env["BERNARD_AGENT_PORT"] ? parseInt(process.env["BERNARD_A
 const HOST = process.env["HOST"] || "127.0.0.1";
 
 // Stream metadata interface for tool calls
-interface StreamMetadata {
-  langgraph_node?: string;
-  langgraph_path?: string;
-  langgraph_step?: number;
-  tool_calls?: Array<{
-    id: string;
-    type: "function";
-    function: {
-      name: string;
-      arguments: string;
-    };
-  }>;
-}
+// interface StreamMetadata {
+//   langgraph_node?: string;
+//   langgraph_path?: string;
+//   langgraph_step?: number;
+//   tool_calls?: Array<{
+//     id: string;
+//     type: "function";
+//     function: {
+//       name: string;
+//       arguments: string;
+//     };
+//   }>;
+// }
 
 // Tool call interface for individual tool call
-interface ToolCallData {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
+// interface ToolCallData {
+//   id: string;
+//   type: "function";
+//   function: {
+//     name: string;
+//     arguments: string;
+//   };
+// }
 
 // Helper function to format tool call chunk for OpenAI-compatible streaming
-function formatToolCallChunk(
-  toolCall: ToolCallData,
-  requestId: string,
-): string {
-  const chunk = {
-    id: requestId,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model: BERNARD_MODEL_ID,
-    choices: [{
-      index: 0,
-      delta: {
-        tool_calls: [toolCall],
-      },
-      finish_reason: null,
-    }],
-  };
-  return `data: ${JSON.stringify(chunk)}\n\n`;
-}
+// function formatToolCallChunk(
+//   toolCall: ToolCallData,
+//   requestId: string,
+// ): string {
+//   const chunk = {
+//     id: requestId,
+//     object: "chat.completion.chunk",
+//     created: Math.floor(Date.now() / 1000),
+//     model: BERNARD_MODEL_ID,
+//     choices: [{
+//       index: 0,
+//       delta: {
+//         tool_calls: [toolCall],
+//       },
+//       finish_reason: null,
+//     }],
+//   };
+//   return `data: ${JSON.stringify(chunk)}\n\n`;
+// }
 
 // Helper function to format content chunk
-function formatContentChunk(content: string, requestId: string): string {
-  const chunk = {
-    id: requestId,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model: BERNARD_MODEL_ID,
-    choices: [{
-      index: 0,
-      delta: { content },
-      finish_reason: null,
-    }],
-  };
-  return `data: ${JSON.stringify(chunk)}\n\n`;
-}
+// function formatContentChunk(content: string, requestId: string): string {
+//   const chunk = {
+//     id: requestId,
+//     object: "chat.completion.chunk",
+//     created: Math.floor(Date.now() / 1000),
+//     model: BERNARD_MODEL_ID,
+//     choices: [{
+//       index: 0,
+//       delta: { content },
+//       finish_reason: null,
+//     }],
+//   };
+//   return `data: ${JSON.stringify(chunk)}\n\n`;
+// }
 
 // Helper function to format custom tool progress event
-function formatToolProgressChunk(data: Record<string, unknown>, requestId: string): string {
-  const event = {
-    type: "tool_progress",
-    request_id: requestId,
-    data,
-  };
-  return `data: ${JSON.stringify(event)}\n\n`;
-}
+// function formatToolProgressChunk(data: Record<string, unknown>, requestId: string): string {
+//   const event = {
+//     type: "tool_progress",
+//     request_id: requestId,
+//     data,
+//   };
+//   return `data: ${JSON.stringify(event)}\n\n`;
+// }
 
 // Helper function to format tool result chunk for OpenAI-compatible streaming
 // Tool results are sent as chunks with role="tool" and tool_call_id
-function formatToolResultChunk(
-  toolCallId: string,
-  content: string,
-  requestId: string,
-): string {
-  const chunk = {
-    id: requestId,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model: BERNARD_MODEL_ID,
-    choices: [{
-      index: 0,
-      delta: {
-        role: "tool",
-        tool_call_id: toolCallId,
-        content,
-      },
-      finish_reason: null,
-    }],
-  };
-  return `data: ${JSON.stringify(chunk)}\n\n`;
-}
+// function formatToolResultChunk(
+//   toolCallId: string,
+//   content: string,
+//   requestId: string,
+// ): string {
+//   const chunk = {
+//     id: requestId,
+//     object: "chat.completion.chunk",
+//     created: Math.floor(Date.now() / 1000),
+//     model: BERNARD_MODEL_ID,
+//     choices: [{
+//       index: 0,
+//       delta: {
+//         role: "tool",
+//         tool_call_id: toolCallId,
+//         content,
+//       },
+//       finish_reason: null,
+//     }],
+//   };
+//   return `data: ${JSON.stringify(chunk)}\n\n`;
+// }
 
 async function initializeCheckpointer(): Promise<void> {
   try {
@@ -251,91 +251,204 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
         logger.debug({ threadId, messageCount: inputMessages.length }, "Starting graph stream");
 
-        const stream = runBernardGraph(graph, inputMessages, shouldStream, threadId);
+        const config = { configurable: { thread_id: threadId } };
+        const stream = await graph.stream(
+          { messages: inputMessages},
+          { 
+            ...config,
+            streamMode: ["messages", "updates", "custom"] as const,
+           });
 
+        // Set headers for streaming response (SSE format)
+        if (shouldStream) {
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+          });
+        }
+
+        // const toolCallDeltas: Map<number, { id: string; name: string; arguments: string }> = new Map();
+        // let toolCallIndex = 0;
         // let chunkCount = 0;
+        
         for await (const chunk of stream) {
           // chunkCount++;
-          if (chunk.type === "messages") {
-            const message = chunk.content;
-            const metadata = chunk.metadata as StreamMetadata | undefined;
 
-            // Emit tool calls from metadata if present (real-time tool call visibility)
-            if (metadata?.tool_calls && metadata.tool_calls.length > 0) {
-              for (const toolCall of metadata.tool_calls) {
-                res.write(formatToolCallChunk(toolCall, requestId));
-              }
-            }
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          
+          // if (chunk.type === "messages") {
+          //   const message = chunk.content;
+          //   const metadata = chunk.metadata as StreamMetadata | undefined;
+            
+          //   logger.debug({ 
+          //     chunkCount,
+          //     type: chunk.type,
+          //     hasMessage: !!message,
+          //     messageType: typeof message,
+          //     isObjectMessage: message && typeof message === 'object' && !Array.isArray(message),
+          //     hasMetadata: !!metadata,
+          //     metadataToolCalls: metadata?.tool_calls?.length,
+          //     langgraphNode: metadata?.langgraph_node,
+          //     langgraphPath: metadata?.langgraph_path
+          //   }, 'Stream chunk details');
 
-            // Handle message content
-            if (typeof message === "string" && message) {
-              // Regular text content
-              res.write(formatContentChunk(message, requestId));
-            } else if (Array.isArray(message)) {
-              // Handle content arrays (e.g., from ToolMessage with tool_result blocks)
-              for (const block of message) {
-                if (block && typeof block === "object") {
-                  const blockObj = block as Record<string, unknown>;
+          //   if (message && typeof message === 'object' && !Array.isArray(message)) {
+          //     const msgObj = message as Record<string, unknown>;
+          //     if ('tool_calls' in msgObj && Array.isArray(msgObj['tool_calls'])) {
+          //       const messageToolCalls = msgObj['tool_calls'] as Array<{
+          //         id?: string;
+          //         name?: string;
+          //         arguments?: Record<string, unknown> | string;
+          //       }>;
+                
+          //       for (const tc of messageToolCalls) {
+          //         const index = toolCallIndex++;
+          //         const existing = toolCallDeltas.get(index);
                   
-                  // Check for tool_result blocks (OpenAI format)
-                  if (blockObj["type"] === "tool_result") {
-                    const toolCallId = blockObj["tool_use_id"] as string;
-                    const resultContent = blockObj["content"] as string;
-                    if (toolCallId && resultContent) {
-                      res.write(formatToolResultChunk(toolCallId, resultContent, requestId));
-                    }
-                  }
-                }
-              }
-            }
+          //         const argumentsStr = tc.arguments 
+          //           ? (typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments))
+          //           : '';
+                  
+          //         const updatedToolCall = {
+          //           id: tc.id || `tc_${Date.now()}_${index}`,
+          //           name: tc.name || 'unknown',
+          //           arguments: (existing?.arguments ?? '') + argumentsStr
+          //         };
+                  
+          //         toolCallDeltas.set(index, updatedToolCall);
+                  
+          //         res.write(formatToolCallChunk({
+          //           id: updatedToolCall.id,
+          //           type: "function",
+          //           function: {
+          //             name: updatedToolCall.name,
+          //             arguments: updatedToolCall.arguments
+          //           }
+          //         }, requestId));
+          //       }
+          //     }
+          //   }
+            
+          //   if (metadata?.tool_calls && metadata.tool_calls.length > 0) {
+          //     for (const toolCall of metadata.tool_calls) {
+          //       const index = toolCallIndex++;
+          //       const existing = toolCallDeltas.get(index);
+                
+          //       const updatedToolCall = {
+          //         id: toolCall.id,
+          //         name: toolCall.function.name,
+          //         arguments: (existing?.arguments ?? '') + (toolCall.function.arguments ?? '')
+          //       };
+                
+          //       toolCallDeltas.set(index, updatedToolCall);
+                
+          //       res.write(formatToolCallChunk({
+          //         id: updatedToolCall.id,
+          //         type: "function",
+          //         function: {
+          //           name: updatedToolCall.name,
+          //           arguments: updatedToolCall.arguments
+          //         }
+          //       }, requestId));
+          //     }
+          //   }
 
-            // Emit message content (for structured content blocks like text)
-            if (typeof message === "object" && message !== null && !Array.isArray(message)) {
-              const msgObj = message as Record<string, unknown>;
-              const content = msgObj["content"];
-              if (typeof content === "string" && content) {
-                res.write(formatContentChunk(content, requestId));
-              }
-            }
-          } else if (chunk.type === "updates") {
-            // Extract the actual text content from the updates object
-            // Format is {"nodeName": { messages: [...] }}
-            let textContent = "";
-            if (typeof chunk.content === 'object' && chunk.content !== null) {
-              const content = chunk.content as Record<string, unknown>;
+          //   // Handle message content
+          //   if (typeof message === "string" && message) {
+          //     // Regular text content
+          //     res.write(formatContentChunk(message, requestId));
+          //   } else if (Array.isArray(message)) {
+          //     // Handle content arrays (e.g., from ToolMessage with tool_result blocks)
+          //     for (const block of message) {
+          //       if (block && typeof block === "object") {
+          //         const blockObj = block as Record<string, unknown>;
+                  
+          //         // Check for tool_result blocks (OpenAI format)
+          //         if (blockObj["type"] === "tool_result") {
+          //           const toolCallId = blockObj["tool_use_id"] as string;
+          //           const resultContent = blockObj["content"] as string;
+          //           if (toolCallId && resultContent) {
+          //             res.write(formatToolResultChunk(toolCallId, resultContent, requestId));
+          //           }
+          //         }
+          //       }
+          //     }
+          //   }
+
+          //   // Emit message content (for structured content blocks like text)
+          //   if (typeof message === "object" && message !== null && !Array.isArray(message)) {
+          //     const msgObj = message as Record<string, unknown>;
+          //     const content = msgObj["content"];
+          //     if (typeof content === "string" && content) {
+          //       res.write(formatContentChunk(content, requestId));
+          //     }
+          //   }
+          // } else if (chunk.type === "updates") {
+          //   // Extract the actual text content from the updates object
+          //   // Format is {"nodeName": { messages: [...] }}
+          //   let textContent = "";
+          //   if (typeof chunk.content === 'object' && chunk.content !== null) {
+          //     const content = chunk.content as Record<string, unknown>;
               
-              // Find the messages array inside the node update (e.g., content['response'].messages)
-              let messages: unknown[] | undefined;
-              for (const key of Object.keys(content)) {
-                const nodeUpdate = content[key] as Record<string, unknown>;
-                if (nodeUpdate['messages'] && Array.isArray(nodeUpdate['messages'])) {
-                  messages = nodeUpdate['messages'] as unknown[];
-                  break;
-                }
-              }
+          //     // Find the messages array inside the node update (e.g., content['response'].messages)
+          //     let messages: unknown[] | undefined;
+          //     for (const key of Object.keys(content)) {
+          //       const nodeUpdate = content[key] as Record<string, unknown>;
+          //       if (nodeUpdate['messages'] && Array.isArray(nodeUpdate['messages'])) {
+          //         messages = nodeUpdate['messages'] as unknown[];
+          //         break;
+          //       }
+          //     }
 
-              if (messages && messages.length > 0) {
-                // Find the last AI message with actual content
-                for (let i = messages.length - 1; i >= 0; i--) {
-                  const msg = messages[i] as { kwargs?: { content?: unknown } };
-                  const contentStr = msg.kwargs?.content;
-                  if (typeof contentStr === 'string' && contentStr.trim().length > 0 && !contentStr.startsWith('(')) {
-                    textContent = contentStr;
-                    break;
-                  }
-                }
-              }
-            }
+          //     if (messages && messages.length > 0) {
+          //       // Extract tool calls from XML-formatted content in messages
+          //       for (let i = 0; i < messages.length; i++) {
+          //         const msg = messages[i] as { kwargs?: { content?: unknown } };
+          //         const contentStr = msg.kwargs?.content;
+          //         if (typeof contentStr === 'string') {
+          //           // Extract tool calls from XML format like <tool_call>...</tool_call>
+          //           const toolCallRegex = /<tool_call>\s*<function=(\w+)>(.*?)<\/function>\s*<parameter=([^>]*)>(.*?)<\/parameter>\s*<\/tool_call>/gs;
+          //           let match;
+          //           while ((match = toolCallRegex.exec(contentStr)) !== null) {
+          //             const toolName = match[1];
+          //             const paramName = match[3];
+          //             const paramValue = match[4]?.trim() ?? '';
+          //             if (toolName && paramName) {
+          //               res.write(formatToolCallChunk({
+          //                 id: `tc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          //                 type: "function",
+          //                 function: {
+          //                   name: toolName,
+          //                   arguments: JSON.stringify({ [paramName]: paramValue })
+          //                 }
+          //               }, requestId));
+          //             }
+          //           }
+          //         }
+          //       }
 
-            if (textContent) {
-              res.write(formatContentChunk(textContent, requestId));
-            }
-          } else if (chunk.type === "custom") {
-            // Handle custom events (tool progress) from tools
-            if (typeof chunk.content === "object" && chunk.content !== null) {
-              res.write(formatToolProgressChunk(chunk.content as Record<string, unknown>, requestId));
-            }
-          }
+          //       // Find the last AI message with actual content
+          //       for (let i = messages.length - 1; i >= 0; i--) {
+          //         const msg = messages[i] as { kwargs?: { content?: unknown } };
+          //         const contentStr = msg.kwargs?.content;
+          //         if (typeof contentStr === "string" && contentStr.trim().length > 0 && !contentStr.startsWith('(')) {
+          //           textContent = contentStr;
+          //           break;
+          //         }
+          //       }
+          //     }
+          //   }
+
+          //   if (textContent) {
+          //     res.write(formatContentChunk(textContent, requestId));
+          //   }
+          // } else if (chunk.type === "custom") {
+          //   // Handle custom events (tool progress) from tools
+          //   if (typeof chunk.content === "object" && chunk.content !== null) {
+          //     res.write(formatToolProgressChunk(chunk.content as Record<string, unknown>, requestId));
+          //   }
+          // }
         }
         
         // Send final chunk with finish_reason: stop and [DONE]
@@ -373,6 +486,132 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return;
     } catch (error: unknown) {
       logger.error({ err: error }, "Request failed");
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+  }
+
+  // LangGraph SDK: Create thread
+  if (url.pathname === "/threads" && req.method === "POST") {
+    const threadId = `thread_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ thread_id: threadId }));
+    return;
+  }
+
+  // LangGraph SDK: Get thread
+  if (url.pathname.match(/^\/threads\/[^/]+$/) && req.method === "GET") {
+    const threadId = url.pathname.split("/")[2];
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      thread_id: threadId,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    }));
+    return;
+  }
+
+  // LangGraph SDK: Create run (triggers chat completion)
+  if (url.pathname.match(/^\/threads\/[^/]+\/runs$/) && req.method === "POST") {
+    try {
+      let bodyStr = "";
+      for await (const chunk of req) {
+        bodyStr += typeof chunk === "string" ? chunk : (chunk as Buffer).toString("utf8");
+      }
+      const body = JSON.parse(bodyStr) as {
+        assistant_id?: string;
+        input?: { messages: unknown[] };
+        stream?: boolean;
+      };
+
+      const threadId = url.pathname.split("/")[2] || "";
+      const assistantId = body.assistant_id;
+      const inputMessages = body.input?.messages;
+
+      if (!inputMessages || !Array.isArray(inputMessages)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "`messages` array is required" }));
+        return;
+      }
+
+      const shouldStream = body.stream === true;
+      const mappedMessages = mapChatMessages(inputMessages as OpenAIMessage[]);
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const tracer = createTracer(true);
+
+      tracer.requestStart({
+        id: requestId,
+        threadId: threadId,
+        model: assistantId ?? BERNARD_MODEL_ID,
+        agent: "bernard",
+        messages: mappedMessages,
+      });
+
+      const settings = await getSettings();
+      const settingsValidation = validateSettings(settings);
+      if (!settingsValidation.success) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: settingsValidation.error ?? "Unknown error" }));
+        return;
+      }
+
+      const { tools, disabledTools } = await getReactTools();
+      const agentContext: AgentContext = {
+        checkpointer,
+        tools,
+        disabledTools,
+        logger,
+        tracer,
+      };
+
+      const graph = createBernardGraph(agentContext);
+      const config = { configurable: { thread_id: threadId } };
+
+      if (shouldStream) {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        });
+      }
+
+      try {
+        const stream = await graph.stream(
+          { messages: mappedMessages },
+          { ...config, streamMode: ["messages", "updates", "custom"] as const },
+        );
+
+        for await (const chunk of stream) {
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        }
+
+        const finalChunk = {
+          id: requestId,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: BERNARD_MODEL_ID,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        };
+        res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+        res.write("data: [DONE]\n\n");
+      } catch (error: unknown) {
+        logger.error({ err: error }, "Streaming failed");
+        const errorChunk = {
+          id: requestId,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: BERNARD_MODEL_ID,
+          choices: [{ index: 0, delta: {}, finish_reason: "error" }],
+        };
+        res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+        res.write("data: [DONE]\n\n");
+      } finally {
+        res.end();
+      }
+      return;
+    } catch (error: unknown) {
+      logger.error({ err: error }, "Run request failed");
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
       return;
@@ -488,21 +727,21 @@ function validateSettings(settings: BernardSettings): { success: boolean, error?
   return { success: true };
 }
 
-function createTracer(keepConversation: boolean): Tracer {
+function createTracer(_keepConversation: boolean): Tracer {
   const traceFilePath = process.env["TRACE_FILE_PATH"]
     ? path.join(process.cwd(), process.env["TRACE_FILE_PATH"])
     : undefined;
 
   const tracer = new BernardTracer({ traceFilePath });
 
-  if (keepConversation) {
-    tracer.onEvent((event: onEventData) => {
-      try {
-        console.warn(event);
-      } catch (callbackError) {
-        console.error("Tracer callback failed:", callbackError);
-      }
-    });
-  }
+  // if (keepConversation) {
+  //   tracer.onEvent((event: onEventData) => {
+  //     try {
+  //       console.warn(event);
+  //     } catch (callbackError) {
+  //       console.error("Tracer callback failed:", callbackError);
+  //     }
+  //   });
+  // }
   return tracer;
 }

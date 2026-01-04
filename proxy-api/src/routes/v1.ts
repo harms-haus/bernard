@@ -9,6 +9,16 @@ const VLLM_URL = process.env.VLLM_URL || 'http://127.0.0.1:8860';
 const KOKORO_URL = process.env.KOKORO_URL || 'http://127.0.0.1:8880';
 const WHISPER_URL = process.env.WHISPER_URL || 'http://127.0.0.1:8870';
 
+function passThroughAuth(req: FastifyRequest, headers: Record<string, string>) {
+  const authHeader = req.headers.authorization;
+  const cookie = req.headers.cookie;
+  return {
+    ...headers,
+    ...(authHeader ? { authorization: authHeader } : {}),
+    ...(cookie ? { cookie } : {})
+  };
+}
+
 export async function registerV1Routes(fastify: FastifyInstance) {
   // 1. Aggregated Models List (requires session auth)
   fastify.get('/models', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -57,24 +67,13 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   });
 
   // 2. Chat Completions -> Bernard Agent
-  // Bernard Agent handles auth - pass through headers
   fastify.register(proxy, {
     upstream: BERNARD_AGENT_URL,
     prefix: '/chat/completions',
     rewritePrefix: '/v1/chat/completions',
     http2: false,
-    // Enable streaming - don't buffer responses
     disableContentHandling: true,
-    // Pass through auth headers for backend authentication
-    rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
-      const authHeader = req.headers.authorization;
-      const cookie = req.headers.cookie;
-      return {
-        ...headers,
-        ...(authHeader ? { authorization: authHeader } : {}),
-        ...(cookie ? { cookie } : {})
-      };
-    },
+    rewriteRequestHeaders: passThroughAuth,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Chat)', error: error.message, upstream: BERNARD_AGENT_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
@@ -82,22 +81,12 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   } as any);
 
   // 3. Embeddings -> vLLM
-  // vLLM handles auth - pass through headers
   fastify.register(proxy, {
     upstream: VLLM_URL,
     prefix: '/embeddings',
     rewritePrefix: '/v1/embeddings',
     http2: false,
-    // Pass through auth headers for backend authentication
-    rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
-      const authHeader = req.headers.authorization;
-      const cookie = req.headers.cookie;
-      return {
-        ...headers,
-        ...(authHeader ? { authorization: authHeader } : {}),
-        ...(cookie ? { cookie } : {})
-      };
-    },
+    rewriteRequestHeaders: passThroughAuth,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Embeddings)', error: error.message, upstream: VLLM_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'vllm' });
@@ -105,22 +94,12 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   } as any);
 
   // 4. Audio Transcriptions -> Whisper.cpp
-  // Whisper handles auth - pass through headers
   fastify.register(proxy, {
     upstream: WHISPER_URL,
     prefix: '/audio/transcriptions',
     rewritePrefix: '/inference',
     http2: false,
-    // Pass through auth headers for backend authentication
-    rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
-      const authHeader = req.headers.authorization;
-      const cookie = req.headers.cookie;
-      return {
-        ...headers,
-        ...(authHeader ? { authorization: authHeader } : {}),
-        ...(cookie ? { cookie } : {})
-      };
-    },
+    rewriteRequestHeaders: passThroughAuth,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Whisper)', error: error.message, upstream: WHISPER_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'whisper' });
@@ -128,25 +107,29 @@ export async function registerV1Routes(fastify: FastifyInstance) {
   } as any);
 
   // 5. Audio Speech -> Kokoro
-  // Kokoro handles auth - pass through headers
   fastify.register(proxy, {
     upstream: KOKORO_URL,
     prefix: '/audio/speech',
     rewritePrefix: '/v1/audio/speech',
     http2: false,
-    // Pass through auth headers for backend authentication
-    rewriteRequestHeaders: (req: FastifyRequest, headers: Record<string, string>) => {
-      const authHeader = req.headers.authorization;
-      const cookie = req.headers.cookie;
-      return {
-        ...headers,
-        ...(authHeader ? { authorization: authHeader } : {}),
-        ...(cookie ? { cookie } : {})
-      };
-    },
+    rewriteRequestHeaders: passThroughAuth,
     errorHandler: (reply: any, error: any) => {
       logger.error({ msg: 'Proxy Error (Speech)', error: error.message, upstream: KOKORO_URL });
       reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'kokoro' });
+    }
+  } as any);
+
+  // 6. LangGraph SDK: Threads and Runs -> Bernard Agent
+  // Use a wildcard prefix to capture all thread-related paths
+  fastify.register(proxy, {
+    upstream: BERNARD_AGENT_URL,
+    prefix: '/threads',
+    rewritePrefix: '/threads',
+    http2: false,
+    rewriteRequestHeaders: passThroughAuth,
+    errorHandler: (reply: any, error: any) => {
+      logger.error({ msg: 'Proxy Error (Threads)', error: error.message, upstream: BERNARD_AGENT_URL });
+      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
     }
   } as any);
 }

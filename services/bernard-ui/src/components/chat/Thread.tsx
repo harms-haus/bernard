@@ -5,8 +5,7 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
-import { useStream } from '../../providers/StreamProvider';
-import { useThreads } from '../../providers/ThreadProvider';
+import { useStreamContext } from '../../providers/StreamProvider';
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { ConversationHistory } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
@@ -44,18 +43,12 @@ export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
   
-  const { messages, submit, isLoading, stop } = useStream();
-  const { getThreads } = useThreads();
+  const { messages, submit, isLoading, stop } = useStreamContext();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const sidebarOpen = useSidebarOpen();
   
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
-
-  // Refresh thread list on mount
-  useEffect(() => {
-    getThreads();
-  }, [getThreads]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -67,7 +60,7 @@ export function Thread() {
       content: input.trim(),
     };
 
-    await submit({ messages: [...messages, newHumanMessage] }, { threadId: threadId || undefined });
+    await submit({ messages: [...messages, newHumanMessage] });
     setInput('');
   };
 
