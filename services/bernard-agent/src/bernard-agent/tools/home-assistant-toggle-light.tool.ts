@@ -67,7 +67,7 @@ export function createToggleLightTool(
       color
     }: {
       entity: string;
-      on?: boolean | null;
+      on?: boolean | string | null;
       brightness_pct?: number | null;
       brightness_pct_delta?: number | null;
       color?: ColorInput | null;
@@ -107,9 +107,9 @@ export function createToggleLightTool(
         const serviceData: Record<string, unknown> = { entity_id: entity };
 
         // Handle 'on' parameter
-        if (on === true) {
+        if (on === true || on === "true" || on === "True" || on === "on") {
           service = 'turn_on';
-        } else if (on === false) {
+        } else if (on === false || on === "false" || on === "False" || on === "off") {
           service = 'turn_off';
           // For turn_off, we don't need other parameters
           return await executeServiceCall(service, serviceData, deps, restConfig);

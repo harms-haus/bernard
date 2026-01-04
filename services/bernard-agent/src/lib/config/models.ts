@@ -36,6 +36,7 @@ export type ModelCallOptions = {
 };
 
 export type ResolvedModel = {
+  type: "openai" | "ollama";
   id: string;
   options?: ModelCallOptions;
 };
@@ -141,40 +142,48 @@ export function splitModelAndProvider(modelId: string): { model: string; provide
 export async function resolveModel(
   category: ModelCategory,
   opts: { fallback?: string[]; override?: string | string[] } = {}
-): Promise<ResolvedModel> {
+): Promise<{id: string, options: Partial<Record<string, any>>}> {
   const settings = await fetchSettings();
   const modelSettings = settings.models[category];
   const list = await getModelList(category, opts);
   const id = list[0] ?? DEFAULT_MODEL;
+  let options: Record<string, any> = {};
 
   // Get provider information
   const providerId = modelSettings?.providerId;
-  let baseUrl: string | undefined;
+  let baseURL: string | undefined;
   let apiKey: string | undefined;
-
+  let type: "openai" | "ollama" = "openai";
   if (providerId) {
     const provider = settings.models.providers?.find(p => p.id === providerId);
     if (provider) {
-      baseUrl = provider.baseUrl;
+      baseURL = provider.baseUrl;
       apiKey = provider.apiKey;
+      type = provider.type;
     }
   }
 
-  const rawOptions = modelSettings?.options;
-  const hasProviderSettings = baseUrl || apiKey;
-  const hasRawOptions = rawOptions && (rawOptions.temperature !== undefined || rawOptions.topP !== undefined || rawOptions.maxTokens !== undefined);
-
-  const options: ModelCallOptions | undefined = (hasRawOptions || hasProviderSettings)
-    ? {
-        ...(rawOptions?.temperature !== undefined ? { temperature: rawOptions.temperature } : {}),
-        ...(rawOptions?.topP !== undefined ? { topP: rawOptions.topP } : {}),
-        ...(rawOptions?.maxTokens !== undefined ? { maxTokens: rawOptions.maxTokens } : {}),
-        ...(baseUrl ? { baseUrl } : {}),
-        ...(apiKey ? { apiKey } : {})
-      }
-    : undefined;
-
-  return { id, ...(options ? { options } : {}) };
+  if (type === "openai") {
+    return { id, options: { 
+      modelProvider: "openai",
+      configuration: {
+        baseURL,
+        apiKey,
+      },
+      temperature: modelSettings?.options?.temperature,
+      maxTokens: modelSettings?.options?.maxTokens,
+    }};
+  } else if (type === "ollama") {
+    return { id, options: { 
+      modelProvider: "ollama",
+      baseUrl: baseURL,
+      temperature: modelSettings?.options?.temperature,
+      maxTokens: modelSettings?.options?.maxTokens,
+    }};
+  } else {
+    throw new Error(`Unknown model type: ${type}`);
+  }
+  return { id, options: {} };
 }
 
 

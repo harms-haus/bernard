@@ -16,7 +16,6 @@ You are a voice assistant, so keep responses natural and conversational.`;
  * Configuration annotation for configurable parameters.
  */
 import { Annotation } from "@langchain/langgraph";
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 
 export const BernardConfigurationAnnotation = Annotation.Root({
   /**
@@ -32,7 +31,7 @@ export const BernardConfigurationAnnotation = Annotation.Root({
    */
   reactModel: Annotation<string>({
     reducer: (state, input) => input ?? state,
-    default: () => "anthropic/claude-3-7-sonnet-latest",
+    default: () => "router",
   }),
 
   /**
@@ -40,7 +39,7 @@ export const BernardConfigurationAnnotation = Annotation.Root({
    */
   responseModel: Annotation<string>({
     reducer: (state, input) => input ?? state,
-    default: () => "anthropic/claude-3-7-sonnet-latest",
+    default: () => "response",
   }),
 
   /**
@@ -64,19 +63,3 @@ export const BernardConfigurationAnnotation = Annotation.Root({
 });
 
 export type BernardConfiguration = typeof BernardConfigurationAnnotation.State;
-
-/**
- * Extract and validate configuration from RunnableConfig.
- */
-export function ensureBernardConfiguration(
-  config?: LangGraphRunnableConfig,
-): BernardConfiguration {
-  const configurable = config?.configurable || {};
-  return {
-    userId: configurable["userId"] || "default",
-    reactModel: configurable["reactModel"] || "anthropic/claude-3-7-sonnet-latest",
-    responseModel: configurable["responseModel"] || "anthropic/claude-3-7-sonnet-latest",
-    systemPrompt: configurable["systemPrompt"] || BERNARD_SYSTEM_PROMPT,
-    homeAssistantConfig: configurable["homeAssistantConfig"] || null,
-  };
-}
