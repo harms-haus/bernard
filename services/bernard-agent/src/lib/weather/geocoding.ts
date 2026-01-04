@@ -1,4 +1,4 @@
-import { getSettings } from "@/lib/config/settingsCache";
+import { getSettings } from "../../lib/config/settingsCache";
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
 const MISSING_USER_AGENT_REASON =

@@ -2,11 +2,11 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall } from "@/lib/home-assistant";
-import { getHAConnection } from "@/lib/home-assistant";
+import type { HomeAssistantServiceCall } from "../../lib/home-assistant";
+import { getHAConnection } from "../../lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getEntityState, getCurrentBrightness, getSupportedColorModes } from "./home-assistant-get-entity-state.tool";
-import { convertColorToSupportedFormat, getExampleColorNames, type ColorInput } from "@/lib/home-assistant";
+import { convertColorToSupportedFormat, getExampleColorNames, type ColorInput } from "../../lib/home-assistant";
 
 /**
  * Dependencies for the toggle light tool

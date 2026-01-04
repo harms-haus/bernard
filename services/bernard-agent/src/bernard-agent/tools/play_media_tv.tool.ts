@@ -5,7 +5,7 @@ import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import {
   resolveDeviceConfig,
   getSupportedLocations
-} from "@/lib/plex";
+} from "../../lib/plex";
 
 /**
  * Create the play plex media tool

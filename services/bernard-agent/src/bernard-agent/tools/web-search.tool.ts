@@ -2,8 +2,8 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { RunnableConfig } from "@langchain/core/runnables";
 
-import { getSettings } from "@/lib/config/settingsCache";
-import { logger } from "@/lib/logging";
+import { getSettings } from "../../lib/config/settingsCache";
+import { logger } from "../../lib/logging";
 import { createProgressReporter } from "./progress.js";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";

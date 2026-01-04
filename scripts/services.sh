@@ -25,7 +25,7 @@ cleanup_all_services() {
     ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard.sh stop
+    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -38,7 +38,7 @@ COLOR_REDIS='\033[0;31m'
 COLOR_SHARED='\033[1;36m'
 COLOR_BERNARD_API='\033[0;33m'
 COLOR_PROXY_API='\033[0;36m'
-COLOR_BERNARD='\033[0;32m'
+COLOR_BERNARD_AGENT='\033[0;32m'
 COLOR_BERNARD_UI='\033[0;35m'
 COLOR_VLLM='\033[0;34m'
 COLOR_WHISPER='\033[0;37m'
@@ -51,7 +51,7 @@ tail_logs() {
         "shared:${COLOR_SHARED}"
         "bernard-api:${COLOR_BERNARD_API}"
         "proxy-api:${COLOR_PROXY_API}"
-        "bernard:${COLOR_BERNARD}"
+        "bernard-agent:${COLOR_BERNARD_AGENT}"
         "bernard-ui:${COLOR_BERNARD_UI}"
         "vllm:${COLOR_VLLM}"
         "whisper:${COLOR_WHISPER}"
@@ -183,7 +183,7 @@ start() {
     ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard.sh stop
+    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -205,8 +205,8 @@ start() {
     service_ports["BERNARD-API"]="8800"
     service_hosts["PROXY-API"]="0.0.0.0"
     service_ports["PROXY-API"]="3456"
-    service_hosts["BERNARD"]="127.0.0.1"
-    service_ports["BERNARD"]="8850"
+    service_hosts["BERNARD-AGENT"]="127.0.0.1"
+    service_ports["BERNARD-AGENT"]="2024"
     service_hosts["BERNARD-UI"]="127.0.0.1"
     service_ports["BERNARD-UI"]="8810"
     service_hosts["VLLM"]="127.0.0.1"
@@ -230,8 +230,8 @@ start() {
     start_service_with_timeout "./scripts/proxy-api.sh" "PROXY-API" 20
     service_status["PROXY-API"]=$?
 
-    start_service_with_timeout "./scripts/bernard.sh" "BERNARD" 20
-    service_status["BERNARD"]=$?
+    start_service_with_timeout "./scripts/bernard-agent.sh" "BERNARD-AGENT" 20
+    service_status["BERNARD-AGENT"]=$?
 
     start_service_with_timeout "./scripts/bernard-ui.sh" "BERNARD-UI" 20
     service_status["BERNARD-UI"]=$?
@@ -254,8 +254,8 @@ start() {
     log "Verifying all services are responding..."
 
     all_healthy=true
-    for service in "BERNARD-API" "PROXY-API" "BERNARD" "VLLM" "WHISPER" "KOKORO"; do
-        if [ "$service" = "BERNARD-API" ] || [ "$service" = "PROXY-API" ] || [ "$service" = "BERNARD" ]; then
+    for service in "BERNARD-API" "PROXY-API" "BERNARD-AGENT" "VLLM" "WHISPER" "KOKORO"; do
+        if [ "$service" = "BERNARD-API" ] || [ "$service" = "PROXY-API" ] || [ "$service" = "BERNARD-AGENT" ]; then
             if ! curl -sf "${service_hosts[$service]}:${service_ports[$service]}/health" > /dev/null 2>&1; then
                 all_healthy=false
                 break
@@ -280,7 +280,7 @@ start() {
     printf "%-12s | %-8s | %-15s | %-6s\n" "Service Name" "Status" "Host Name" "Port"
     echo "---------------------------------------------------------------------"
 
-    for service in "REDIS" "SHARED" "BERNARD-API" "PROXY-API" "BERNARD" "BERNARD-UI" "VLLM" "WHISPER" "KOKORO"; do
+    for service in "REDIS" "SHARED" "BERNARD-API" "PROXY-API" "BERNARD-AGENT" "BERNARD-UI" "VLLM" "WHISPER" "KOKORO"; do
         if [ "${service_status[$service]}" -eq 0 ]; then
             status=$(colorize "${GREEN}up${NC}" "up")
         else
@@ -312,7 +312,7 @@ stop() {
     ./scripts/redis.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard.sh stop
+    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -337,8 +337,8 @@ init() {
     log "Initializing Proxy-API..."
     ./scripts/proxy-api.sh init
 
-    log "Initializing Bernard..."
-    ./scripts/bernard.sh init
+    log "Initializing Bernard-Agent..."
+    ./scripts/bernard-agent.sh init
 
     log "Initializing Bernard-UI..."
     ./scripts/bernard-ui.sh init
@@ -371,8 +371,8 @@ clean() {
     log "Cleaning Proxy-API..."
     ./scripts/proxy-api.sh clean
 
-    log "Cleaning Bernard..."
-    ./scripts/bernard.sh clean
+    log "Cleaning Bernard-Agent..."
+    ./scripts/bernard-agent.sh clean
 
     log "Cleaning Bernard-UI..."
     ./scripts/bernard-ui.sh clean
@@ -394,7 +394,7 @@ check() {
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
     mkdir -p "$LOG_DIR"
 
-    SERVICES=("shared" "bernard" "bernard-ui" "bernard-api" "proxy-api" "vllm" "whisper" "kokoro" "redis")
+    SERVICES=("shared" "bernard-agent" "bernard-ui" "bernard-api" "proxy-api" "vllm" "whisper" "kokoro" "redis")
     PIDS=()
 
     run_service_check() {

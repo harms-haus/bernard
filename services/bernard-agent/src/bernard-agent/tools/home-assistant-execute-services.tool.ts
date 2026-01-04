@@ -2,14 +2,14 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall } from "@/lib/home-assistant";
+import type { HomeAssistantServiceCall } from "../../lib/home-assistant";
 import {
   extractHomeAssistantContext,
   findEntity,
   validateEntityId,
   getDomainFromEntityId,
   getHAConnection
-} from "@/lib/home-assistant";
+} from "../../lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 
 /**

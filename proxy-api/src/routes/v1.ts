@@ -4,7 +4,7 @@ import axios from 'axios';
 import { logger } from '@/lib/logger'
 import { getAuthenticatedUser } from '@/lib/auth/auth'
 
-const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:8850';
+const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 const VLLM_URL = process.env.VLLM_URL || 'http://127.0.0.1:8860';
 const KOKORO_URL = process.env.KOKORO_URL || 'http://127.0.0.1:8880';
 const WHISPER_URL = process.env.WHISPER_URL || 'http://127.0.0.1:8870';

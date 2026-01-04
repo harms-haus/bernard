@@ -5,7 +5,7 @@ import { z } from "zod";
 import wiki from "wikipedia";
 import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
-import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/tokenCounter";
+import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "../../lib/tokenCounter";
 
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
