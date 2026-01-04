@@ -10,6 +10,7 @@ import { registerIndexRoutes } from './routes/index';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminServicesRoutes } from './routes/adminServices';
 import { getAuthenticatedUser } from './lib/auth/auth';
+import { registerLangGraphRoutes } from './routes/langgraph';
 
 const fastify = Fastify({
   logger: false, // Disable Fastify's built-in logging, we'll do our own
@@ -30,7 +31,7 @@ await fastify.register(cookie);
 fastify.addHook('preHandler', async (request, reply) => {
   const { url } = request;
 
-  // Skip auth for public routes
+  // Skip auth for public routes and LangGraph SDK endpoints (X-Api-Key auth is handled by upstream)
   if (
     url === '/' ||
     url.startsWith('/health') ||
@@ -38,7 +39,11 @@ fastify.addHook('preHandler', async (request, reply) => {
     url.startsWith('/bernard/') || // Bernard UI is handled separately
     url.startsWith('/@vite/') || // Vite client resources
     url.startsWith('/src/') || // Vite source files
-    url === '/@react-refresh' // Vite React refresh
+    url === '/@react-refresh' || // Vite React refresh
+    url === '/info' ||
+    url.startsWith('/threads') ||
+    url.startsWith('/runs') ||
+    url.startsWith('/assistants')
   ) {
     return;
   }
@@ -99,6 +104,7 @@ await fastify.register(registerV1Routes, { prefix: '/v1' });
 await fastify.register(registerApiRoutes, { prefix: '/api' });
 await fastify.register(registerBernardRoutes); // Handles /bernard/
 await fastify.register(registerAdminServicesRoutes); // Handles /admin/services/*
+await fastify.register(registerLangGraphRoutes); // Handles langgraph routes
 
 const port = Number(process.env.PORT) || 3456;
 const host = process.env.HOST || '0.0.0.0';

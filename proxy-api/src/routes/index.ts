@@ -75,5 +75,19 @@ export async function registerIndexRoutes(fastify: FastifyInstance) {
   fastify.get('/health', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };
   });
+
+  // LangGraph SDK health check endpoint
+  fastify.get('/ok', async () => {
+    return { ok: true };
+  });
+
+  // LangGraph SDK info endpoint (used by web UI to check connectivity)
+  fastify.get('/info', async () => {
+    return {
+      name: "Bernard",
+      description: "Bernard voice assistant with LangGraph",
+      version: "1.0.0",
+    };
+  });
 }
 

@@ -12,10 +12,12 @@ const WHISPER_URL = process.env.WHISPER_URL || 'http://127.0.0.1:8870';
 function passThroughAuth(req: FastifyRequest, headers: Record<string, string>) {
   const authHeader = req.headers.authorization;
   const cookie = req.headers.cookie;
+  const apiKey = req.headers['x-api-key'];
   return {
     ...headers,
     ...(authHeader ? { authorization: authHeader } : {}),
-    ...(cookie ? { cookie } : {})
+    ...(cookie ? { cookie } : {}),
+    ...(apiKey ? { 'x-api-key': apiKey as string } : {}),
   };
 }
 
@@ -119,17 +121,4 @@ export async function registerV1Routes(fastify: FastifyInstance) {
     }
   } as any);
 
-  // 6. LangGraph SDK: Threads and Runs -> Bernard Agent
-  // Use a wildcard prefix to capture all thread-related paths
-  fastify.register(proxy, {
-    upstream: BERNARD_AGENT_URL,
-    prefix: '/threads',
-    rewritePrefix: '/threads',
-    http2: false,
-    rewriteRequestHeaders: passThroughAuth,
-    errorHandler: (reply: any, error: any) => {
-      logger.error({ msg: 'Proxy Error (Threads)', error: error.message, upstream: BERNARD_AGENT_URL });
-      reply.status(502).send({ error: 'Upstream Error', message: error.message, service: 'bernard' });
-    }
-  } as any);
 }
