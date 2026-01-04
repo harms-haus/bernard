@@ -1,19 +1,17 @@
-import type { AIMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { AIMessage, BaseMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { MessagesAnnotation, StateGraph, START, END } from "@langchain/langgraph";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
 import type { StructuredToolInterface } from "@langchain/core/tools";
-
-import { getModelConfig } from "../llm/modelBuilder.js";
-import { getSettings } from "@/lib/config/settingsCache.js";
 import type { AgentContext } from "../agentContext.js";
+import { getModelConfig } from "../llm/modelBuilder.js";
+import { getSettings } from "@/src/lib/config/settingsCache.js";
 
 /**
  * Create the Bernard assistant graph with explicit ToolNode pattern.
  *
  * This implementation uses LangGraph's explicit ToolNode for tool execution,
  * enabling real-time streaming of tool calls as per the tool-call-streaming plan.
+ * Middleware (retry, logging, tracing) is applied via wrapper functions.
  */
 export function createBernardGraph(
   context: AgentContext,
@@ -26,120 +24,58 @@ export function createBernardGraph(
     return !disabledTools.some(dt => dt.name === t.name);
   }).map(t => t as unknown as StructuredToolInterface);
 
-  // Create the tool node for explicit tool execution
-  const toolsNode = new ToolNode(availableTools);
-
-  /**
-   * callModel node - Calls the LLM with tools bound
-   * This replaces the implicit tool execution via reactAgent middleware
-   */
-   const callModel = async (
-     state: typeof MessagesAnnotation.State,
-     _config: RunnableConfig,
-   ): Promise<typeof MessagesAnnotation.Update> => {
+  const callReactModel = async (
+    state: typeof MessagesAnnotation.State,
+    _config: RunnableConfig,
+  ): Promise<typeof MessagesAnnotation.Update> => {
     const settings = await getSettings();
-    const modelConfig = await getModelConfig(settings.models.router);
+    const modelConfig = await getModelConfig(settings.models.router, availableTools);
+    const ai_message = await modelConfig.invoke(state.messages) as AIMessage;
+    const messages = [...state.messages, ai_message];
 
-    // Get system prompt for router (same as in react.agent.ts)
-    const now = new Date();
-    const timeStr = now.toLocaleString(undefined, { timeZone: process.env.TZ || undefined });
+    // Execute tools and collect results
+    if (ai_message.tool_calls && ai_message.tool_calls.length > 0) {
+      for (const tool_call of ai_message.tool_calls) {
+        // Execute the tool with the generated arguments
+        const tool = availableTools.find(t => t.name === tool_call.name);
+        if (tool) {
+          const toolResult = await tool.invoke(tool_call.args) as BaseMessage;
+          messages.push(toolResult);
+        }
+      }
+    }
 
-    const systemPrompt = `You are a Tool Executor. Your job is to choose and call the appropriate tool(s) for the user's query. You are not allowed to chat.
-
-Current time: ${timeStr}
-
-Instructions:
-1. Analyze the user's query to determine what information is needed and/or what actions are needed to be taken.
-2. Use available tools to gather required data and/or perform the requested actions.
-3. When you have sufficient information and/or have performed all requested actions, respond with no tool calls.
-4. Do not generate response text - only gather data and/or perform actions.
-
-Call tools as needed, then respond with no tool calls when you are done.`;
-
-    // Bind tools to the model and invoke
-    // LanguageModelLike is a union type that doesn't include bindTools, so we need to cast
-    const modelWithTools = (modelConfig as unknown as { bindTools(tools: StructuredToolInterface[]): { invoke(input: unknown[]): Promise<BaseMessage> } }).bindTools(availableTools);
-
-    const response = await modelWithTools.invoke([
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      ...state.messages,
-    ]);
-
-    return { messages: [response] };
+    return { messages };
   };
 
-  /**
-   * responseNode - Calls the LLM without tools (for final response generation)
-   */
-   const responseNode = async (
-     state: typeof MessagesAnnotation.State,
-     _config: RunnableConfig,
-   ): Promise<typeof MessagesAnnotation.Update> => {
+  const callResponseModel = async (
+    state: typeof MessagesAnnotation.State,
+    _config: RunnableConfig,
+  ): Promise<typeof MessagesAnnotation.Update> => {
     const settings = await getSettings();
-    const modelConfig = await getModelConfig(settings.models.response);
-
-    // Get system prompt for response agent
-    const now = new Date();
-    const timeStr = now.toLocaleString(undefined, { timeZone: process.env.TZ || undefined });
-
-    const systemPrompt = `You are a helpful voice assistant. Respond to the user in a natural, conversational way.
-
-Current time: ${timeStr}
-
-Use the provided information from tool calls to craft a helpful, informative response.
-Do not mention that you used tools - just provide the answer directly.`;
-
-    const model = modelConfig;
-
-    const response = await model.invoke([
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      ...state.messages,
-    ]);
-
-    return { messages: [response] };
+    const modelConfig = await getModelConfig(settings.models.response, []);
+    const ai_message = await modelConfig.invoke(state.messages) as AIMessage;
+    const messages = [...state.messages, ai_message];
+    return { messages };
   };
 
-  /**
-   * routeModelOutput - Determines where to route after callModel
-   * Returns "tools" if the LLM made tool calls, otherwise "response"
-   */
-  function routeModelOutput(state: typeof MessagesAnnotation.State): typeof END | "tools" | "response" {
+  const shouldContinue = (state: typeof MessagesAnnotation.State) => {
     const lastMessage = state.messages[state.messages.length - 1];
-
-    // Check if it's an AIMessage with tool_calls
-    if (!lastMessage || !("tool_calls" in lastMessage)) {
-      return "response";
-    }
-
+    if (!lastMessage || !("tool_calls" in lastMessage)) return "response";
     const toolCalls = (lastMessage as AIMessage).tool_calls;
-    if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
-      return "tools";
-    }
-
+    if (toolCalls && toolCalls.length > 0) return "tools";
     return "response";
-  }
+  };
 
-  // Build the graph with explicit ToolNode pattern
+  // Build the graph with explicit ToolNode pattern and middleware
   const graph = new StateGraph(MessagesAnnotation)
-    // Define the nodes
-    .addNode("callModel", callModel)
-    .addNode("tools", toolsNode)
-    .addNode("response", responseNode)
-    // Set the entrypoint
-    .addEdge(START, "callModel")
-    // Conditional edges from callModel - route based on tool calls
-    .addConditionalEdges("callModel", routeModelOutput, {
-      tools: "tools",
+    .addNode("react", callReactModel)
+    .addNode("response", callResponseModel)
+    .addEdge(START, "react")
+    .addConditionalEdges("react", shouldContinue, {
+      tools: "react",
       response: "response",
     })
-    // After tools, loop back to callModel for next iteration
-    .addEdge("tools", "callModel")
     // Response node ends the graph
     .addEdge("response", END);
 
@@ -170,26 +106,14 @@ export async function *runBernardGraph(
     for await (const [mode, chunk] of streamResult) {
       if (mode === "messages") {
         const [message, metadata] = chunk as [BaseMessage, Record<string, unknown>];
-        // Extract message content - handle both string and structured content
-        if (message && typeof message.content === "string") {
-          yield { type: mode, content: message.content, metadata };
-        } else if (message && Array.isArray(message.content)) {
-          // Handle content arrays (e.g., from tool results)
-          yield { type: mode, content: message.content, metadata };
-        } else {
-          yield { type: mode, content: message, metadata };
+        if (message) {
+          const content = typeof message.content === "string" ? message.content : 
+                          (Array.isArray(message.content) ? message.content : "");
+          yield { type: mode, content, metadata };
         }
       } else if (mode === "updates") {
-        for (const [_node, data] of Object.entries(chunk as Record<string, unknown>)) {
-          if (data && typeof data === "object" && "messages" in data) {
-            const messagesData = (data as { messages: unknown[] }).messages;
-            if (messagesData && messagesData.length > 0) {
-              const [message] = messagesData;
-              if (message && typeof (message as { content?: unknown }).content === "string") {
-                yield { type: mode, content: (message as { content: string }).content };
-              }
-            }
-          }
+        for (const [node, data] of Object.entries(chunk as Record<string, unknown>)) {
+          yield { type: mode, content: data, metadata: { node } };
         }
       } else if (mode === "custom") {
         // Forward custom data (tool progress) directly

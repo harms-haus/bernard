@@ -2,18 +2,18 @@ import 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StreamProvider, useStream } from './StreamProvider';
+import { StreamProvider, useStreamContext } from './StreamProvider';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch as any;
 
 const TestComponent = () => {
-  const { messages, submit, isLoading, error, stop } = useStream();
+  const { messages, submit, isLoading, error, stop } = useStreamContext();
   return (
     <div>
       <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
-      <div data-testid="error">{error?.message || 'no-error'}</div>
+      <div data-testid="error">{(error as any)?.message || 'no-error'}</div>
       <div data-testid="message-count">{messages.length}</div>
       <button onClick={() => submit({ messages: [] })}>Submit</button>
       <button onClick={stop} data-testid="stop-button">Stop</button>
@@ -41,7 +41,7 @@ describe('StreamProvider', () => {
 
   it('provides initial empty messages', () => {
     render(
-      <StreamProvider>
+      <StreamProvider apiUrl="http://localhost:2024" assistantId="test">
         <TestComponent />
       </StreamProvider>
     );
@@ -61,7 +61,7 @@ describe('StreamProvider', () => {
     }), 50)));
 
     render(
-      <StreamProvider>
+      <StreamProvider apiUrl="http://localhost:2024" assistantId="test">
         <TestComponent />
       </StreamProvider>
     );
@@ -81,7 +81,7 @@ describe('StreamProvider', () => {
     });
 
     render(
-      <StreamProvider>
+      <StreamProvider apiUrl="http://localhost:2024" assistantId="test">
         <TestComponent />
       </StreamProvider>
     );
@@ -100,7 +100,7 @@ describe('StreamProvider', () => {
     });
 
     render(
-      <StreamProvider>
+      <StreamProvider apiUrl="http://localhost:2024" assistantId="test">
         <TestComponent />
       </StreamProvider>
     );
@@ -124,7 +124,7 @@ describe('StreamProvider', () => {
     });
 
     render(
-      <StreamProvider>
+      <StreamProvider apiUrl="http://localhost:2024" assistantId="test">
         <TestComponent />
       </StreamProvider>
     );
@@ -135,13 +135,13 @@ describe('StreamProvider', () => {
   });
 });
 
-describe('useStream hook', () => {
+describe('useStreamContext hook', () => {
   it('throws error when used outside StreamProvider', () => {
     // Suppress console.error for this test
     const originalError = console.error;
     console.error = vi.fn();
 
-    expect(() => render(<TestComponent />)).toThrow('useStream must be used within a StreamProvider');
+    expect(() => render(<TestComponent />)).toThrow('useStreamContext must be used within a StreamProvider');
 
     console.error = originalError;
   });

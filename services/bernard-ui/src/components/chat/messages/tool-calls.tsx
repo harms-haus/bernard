@@ -1,4 +1,7 @@
-import type { AIMessage } from '@langchain/langgraph-sdk';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import type { AIMessage, ToolMessage } from '@langchain/langgraph-sdk';
 
 function isComplexValue(value: any): boolean {
   return Array.isArray(value) || (typeof value === 'object' && value !== null);
@@ -47,6 +50,124 @@ export function ToolCalls({ toolCalls }: { toolCalls: AIMessage['tool_calls'] })
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function ToolResult({ message }: { message: ToolMessage }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  let parsedContent: any;
+  let isJsonContent = false;
+
+  try {
+    if (typeof message.content === 'string') {
+      parsedContent = JSON.parse(message.content);
+      isJsonContent = true;
+    }
+  } catch {
+    // Content is not JSON, use as is
+    parsedContent = message.content;
+  }
+
+  const contentStr = isJsonContent
+    ? JSON.stringify(parsedContent, null, 2)
+    : String(message.content);
+  const contentLines = contentStr.split('\n');
+  const shouldTruncate = contentLines.length > 4 || contentStr.length > 500;
+  const displayedContent =
+    shouldTruncate && !isExpanded
+      ? contentStr.length > 500
+        ? contentStr.slice(0, 500) + '...'
+        : contentLines.slice(0, 4).join('\n') + '\n...'
+      : contentStr;
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <div className="bg-muted px-4 py-2 border-b border-border">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {message.name ? (
+            <h3 className="font-medium">
+              Tool Result:{' '}
+              <code className="bg-background px-2 py-1 rounded">{message.name}</code>
+            </h3>
+          ) : (
+            <h3 className="font-medium">Tool Result</h3>
+          )}
+          {message.tool_call_id && (
+            <code className="ml-2 text-sm bg-background px-2 py-1 rounded">
+              {message.tool_call_id}
+            </code>
+          )}
+        </div>
+      </div>
+      <motion.div
+        className="min-w-full bg-muted/50"
+        initial={false}
+        animate={{ height: 'auto' }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="p-3">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={isExpanded ? 'expanded' : 'collapsed'}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {isJsonContent ? (
+                <table className="min-w-full divide-y divide-border">
+                  <tbody className="divide-y divide-border">
+                    {(Array.isArray(parsedContent)
+                      ? isExpanded
+                        ? parsedContent
+                        : parsedContent.slice(0, 5)
+                      : Object.entries(parsedContent)
+                    ).map((item, argIdx) => {
+                      const [key, value] = Array.isArray(parsedContent)
+                        ? [argIdx, item]
+                        : [item[0], item[1]];
+                      return (
+                        <tr key={argIdx}>
+                          <td className="px-4 py-2 text-sm font-medium whitespace-nowrap">
+                            {String(key)}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-muted-foreground">
+                            {isComplexValue(value) ? (
+                              <code className="bg-muted rounded px-2 py-1 font-mono text-sm break-all">
+                                {JSON.stringify(value, null, 2)}
+                              </code>
+                            ) : (
+                              String(value)
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <code className="text-sm block whitespace-pre-wrap">{displayedContent}</code>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        {((shouldTruncate && !isJsonContent) ||
+          (isJsonContent &&
+            Array.isArray(parsedContent) &&
+            parsedContent.length > 5)) && (
+          <motion.button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full py-2 flex items-center justify-center border-t-[1px] border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all ease-in-out duration-200 cursor-pointer"
+            initial={{ scale: 1 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </motion.button>
+        )}
+      </motion.div>
     </div>
   );
 }
