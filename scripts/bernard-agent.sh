@@ -80,7 +80,7 @@ start() {
     
     # Start in background with proper process group
     cd "$DIR"
-    nohup npx @langchain/langgraph-cli dev --port $PORT > "$LOG_DIR/bernard-agent.log" 2>&1 &
+    nohup npx @langchain/langgraph-cli dev --port $PORT --host 127.0.0.1 > "$LOG_DIR/bernard-agent.log" 2>&1 &
     BGPID=$!
     
     # Give the server a moment to start

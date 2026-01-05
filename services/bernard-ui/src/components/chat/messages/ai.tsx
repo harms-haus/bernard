@@ -34,12 +34,11 @@ function ContentCopyable({ content, disabled }: { content: string; disabled: boo
   );
 }
 
-export function AssistantMessage({ message }: { message: Message }) {
+export function AssistantMessage({ message, onRegenerate }: { message: Message; onRegenerate?: () => void }) {
   const contentString = getContentString(message.content);
 
-  // Placeholder for regeneration
   const handleRegenerate = () => {
-    // TODO: Implement regeneration
+    onRegenerate?.();
   };
 
   const isToolResult = message.type === 'tool';

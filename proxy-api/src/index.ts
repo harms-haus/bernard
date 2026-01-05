@@ -20,7 +20,7 @@ const fastify = Fastify({
 // Register plugins
 await fastify.register(cors, {
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 });
 
 await fastify.register(cookie);

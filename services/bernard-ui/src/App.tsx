@@ -19,6 +19,7 @@ import { Tasks } from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import { StatusPage } from './pages/StatusPage'
 import { DialogManagerProvider, ToastManagerProvider } from './components'
+import { ThreadProvider } from './providers/ThreadProvider'
 
 // Admin protected route component
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -33,50 +34,52 @@ function App() {
       <DarkModeProvider>
         <DialogManagerProvider>
           <ToastManagerProvider>
-            <Router basename="/bernard/">
-            <Routes>
-              <Route path="/login" element={<Login />} />
+            <ThreadProvider>
+              <Router basename="/bernard/">
+                <Routes>
+                  <Route path="/login" element={<Login />} />
 
-              {/* User routes with navigation */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <UserLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Home />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="tasks" element={<Tasks />} />
-                <Route path="tasks/:id" element={<TaskDetail />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="keys" element={<Keys />} />
-                <Route path="about" element={<About />} />
-              </Route>
+                  {/* User routes with navigation */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <UserLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Home />} />
+                    <Route path="chat" element={<Chat />} />
+                    <Route path="tasks" element={<Tasks />} />
+                    <Route path="tasks/:id" element={<TaskDetail />} />
+                    <Route path="profile" element={<Profile />} />
+                    <Route path="keys" element={<Keys />} />
+                    <Route path="about" element={<About />} />
+                  </Route>
 
-              {/* Public status page */}
-              <Route path="/status" element={<StatusPage />} />
+                  {/* Public status page */}
+                  <Route path="/status" element={<StatusPage />} />
 
-              {/* Admin routes */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute>
-                    <AdminProtectedRoute>
-                      <AdminLayout />
-                    </AdminProtectedRoute>
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Dashboard />} />
-                <Route path="models" element={<Models />} />
-                <Route path="services" element={<Services />} />
-                <Route path="users" element={<Users />} />
-                <Route path="automations" element={<Automations />} />
-              </Route>
-            </Routes>
-          </Router>
+                  {/* Admin routes */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute>
+                        <AdminProtectedRoute>
+                          <AdminLayout />
+                        </AdminProtectedRoute>
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Dashboard />} />
+                    <Route path="models" element={<Models />} />
+                    <Route path="services" element={<Services />} />
+                    <Route path="users" element={<Users />} />
+                    <Route path="automations" element={<Automations />} />
+                  </Route>
+                </Routes>
+              </Router>
+            </ThreadProvider>
           </ToastManagerProvider>
         </DialogManagerProvider>
       </DarkModeProvider>

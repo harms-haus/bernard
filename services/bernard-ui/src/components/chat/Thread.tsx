@@ -6,6 +6,7 @@ import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useStreamContext } from '../../providers/StreamProvider';
+import { useThreads } from '../../providers/ThreadProvider';
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { ConversationHistory } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
@@ -15,7 +16,6 @@ import { ArrowDown, PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, 
 import { toast } from 'sonner';
 import type { Message } from '@langchain/langgraph-sdk';
 
-// Hook to check if sidebar is open
 function useSidebarOpen() {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -44,11 +44,22 @@ export function Thread() {
   const threadId = searchParams.get('threadId');
   
   const { messages, submit, isLoading, stop } = useStreamContext();
+  const { getThreads, createNewThread } = useThreads();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      getThreads();
+    }
+  }, [isLoading, messages.length, getThreads]);
   const sidebarOpen = useSidebarOpen();
   
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
+
+  useEffect(() => {
+    setInput('');
+  }, [threadId]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -64,9 +75,13 @@ export function Thread() {
     setInput('');
   };
 
-  const handleNewChat = () => {
-    const newId = `thread_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-    setSearchParams({ threadId: newId });
+  const handleNewChat = async () => {
+    try {
+      const newId = await createNewThread();
+      setSearchParams({ threadId: newId });
+    } catch (error) {
+      console.error('Failed to create new chat:', error);
+    }
   };
 
   const handleCopyChatHistory = async () => {
@@ -181,9 +196,22 @@ export function Thread() {
               
               {messages.map((message, index) => (
                 message.type === 'human' ? (
-                  <HumanMessage key={message.id || `human-${index}`} message={message} />
+                  <HumanMessage 
+                    key={message.id || `human-${index}`} 
+                    message={message} 
+                    onEdit={(newContent) => {
+                      const newMsg: Message = { ...message, content: newContent };
+                      submit({ messages: [...messages.slice(0, index), newMsg] });
+                    }}
+                  />
                 ) : (
-                  <AssistantMessage key={message.id || `ai-${index}`} message={message} />
+                  <AssistantMessage 
+                    key={message.id || `ai-${index}`} 
+                    message={message} 
+                    onRegenerate={() => {
+                      submit({ messages: messages.slice(0, index) });
+                    }}
+                  />
                 )
               ))}
               
