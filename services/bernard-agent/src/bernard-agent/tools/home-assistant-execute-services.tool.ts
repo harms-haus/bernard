@@ -2,15 +2,20 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall } from "../../lib/home-assistant";
+import type { HomeAssistantServiceCall } from "@/lib/home-assistant";
 import {
   extractHomeAssistantContext,
   findEntity,
   validateEntityId,
   getDomainFromEntityId,
-  getHAConnection
-} from "../../lib/home-assistant";
+  getHAConnection,
+  verifyHomeAssistantConfigured
+} from "@/lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
+import { ToolFactory } from "./types";
+import { getSettings } from "@/dist/lib/config/settingsCache";
+
+const TOOL_NAME = "execute_home_assistant_services";
 
 /**
  * Dependencies for the execute home assistant services tool
@@ -68,7 +73,7 @@ export function createExecuteHomeAssistantServicesTool(
       return results.join('\n\n');
     },
     {
-      name: "execute_home_assistant_services",
+      name: TOOL_NAME,
       description: "Execute services on Home Assistant entities to control your smart home devices. Common tasks include turning lights on/off, adjusting light brightness and color, playing/pausing media players, and controlling other smart home entities. Service calls are scheduled for execution by Home Assistant.",
       schema: z.object({
         list: z.array(
@@ -171,3 +176,14 @@ async function executeSingleServiceCall(
 export function createExecuteHomeAssistantServicesToolInstance(restConfig?: HARestConfig) {
   return createExecuteHomeAssistantServicesTool(restConfig);
 }
+
+export const executeHomeAssistantServicesToolFactory: ToolFactory = async () => {
+  const isValid = await verifyHomeAssistantConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };
+  }
+  const settings = await getSettings();
+  const haConfig = settings.services?.homeAssistant;
+  const tool = createExecuteHomeAssistantServicesTool(haConfig);
+  return { ok: true, tool: tool, name: tool.name };
+};

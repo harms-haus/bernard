@@ -12,50 +12,79 @@ import { AIMessage } from "@langchain/core/messages";
 import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 import { initChatModel } from "langchain/chat_models/universal";
 
-import { BernardStateAnnotation } from "./state.js";
-import { BernardConfigurationAnnotation } from "./configuration.js";
-import { getSettings } from "../lib/config/settingsCache";
-import { resolveModel } from "../lib/config/models";
+import { BernardStateAnnotation } from "./state";
+import { BernardConfigurationAnnotation } from "./configuration";
+import { getSettings } from "@/lib/config/settingsCache";
+import { resolveModel } from "@/lib/config/models";
 
 import {
-  webSearchTool,
-  getWebsiteContentTool,
-  wikipediaSearchTool,
-  wikipediaEntryTool,
-  getWeatherDataTool,
-  createListHAEntitiesTool,
-  createExecuteHomeAssistantServicesTool,
-  createToggleLightTool,
-  createGetHistoricalStateTool,
-} from "./tools/index.js";
-import { buildReactSystemPrompt } from "./prompts/react.prompt.js";
+  webSearchToolFactory,
+  getWebsiteContentToolFactory,
+  wikipediaSearchToolFactory,
+  wikipediaEntryToolFactory,
+  getWeatherDataToolFactory,
+  listHAEntitiesToolFactory,
+  executeHomeAssistantServicesToolFactory,
+  toggleLightToolFactory,
+  getHistoricalStateToolFactory,
+  ToolFactory,
+} from "./tools";
+import { buildReactSystemPrompt } from "./prompts/react.prompt";
+
+
+interface DisabledTool {
+  name: string;
+  reason?: string | undefined;
+}
+
+async function validateAndGetTools(): Promise<{
+  validTools: any[];
+  disabledTools: DisabledTool[];
+}> {
+  const disabledTools: DisabledTool[] = [];
+  const validTools: any[] = [];
+
+  const toolDefinitions: ToolFactory[] = [
+    webSearchToolFactory,
+    getWebsiteContentToolFactory,
+    wikipediaSearchToolFactory,
+    wikipediaEntryToolFactory,
+    getWeatherDataToolFactory,
+    listHAEntitiesToolFactory,
+    executeHomeAssistantServicesToolFactory,
+    toggleLightToolFactory,
+    getHistoricalStateToolFactory,
+  ];
+
+  for (const factory of toolDefinitions) {
+    if (factory) {
+      const result = await factory();
+
+      if (result.ok) {
+        validTools.push(result.tool);
+      } else {
+        const disabledTool: DisabledTool = { name: result.name, reason: result.reason };
+        disabledTools.push(disabledTool);
+      }
+    }
+  }
+
+  return { validTools, disabledTools };
+}
 
 async function callReactModel(
   state: typeof BernardStateAnnotation.State,
   _config: LangGraphRunnableConfig,
 ) {
-  const settings = await getSettings();
-  const ha = settings.services?.homeAssistant;
-
   const {id, options} = await resolveModel("router");
   const llm = await initChatModel(id, options);
 
-  const tools = [
-    webSearchTool,
-    getWebsiteContentTool,
-    wikipediaSearchTool,
-    wikipediaEntryTool,
-    getWeatherDataTool,
-    createListHAEntitiesTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createExecuteHomeAssistantServicesTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createToggleLightTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createGetHistoricalStateTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-  ];
+  const { validTools, disabledTools } = await validateAndGetTools();
 
-  const boundLLM = llm.bindTools ? llm.bindTools(tools) : llm;
+  const boundLLM = llm.bindTools ? llm.bindTools(validTools) : llm;
 
   const result = await boundLLM.invoke(
-    [{ role: "system", content: buildReactSystemPrompt(new Date(), [], []) }, ...state.messages],
+    [{ role: "system", content: buildReactSystemPrompt(new Date(), [], disabledTools) }, ...state.messages],
     { configurable: { model: id } }
   );
 
@@ -83,22 +112,9 @@ async function executeTools(
   state: typeof BernardStateAnnotation.State,
   _config: LangGraphRunnableConfig,
 ) {
-  const settings = await getSettings();
-  const ha = settings.services?.homeAssistant;
+  const { validTools } = await validateAndGetTools();
 
-  const tools = [
-    webSearchTool,
-    getWebsiteContentTool,
-    wikipediaSearchTool,
-    wikipediaEntryTool,
-    getWeatherDataTool,
-    createListHAEntitiesTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createExecuteHomeAssistantServicesTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createToggleLightTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-    createGetHistoricalStateTool(ha ? { baseUrl: ha.baseUrl, accessToken: ha.accessToken ?? "" } : undefined),
-  ];
-
-  const toolNode = new ToolNode(tools);
+  const toolNode = new ToolNode(validTools);
   const result = await toolNode.invoke(state, { configurable: {} });
 
   return { messages: result.messages };

@@ -1,4 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { getHAConnection } from "./websocket-client";
+import { getStates } from "home-assistant-js-websocket";
 
 /**
  * Home Assistant entity representation
@@ -10,6 +12,49 @@ export interface HomeAssistantEntity {
   aliases: string[];
   attributes?: Record<string, unknown>;
 }
+
+/**
+ * Home Assistant entity state object
+ */
+export interface HAEntityState {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
+  last_changed?: string;
+  last_updated?: string;
+  context?: unknown;
+}
+
+/**
+ * Cache for entity states to avoid multiple fetches
+ */
+export class EntityStateCache {
+  private cache = new Map<string, { state: HAEntityState; timestamp: number }>();
+  private readonly CACHE_TTL_MS = 30000; // 30 seconds
+
+  get(key: string): HAEntityState | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+
+    const now = Date.now();
+    if (now - entry.timestamp > this.CACHE_TTL_MS) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return entry.state;
+  }
+
+  set(key: string, state: HAEntityState): void {
+    this.cache.set(key, { state, timestamp: Date.now() });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+export const entityStateCache = new EntityStateCache();
 
 /**
  * Home Assistant service call representation
@@ -238,4 +283,169 @@ export function formatEntitiesForDisplay(entities: HomeAssistantEntity[]): strin
   });
   
   return `Available Home Assistant entities:\n${lines.join('\n')}`;
+}
+/**
+ * Fetch a single entity's state with attributes from Home Assistant
+ */
+export async function getEntityState(
+  baseUrl: string,
+  accessToken: string,
+  entityId: string
+): Promise<HAEntityState | null> {
+  const cacheKey = `${baseUrl}:${entityId}`;
+
+  // Check cache first
+  const cached = entityStateCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const connection = await getHAConnection(baseUrl, accessToken);
+
+    // Use WebSocket API to get all states and filter to our entity
+    const states = await getStates(connection);
+
+    const entityState = states.find(state => state.entity_id === entityId);
+    if (!entityState) {
+      return null;
+    }
+
+    // Convert to our interface format
+    const result: HAEntityState = {
+      entity_id: entityState.entity_id,
+      state: entityState.state,
+      attributes: entityState.attributes,
+      ...(entityState.last_changed && { last_changed: entityState.last_changed }),
+      ...(entityState.last_updated && { last_updated: entityState.last_updated }),
+      ...(entityState.context !== undefined ? { context: entityState.context } : {})
+    };
+
+    // Cache the result
+    entityStateCache.set(cacheKey, result);
+
+    return result;
+
+  } catch (error) {
+    console.error('[HA Entity State] Failed to fetch entity state:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get entity state using REST API as fallback (not preferred but available)
+ */
+export async function getEntityStateREST(
+  baseUrl: string,
+  accessToken: string,
+  entityId: string
+): Promise<HAEntityState | null> {
+  const cacheKey = `${baseUrl}:${entityId}`;
+
+  // Check cache first
+  const cached = entityStateCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const url = `${baseUrl}/api/states/${entityId}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Entity not found
+      }
+      throw new Error(`HA API error: ${response.status} ${response.statusText}`);
+    }
+
+    const entityState = await response.json() as {
+      entity_id: string;
+      state: string;
+      attributes: Record<string, unknown>;
+      last_changed?: string;
+      last_updated?: string;
+      context?: unknown;
+    };
+
+    const result: HAEntityState = {
+      entity_id: entityState.entity_id,
+      state: entityState.state,
+      attributes: entityState.attributes,
+      ...(entityState.last_changed && { last_changed: entityState.last_changed }),
+      ...(entityState.last_updated && { last_updated: entityState.last_updated }),
+      ...(entityState.context !== undefined ? { context: entityState.context } : {})
+    };
+
+    // Cache the result
+    entityStateCache.set(cacheKey, result);
+
+    return result;
+
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout while fetching entity state');
+    }
+    console.error('[HA Entity State REST] Failed to fetch entity state:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get multiple entity states efficiently
+ */
+export async function getMultipleEntityStates(
+  baseUrl: string,
+  accessToken: string,
+  entityIds: string[]
+): Promise<Map<string, HAEntityState>> {
+  try {
+    const connection = await getHAConnection(baseUrl, accessToken);
+    const states = await getStates(connection);
+
+    const result = new Map<string, HAEntityState>();
+
+    for (const entityId of entityIds) {
+      const state = states.find(s => s.entity_id === entityId);
+      if (state) {
+        const entityState: HAEntityState = {
+          entity_id: state.entity_id,
+          state: state.state,
+          attributes: state.attributes,
+          last_changed: state.last_changed,
+          last_updated: state.last_updated,
+          context: state.context
+        };
+
+        const cacheKey = `${baseUrl}:${entityId}`;
+        entityStateCache.set(cacheKey, entityState);
+        result.set(entityId, entityState);
+      }
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('[HA Entity State] Failed to fetch multiple entity states:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear the entity state cache
+ */
+export function clearEntityStateCache(): void {
+  entityStateCache.clear();
 }

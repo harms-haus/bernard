@@ -1,13 +1,14 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { createProgressReporter } from "./progress.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
-import { logger } from "../../lib/logging";
-import { countTokensInText, sliceTokensFromText } from "../../lib/tokenCounter";
-import { getCachedContent, setCachedContent } from "../../lib/website";
+import { logger } from "@/lib/logging";
+import { countTokensInText, sliceTokensFromText } from "@/lib/tokenCounter";
+import { getCachedContent, setCachedContent } from "@/lib/website";
+import { verifySearchConfigured } from "./web-search.tool";
+import { ToolFactory } from "./types";
 
 const FETCH_TIMEOUT_MS = 10000; // 10 seconds
 const DEFAULT_START_TOKENS = 0;
@@ -115,7 +116,6 @@ function validateUri(uri: string): boolean {
  */
 async function getWebsiteContent(
   input: GetWebsiteContentInput,
-  progress?: ReturnType<typeof createProgressReporter>,
 ): Promise<string> {
   const {
     uri,
@@ -146,10 +146,6 @@ async function getWebsiteContent(
     let cachedContent = getCachedContent(uri, forceRefresh);
 
     if (!cachedContent) {
-      if (progress) {
-        progress.progress(1, 2, `Fetching content from ${uri}`);
-      }
-
       logger.info('Fetching website content: %s', uri);
 
       // Fetch HTML
@@ -170,8 +166,6 @@ async function getWebsiteContent(
         timestamp: Date.now()
       };
       setCachedContent(uri, cachedContent);
-    } else if (progress) {
-      progress.progress(1, 2, 'Processing content');
     }
 
     // Count total tokens in the full content
@@ -201,18 +195,11 @@ async function getWebsiteContent(
       hasMore
     };
 
-    if (progress) {
-      progress.complete(`Retrieved ${result.title}: ${result.returnedTokens}/${result.totalTokens} tokens`);
-    }
-
     // Return human-readable summary
     return `**${result.title}**\n\n${result.content}\n\n---\nURL: ${result.url}${result.byline ? `\nBy: ${result.byline}` : ''}\nTokens: ${result.returnedTokens}/${result.totalTokens} (start: ${result.startTokens}, read: ${result.readTokens})${result.hasMore ? ' - More content available' : ''}`;
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (progress) {
-      progress.error(error instanceof Error ? error : new Error(errorMessage));
-    }
     logger.error('getWebsiteContent failed: %s', errorMessage);
     return `Error: Failed to retrieve website content: ${errorMessage}`;
   }
@@ -224,20 +211,15 @@ const getWebsiteContentToolImpl = tool(
     { uri, startTokens, readTokens, forceRefresh }: GetWebsiteContentInput,
     config: RunnableConfig,
   ) => {
-    const progress = createProgressReporter(config, "get_website_content");
-
-    progress.start(`Fetching content from "${uri}"`);
-
     try {
       const result = await getWebsiteContent({
         uri,
         startTokens: startTokens ?? DEFAULT_START_TOKENS,
         readTokens: readTokens ?? DEFAULT_READ_TOKENS,
         forceRefresh: forceRefresh ?? false,
-      }, progress);
+      });
       return result;
     } catch (error) {
-      progress.error(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   },
@@ -256,3 +238,17 @@ const getWebsiteContentToolImpl = tool(
 export const getWebsiteContentTool = Object.assign(getWebsiteContentToolImpl, {
   interpretationPrompt: `When the user asks about website content, summarize what was extracted and mention if more content is available.`
 });
+
+export const getWebsiteContentToolDefinition = {
+  name: "get_website_content",
+  type: "static" as const,
+  tool: getWebsiteContentTool
+};
+
+export const getWebsiteContentToolFactory: ToolFactory = async () => {
+  const isValid = await verifySearchConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: getWebsiteContentTool.name, reason: isValid.reason ?? "" };
+  }
+  return { ok: true, tool: getWebsiteContentTool, name: getWebsiteContentTool.name };
+};

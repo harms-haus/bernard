@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
@@ -9,7 +8,8 @@ import wiki from "wikipedia";
 const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
 import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
-import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "../../lib/tokenCounter";
+import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/tokenCounter";
+import { ToolFactory } from "./types";
 
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
@@ -72,7 +72,6 @@ const wikipediaEntryToolImpl = tool(
   }
 );
 
-export const wikipediaEntryTool = Object.assign(wikipediaEntryToolImpl, {
-  interpretationPrompt: ``
-});
-/* eslint-enable @typescript-eslint/unbound-method */
+export const wikipediaEntryToolFactory: ToolFactory = async () => {
+  return { ok: true, tool: wikipediaEntryToolImpl, name: wikipediaEntryToolImpl.name };
+};

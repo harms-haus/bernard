@@ -6,6 +6,8 @@
  * Includes a comprehensive color name database for common colors.
  */
 
+import { HAEntityState } from "./entities";
+
 /**
  * Color space representations
  */
@@ -523,4 +525,59 @@ export function convertColorToSupportedFormat(
  */
 export function getExampleColorNames(): string[] {
   return ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'white', 'warm white', 'cool white'];
+}
+
+/**
+ * Check if an entity supports color modes for lights
+ */
+export function getSupportedColorModes(entityState: HAEntityState): string[] {
+  if (entityState.attributes?.['supported_color_modes']) {
+    const modes = entityState.attributes['supported_color_modes'];
+    return Array.isArray(modes)
+      ? modes as string[]
+      : [modes as string];
+  }
+
+  // Fallback for older HA versions or entities without explicit color mode support
+  if (entityState.attributes?.['rgb_color'] !== undefined) {
+    return ['rgb'];
+  }
+  if (entityState.attributes?.['xy_color'] !== undefined) {
+    return ['xy'];
+  }
+  if (entityState.attributes?.['hs_color'] !== undefined) {
+    return ['hs'];
+  }
+  if (entityState.attributes?.['color_temp_kelvin'] !== undefined || entityState.attributes?.['color_temp'] !== undefined) {
+    return ['color_temp_kelvin'];
+  }
+
+  return [];
+}
+
+/**
+ * Get current brightness of a light entity (0-255 scale)
+ */
+export function getCurrentBrightness(entityState: HAEntityState): number | null {
+  const brightness = entityState.attributes?.['brightness'];
+  if (typeof brightness === 'number') {
+    return brightness;
+  }
+  return null;
+}
+
+/**
+ * Get current color temperature in Kelvin
+ */
+export function getCurrentColorTemp(entityState: HAEntityState): number | null {
+  const colorTempKelvin = entityState.attributes?.['color_temp_kelvin'];
+  if (typeof colorTempKelvin === 'number') {
+    return colorTempKelvin;
+  }
+  // Convert from mireds if available
+  const colorTemp = entityState.attributes?.['color_temp'];
+  if (typeof colorTemp === 'number') {
+    return Math.round(1000000 / colorTemp);
+  }
+  return null;
 }

@@ -2,9 +2,9 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { RunnableConfig } from "@langchain/core/runnables";
 
-import { getSettings } from "../../lib/config/settingsCache";
-import { logger } from "../../lib/logging";
-import { createProgressReporter } from "./progress.js";
+import { getSettings } from "@/lib/config/settingsCache";
+import { logger } from "@/lib/logging";
+import { ToolFactory } from "./types";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";
 const DEFAULT_RESULT_COUNT = 3;
@@ -35,6 +35,7 @@ type SearchResultItem = { title?: string; url?: string; description?: string };
 
 const MISSING_KEY_REASON = "Missing search API configuration.";
 const INVALID_URL_REASON = "Invalid search API URL (must be an absolute URL).";
+const MISSING_CONFIG_REASON = "Missing search API configuration.";
 
 /** Allows tests to replace the settings fetcher to avoid touching real stores. */
 let settingsFetcher: typeof getSettings = getSettings;
@@ -137,25 +138,27 @@ async function resolveSearchConfigFromSettings(): Promise<SearchConfigResult> {
  */
 export async function resolveSearchConfig(): Promise<SearchConfigResult> {
   // Priority 1: SearXNG environment variables
-  const searxngConfig = resolveSearXNGConfigFromEnv({ allowMissing: false });
-  if (searxngConfig) return searxngConfig;
+  const searxngConfig = await resolveSearchConfigFromSettings();
+  if (searxngConfig?.ok) return searxngConfig;
   
   if (isTestEnvironment()) {
     return { ok: false, reason: MISSING_KEY_REASON };
   }
   
   // Priority 2: Settings fallback
-  return resolveSearchConfigFromSettings();
+  return resolveSearXNGConfigFromEnv({ allowMissing: false }) ?? { ok: false, reason: MISSING_CONFIG_REASON };
 }
 
 /**
  * Verify configuration is present, returning an object suitable for health checks.
  */
-export const verifySearchConfigured = () => {
-  const searxngConfig = resolveSearXNGConfigFromEnv({ allowMissing: true });
+export async function verifySearchConfigured(): Promise<{ ok: boolean; reason?: string }> {
+  const searxngConfig = await resolveSearchConfigFromSettings();
   if (searxngConfig?.ok) return { ok: true };
+  const envConfig = resolveSearXNGConfigFromEnv({ allowMissing: false });
+  if (envConfig?.ok) return { ok: true };
   
-  return { ok: false, reason: searxngConfig?.reason ?? MISSING_KEY_REASON };
+  return { ok: false, reason: searxngConfig?.reason ?? envConfig?.reason ?? MISSING_CONFIG_REASON };
 };
 
 /**
@@ -255,7 +258,6 @@ async function executeSearch(
   query: string,
   count?: number,
   startingIndex?: number,
-  progress?: ReturnType<typeof createProgressReporter>,
 ): Promise<string> {
 
   const config = await resolveSearchConfig();
@@ -269,22 +271,11 @@ async function executeSearch(
   const url = buildSearXNGUrl(config.apiUrl, query, count, startingIndex);
 
   try {
-    if (progress) {
-      progress.progress(1, 2, "Parsing search results");
-    }
-
     const res = await fetchSearXNGSearch(url, config.apiKey);
     const result = await handleSearchResponse(res, count);
 
-    if (progress) {
-      progress.complete("Search completed successfully");
-    }
-
     return result;
   } catch (error) {
-    if (progress) {
-      progress.error(error instanceof Error ? error : new Error(String(error)));
-    }
     logger.error('Search request failed: %s', error instanceof Error ? error.message : String(error));
     return 'Search service unavailable, please try again later';
   }
@@ -303,20 +294,15 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
   return result;
 }
 
-const webSearchToolImpl = tool(
+const webSearchTool = tool(
   async (
     { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
     config: RunnableConfig,
   ) => {
-    const progress = createProgressReporter(config, "web_search");
-
-    progress.start(`Searching for "${query}"`);
-
     try {
-      const result = await executeSearch(query, count, starting_index, progress);
+      const result = await executeSearch(query, count, starting_index);
       return result;
     } catch (error) {
-      progress.error(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   },
@@ -331,7 +317,10 @@ const webSearchToolImpl = tool(
   }
 );
 
-export const webSearchTool = Object.assign(webSearchToolImpl, {
-  verifyConfiguration: verifySearchConfigured,
-  interpretationPrompt: ``
-});
+export const webSearchToolFactory: ToolFactory = async () => {
+  const isValid = await verifySearchConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: webSearchTool.name, reason: isValid.reason ?? "" };
+  }
+  return { ok: true, tool: webSearchTool, name: webSearchTool.name };
+};

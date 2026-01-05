@@ -13,12 +13,15 @@ export {
 } from "./rest-client";
 
 // Entity utilities exports
-export type {
-  HomeAssistantEntity,
-  HomeAssistantServiceCall
-} from "./entities";
-
 export {
+  type HAEntityState,
+  type HomeAssistantEntity,
+  type HomeAssistantServiceCall,
+  getEntityState,
+  getEntityStateREST,
+  getMultipleEntityStates,
+  entityStateCache,
+  clearEntityStateCache,
   getDomainFromEntityId,
   formatEntitiesForDisplay,
   extractHomeAssistantContext,
@@ -30,8 +33,11 @@ export {
 export { HomeAssistantContextManager } from "./context";
 
 // Color utilities exports
-export type {
-  ColorInput
+export {
+  type ColorInput,
+  getCurrentBrightness,
+  getSupportedColorModes,
+  getCurrentColorTemp,
 } from "./color-utils";
 
 export {
@@ -41,3 +47,6 @@ export {
   convertColorToSupportedFormat,
   getExampleColorNames
 } from "./color-utils";
+
+// Verification exports
+export { verifyHomeAssistantConfigured } from "./verification";

@@ -437,7 +437,7 @@ export function getBernardTools(config?: LangGraphRunnableConfig) {
 // File: services/bernard-agent/src/bernard-agent/tools/web-search.tool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { logger } from "../lib/logging.js";
+import { logger } from "@/lib/logging.js";
 
 const DEFAULT_SEARXNG_API_URL = "http://localhost:8080";
 const DEFAULT_RESULT_COUNT = 5;
@@ -492,7 +492,7 @@ export const webSearchTool = tool(
 // File: services/bernard-agent/src/bernard-agent/tools/website-content.tool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { logger } from "../lib/logging.js";
+import { logger } from "@/lib/logging.js";
 
 export const websiteContentTool = tool(
   async ({ url }: { url: string }) => {
