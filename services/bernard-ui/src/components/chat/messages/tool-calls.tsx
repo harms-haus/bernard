@@ -1,62 +1,19 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, Wrench } from 'lucide-react';
 import type { AIMessage, ToolMessage } from '@langchain/langgraph-sdk';
 
 function isComplexValue(value: any): boolean {
   return Array.isArray(value) || (typeof value === 'object' && value !== null);
 }
 
-export function ToolCalls({ toolCalls }: { toolCalls: AIMessage['tool_calls'] }) {
-  if (!toolCalls || toolCalls.length === 0) return null;
-
-  return (
-    <div className="space-y-4 w-full max-w-4xl">
-      {toolCalls.map((tc, idx) => {
-        const args = tc.args as Record<string, any>;
-        const hasArgs = Object.keys(args).length > 0;
-        return (
-          <div key={idx} className="border border-border rounded-lg overflow-hidden">
-            <div className="bg-muted px-4 py-2 border-b border-border">
-              <h3 className="font-medium">
-                {tc.name}
-                {tc.id && (
-                  <code className="ml-2 text-sm bg-background px-2 py-1 rounded">{tc.id}</code>
-                )}
-              </h3>
-            </div>
-            {hasArgs ? (
-              <table className="min-w-full divide-y divide-border">
-                <tbody className="divide-y divide-border">
-                  {Object.entries(args).map(([key, value], argIdx) => (
-                    <tr key={argIdx}>
-                      <td className="px-4 py-2 text-sm font-medium">{key}</td>
-                      <td className="px-4 py-2 text-sm text-muted-foreground">
-                        {isComplexValue(value) ? (
-                          <code className="bg-muted rounded px-2 py-1 font-mono text-sm break-all">
-                            {JSON.stringify(value, null, 2)}
-                          </code>
-                        ) : (
-                          String(value)
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <code className="text-sm block p-3">{"{}"}</code>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+function formatArgs(args: Record<string, any>): string {
+  const entries = Object.entries(args);
+  if (entries.length === 0) return '';
+  return entries.map(([, value]) => String(value)).join(', ');
 }
 
-export function ToolResult({ message }: { message: ToolMessage }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
+function formatResult(message: ToolMessage): { content: string; isJson: boolean } {
   let parsedContent: any;
   let isJsonContent = false;
 
@@ -66,108 +23,106 @@ export function ToolResult({ message }: { message: ToolMessage }) {
       isJsonContent = true;
     }
   } catch {
-    // Content is not JSON, use as is
     parsedContent = message.content;
   }
 
   const contentStr = isJsonContent
     ? JSON.stringify(parsedContent, null, 2)
     : String(message.content);
-  const contentLines = contentStr.split('\n');
-  const shouldTruncate = contentLines.length > 4 || contentStr.length > 500;
-  const displayedContent =
-    shouldTruncate && !isExpanded
-      ? contentStr.length > 500
-        ? contentStr.slice(0, 500) + '...'
-        : contentLines.slice(0, 4).join('\n') + '\n...'
-      : contentStr;
+
+  return { content: contentStr, isJson: isJsonContent };
+}
+
+function ToolResultContent({ message }: { message: ToolMessage }) {
+  const { content, isJson } = formatResult(message);
+
+  if (isJson) {
+    let parsedContent: any;
+    try {
+      parsedContent = JSON.parse(message.content as string);
+    } catch {
+      parsedContent = message.content;
+    }
+
+    const entries: [string, any][] = Array.isArray(parsedContent)
+      ? parsedContent.map((item: any, idx: number) => [String(idx), item])
+      : Object.entries(parsedContent);
+
+    return (
+      <table className="min-w-full divide-y divide-border text-xs">
+        <tbody className="divide-y divide-border">
+          {entries.map(([key, value], argIdx: number) => (
+            <tr key={argIdx}>
+              <td className="px-3 py-1.5 font-medium whitespace-nowrap">{key}</td>
+              <td className="px-3 py-1.5 text-muted-foreground">
+                {isComplexValue(value) ? (
+                  <code className="font-mono text-xs break-all">{JSON.stringify(value, null, 2)}</code>
+                ) : (
+                  String(value)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  return <code className="text-xs whitespace-pre-wrap block">{content}</code>;
+}
+
+export function ToolCalls({
+  toolCalls,
+  toolResults
+}: {
+  toolCalls: AIMessage['tool_calls'];
+  toolResults?: ToolMessage[];
+}) {
+  if (!toolCalls || toolCalls.length === 0) return null;
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="bg-muted px-4 py-2 border-b border-border">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          {message.name ? (
-            <h3 className="font-medium">
-              Tool Result:{' '}
-              <code className="bg-background px-2 py-1 rounded">{message.name}</code>
-            </h3>
-          ) : (
-            <h3 className="font-medium">Tool Result</h3>
-          )}
-          {message.tool_call_id && (
-            <code className="ml-2 text-sm bg-background px-2 py-1 rounded">
-              {message.tool_call_id}
-            </code>
-          )}
-        </div>
-      </div>
-      <motion.div
-        className="min-w-full bg-muted/50"
-        initial={false}
-        animate={{ height: 'auto' }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="p-3">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={isExpanded ? 'expanded' : 'collapsed'}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.2 }}
+    <div className="space-y-2 w-full max-w-4xl">
+      {toolCalls.map((tc, idx) => {
+        const args = tc.args as Record<string, any>;
+        const result = toolResults?.find((r) => r.tool_call_id === tc.id);
+        const [isExpanded, setIsExpanded] = useState(false);
+
+        return (
+          <div key={idx}>
+            <code
+              className={`flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-md transition-colors ${
+                result ? 'cursor-pointer hover:bg-muted/70' : 'bg-muted/50'
+              }`}
+              onClick={() => result && setIsExpanded(!isExpanded)}
             >
-              {isJsonContent ? (
-                <table className="min-w-full divide-y divide-border">
-                  <tbody className="divide-y divide-border">
-                    {(Array.isArray(parsedContent)
-                      ? isExpanded
-                        ? parsedContent
-                        : parsedContent.slice(0, 5)
-                      : Object.entries(parsedContent)
-                    ).map((item, argIdx) => {
-                      const [key, value] = Array.isArray(parsedContent)
-                        ? [argIdx, item]
-                        : [item[0], item[1]];
-                      return (
-                        <tr key={argIdx}>
-                          <td className="px-4 py-2 text-sm font-medium whitespace-nowrap">
-                            {String(key)}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-muted-foreground">
-                            {isComplexValue(value) ? (
-                              <code className="bg-muted rounded px-2 py-1 font-mono text-sm break-all">
-                                {JSON.stringify(value, null, 2)}
-                              </code>
-                            ) : (
-                              String(value)
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <code className="text-sm block whitespace-pre-wrap">{displayedContent}</code>
+              <Wrench className="w-3 h-3 shrink-0 opacity-70" />
+              <span className="flex-1">{tc.name}({formatArgs(args)})</span>
+              {result && (
+                <ChevronDown
+                  className={`w-3 h-3 shrink-0 transition-transform ${
+                    isExpanded ? 'rotate-180' : ''
+                  }`}
+                />
               )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        {((shouldTruncate && !isJsonContent) ||
-          (isJsonContent &&
-            Array.isArray(parsedContent) &&
-            parsedContent.length > 5)) && (
-          <motion.button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full py-2 flex items-center justify-center border-t-[1px] border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all ease-in-out duration-200 cursor-pointer"
-            initial={{ scale: 1 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </motion.button>
-        )}
-      </motion.div>
+            </code>
+            <AnimatePresence initial={false}>
+              {isExpanded && result && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-1 ml-5 border-l-2 border-muted">
+                    <ToolResultContent message={result} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </div>
   );
 }

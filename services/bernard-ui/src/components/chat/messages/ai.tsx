@@ -1,4 +1,4 @@
-import type { Message } from '@langchain/langgraph-sdk';
+import type { Message, ToolMessage } from '@langchain/langgraph-sdk';
 import { getContentString } from '../utils';
 import { MarkdownText } from '../markdown-text';
 import { cn } from '../../../lib/utils';
@@ -6,7 +6,7 @@ import { TooltipIconButton } from '../TooltipIconButton';
 import { RefreshCcw, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ToolCalls, ToolResult } from './tool-calls';
+import { ToolCalls } from './tool-calls';
 
 function ContentCopyable({ content, disabled }: { content: string; disabled: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -34,7 +34,15 @@ function ContentCopyable({ content, disabled }: { content: string; disabled: boo
   );
 }
 
-export function AssistantMessage({ message, onRegenerate }: { message: Message; onRegenerate?: () => void }) {
+export function AssistantMessage({
+  message,
+  onRegenerate,
+  nextMessages = []
+}: {
+  message: Message;
+  onRegenerate?: () => void;
+  nextMessages?: Message[];
+}) {
   const contentString = getContentString(message.content);
 
   const handleRegenerate = () => {
@@ -45,10 +53,15 @@ export function AssistantMessage({ message, onRegenerate }: { message: Message; 
   const hasToolCalls = message && 'tool_calls' in message && message.tool_calls && message.tool_calls.length > 0;
   const toolCallsHaveContents = hasToolCalls && message.tool_calls?.some((tc) => tc.args && Object.keys(tc.args).length > 0);
 
+  // Look ahead for tool results that match tool calls
+  const toolResults = hasToolCalls
+    ? (nextMessages.filter((m) => m.type === 'tool' && message.tool_calls?.some((tc) => tc.id === m.tool_call_id)) as ToolMessage[])
+    : [];
+
   if (isToolResult) {
     return (
       <div className="flex items-start mr-auto gap-2 group">
-        <ToolResult message={message} />
+        <ToolCalls toolCalls={[{ id: message.tool_call_id!, name: message.name || 'unknown', args: {} }]} toolResults={[message]} />
       </div>
     );
   }
@@ -63,7 +76,7 @@ export function AssistantMessage({ message, onRegenerate }: { message: Message; 
         )}
 
         {hasToolCalls && toolCallsHaveContents && (
-          <ToolCalls toolCalls={message.tool_calls} />
+          <ToolCalls toolCalls={message.tool_calls} toolResults={toolResults} />
         )}
 
         <div className={cn(

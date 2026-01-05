@@ -3,6 +3,10 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import wiki from "wikipedia";
+
+// The wikipedia package has an ESM/CJS interop issue where in ESM mode,
+// the wiki function is exported at default.default instead of default
+const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
 import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "../../lib/tokenCounter";
@@ -35,7 +39,7 @@ async function executeWikipediaEntry(
   token_offset: number = 0,
   max_tokens: number = 1500
 ): Promise<string> {
-  const page = await wiki.page(page_identifier, { redirect: true });
+  const page = await wikipedia.page(page_identifier, { redirect: true });
   const fullContent = await page.content({ redirect: true });
 
   // Use token-based slicing instead of character-based slicing

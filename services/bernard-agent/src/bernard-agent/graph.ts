@@ -55,7 +55,7 @@ async function callReactModel(
   const boundLLM = llm.bindTools ? llm.bindTools(tools) : llm;
 
   const result = await boundLLM.invoke(
-    [{ role: "system", content: buildReactSystemPrompt(new Date(), []) }, ...state.messages],
+    [{ role: "system", content: buildReactSystemPrompt(new Date(), [], []) }, ...state.messages],
     { configurable: { model: id } }
   );
 
