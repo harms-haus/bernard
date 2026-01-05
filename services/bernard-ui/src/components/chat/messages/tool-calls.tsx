@@ -2,10 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Wrench } from 'lucide-react';
 import type { AIMessage, ToolMessage } from '@langchain/langgraph-sdk';
-
-function isComplexValue(value: any): boolean {
-  return Array.isArray(value) || (typeof value === 'object' && value !== null);
-}
+import { MarkdownText } from '../markdown-text';
 
 function formatArgs(args: Record<string, any>): string {
   const entries = Object.entries(args);
@@ -55,11 +52,7 @@ function ToolResultContent({ message }: { message: ToolMessage }) {
             <tr key={argIdx}>
               <td className="px-3 py-1.5 font-medium whitespace-nowrap">{key}</td>
               <td className="px-3 py-1.5 text-muted-foreground">
-                {isComplexValue(value) ? (
-                  <code className="font-mono text-xs break-all">{JSON.stringify(value, null, 2)}</code>
-                ) : (
-                  String(value)
-                )}
+                <MarkdownText>{String(value)}</MarkdownText>
               </td>
             </tr>
           ))}
@@ -69,6 +62,53 @@ function ToolResultContent({ message }: { message: ToolMessage }) {
   }
 
   return <code className="text-xs whitespace-pre-wrap block">{content}</code>;
+}
+
+function ToolCallItem({
+  toolCall,
+  result
+}: {
+  toolCall: NonNullable<AIMessage['tool_calls']>[number];
+  result?: ToolMessage;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const args = toolCall.args as Record<string, any>;
+
+  return (
+    <div>
+      <code
+        className={`inline-flex items-center gap-2 text-xs font-mono ml-4 px-3 py-1 rounded-md transition-colors ${
+          result ? 'cursor-pointer bg-muted/40' : 'bg-muted/50'
+        }`}
+        onClick={() => result && setIsExpanded(!isExpanded)}
+      >
+        <Wrench className="w-3 h-3 shrink-0 opacity-70" />
+        <span>{toolCall.name}({formatArgs(args)})</span>
+        {result && (
+          <ChevronDown
+            className={`w-3 h-3 shrink-0 transition-transform ${
+              isExpanded ? 'rotate-180' : ''
+            }`}
+          />
+        )}
+      </code>
+      <AnimatePresence initial={false}>
+        {isExpanded && result && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-1 ml-5 pl-2 border-l-2 border-muted">
+              <ToolResultContent message={result} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export function ToolCalls({
@@ -83,45 +123,8 @@ export function ToolCalls({
   return (
     <div className="space-y-2 w-full max-w-4xl">
       {toolCalls.map((tc, idx) => {
-        const args = tc.args as Record<string, any>;
         const result = toolResults?.find((r) => r.tool_call_id === tc.id);
-        const [isExpanded, setIsExpanded] = useState(false);
-
-        return (
-          <div key={idx}>
-            <code
-              className={`flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-md transition-colors ${
-                result ? 'cursor-pointer hover:bg-muted/70' : 'bg-muted/50'
-              }`}
-              onClick={() => result && setIsExpanded(!isExpanded)}
-            >
-              <Wrench className="w-3 h-3 shrink-0 opacity-70" />
-              <span className="flex-1">{tc.name}({formatArgs(args)})</span>
-              {result && (
-                <ChevronDown
-                  className={`w-3 h-3 shrink-0 transition-transform ${
-                    isExpanded ? 'rotate-180' : ''
-                  }`}
-                />
-              )}
-            </code>
-            <AnimatePresence initial={false}>
-              {isExpanded && result && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-1 ml-5 border-l-2 border-muted">
-                    <ToolResultContent message={result} />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
+        return <ToolCallItem key={idx} toolCall={tc} result={result} />;
       })}
     </div>
   );

@@ -15,6 +15,7 @@ interface TooltipIconButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  side?: 'top' | 'bottom' | 'left' | 'right';
 }
 
 export function TooltipIconButton({
@@ -25,6 +26,7 @@ export function TooltipIconButton({
   onClick,
   disabled,
   className,
+  side,
 }: TooltipIconButtonProps) {
   return (
     <TooltipProvider>
@@ -40,7 +42,7 @@ export function TooltipIconButton({
             {children}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent side={side}>
           <p>{tooltip}</p>
         </TooltipContent>
       </Tooltip>

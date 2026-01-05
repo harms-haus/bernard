@@ -19,8 +19,24 @@ export function HumanMessage({ message, onEdit }: { message: Message; onEdit?: (
   };
 
   return (
-    <div className={cn("flex items-center ml-auto gap-2 group", isEditing && "w-full max-w-xl")}>
-      <div className={cn("flex flex-col gap-2", isEditing && "w-full")}>
+    <div className={cn("flex items-center ml-auto gap-2 group relative", isEditing && "w-full max-w-xl")}>
+      <div className={cn("absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100", isEditing && "opacity-100")}>
+        {isEditing ? (
+          <>
+            <TooltipIconButton onClick={() => setIsEditing(false)} tooltip="Cancel" variant="ghost" side="right">
+              <X className="w-4 h-4" />
+            </TooltipIconButton>
+            <TooltipIconButton onClick={handleSubmitEdit} tooltip="Submit" variant="secondary" side="right">
+              <Send className="w-4 h-4" />
+            </TooltipIconButton>
+          </>
+        ) : (
+          <TooltipIconButton onClick={() => { setValue(contentString); setIsEditing(true); }} tooltip="Edit" variant="ghost" side="right">
+            <Pencil className="w-4 h-4" />
+          </TooltipIconButton>
+        )}
+      </div>
+      <div className={cn("flex flex-col gap-2 mb-6", isEditing && "w-full")}>
         {isEditing ? (
           <Textarea
             value={value}
@@ -37,27 +53,6 @@ export function HumanMessage({ message, onEdit }: { message: Message; onEdit?: (
             {contentString}
           </p>
         )}
-        
-        <div className={cn(
-          "flex gap-2 items-center ml-auto transition-opacity",
-          "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-          isEditing && "opacity-100"
-        )}>
-          {isEditing ? (
-            <>
-              <TooltipIconButton onClick={() => setIsEditing(false)} tooltip="Cancel" variant="ghost">
-                <X className="w-4 h-4" />
-              </TooltipIconButton>
-              <TooltipIconButton onClick={handleSubmitEdit} tooltip="Submit" variant="secondary">
-                <Send className="w-4 h-4" />
-              </TooltipIconButton>
-            </>
-          ) : (
-            <TooltipIconButton onClick={() => { setValue(contentString); setIsEditing(true); }} tooltip="Edit" variant="ghost">
-              <Pencil className="w-4 h-4" />
-            </TooltipIconButton>
-          )}
-        </div>
       </div>
     </div>
   );

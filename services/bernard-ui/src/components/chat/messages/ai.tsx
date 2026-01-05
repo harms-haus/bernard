@@ -1,14 +1,14 @@
 import type { Message, ToolMessage } from '@langchain/langgraph-sdk';
 import { getContentString } from '../utils';
 import { MarkdownText } from '../markdown-text';
-import { cn } from '../../../lib/utils';
 import { TooltipIconButton } from '../TooltipIconButton';
 import { RefreshCcw, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ToolCalls } from './tool-calls';
+import { cn } from '@/lib/utils';
 
-function ContentCopyable({ content, disabled }: { content: string; disabled: boolean }) {
+function ContentCopyable({ content, disabled, side = 'top' }: { content: string; disabled: boolean; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -18,7 +18,7 @@ function ContentCopyable({ content, disabled }: { content: string; disabled: boo
   };
 
   return (
-    <TooltipIconButton onClick={handleCopy} tooltip={copied ? "Copied" : "Copy"} variant="ghost" disabled={disabled}>
+    <TooltipIconButton onClick={handleCopy} tooltip={copied ? "Copied" : "Copy"} variant="ghost" disabled={disabled} side={side}>
       <AnimatePresence mode="wait" initial={false}>
         {copied ? (
           <motion.div key="check" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
@@ -67,8 +67,14 @@ export function AssistantMessage({
   }
 
   return (
-    <div className="flex items-start mr-auto gap-2 group">
-      <div className="flex flex-col gap-2">
+    <div className={cn("flex items-start mr-auto gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6")}>
+      <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+        <ContentCopyable content={contentString} disabled={false} side="left" />
+        <TooltipIconButton onClick={handleRegenerate} tooltip="Regenerate" variant="ghost" side="left">
+          <RefreshCcw className="w-4 h-4" />
+        </TooltipIconButton>
+      </div>
+      <div className="flex flex-col gap-0">
         {contentString.length > 0 && (
           <div className="py-1">
             <MarkdownText>{contentString}</MarkdownText>
@@ -78,16 +84,6 @@ export function AssistantMessage({
         {hasToolCalls && toolCallsHaveContents && (
           <ToolCalls toolCalls={message.tool_calls} toolResults={toolResults} />
         )}
-
-        <div className={cn(
-          "flex gap-2 items-center mr-auto transition-opacity",
-          "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-        )}>
-          <ContentCopyable content={contentString} disabled={false} />
-          <TooltipIconButton onClick={handleRegenerate} tooltip="Regenerate" variant="ghost">
-            <RefreshCcw className="w-4 h-4" />
-          </TooltipIconButton>
-        </div>
       </div>
     </div>
   );
