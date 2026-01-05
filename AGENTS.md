@@ -1,393 +1,439 @@
-# Bernard Repository Architecture Guide
+# Bernard Services
 
-> **NOTE TO FUTURE AGENTS**: This document describes the Bernard architecture. Read before modifying. Key commands are in the [Development Commands](#development-commands) section.
+> **WARNING**: Bernard is a defunct, legacy project. This document exists for historical reference and should not be actively maintained or extended. If you need to work with Bernard, treat it as read-only reference material. Do not add new features, refactor existing code, or make significant changes. Use this as a guide to understand the architecture only.
 
-## Overview
+This document describes the services supported by Bernard, an AI assistant platform. Bernard consists of multiple microservices that work together to provide conversational AI capabilities with speech-to-text, LLM inference, and text-to-speech functionality.
 
-Bernard is a family voice assistant built with LangGraph that provides an OpenAI-compatible API for intelligent conversational assistance. The system is a microservices architecture with services written in TypeScript, Python, and C++.
+## Table of Contents
 
-## Filesystem Layout
-
-```
-/
-├── start.sh                    # Entry point - delegates to services.sh
-├── scripts/                    # Service orchestration scripts
-│   ├── services.sh            # Main orchestrator (start, stop, init, clean, check)
-│   ├── shared.sh              # Builds lib/shared
-│   ├── redis.sh               # Redis with RediSearch container
-│   ├── bernard-agent.sh       # CORE: LangGraph agent service (port 2024)
-│   ├── bernard-api.sh         # Configuration & auth API
-│   ├── bernard-ui.sh          # React admin UI
-│   ├── proxy-api.sh           # Unified gateway (OAuth + routing)
-│   ├── vllm.sh                # Embedding service (port 8860)
-│   ├── whisper.sh             # Speech-to-text (port 8870)
-│   ├── kokoro.sh              # Text-to-speech (port 8880)
-│   └── logging.sh             # Common logging utilities
-├── lib/shared/                # Shared TypeScript library (built first)
-├── proxy-api/                 # Fastify gateway (port 3456)
-└── services/
-    ├── bernard-agent/         # CORE: LangGraph agent service (port 2024)
-    ├── bernard-api/           # Settings, auth, token management (port 8800)
-    ├── bernard-ui/            # React admin dashboard (served via proxy)
-    ├── kokoro/                # FastAPI TTS service (Python, port 8880)
-    └── whisper.cpp/           # C++ speech recognition (port 8002)
-```
-
-
-**Note**: `function-gamma` and `ingress` directories are excluded from this documentation.
+- [bernard-agent](#bernard-agent)
+- [proxy-api](#proxy-api)
+- [bernard-api](#bernard-api)
+- [bernard-ui](#bernard-ui)
+- [whisper](#whisper)
+- [vllm](#vllm)
+- [kokoro](#kokoro)
 
 ---
 
-## Core Service: Bernard Agent (`services/bernard-agent/`)
+## bernard-agent
 
-Bernard Agent is the heart of the repository—a LangGraph-based agent system.
+**Port**: 2024  
+**Directory**: `services/bernard-agent`  
+**Type**: LangGraph-based agent service
 
-### Architecture
+The core agent service powered by LangGraph for orchestrating multi-step conversational workflows.
 
-```
-src/agent/
-├── graph/
-│   ├── bernard.graph.ts       # Main voice assistant workflow
-│   ├── text-chat.graph.ts     # Text chat variant
-│   ├── state.ts               # LangGraph state definition
-│   └── toolNode.ts            # Tool execution node
-├── routing.agent.ts           # "Data Coordinator" - decides which tools to call
-├── response.agent.ts          # "Creative Assistant" - generates final responses
-├── llm/
-│   ├── factory.ts             # LLM provider factory (OpenAI, Ollama)
-│   ├── chatOpenAI.ts          # OpenAI implementation
-│   └── chatOllama.ts          # Ollama implementation
-├── tool/
-│   ├── index.ts               # Tool registry
-│   ├── web-search.tool.ts     # SearXNG integration
-│   ├── wikipedia-*.tool.ts    # Wikipedia search/entry
-│   ├── home-assistant-*.tool.ts # HA entity control, state, services
-│   ├── weather.tool.ts        # Weather data
-│   └── timer.tool.ts          # Timer functionality
-└── node/
-    └── recollection.node.ts   # Memory retrieval
-
-lib/
-├── config/                    # Settings management (Redis-backed)
-├── auth/                      # Authentication & tokens
-├── openai.ts                  # OpenAI API compatibility layer
-├── home-assistant/            # HA WebSocket + REST integration
-├── automation/                # Background task system (BullMQ)
-├── plex/                      # Media server integration
-└── tracing/                   # Request tracing & logging
-```
-
-### Graph Flow
-
-```
-START → recollection → routing_agent → (tool_node | response_agent) → END
-                                        ↑___________|
-```
-
-- **Recollection**: Retrieves relevant memories from memory system
-- **Routing Agent**: Analyzes queries, decides which tools to call (max 10 iterations)
-- **Tool Node**: Executes tools in parallel with error handling
-- **Response Agent**: Generates final natural language response
-
-### State Schema (`state.ts`)
-
-```typescript
-BernardState {
-  messages: MessagesAnnotation       // Conversation history
-  memories: string[]                 // Retrieved context memories
-  toolResults: Record<string, string> // Cached tool results
-  status: string                     // Current workflow state
-  iterationCount: number             // Prevents infinite loops
-}
-```
-
-### Tool System
-
-Tools are LangChain `StructuredTool` implementations. Available tools:
-- Web search (SearXNG)
-- Wikipedia search & entry retrieval
-- Weather data
-- Home Assistant (lights, entities, services, historical state)
-- Plex media control
-- Timer functionality
-- Task recall system
-- Website content extraction
-
-### Server Entry Point (`server.ts`)
-
-OpenAI-compatible HTTP server on port 8850:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/v1/models` | GET | List available models |
-| `/v1/chat/completions` | POST | Chat completions (streaming or blocking) |
-
-Supports CORS, streaming responses, graceful shutdown, and request tracing.
-
-### Configuration
-
-Settings stored in Redis, configurable via:
-- Environment variables (`.env`)
-- Bernard API admin endpoints
-- Bernard UI dashboard
-
----
-
-## Other Services
-
-### Bernard API (`services/bernard-api/`)
-- **Port**: 8800
-- **Purpose**: Central configuration, authentication, token management, request logging
-- **Tech**: Fastify, Redis
-- **Entry**: `src/index.ts`
-
-### Bernard UI (`services/bernard-ui/`)
-- **Port**: 8810 (served via proxy)
-- **Purpose**: React admin dashboard, chat interface, settings management
-- **Tech**: React 18, Radix UI, Tailwind CSS, Vite
-
-### Proxy API (`proxy-api/`)
-- **Port**: 3456
-- **Purpose**: Unified gateway with OAuth authentication and service routing
-- **Tech**: Fastify, Node.js
-- **Entry**: `src/index.ts`
-- **Routes**: `/api/*` → Bernard API, `/v1/*` → Bernard, `/bernard/*` → UI
-
-### Kokoro TTS (`services/kokoro/`)
-- **Port**: 8880
-- **Purpose**: Text-to-speech with OpenAI-compatible `/v1/audio/speech`
-- **Tech**: Python, FastAPI, PyTorch, Kokoro model (80+ voices)
-
-### Whisper.cpp (`services/whisper.cpp/`)
-- **Port**: 8002 (HTTP server mode)
-- **Purpose**: High-performance speech recognition
-- **Tech**: C++, CMake, whisper models (ggml format)
-- **Platform**: CUDA/Metal/Vulkan/OpenVINO support
-
-### VLLM (`services/vllm/`)
-- **Port**: 8860
-- **Purpose**: Embedding service (Nomic model)
-- **Tech**: Python, vLLM inference engine
-
----
-
-## Service Startup Orchestration
-
-### Startup Order (Dependency-Aware)
-
-```
-1. SHARED        → Builds lib/shared (no port)
-2. REDIS         → Port 6379 (required by all services)
-3. BERNARD-API   → Port 8800 (auth, settings)
-4. PROXY-API     → Port 3456 (gateway, requires API)
-5. BERNARD-AGENT → Port 2024 (core agent, requires Redis)
-6. BERNARD-UI    → Port 8810 (static, served via proxy)
-7. VLLM          → Port 8860 (embeddings)
-8. WHISPER       → Port 8870 (ASR)
-9. KOKORO        → Port 8880 (TTS)
-```
-
-### Commands (`./scripts/services.sh`)
-
-| Command | Description |
-|---------|-------------|
-| `./start.sh` | Start all services with health checks |
-| `./start.sh --exit-after-start` | Start services, exit immediately (daemon mode) |
-| `./scripts/services.sh stop` | Stop all services gracefully |
-| `./scripts/services.sh init` | Install dependencies for all services |
-| `./scripts/services.sh clean` | Remove all build artifacts |
-| `./scripts/services.sh check` | Run validation on all services |
-
-### Health Checks
-
-Each service script implements:
-- `start` with timeout (20s default, configurable)
-- Health check via `/health` endpoint
-- Parallel verification after all services start
-- Detailed error logging on failure
-
-### Example Service Script Pattern
+### Available Commands
 
 ```bash
-#!/bin/bash
-source "$(dirname "$0")/logging.sh"
+# Check code quality (type-check, lint, build)
+./scripts/bernard-agent.sh check
 
-SERVICE_NAME="BERNARD"
-COLOR="\033[0;32m"
-NC="\033[0m"
+# Install dependencies
+./scripts/bernard-agent.sh init
 
-start() {
-    log "Starting $SERVICE_NAME..."
-    # Health check loop
-    # Log tailing
-}
+# Clean build artifacts and node_modules
+./scripts/bernard-agent.sh clean
 
-stop() {
-    log "Stopping $SERVICE_NAME..."
-    # Graceful shutdown + force kill
-}
+# Start the agent service
+./scripts/bernard-agent.sh start
 
-check() {
-    # Run: type-check → lint → build
-    # Track pass/fail for each step
-}
-
-case "$1" in
-    start) start ;;
-    stop) stop ;;
-    check) check ;;
-esac
+# Stop the agent service
+./scripts/bernard-agent.sh stop
 ```
 
----
-
-## Development Commands
-
-### Bernard Core (`services/bernard-agent/`)
+### NPM Scripts (from package.json)
 
 ```bash
-cd services/bernard-agent
-
-npm run lint          # ESLint with TypeScript rules
-npm run type-check    # TypeScript compiler (tsc --noEmit)
-npm run type-check:src # Type check excluding tests
-npm run build         # Vite build for production
-npm run tests         # Vitest test runner
-npm run tests:watch   # Watch mode
-npm run tests:coverage # With v8 coverage
-npm run dev           # tsx watch server
-```
-
-### Bernard UI (`services/bernard-ui/`)
-
-```bash
-cd services/bernard-ui
-
-npm run lint
+# Type-check only
 npm run type-check
-npm run build         # tsc && vite build
-npm run dev           # Vite dev server
-```
 
-### Bernard API (`services/bernard-api/`)
-
-```bash
-cd services/bernard-api
-
+# Lint source code
 npm run lint
-npm run type-check
-npm run build         # TypeScript compilation
-npm run dev           # tsx watch
-```
 
-### Proxy API (`proxy-api/`)
-
-```bash
-cd proxy-api
-
-npm run lint
-npm run type-check
+# Build TypeScript
 npm run build
+
+# Start development server with hot reload
 npm run dev
 ```
 
-### Kokoro TTS (`services/kokoro/`)
+---
+
+## proxy-api
+
+**Port**: 3456  
+**Directory**: `proxy-api`  
+**Type**: Fastify unified server
+
+A unified Fastify server providing OAuth authentication, API proxying, and service integration. This is the main entry point for the Bernard UI.
+
+### Available Commands
 
 ```bash
-cd services/kokoro
+# Check code quality (type-check, lint, build)
+./scripts/proxy-api.sh check
 
-pytest                    # Run tests
-pytest --cov=api --cov=ui # With coverage
-uv run pytest            # Via uv package manager
+# Install dependencies
+./scripts/proxy-api.sh init
+
+# Clean build artifacts and node_modules
+./scripts/proxy-api.sh clean
+
+# Start the proxy API
+./scripts/proxy-api.sh start
+
+# Stop the proxy API
+./scripts/proxy-api.sh stop
 ```
 
-### Whisper.cpp (`services/whisper.cpp/`)
+### NPM Scripts (from package.json)
 
 ```bash
-cd services/whisper.cpp
+# Type-check only
+npm run type-check
 
-make build   # CMake build
-make clean   # Remove artifacts
-make tiny.en # Build with specific model
+# Lint source code
+npm run lint
+
+# Build TypeScript
+npm run build
+
+# Start development server with hot reload
+npm run dev
+
+# Build and start production server
+npm run build && npm run start
+
+# Start Whisper service only
+npm run dev:whisper
 ```
 
-### Service-Level Check
+---
+
+## bernard-api
+
+**Port**: 8800  
+**Directory**: `services/bernard-api`  
+**Type**: Fastify API service
+
+Central API service for Bernard handling settings, authentication, and request logging.
+
+### Available Commands
 
 ```bash
-# Full validation for a service
-./scripts/bernard.sh check
+# Check code quality (type-check, lint, build)
 ./scripts/bernard-api.sh check
-# etc.
 
+# Install dependencies
+./scripts/bernard-api.sh init
+
+# Clean build artifacts and node_modules
+./scripts/bernard-api.sh clean
+
+# Start the API service
+./scripts/bernard-api.sh start
+
+# Stop the API service
+./scripts/bernard-api.sh stop
+```
+
+### NPM Scripts (from package.json)
+
+```bash
+# Type-check only
+npm run type-check
+
+# Lint source code
+npm run lint
+
+# Build TypeScript
+npm run build
+
+# Start development server with hot reload
+npm run dev
+
+# Build and start production server
+npm run build && npm run start
+```
+
+---
+
+## bernard-ui
+
+**Port**: 8810  
+**Directory**: `services/bernard-ui`  
+**Type**: React/Vite frontend application
+
+The Bernard web interface built with React, Vite, and Radix UI components.
+
+### Available Commands
+
+```bash
+# Check code quality (type-check, lint, build)
+./scripts/bernard-ui.sh check
+
+# Install dependencies
+./scripts/bernard-ui.sh init
+
+# Clean build artifacts and node_modules
+./scripts/bernard-ui.sh clean
+
+# Start the UI development server
+./scripts/bernard-ui.sh start
+
+# Stop the UI development server
+./scripts/bernard-ui.sh stop
+```
+
+### NPM Scripts (from package.json)
+
+```bash
+# Type-check only
+npm run type-check
+
+# Lint source code
+npm run lint
+
+# Build for production
+npm run build
+
+# Preview production build locally
+npm run preview
+
+# Run tests
+npm run tests
+
+# Run tests in watch mode
+npm run tests:watch
+
+# Run tests with coverage
+npm run tests:coverage
+
+# Start development server with hot reload
+npm run dev
+```
+
+---
+
+## whisper
+
+**Port**: 8870  
+**Directory**: `services/whisper.cpp`  
+**Type**: Whisper.cpp speech-to-text service
+
+Whisper.cpp-based speech recognition service for audio transcription.
+
+### Available Commands
+
+```bash
+# Check binary and model availability
+./scripts/whisper.sh check
+
+# Initialize whisper.cpp and download model
+./scripts/whisper.sh init
+
+# Clean build artifacts
+./scripts/whisper.sh clean
+
+# Start whisper server
+./scripts/whisper.sh start
+
+# Stop whisper server
+./scripts/whisper.sh stop
+```
+
+### Initialization Details
+
+The `init` command:
+- Clones whisper.cpp repository if not present
+- Builds whisper-server with CMake (with CUDA support)
+- Downloads the small Whisper model to `models/whisper/ggml-small.bin`
+
+### Binary and Model Requirements
+
+- Binary: `services/whisper.cpp/build/bin/whisper-server`
+- Model: `models/whisper/ggml-small.bin`
+
+---
+
+## vllm
+
+**Port**: 8860  
+**Directory**: `services/vllm`  
+**Type**: vLLM embedding service
+
+vLLM-based embedding service running the nomic-embed-text-v1.5 model for text embeddings.
+
+### Available Commands
+
+```bash
+# Check venv and model availability
+./scripts/vllm.sh check
+
+# Initialize virtual environment and install vllm
+./scripts/vllm.sh init
+
+# Clean (no-op for this service)
+./scripts/vllm.sh clean
+
+# Start vLLM server
+./scripts/vllm.sh start
+
+# Stop vLLM server
+./scripts/vllm.sh stop
+```
+
+### Initialization Details
+
+The `init` command:
+- Creates Python 3.11 virtual environment at `services/vllm/.venv`
+- Installs vllm, transformers, and torch
+- Downloads nomic-embed-text-v1.5 model to HuggingFace cache
+
+### Health Check
+
+GPU memory is automatically detected. If nvidia-smi is available, GPU memory utilization is calculated as `max(0.3 * 1024 / total_mem_mib, 0.05)`.
+
+---
+
+## kokoro
+
+**Port**: 8880  
+**Directory**: `services/kokoro`  
+**Type**: Kokoro TTS service
+
+Kokoro-FastAPI text-to-speech service for voice synthesis.
+
+### Available Commands
+
+```bash
+# Health check (no-op)
+./scripts/kokoro.sh check
+
+# Initialize Kokoro and download model
+./scripts/kokoro.sh init
+
+# Clean (no-op for this service)
+./scripts/kokoro.sh clean
+
+# Start Kokoro TTS server
+./scripts/kokoro.sh start
+
+# Stop Kokoro TTS server
+./scripts/kokoro.sh stop
+```
+
+### Initialization Details
+
+The `init` command:
+- Clones Kokoro-FastAPI repository if not present
+- Creates Python virtual environment with uv
+- Installs Kokoro with torch
+- Downloads Kokoro model to `services/kokoro/api/src/models/v1_0`
+
+### Environment Variables
+
+The service requires:
+- `PYTHONPATH`: Points to `$DIR:$DIR/api`
+- `MODEL_DIR`: Model files location
+- `VOICES_DIR`: Voice files location
+- `ESPEAK_DATA_PATH`: eSpeak NG data path (default: `/usr/lib/x86_64-linux-gnu/espeak-ng-data`)
+
+---
+
+## Orchestration
+
+### Master Services Script
+
+Use `scripts/services.sh` to manage all services at once:
+
+```bash
 # Check all services
 ./scripts/services.sh check
+
+# Initialize all services
+./scripts/services.sh init
+
+# Clean all services
+./scripts/services.sh clean
+
+# Start all services
+./scripts/services.sh start
+
+# Start all services and exit immediately (services run in background)
+./scripts/services.sh start --exit-after-start
+
+# Stop all services
+./scripts/services.sh stop
+```
+
+### Service Startup Order
+
+Services are started in the following order:
+
+1. Redis (port 6379)
+2. Shared library build
+3. Bernard-API (port 8800)
+4. Proxy-API (port 3456)
+5. Bernard-Agent (port 2024)
+6. Bernard-UI (port 8810)
+7. VLLM (port 8860)
+8. Whisper (port 8870)
+9. Kokoro (port 8880)
+
+### Log Files
+
+All service logs are stored in the `logs/` directory:
+
+- `logs/bernard-agent.log`
+- `logs/proxy.log`
+- `logs/bernard-api.log`
+- `logs/bernard-ui.log`
+- `logs/vllm-embeddings.log`
+- `logs/whisper.log`
+- `logs/kokoro.log`
+- `logs/redis.log`
+
+### Tail All Logs
+
+```bash
+# Monitor all service logs in real-time
+./scripts/services.sh
+```
+
+Press Ctrl+C to stop all services.
+
+---
+
+## Environment Variables
+
+All services load configuration from the root `.env` file. Key variables include:
+
+| Variable | Description |
+|----------|-------------|
+| `REDIS_URL` | Redis connection URL |
+| `TZ` | Timezone for timestamp formatting |
+| `HF_HOME` | HuggingFace cache directory |
+| `PYTHONPATH` | Python module search path (for Kokoro) |
+
+### OAuth Configuration (for proxy-api)
+
+```env
+OAUTH_GITHUB_CLIENT_ID=your-client-id
+OAUTH_GITHUB_CLIENT_SECRET=your-client-secret
+ADMIN_API_KEY=your-secure-admin-token
 ```
 
 ---
 
-## Common Patterns
+## Dependencies
 
-### Adding a New Tool
+- **Node.js**: TypeScript services require Node.js with npm
+- **Python 3.11**: For vLLM and Kokoro services
+- **uv**: Python package manager (for Kokoro)
+- **CMake**: For building whisper.cpp
+- **CUDA**: Optional, for GPU-accelerated Whisper inference
+- **Redis**: Required for all services
 
-1. Create `src/agent/tool/my-tool.tool.ts`:
-   ```typescript
-   import { StructuredTool } from "@langchain/core/tools";
-   
-   export const myTool = new StructuredTool({
-     name: "my_tool",
-     description: "Does something useful",
-     parameters: z.object({ ... }),
-     handler: async (input) => { ... }
-   });
-   ```
-
-2. Register in `src/agent/tool/index.ts`
-
-3. Add to tool registry in graph construction
-
-### Adding a New Service
-
-1. Create `scripts/new-service.sh` with standard pattern (start/stop/check)
-2. Add to `services.sh` startup order and service arrays
-3. Create health check endpoint at `/health`
-4. Document in this file
-
-### Modifying Configuration
-
-Settings are Redis-backed. Modify via:
-1. Bernard UI dashboard (easiest)
-2. Bernard API admin endpoints
-3. Direct Redis writes (advanced)
-
----
-
-## Key Files for Reference
-
-| File | Purpose |
-|------|---------|
-| `services/bernard-agent/src/bernard-agent/graph.ts` | LangGraph workflow definition |
-| `services/bernard-agent/src/bernard-agent/state.ts` | State schema for graph |
-| `services/bernard-agent/src/bernard-agent/tools/index.ts` | Tool registry |
-| `scripts/services.sh` | Service orchestration master script |
-| `services/bernard-agent/package.json` | Dependencies, scripts, lint config |
-
----
-
-## Debugging Tips
-
-- **Logs**: All services log to `logs/{service}.log`
-- **Tail all logs**: `./scripts/services.sh start` (monitors in foreground)
-- **Check service health**: `curl http://localhost:{port}/health`
-- **Redis**: `redis-cli -p 6379` for session/state inspection
-- **Build failures**: Check `logs/{service}-check.log` and `logs/{service}-check.status`
-
----
-
-## Ignore List
-
-The following directories are excluded from this documentation and should be ignored:
-- `function-gemma`
-- `ingress`
-
-For questions about architecture decisions, consult the `docs/` directory.

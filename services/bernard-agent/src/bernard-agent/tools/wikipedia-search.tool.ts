@@ -6,6 +6,10 @@ import { createProgressReporter } from "./progress.js";
 
 import wiki from "wikipedia";
 
+// The wikipedia package has an ESM/CJS interop issue where in ESM mode,
+// the wiki function is exported at default.default instead of default
+const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
+
 import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 
@@ -51,7 +55,7 @@ async function executeWikipediaSearch(
       progress.progress(1, 2, `Searching Wikipedia for "${query}"`);
     }
 
-    const searchResults = await wiki.search(query, {
+    const searchResults = await wikipedia.search(query, {
       limit: n_results + starting_index
     });
     

@@ -194,26 +194,30 @@ export function Thread() {
                 </div>
               )}
               
-              {messages.map((message, index) => (
-                message.type === 'human' ? (
-                  <HumanMessage 
-                    key={message.id || `human-${index}`} 
-                    message={message} 
+              {messages.map((message, index) => {
+                // Skip tool result messages - they're rendered inline within AssistantMessage
+                if (message.type === 'tool') return null;
+
+                return message.type === 'human' ? (
+                  <HumanMessage
+                    key={message.id || `human-${index}`}
+                    message={message}
                     onEdit={(newContent) => {
                       const newMsg: Message = { ...message, content: newContent };
                       submit({ messages: [...messages.slice(0, index), newMsg] });
                     }}
                   />
                 ) : (
-                  <AssistantMessage 
-                    key={message.id || `ai-${index}`} 
-                    message={message} 
+                  <AssistantMessage
+                    key={message.id || `ai-${index}`}
+                    message={message}
+                    nextMessages={messages.slice(index + 1)}
                     onRegenerate={() => {
                       submit({ messages: messages.slice(0, index) });
                     }}
                   />
-                )
-              ))}
+                );
+              })}
               
               {isLoading && <AssistantMessageLoading />}
             </div>
