@@ -67,7 +67,7 @@ export function createToggleLightTool(
       color
     }: {
       entity: string;
-      on?: string | null;
+      on?: boolean | null;
       brightness_pct?: number | null;
       brightness_pct_delta?: number | null;
       color?: ColorInput | null;
@@ -107,9 +107,9 @@ export function createToggleLightTool(
         const serviceData: Record<string, unknown> = { entity_id: entity };
 
         // Handle 'on' parameter
-        if (on === "true" || on === "True" || on === "on") {
+        if (on === true) {
           service = 'turn_on';
-        } else if (on === "false" || on === "False" || on === "off") {
+        } else if (on === false) {
           service = 'turn_off';
           // For turn_off, we don't need other parameters
           return await executeServiceCall(service, serviceData, deps, restConfig);
@@ -180,9 +180,21 @@ The tool automatically detects the input format and converts it to the light's s
 
 Brightness can be set as a percentage (brightness_pct) or adjusted by a percentage delta (brightness_pct_delta).
 Use on=null to toggle the light, on=true to turn on, on=false to turn off.`,
+
+
       schema: z.object({
-        entity: z.string().describe("The light entity_id to control (must start with 'light.')"),
-        on: z.string().nullable().optional().describe("true=turn on, false=turn off, null=toggle (default: toggle if off, adjust if on)"),
+        entity: z.string().describe("The light entity_id to control (eg: 'light.bedroom_bulb', 'light.kitchen_uplights', 'light.study_bulb', etc.)"),
+        on: z.union([
+          z.boolean(),
+          z.string()
+        ]).nullable().optional().transform((val): boolean | null => {
+          if (val === null || val === undefined) return null;
+          if (typeof val === 'boolean') return val;
+          const normalized = val.toLowerCase();
+          if (normalized === 'true' || normalized === 'on') return true;
+          if (normalized === 'false' || normalized === 'off') return false;
+          throw new Error(`Invalid boolean value: ${val}`);
+        }).describe("true/on=turn on, false/off=turn off, null=toggle (default: toggle if off, adjust if on)"),
         brightness_pct: z.number().nullable().optional().describe("Set brightness as percentage (0-100), null to leave unchanged"),
         brightness_pct_delta: z.number().nullable().optional().describe("Adjust brightness by percentage delta (+/- value), null to leave unchanged"),
         color: z.union([

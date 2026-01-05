@@ -15,13 +15,14 @@ import { cn } from '../../lib/utils';
 import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '../../lib/ensure-tool-responses';
 import { PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon, Send, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Message } from '@langchain/langgraph-sdk';
+import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
 
 export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
-  
-  const { messages, submit, isLoading, stop } = useStreamContext();
+
+  const stream = useStreamContext();
+  const { messages, submit, isLoading, stop } = stream;
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [sidebarOpen, setSidebarOpen] = useSidebarState();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -29,16 +30,17 @@ export function Thread() {
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+  const prevMessageLength = useRef(0);
 
   useEffect(() => {
     setInput('');
     setFirstTokenReceived(false);
+    prevMessageLength.current = 0;
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [threadId]);
 
-  const prevMessageLength = useRef(0);
   useEffect(() => {
     if (
       messages.length !== prevMessageLength.current &&
@@ -85,6 +87,17 @@ export function Thread() {
 
   const handleNewChat = () => {
     setSearchParams({});
+  };
+
+  const handleRegenerate = (
+    parentCheckpoint: Checkpoint | null | undefined,
+  ) => {
+    prevMessageLength.current = prevMessageLength.current - 1;
+    setFirstTokenReceived(false);
+    stream.submit(undefined, {
+      checkpoint: parentCheckpoint,
+      streamMode: ['values'],
+    });
   };
 
   const handleCopyChatHistory = async () => {
@@ -201,19 +214,15 @@ export function Thread() {
                   <HumanMessage
                     key={message.id || `human-${index}`}
                     message={message}
-                    onEdit={(newContent) => {
-                      const newMsg: Message = { ...message, content: newContent };
-                      submit({ messages: [...messages.slice(0, index), newMsg] });
-                    }}
+                    isLoading={isLoading}
                   />
                 ) : (
                   <AssistantMessage
                     key={message.id || `ai-${index}`}
                     message={message}
                     nextMessages={messages.slice(index + 1)}
-                    onRegenerate={() => {
-                      submit({ messages: messages.slice(0, index) });
-                    }}
+                    isLoading={isLoading}
+                    onRegenerate={handleRegenerate}
                   />
                 );
               })}

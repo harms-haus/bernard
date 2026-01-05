@@ -18,14 +18,7 @@ const useTypedStream = useStream<
   }
 >;
 
-interface StreamContextType {
-  messages: ReturnType<typeof useTypedStream>['messages'];
-  submit: ReturnType<typeof useTypedStream>['submit'];
-  isLoading: ReturnType<typeof useTypedStream>['isLoading'];
-  error: ReturnType<typeof useTypedStream>['error'];
-  stop: ReturnType<typeof useTypedStream>['stop'];
-  values: ReturnType<typeof useTypedStream>;
-}
+type StreamContextType = ReturnType<typeof useTypedStream>;
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -68,17 +61,10 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
 
   const streamValue = useTypedStream(options);
 
+  const contextValue: StreamContextType = streamValue;
+
   return (
-    <StreamContext.Provider
-      value={{
-        messages: streamValue.messages,
-        submit: streamValue.submit,
-        isLoading: streamValue.isLoading,
-        error: streamValue.error,
-        stop: streamValue.stop,
-        values: streamValue,
-      }}
-    >
+    <StreamContext.Provider value={contextValue}>
       {children}
     </StreamContext.Provider>
   );
