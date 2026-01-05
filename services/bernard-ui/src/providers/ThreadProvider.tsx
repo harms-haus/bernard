@@ -5,6 +5,10 @@ interface ThreadContextType {
   threads: ThreadListItem[];
   getThreads: () => Promise<ThreadListItem[]>;
   setThreads: (threads: ThreadListItem[]) => void;
+  createThread: (id: string) => void;
+  createNewThread: () => Promise<string>;
+  updateThread: (threadId: string, name: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
   threadsLoading: boolean;
 }
 
@@ -19,21 +23,85 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     try {
       const response = await apiClient.listThreads(50);
       const threadList = response.threads;
-      setThreads(threadList);
+      setThreads((prev) => {
+        const serverIds = new Set(threadList.map((t) => t.id));
+        const localOnly = prev.filter((t) => !serverIds.has(t.id));
+        return [...localOnly, ...threadList].sort(
+          (a, b) =>
+            new Date(b.lastTouchedAt).getTime() - new Date(a.lastTouchedAt).getTime()
+        );
+      });
       return threadList;
     } catch (error) {
       console.error('Failed to fetch threads:', error);
-      setThreads([]);
       return [];
     } finally {
       setThreadsLoading(false);
     }
   }, []);
 
+
+  const createThread = useCallback((id: string) => {
+    setThreads((prev) => {
+      if (prev.some((t) => t.id === id)) return prev;
+      const newThread: ThreadListItem = {
+        id,
+        name: 'New Chat',
+        createdAt: new Date().toISOString(),
+        lastTouchedAt: new Date().toISOString(),
+        messageCount: 0,
+      };
+      return [newThread, ...prev];
+    });
+  }, []);
+
+  const createNewThread = useCallback(async () => {
+    try {
+      const response = await apiClient.createThread();
+      const id = response.thread_id;
+      createThread(id);
+      return id;
+    } catch (error) {
+      console.error('Failed to create new thread:', error);
+      throw error;
+    }
+  }, [createThread]);
+
+  const updateThread = useCallback(async (threadId: string, name: string) => {
+    try {
+      await apiClient.updateThread(threadId, name);
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, name } : t))
+      );
+    } catch (error) {
+      console.error('Failed to update thread:', error);
+      throw error;
+    }
+  }, []);
+
+  const deleteThread = useCallback(async (threadId: string) => {
+    try {
+      await apiClient.deleteThread(threadId);
+      setThreads((prev) => prev.filter((t) => t.id !== threadId));
+    } catch (error) {
+      console.error('Failed to delete thread:', error);
+      throw error;
+    }
+  }, []);
+
+  const value = {
+    threads,
+    getThreads,
+    setThreads,
+    createThread,
+    createNewThread,
+    updateThread,
+    deleteThread,
+    threadsLoading,
+  };
+
   return (
-    <ThreadContext.Provider value={{ threads, getThreads, setThreads, threadsLoading }}>
-      {children}
-    </ThreadContext.Provider>
+    <ThreadContext.Provider value={value}>{children}</ThreadContext.Provider>
   );
 }
 

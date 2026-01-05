@@ -6,15 +6,16 @@ import { cn } from '../../../lib/utils';
 import { TooltipIconButton } from '../TooltipIconButton';
 import { Pencil, X, Send } from 'lucide-react';
 
-export function HumanMessage({ message }: { message: Message }) {
+export function HumanMessage({ message, onEdit }: { message: Message; onEdit?: (content: string) => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState('');
   const contentString = getContentString(message.content);
 
-  // Placeholder - will be connected to StreamProvider in Phase 4
   const handleSubmitEdit = () => {
+    if (value.trim() && value.trim() !== contentString) {
+      onEdit?.(value.trim());
+    }
     setIsEditing(false);
-    // TODO: Submit edited message
   };
 
   return (

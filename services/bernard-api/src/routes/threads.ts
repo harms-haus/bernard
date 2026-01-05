@@ -19,9 +19,10 @@ function getRedis(): Redis {
 }
 
 const CHECKPOINT_PATTERNS = [
-  /^checkpoints:([^:]+):([^:]+)$/,
-  /^checkpoint:([^:]+):([^:]+)$/,
-  /^langgraph:checkpoints:([^:]+):([^:]+)$/,
+  /^checkpoints:([^:]+):([^:]+)/,
+  /^checkpoint:([^:]+)::(.+)/,
+  /^langgraph:checkpoints:([^:]+):([^:]+)/,
+  /^checkpoint_write:([^:]+)::([^:]+)/,
 ];
 
 function parseCheckpointKey(key: string): { threadId: string; checkpointId: string } | null {
@@ -48,7 +49,7 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
       let cursor = "0";
 
       do {
-        const [newCursor, keys] = await redis.scan(cursor, "MATCH", "*checkpoints*", "COUNT", 100);
+        const [newCursor, keys] = await redis.scan(cursor, "MATCH", "*checkpoint*", "COUNT", 100);
         cursor = newCursor;
         for (const key of keys) {
           checkpointKeys.add(key);
@@ -234,11 +235,18 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
       let deletedCount = 0;
 
       do {
-        const [newCursor, keys] = await redis.scan(cursor, "MATCH", `*checkpoints*${threadId}*`, "COUNT", 100);
+        const [newCursor, keys] = await redis.scan(cursor, "MATCH", `*${threadId}*`, "COUNT", 100);
         cursor = newCursor;
         if (keys.length > 0) {
-          await redis.del(...keys);
-          deletedCount += keys.length;
+          const threadKeys = keys.filter(k => {
+            const parsed = parseCheckpointKey(k);
+            return parsed && parsed.threadId === threadId;
+          });
+          
+          if (threadKeys.length > 0) {
+            await redis.del(...threadKeys);
+            deletedCount += threadKeys.length;
+          }
         }
       } while (cursor !== "0");
 

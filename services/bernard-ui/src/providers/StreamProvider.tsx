@@ -1,5 +1,7 @@
 import { useStream } from '@langchain/langgraph-sdk/react';
-import { createContext, useContext, ReactNode } from 'react';
+import { createContext, useContext, ReactNode, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useThreads } from './ThreadProvider';
 
 // Re-export types from SDK for convenience
 export type { Message, AIMessage, ToolMessage, HumanMessage } from '@langchain/langgraph-sdk';
@@ -27,16 +29,32 @@ interface StreamProviderProps {
   children: ReactNode;
   apiUrl: string;
   assistantId: string;
+  threadId?: string | null;
 }
 
-export function StreamProvider({ children, apiUrl, assistantId }: StreamProviderProps) {
-  const streamValue = useStream({
+export function StreamProvider({ children, apiUrl, assistantId, threadId }: StreamProviderProps) {
+  const [, setSearchParams] = useSearchParams();
+  const { createThread } = useThreads();
+
+  const options = useMemo(() => ({
     apiUrl,
     assistantId,
-    threadId: null,
+    threadId: threadId ?? null,
     onCustomEvent: () => {},
-    onThreadId: () => {},
-  });
+    onThreadId: (id: string) => {
+      if (id && id !== threadId) {
+        setSearchParams((prev) => {
+          const newParams = new URLSearchParams(prev);
+          newParams.set('threadId', id);
+          return newParams;
+        }, { replace: true });
+        
+        createThread(id);
+      }
+    },
+  }), [apiUrl, assistantId, threadId, setSearchParams, createThread]);
+
+  const streamValue = useStream(options);
 
   return (
     <StreamContext.Provider

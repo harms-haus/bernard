@@ -511,6 +511,24 @@ class APIClient {
     return response.json();
   }
 
+  async createThread(): Promise<{ thread_id: string }> {
+    const response = await fetch(`/threads`, {
+      credentials: 'same-origin',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({})
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create thread');
+    }
+
+    return response.json();
+  }
+
   async updateThread(threadId: string, name: string): Promise<{ id: string; name: string; updated: boolean }> {
     const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
       credentials: 'same-origin',

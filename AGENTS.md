@@ -15,7 +15,7 @@ Bernard is a family voice assistant built with LangGraph that provides an OpenAI
 │   ├── services.sh            # Main orchestrator (start, stop, init, clean, check)
 │   ├── shared.sh              # Builds lib/shared
 │   ├── redis.sh               # Redis with RediSearch container
-│   ├── bernard.sh             # Core agent service
+│   ├── bernard-agent.sh       # CORE: LangGraph agent service (port 2024)
 │   ├── bernard-api.sh         # Configuration & auth API
 │   ├── bernard-ui.sh          # React admin UI
 │   ├── proxy-api.sh           # Unified gateway (OAuth + routing)
@@ -26,20 +26,21 @@ Bernard is a family voice assistant built with LangGraph that provides an OpenAI
 ├── lib/shared/                # Shared TypeScript library (built first)
 ├── proxy-api/                 # Fastify gateway (port 3456)
 └── services/
-    ├── bernard/               # CORE: LangGraph agent service (port 8850)
+    ├── bernard-agent/         # CORE: LangGraph agent service (port 2024)
     ├── bernard-api/           # Settings, auth, token management (port 8800)
     ├── bernard-ui/            # React admin dashboard (served via proxy)
     ├── kokoro/                # FastAPI TTS service (Python, port 8880)
     └── whisper.cpp/           # C++ speech recognition (port 8002)
 ```
 
+
 **Note**: `function-gamma` and `ingress` directories are excluded from this documentation.
 
 ---
 
-## Core Service: Bernard (`services/bernard/`)
+## Core Service: Bernard Agent (`services/bernard-agent/`)
 
-Bernard is the heart of the repository—a LangGraph-based agent system with OpenAI-compatible endpoints.
+Bernard Agent is the heart of the repository—a LangGraph-based agent system.
 
 ### Architecture
 
@@ -180,7 +181,7 @@ Settings stored in Redis, configurable via:
 2. REDIS         → Port 6379 (required by all services)
 3. BERNARD-API   → Port 8800 (auth, settings)
 4. PROXY-API     → Port 3456 (gateway, requires API)
-5. BERNARD       → Port 8850 (core agent, requires Redis)
+5. BERNARD-AGENT → Port 2024 (core agent, requires Redis)
 6. BERNARD-UI    → Port 8810 (static, served via proxy)
 7. VLLM          → Port 8860 (embeddings)
 8. WHISPER       → Port 8870 (ASR)
@@ -243,10 +244,10 @@ esac
 
 ## Development Commands
 
-### Bernard Core (`services/bernard/`)
+### Bernard Core (`services/bernard-agent/`)
 
 ```bash
-cd services/bernard
+cd services/bernard-agent
 
 npm run lint          # ESLint with TypeScript rules
 npm run type-check    # TypeScript compiler (tsc --noEmit)
@@ -365,13 +366,11 @@ Settings are Redis-backed. Modify via:
 
 | File | Purpose |
 |------|---------|
-| `services/bernard/server.ts` | Main HTTP server, OpenAI-compatible endpoints |
-| `services/bernard/src/agent/graph/bernard.graph.ts` | LangGraph workflow definition |
-| `services/bernard/src/agent/state.ts` | State schema for graph |
-| `services/bernard/src/agent/routing.agent.ts` | Router agent implementation |
-| `services/bernard/src/agent/tool/index.ts` | Tool registry |
+| `services/bernard-agent/src/bernard-agent/graph.ts` | LangGraph workflow definition |
+| `services/bernard-agent/src/bernard-agent/state.ts` | State schema for graph |
+| `services/bernard-agent/src/bernard-agent/tools/index.ts` | Tool registry |
 | `scripts/services.sh` | Service orchestration master script |
-| `services/bernard/package.json` | Dependencies, scripts, lint config |
+| `services/bernard-agent/package.json` | Dependencies, scripts, lint config |
 
 ---
 
