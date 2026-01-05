@@ -1,4 +1,4 @@
-import type { Message, ToolMessage } from '@langchain/langgraph-sdk';
+import type { Message, ToolMessage, Checkpoint } from '@langchain/langgraph-sdk';
 import { getContentString } from '../utils';
 import { MarkdownText } from '../markdown-text';
 import { TooltipIconButton } from '../TooltipIconButton';
@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ToolCalls } from './tool-calls';
 import { cn } from '@/lib/utils';
+import { BranchSwitcher } from '../BranchSwitcher';
+import { useStreamContext } from '../../../providers/StreamProvider';
 
 function ContentCopyable({ content, disabled, side = 'top' }: { content: string; disabled: boolean; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   const [copied, setCopied] = useState(false);
@@ -37,16 +39,23 @@ function ContentCopyable({ content, disabled, side = 'top' }: { content: string;
 export function AssistantMessage({
   message,
   onRegenerate,
-  nextMessages = []
+  nextMessages = [],
+  isLoading = false,
 }: {
   message: Message;
-  onRegenerate?: () => void;
+  onRegenerate?: (parentCheckpoint: Checkpoint | null | undefined) => void;
   nextMessages?: Message[];
+  isLoading?: boolean;
 }) {
+  const thread = useStreamContext();
   const contentString = getContentString(message.content);
 
+  const meta = message ? thread.getMessagesMetadata(message) : undefined;
+  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+  const hasBranches = meta?.branchOptions && meta.branchOptions.length > 1;
+
   const handleRegenerate = () => {
-    onRegenerate?.();
+    onRegenerate?.(parentCheckpoint);
   };
 
   const isToolResult = message.type === 'tool';
@@ -67,16 +76,22 @@ export function AssistantMessage({
   }
 
   return (
-    <div className={cn("flex items-start mr-auto gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6")}>
+    <div className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", hasBranches ? "w-full" : "mr-auto")}>
       <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
         <ContentCopyable content={contentString} disabled={false} side="left" />
         <TooltipIconButton onClick={handleRegenerate} tooltip="Regenerate" variant="ghost" side="left">
           <RefreshCcw className="w-4 h-4" />
         </TooltipIconButton>
       </div>
-      <div className="flex flex-col gap-0">
+      <div className="flex flex-col gap-0 w-full">
+        <BranchSwitcher
+          branch={meta?.branch}
+          branchOptions={meta?.branchOptions}
+          onSelect={(branch) => thread.setBranch(branch)}
+          isLoading={isLoading}
+        />
         {contentString.length > 0 && (
-          <div className="py-1">
+          <div>
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         )}
