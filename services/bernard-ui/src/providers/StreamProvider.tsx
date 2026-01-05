@@ -2,17 +2,29 @@ import { useStream } from '@langchain/langgraph-sdk/react';
 import { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useThreads } from './ThreadProvider';
+import { type Message } from '@langchain/langgraph-sdk';
 
 // Re-export types from SDK for convenience
 export type { Message, AIMessage, ToolMessage, HumanMessage } from '@langchain/langgraph-sdk';
 
+export type StateType = { messages: Message[] };
+
+const useTypedStream = useStream<
+  StateType,
+  {
+    UpdateType: {
+      messages?: Message[] | Message | string;
+    };
+  }
+>;
+
 interface StreamContextType {
-  messages: ReturnType<typeof useStream>['messages'];
-  submit: ReturnType<typeof useStream>['submit'];
-  isLoading: ReturnType<typeof useStream>['isLoading'];
-  error: ReturnType<typeof useStream>['error'];
-  stop: ReturnType<typeof useStream>['stop'];
-  values: ReturnType<typeof useStream>;
+  messages: ReturnType<typeof useTypedStream>['messages'];
+  submit: ReturnType<typeof useTypedStream>['submit'];
+  isLoading: ReturnType<typeof useTypedStream>['isLoading'];
+  error: ReturnType<typeof useTypedStream>['error'];
+  stop: ReturnType<typeof useTypedStream>['stop'];
+  values: ReturnType<typeof useTypedStream>;
 }
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
@@ -54,7 +66,7 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
     },
   }), [apiUrl, assistantId, threadId, setSearchParams, createThread]);
 
-  const streamValue = useStream(options);
+  const streamValue = useTypedStream(options);
 
   return (
     <StreamContext.Provider

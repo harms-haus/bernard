@@ -480,26 +480,45 @@ class APIClient {
     return response.json();
   }
 
-  async listThreads(limit: number = 50, offset: number = 0): Promise<{ threads: ThreadListItem[]; total: number; hasMore: boolean }> {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset)
-    });
-
-    const response = await fetch(`${this.baseUrl}/threads?${params.toString()}`, {
+  async listThreads(limit: number = 50): Promise<{ threads: ThreadListItem[]; total: number; hasMore: boolean }> {
+    const response = await fetch(`/threads/search`, {
       credentials: 'same-origin',
-      headers: this.getAuthHeaders()
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify({
+        limit,
+        order: 'desc',
+        checkpoint_filters: [],
+        thread_filters: []
+      })
     });
 
     if (!response.ok) {
       throw new Error('Failed to fetch threads');
     }
 
-    return response.json();
+    // LangGraph returns a plain array, not { data, has_more }
+    const result = await response.json();
+    const threads: ThreadListItem[] = Array.isArray(result) ? result.map((t: any) => ({
+      id: t.thread_id,
+      name: t.metadata?.name,
+      createdAt: t.created_at,
+      lastTouchedAt: t.updated_at,
+      messageCount: t.metadata?.messageCount || 0
+    })) : [];
+
+    return {
+      threads,
+      total: threads.length,
+      hasMore: false
+    };
   }
 
   async getThread(threadId: string): Promise<ThreadDetail> {
-    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+    const response = await fetch(`/threads/${threadId}`, {
       credentials: 'same-origin',
       headers: this.getAuthHeaders()
     });
@@ -530,7 +549,7 @@ class APIClient {
   }
 
   async updateThread(threadId: string, name: string): Promise<{ id: string; name: string; updated: boolean }> {
-    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+    const response = await fetch(`/threads/${threadId}`, {
       credentials: 'same-origin',
       method: 'PATCH',
       headers: {
@@ -548,7 +567,7 @@ class APIClient {
   }
 
   async deleteThread(threadId: string): Promise<{ id: string; deleted: boolean }> {
-    const response = await fetch(`${this.baseUrl}/threads/${threadId}`, {
+    const response = await fetch(`/threads/${threadId}`, {
       credentials: 'same-origin',
       method: 'DELETE',
       headers: this.getAuthHeaders()
@@ -558,7 +577,12 @@ class APIClient {
       throw new Error('Failed to delete thread');
     }
 
-    return response.json();
+    // LangGraph may return empty body
+    try {
+      return await response.json();
+    } catch {
+      return { id: threadId, deleted: true };
+    }
   }
 }
 

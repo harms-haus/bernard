@@ -4,11 +4,11 @@ log() {
     echo -e "\033[1;34m[    SERVICES   ]\033[0m    $1"
 }
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[1;34m'
-NC='\033[0m'
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+BLUE=$'\033[1;34m'
+NC=$'\033[0m'
 
 # Function to conditionally colorize output
 colorize() {
@@ -34,15 +34,15 @@ cleanup_all_services() {
     exit 0
 }
 
-COLOR_REDIS='\033[0;31m'
-COLOR_SHARED='\033[1;36m'
-COLOR_BERNARD_API='\033[0;33m'
-COLOR_PROXY_API='\033[0;36m'
-COLOR_BERNARD_AGENT='\033[0;32m'
-COLOR_BERNARD_UI='\033[0;35m'
-COLOR_VLLM='\033[0;34m'
-COLOR_WHISPER='\033[0;37m'
-COLOR_KOKORO='\033[38;5;208m'
+COLOR_REDIS=$'\033[0;31m'
+COLOR_SHARED=$'\033[1;36m'
+COLOR_BERNARD_API=$'\033[0;33m'
+COLOR_PROXY_API=$'\033[0;36m'
+COLOR_BERNARD_AGENT=$'\033[0;32m'
+COLOR_BERNARD_UI=$'\033[0;35m'
+COLOR_VLLM=$'\033[0;34m'
+COLOR_WHISPER=$'\033[0;37m'
+COLOR_KOKORO=$'\033[38;5;208m'
 
 tail_logs() {
     local pids=()

@@ -18,33 +18,6 @@ function passThroughAuth(req: FastifyRequest, headers: Record<string, string>) {
 }
 
 export async function registerLangGraphRoutes(fastify: FastifyInstance) {
-  // Handle history 404s for new threads
-  fastify.post('/threads/:threadId/history', async (request, reply) => {
-    const { threadId } = request.params as { threadId: string };
-    const authHeaders = passThroughAuth(request, {
-      'Content-Type': 'application/json',
-    });
-
-    try {
-      const response = await fetch(`${BERNARD_AGENT_URL}/threads/${threadId}/history`, {
-        method: 'POST',
-        headers: authHeaders as any,
-        body: JSON.stringify(request.body),
-      });
-
-      if (response.status === 404) {
-        logger.info({ threadId }, 'Supressing 404 for new thread history');
-        return reply.status(200).send([]);
-      }
-
-      const data = await response.json();
-      return reply.status(response.status).send(data);
-    } catch (error: any) {
-      logger.error({ msg: 'History Proxy Error', error: error.message, threadId });
-      return reply.status(502).send({ error: 'Upstream Error', message: error.message });
-    }
-  });
-
   fastify.register(proxy, {
     upstream: BERNARD_AGENT_URL,
     prefix: '/threads/search',

@@ -1,87 +1,90 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
+import { motion } from 'framer-motion';
+import { v4 as uuidv4 } from 'uuid';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useStreamContext } from '../../providers/StreamProvider';
-import { useThreads } from '../../providers/ThreadProvider';
 import { useDarkMode } from '../../hooks/useDarkMode';
-import { ConversationHistory } from './ConversationHistory';
+import { ConversationHistory, useSidebarState } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
 import { cn } from '../../lib/utils';
-import { ArrowDown, PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon } from 'lucide-react';
+import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '../../lib/ensure-tool-responses';
+import { PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon, Send, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Message } from '@langchain/langgraph-sdk';
-
-function useSidebarOpen() {
-  const [isOpen, setIsOpen] = useState(true);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('bernard-chat-sidebar-open');
-    setIsOpen(saved === null ? true : JSON.parse(saved));
-  }, []);
-
-  return isOpen;
-}
-
-function ScrollToBottomButton({ className }: { className?: string }) {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-  if (isAtBottom) return null;
-  
-  return (
-    <Button variant="outline" className={cn("absolute bottom-full left-1/2 -translate-x-1/2 mb-4", className)} onClick={() => scrollToBottom()}>
-      <ArrowDown className="w-4 h-4 mr-2" />
-      Scroll to bottom
-    </Button>
-  );
-}
 
 export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
   
   const { messages, submit, isLoading, stop } = useStreamContext();
-  const { getThreads, createNewThread } = useThreads();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
-  
-  useEffect(() => {
-    if (!isLoading && messages.length > 0) {
-      getThreads();
-    }
-  }, [isLoading, messages.length, getThreads]);
-  const sidebarOpen = useSidebarOpen();
+  const [sidebarOpen, setSidebarOpen] = useSidebarState();
+  const scrollRef = useRef<HTMLDivElement>(null);
   
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
+  const [firstTokenReceived, setFirstTokenReceived] = useState(false);
 
   useEffect(() => {
     setInput('');
+    setFirstTokenReceived(false);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [threadId]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const prevMessageLength = useRef(0);
+  useEffect(() => {
+    if (
+      messages.length !== prevMessageLength.current &&
+      messages?.length &&
+      messages[messages.length - 1].type === 'ai'
+    ) {
+      setFirstTokenReceived(true);
+    }
+    prevMessageLength.current = messages.length;
+    
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+    setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
-      id: `human_${Date.now()}`,
+      id: uuidv4(),
       type: 'human',
       content: input.trim(),
     };
 
-    await submit({ messages: [...messages, newHumanMessage] });
+    const toolMessages = ensureToolCallsHaveResponses(messages);
+    submit(
+      { messages: [...toolMessages, newHumanMessage] },
+      {
+        streamMode: ['values'],
+        optimisticValues: (prev: any) => ({
+          ...prev,
+          messages: [
+            ...(prev.messages ?? []),
+            ...toolMessages,
+            newHumanMessage,
+          ],
+        }),
+      }
+    );
     setInput('');
   };
 
-  const handleNewChat = async () => {
-    try {
-      const newId = await createNewThread();
-      setSearchParams({ threadId: newId });
-    } catch (error) {
-      console.error('Failed to create new chat:', error);
-    }
+  const handleNewChat = () => {
+    setSearchParams({});
   };
 
   const handleCopyChatHistory = async () => {
@@ -108,42 +111,35 @@ export function Thread() {
     toast.success('Chat history downloaded');
   };
 
-  const toggleSidebar = () => {
-    window.dispatchEvent(new CustomEvent('toggle-sidebar'));
-  };
-
-  const chatStarted = !!threadId || !!messages.length;
+  const toggleSidebar = () => setSidebarOpen((prev: boolean) => !prev);
+  const chatStarted = messages.length > 0;
 
   return (
-    <div className="flex w-full h-screen overflow-hidden">
+    <div className="flex w-full h-screen overflow-hidden bg-background">
       <ConversationHistory />
       
-      <div
-        className={cn(
-          "flex-1 flex flex-col min-w-0 overflow-hidden relative",
-          !chatStarted && "grid-rows-[1fr]"
-        )}
+      <motion.div
+        className="flex-1 flex flex-col min-w-0"
+        animate={{ marginLeft: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 p-2 z-10 relative border-b bg-background">
+        <div className="flex items-center justify-between gap-3 p-2 border-b bg-background/95 backdrop-blur-sm shrink-0">
           <div className="flex items-center gap-2">
-            {/* Toggle sidebar button - shows when sidebar is closed */}
             {!sidebarOpen && (
-              <Button variant="ghost" onClick={toggleSidebar} aria-label="Open chat history">
+              <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Open chat history">
                 <PanelRightOpen className="size-5" />
               </Button>
             )}
             <div className="flex items-center gap-2">
               <Avatar className="h-8 w-8">
-                <AvatarFallback>B</AvatarFallback>
+                <AvatarFallback className="bg-primary text-primary-foreground">B</AvatarFallback>
               </Avatar>
-              <span className="font-medium">Bernard</span>
+              <span className="font-semibold tracking-tight">Bernard</span>
               {isGhostMode && <Ghost className="h-4 w-4 text-muted-foreground" />}
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Light/Dark mode toggle */}
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
               {isDarkMode ? <Sun className="h-4 w-4 text-yellow-500" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -176,26 +172,29 @@ export function Thread() {
           </div>
         </div>
 
-        {/* Messages Area */}
-        <StickToBottom 
-          className="relative flex-1 overflow-y-auto"
-          resize="smooth"
-          initial="smooth"
+        <div 
+          ref={scrollRef}
+          className={cn(
+            "flex-1 overflow-y-auto px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent",
+            !chatStarted && "flex flex-col items-center pt-[25vh]",
+            chatStarted && "pt-8"
+          )}
         >
-          <StickToBottom.Content className="px-4">
-            <div className="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full">
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-[50vh]">
-                  <Avatar className="h-16 w-16 mb-4">
-                    <AvatarFallback className="text-2xl">B</AvatarFallback>
-                  </Avatar>
-                  <h2 className="text-xl font-semibold mb-2">How can I help you today?</h2>
-                  <p className="text-muted-foreground">Ask about the weather, set a timer, or search the web.</p>
-                </div>
-              )}
-              
-              {messages.map((message, index) => {
-                // Skip tool result messages - they're rendered inline within AssistantMessage
+          <div className="pt-8 pb-4 max-w-3xl mx-auto flex flex-col gap-0 w-full min-h-full">
+            {!chatStarted && (
+              <div className="flex flex-col items-center gap-4 mb-8">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xl">B</AvatarFallback>
+                </Avatar>
+                <h1 className="text-3xl font-bold tracking-tight text-center">
+                  How can I help you today?
+                </h1>
+              </div>
+            )}
+
+            {messages
+              .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
+              .map((message, index) => {
                 if (message.type === 'tool') return null;
 
                 return message.type === 'human' ? (
@@ -218,49 +217,74 @@ export function Thread() {
                   />
                 );
               })}
-              
-              {isLoading && <AssistantMessageLoading />}
-            </div>
-          </StickToBottom.Content>
-          
-          <div className="sticky flex flex-col items-center gap-8 bottom-0 bg-background/80 backdrop-blur-sm z-20">
-            <ScrollToBottomButton />
             
-            {/* Input Area */}
-            <div className="bg-muted rounded-2xl border shadow-sm mx-auto mb-4 w-full max-w-3xl relative z-10">
-              <form onSubmit={handleSubmit} className="grid grid-rows-[1fr_auto] gap-2 max-w-3xl mx-auto p-2">
+            {isLoading && !firstTokenReceived && <AssistantMessageLoading />}
+          </div>
+        </div>
+
+        <div className={cn(
+          "bg-background/95 backdrop-blur-sm p-4 shrink-0",
+          !chatStarted && "flex flex-col items-center"
+        )}>
+          <div className="max-w-3xl w-full mx-auto relative px-4 sm:px-0">
+            <div className="bg-muted/50 hover:bg-muted/80 transition-colors rounded-3xl border shadow-sm p-2">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-2">
                 <Textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey) {
+                    if (
+                      e.key === 'Enter' && 
+                      !e.shiftKey && 
+                      !e.metaKey &&
+                      !e.nativeEvent.isComposing
+                    ) {
                       e.preventDefault();
                       e.currentTarget.form?.requestSubmit();
                     }
                   }}
                   placeholder="Type your message..."
-                  className="min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent shadow-none ring-0 outline-none focus:ring-0"
+                  className="min-h-[44px] max-h-[400px] resize-none border-0 bg-transparent shadow-none ring-0 outline-none focus:ring-0 px-3 py-2 text-base"
+                  style={{ fieldSizing: 'content' } as any}
                 />
-                <div className="flex items-center justify-between">
-                  <Button variant="ghost" size="icon" type="button">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  {isLoading ? (
-                    <Button key="stop" onClick={stop} type="button">
-                      <div className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Cancel
+                <div className="flex items-center justify-between px-2 pb-1">
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" type="button" className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full">
+                      <Plus className="h-5 w-5" />
                     </Button>
-                  ) : (
-                    <Button type="submit" disabled={!input.trim()}>
-                      Send
-                    </Button>
-                  )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isLoading ? (
+                      <Button 
+                        key="stop" 
+                        onClick={stop} 
+                        type="button" 
+                        size="icon"
+                        variant="secondary"
+                        className="h-9 w-9 rounded-full shadow-sm"
+                      >
+                        <StopCircle className="h-5 w-5" />
+                      </Button>
+                    ) : (
+                      <Button 
+                        type="submit" 
+                        disabled={!input.trim()} 
+                        size="icon"
+                        className="h-9 w-9 rounded-full shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
+                      >
+                        <Send className="h-5 w-5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </form>
             </div>
+            <p className="text-[10px] text-center text-muted-foreground mt-3 px-4">
+              Bernard can make mistakes. Consider checking important information.
+            </p>
           </div>
-        </StickToBottom>
-      </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
