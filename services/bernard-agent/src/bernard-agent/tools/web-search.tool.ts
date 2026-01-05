@@ -297,14 +297,10 @@ async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<Retu
 const webSearchTool = tool(
   async (
     { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
-    config: RunnableConfig,
+    _config: RunnableConfig,
   ) => {
-    try {
-      const result = await executeSearch(query, count, starting_index);
-      return result;
-    } catch (error) {
-      throw error;
-    }
+    const result = await executeSearch(query, count, starting_index);
+    return result;
   },
   {
     name: "web_search",

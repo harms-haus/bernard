@@ -72,14 +72,10 @@ async function executeWikipediaSearch(
 const wikipediaSearchToolImpl = tool(
   async (
     { query, n_results, starting_index }: { query: string; n_results?: number; starting_index?: number },
-    config: RunnableConfig,
+    _config: RunnableConfig,
   ) => {
-    try {
-      const result = await executeWikipediaSearch(query, n_results, starting_index);
-      return result;
-    } catch (error) {
-      throw error;
-    }
+    const result = await executeWikipediaSearch(query, n_results, starting_index);
+    return result;
   },
   {
     name: "wikipedia_search",

@@ -209,19 +209,15 @@ async function getWebsiteContent(
 const getWebsiteContentToolImpl = tool(
   async (
     { uri, startTokens, readTokens, forceRefresh }: GetWebsiteContentInput,
-    config: RunnableConfig,
+    _config: RunnableConfig,
   ) => {
-    try {
-      const result = await getWebsiteContent({
-        uri,
-        startTokens: startTokens ?? DEFAULT_START_TOKENS,
-        readTokens: readTokens ?? DEFAULT_READ_TOKENS,
-        forceRefresh: forceRefresh ?? false,
-      });
-      return result;
-    } catch (error) {
-      throw error;
-    }
+    const result = await getWebsiteContent({
+      uri,
+      startTokens: startTokens ?? DEFAULT_START_TOKENS,
+      readTokens: readTokens ?? DEFAULT_READ_TOKENS,
+      forceRefresh: forceRefresh ?? false,
+    });
+    return result;
   },
   {
     name: "get_website_content",
