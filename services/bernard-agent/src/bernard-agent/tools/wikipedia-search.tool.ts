@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { createProgressReporter } from "./progress.js";
 
 import wiki from "wikipedia";
 
@@ -12,6 +10,7 @@ const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
 
 import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { ToolFactory } from "./types";
 
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
@@ -48,12 +47,8 @@ async function executeWikipediaSearch(
   query: string,
   n_results: number = 10,
   starting_index: number = 0,
-  progress?: ReturnType<typeof createProgressReporter>,
 ): Promise<string> {
   try {
-    if (progress) {
-      progress.progress(1, 2, `Searching Wikipedia for "${query}"`);
-    }
 
     const searchResults = await wikipedia.search(query, {
       limit: n_results + starting_index
@@ -68,15 +63,8 @@ async function executeWikipediaSearch(
         index: starting_index + index + 1
       }));
 
-    if (progress) {
-      progress.complete(`Retrieved ${results.length} Wikipedia results`);
-    }
-
     return JSON.stringify(results);
   } catch (error) {
-    if (progress) {
-      progress.error(error instanceof Error ? error : new Error(String(error)));
-    }
     return `Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
@@ -86,15 +74,10 @@ const wikipediaSearchToolImpl = tool(
     { query, n_results, starting_index }: { query: string; n_results?: number; starting_index?: number },
     config: RunnableConfig,
   ) => {
-    const progress = createProgressReporter(config, "wikipedia_search");
-
-    progress.start(`Searching Wikipedia for "${query}"`);
-
     try {
-      const result = await executeWikipediaSearch(query, n_results, starting_index, progress);
+      const result = await executeWikipediaSearch(query, n_results, starting_index);
       return result;
     } catch (error) {
-      progress.error(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   },
@@ -114,4 +97,7 @@ const wikipediaSearchToolImpl = tool(
 export const wikipediaSearchTool = Object.assign(wikipediaSearchToolImpl, {
   interpretationPrompt: ``
 });
-/* eslint-enable @typescript-eslint/unbound-method */
+
+export const wikipediaSearchToolFactory: ToolFactory = async () => {
+  return { ok: true, tool: wikipediaSearchTool, name: wikipediaSearchTool.name };
+};

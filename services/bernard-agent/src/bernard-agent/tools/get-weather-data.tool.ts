@@ -17,7 +17,8 @@ import {
   parseDateRange,
   type DailyWeather,
   type HourlyWeather
-} from "../../lib/weather/common";
+} from "@/lib/weather/common";
+import { ToolFactory } from "./types";
 
 
 type ForecastResponse = {
@@ -307,3 +308,7 @@ async function fetchHourlyWeather(
 
   return formatHourlyTable(filteredHourly, units, timezone ?? "auto");
 }
+
+export const getWeatherDataToolFactory: ToolFactory = async () => {
+  return { ok: true, tool: getWeatherDataTool, name: getWeatherDataTool.name };
+};

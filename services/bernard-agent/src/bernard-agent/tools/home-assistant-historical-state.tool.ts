@@ -2,7 +2,11 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
-import { getHAConnection } from "../../lib/home-assistant";
+import { getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
+import { ToolFactory } from "./types";
+import { getSettings } from "@/dist/lib/config/settingsCache";
+
+const TOOL_NAME = "get_home_assistant_historical_state";
 
 /**
  * Home Assistant historical state data
@@ -72,7 +76,7 @@ export function createGetHistoricalStateTool(
       }
     },
     {
-      name: "get_historical_state",
+      name: TOOL_NAME,
       description: "Retrieve historical state data for Home Assistant entities within a specified time range. Returns state changes and attribute updates for the given entities.",
       schema: z.object({
         entity_ids: z.array(z.string()).describe("Array of entity IDs to retrieve historical data for"),
@@ -189,9 +193,13 @@ function formatHistoricalStateResponse(history: HistoryResponse): string {
   return lines.join('\n').trim();
 }
 
-/**
- * The get historical state tool instance factory
- */
-export function createGetHistoricalStateToolInstance(restConfig?: HARestConfig) {
-  return createGetHistoricalStateTool(restConfig);
-}
+export const getHistoricalStateToolFactory: ToolFactory = async () => {
+  const isValid = await verifyHomeAssistantConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };
+  }
+  const settings = await getSettings();
+  const haConfig = settings.services?.homeAssistant;
+  const tool = createGetHistoricalStateTool(haConfig);
+  return { ok: true, tool: tool, name: tool.name };
+};

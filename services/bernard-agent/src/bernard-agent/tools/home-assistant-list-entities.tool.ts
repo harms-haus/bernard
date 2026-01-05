@@ -3,8 +3,12 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { getStates } from "home-assistant-js-websocket";
 
-import type { HomeAssistantEntity } from "../../lib/home-assistant";
-import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection } from "../../lib/home-assistant";
+import type { HomeAssistantEntity } from "@/lib/home-assistant";
+import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
+import { ToolFactory } from "./types";
+import { getSettings } from "@/dist/lib/config/settingsCache";
+
+const TOOL_NAME = "list_home_assistant_entities";
 
 /**
  * Home Assistant API configuration (supports both WebSocket and REST)
@@ -174,7 +178,7 @@ export function createListHAEntitiesTool(
       return deps.formatEntitiesImpl(entities);
     },
     {
-      name: "list_home_assistant_entities",
+      name: TOOL_NAME,
       description: "List Home Assistant entities with optional filtering by domain and regex pattern. Domain filters by entity type (e.g., 'light', 'sensor'). Regex searches across entity_id, name, aliases, and state in CSV format.",
       schema: z.object({
         domain: z.string().optional().describe("Filter entities by domain (e.g., 'light', 'sensor', 'climate')"),
@@ -183,7 +187,6 @@ export function createListHAEntitiesTool(
     }
   );
 }
-
 /**
  * The list HA entities tool instance factory
  */
@@ -198,3 +201,15 @@ export function getEntitiesFromContext(messages: BaseMessage[]): HomeAssistantEn
   const context = extractHomeAssistantContext(messages);
   return context?.entities || [];
 }
+
+export const listHAEntitiesToolFactory: ToolFactory = async () => {
+  const isValid = await verifyHomeAssistantConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };
+  }
+  const settings = await getSettings();
+  const haConfig = settings.services?.homeAssistant;
+  const tool = createListHAEntitiesTool(haConfig);
+  return { ok: true, tool: tool, name: tool.name };
+};
+

@@ -2,11 +2,22 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
 
-import type { HomeAssistantServiceCall } from "../../lib/home-assistant";
-import { getHAConnection } from "../../lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
-import { getEntityState, getCurrentBrightness, getSupportedColorModes } from "./home-assistant-get-entity-state.tool";
-import { convertColorToSupportedFormat, getExampleColorNames, type ColorInput } from "../../lib/home-assistant";
+import {
+  type HomeAssistantServiceCall,
+  type ColorInput,
+  getHAConnection,
+  getEntityState,
+  getCurrentBrightness,
+  getSupportedColorModes,
+  convertColorToSupportedFormat,
+  getExampleColorNames,
+  verifyHomeAssistantConfigured
+} from "@/lib/home-assistant";
+import { ToolFactory } from "./types";
+import { getSettings } from "@/dist/lib/config/settingsCache";
+
+const TOOL_NAME = "toggle_home_assistant_light";
 
 /**
  * Dependencies for the toggle light tool
@@ -165,7 +176,7 @@ export function createToggleLightTool(
       }
     },
     {
-      name: "toggle_home_assistant_light",
+      name: TOOL_NAME,
       description: `Control Home Assistant lights with advanced features including brightness adjustment, color control, and automatic color format conversion.
 
 Supports various color input formats that are automatically converted to the light's supported color modes:
@@ -262,6 +273,13 @@ async function executeServiceCall(
 /**
  * The toggle light tool instance factory
  */
-export function createToggleLightToolInstance(restConfig?: HARestConfig) {
-  return createToggleLightTool(restConfig);
-}
+export const toggleLightToolFactory: ToolFactory = async () => {
+  const isValid = await verifyHomeAssistantConfigured();
+  if (!isValid.ok) {
+    return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };
+  }
+  const settings = await getSettings();
+  const haConfig = settings.services?.homeAssistant;
+  const tool = createToggleLightTool(haConfig);
+  return { ok: true, tool: tool, name: tool.name };
+};
