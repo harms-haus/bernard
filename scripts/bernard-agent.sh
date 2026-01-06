@@ -43,8 +43,9 @@ check() {
     LOG_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.log"
     STATUS_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.status"
 
-    # Clear previous status
+    # Clear previous status and log
     > "$STATUS_FILE"
+    > "$LOG_FILE"
 
     # Run check steps synchronously (don't exit on failure)
     run_check_step "type-check" "npm run type-check" "$LOG_FILE" "$SERVICE_NAME" "$DIR"

@@ -42,8 +42,9 @@ check() {
     STATUS_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.status"
     PID_FILE="$LOG_DIR/${SERVICE_NAME,,}-check.pid"
     
-    # Clear previous status and write PID
+    # Clear previous status, log, and write PID
     > "$STATUS_FILE"
+    > "$LOG_FILE"
     echo "$$" > "$PID_FILE"
     
     # Start health monitoring and console logging in background
