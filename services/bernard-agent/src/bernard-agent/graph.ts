@@ -27,6 +27,7 @@ import {
   executeHomeAssistantServicesToolFactory,
   toggleLightToolFactory,
   getHistoricalStateToolFactory,
+  playMediaTvToolFactory,
   ToolFactory,
 } from "./tools";
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
@@ -54,6 +55,7 @@ async function validateAndGetTools(): Promise<{
     executeHomeAssistantServicesToolFactory,
     toggleLightToolFactory,
     getHistoricalStateToolFactory,
+    playMediaTvToolFactory,
   ];
 
   for (const factory of toolDefinitions) {

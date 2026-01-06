@@ -1,6 +1,5 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { RunnableConfig } from "@langchain/core/runnables";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
@@ -9,6 +8,10 @@ import { countTokensInText, sliceTokensFromText } from "@/lib/tokenCounter";
 import { getCachedContent, setCachedContent } from "@/lib/website";
 import { verifySearchConfigured } from "./web-search.tool";
 import { ToolFactory } from "./types";
+import { createProgressReporter, ProgressReporter } from "../utils";
+import { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { getReadingUpdate } from "../updates";
+
 
 const FETCH_TIMEOUT_MS = 10000; // 10 seconds
 const DEFAULT_START_TOKENS = 0;
@@ -20,6 +23,7 @@ interface GetWebsiteContentInput {
   startTokens?: number;
   readTokens?: number;
   forceRefresh?: boolean;
+  progress: ProgressReporter;
 }
 
 interface GetWebsiteContentOutput {
@@ -121,7 +125,8 @@ async function getWebsiteContent(
     uri,
     startTokens = DEFAULT_START_TOKENS,
     readTokens = DEFAULT_READ_TOKENS,
-    forceRefresh = false
+    forceRefresh = false,
+    progress
   } = input;
 
   try {
@@ -147,6 +152,7 @@ async function getWebsiteContent(
 
     if (!cachedContent) {
       logger.info('Fetching website content: %s', uri);
+      progress(getReadingUpdate());
 
       // Fetch HTML
       const html = await fetchHtml(uri);
@@ -209,13 +215,14 @@ async function getWebsiteContent(
 const getWebsiteContentToolImpl = tool(
   async (
     { uri, startTokens, readTokens, forceRefresh }: GetWebsiteContentInput,
-    _config: RunnableConfig,
+    config: LangGraphRunnableConfig,
   ) => {
     const result = await getWebsiteContent({
       uri,
       startTokens: startTokens ?? DEFAULT_START_TOKENS,
       readTokens: readTokens ?? DEFAULT_READ_TOKENS,
       forceRefresh: forceRefresh ?? false,
+      progress: createProgressReporter(config, "get_website_content"),
     });
     return result;
   },

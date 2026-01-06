@@ -10,6 +10,12 @@ import axios from "axios";
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import { countTokensInText, sliceTokensFromText, DEFAULT_ENCODING } from "@/lib/tokenCounter";
 import { ToolFactory } from "./types";
+import { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { createProgressReporter, ProgressReporter } from "../utils";
+import { getReadingUpdate } from "../updates";
+
+const TOOL_NAME = "wikipedia_entry";
+const USER_AGENT = 'Bernard/1.0 (a.harms.haus; blake@harms.haus) wikipedia/2.4.2';
 
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
@@ -19,7 +25,7 @@ axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Pro
     ...config,
     headers: {
       ...config?.headers,
-      'User-Agent': 'Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)'
+      'Api-User-Agent': USER_AGENT
     }
   } as AxiosRequestConfig;
   return originalGet(url, newConfig);
@@ -37,9 +43,15 @@ type WikipediaEntryResult = {
 async function executeWikipediaEntry(
   page_identifier: string,
   token_offset: number = 0,
-  max_tokens: number = 1500
+  max_tokens: number = 1500,
+  progress: ProgressReporter,
 ): Promise<string> {
+  
+  wikipedia.setUserAgent(USER_AGENT);
+  wikipedia.setLang('en');
+
   const page = await wikipedia.page(page_identifier, { redirect: true });
+  progress(getReadingUpdate());
   const fullContent = await page.content({ redirect: true });
 
   // Use token-based slicing instead of character-based slicing
@@ -58,11 +70,14 @@ async function executeWikipediaEntry(
 }
 
 const wikipediaEntryToolImpl = tool(
-  async ({ page_identifier, token_offset, max_tokens }) => {
-    return executeWikipediaEntry(page_identifier, token_offset, max_tokens);
+  async (
+    { page_identifier, token_offset, max_tokens },
+    config: LangGraphRunnableConfig,) => {
+    const progress = createProgressReporter(config, TOOL_NAME);
+    return executeWikipediaEntry(page_identifier, token_offset, max_tokens, progress);
   },
   {
-    name: "wikipedia_entry",
+    name: TOOL_NAME,
     description: "Retrieve text content from a specific Wikipedia article with token offset and length limits.",
     schema: z.object({
       page_identifier: z.string().min(1),
