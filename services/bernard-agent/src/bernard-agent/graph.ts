@@ -7,6 +7,7 @@ import {
   StateGraph,
   END,
 } from "@langchain/langgraph";
+import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage } from "@langchain/core/messages";
 import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
@@ -17,62 +18,8 @@ import { BernardConfigurationAnnotation } from "./configuration";
 import { getSettings } from "@/lib/config/settingsCache";
 import { resolveModel } from "@/lib/config/models";
 
-import {
-  webSearchToolFactory,
-  getWebsiteContentToolFactory,
-  wikipediaSearchToolFactory,
-  wikipediaEntryToolFactory,
-  getWeatherDataToolFactory,
-  listHAEntitiesToolFactory,
-  executeHomeAssistantServicesToolFactory,
-  toggleLightToolFactory,
-  getHistoricalStateToolFactory,
-  playMediaTvToolFactory,
-  ToolFactory,
-} from "./tools";
+import { validateAndGetTools } from "./tools";
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
-
-
-interface DisabledTool {
-  name: string;
-  reason?: string | undefined;
-}
-
-async function validateAndGetTools(): Promise<{
-  validTools: any[];
-  disabledTools: DisabledTool[];
-}> {
-  const disabledTools: DisabledTool[] = [];
-  const validTools: any[] = [];
-
-  const toolDefinitions: ToolFactory[] = [
-    webSearchToolFactory,
-    getWebsiteContentToolFactory,
-    wikipediaSearchToolFactory,
-    wikipediaEntryToolFactory,
-    getWeatherDataToolFactory,
-    listHAEntitiesToolFactory,
-    executeHomeAssistantServicesToolFactory,
-    toggleLightToolFactory,
-    getHistoricalStateToolFactory,
-    playMediaTvToolFactory,
-  ];
-
-  for (const factory of toolDefinitions) {
-    if (factory) {
-      const result = await factory();
-
-      if (result.ok) {
-        validTools.push(result.tool);
-      } else {
-        const disabledTool: DisabledTool = { name: result.name, reason: result.reason };
-        disabledTools.push(disabledTool);
-      }
-    }
-  }
-
-  return { validTools, disabledTools };
-}
 
 async function callReactModel(
   state: typeof BernardStateAnnotation.State,
@@ -153,3 +100,44 @@ export async function createBernardGraph() {
 }
 
 export const graph = await createBernardGraph();
+
+export async function createBernardAgent() {
+  const settings = await getSettings();
+  const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
+
+  const checkpointer = await RedisSaver.fromUrl(redisUrl);
+
+  const {id, options} = await resolveModel("router");
+  const llm = await initChatModel(id, options);
+  // Test the model directly first
+  const testResponse = await llm.invoke([
+    { role: "user", content: "test" }
+  ]);
+  console.log("Direct model call works:", testResponse);
+
+  const { validTools, disabledTools } = await validateAndGetTools();
+
+  return createAgent({
+    model: llm,
+    tools: validTools,
+    systemPrompt: buildReactSystemPrompt(new Date(), [], disabledTools),
+    checkpointer,
+    middleware: [
+      toolCallLimitMiddleware({ runLimit: 10}),
+      toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
+      modelRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
+      contextEditingMiddleware({
+        edits: [
+          new ClearToolUsesEdit({
+            trigger: [
+              { tokens: 50000, messages: 20 },
+            ],
+            keep: { messages: 10 },
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+export const agent = await createBernardAgent();

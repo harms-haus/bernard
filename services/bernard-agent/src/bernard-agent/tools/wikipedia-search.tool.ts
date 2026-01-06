@@ -8,9 +8,13 @@ import wiki from "wikipedia";
 // the wiki function is exported at default.default instead of default
 const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
 
+const USER_AGENT = 'Bernard/1.0 (a.harms.haus; blake@harms.haus) wikipedia/2.4.2';
+
 import axios from 'axios';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ToolFactory } from "./types";
+import { createProgressReporter, ProgressReporter } from "../utils";
+import { getSearchingUpdate } from "../updates";
 
 // Monkey patch the wikipedia library's request function to add User-Agent header
 // This is needed because Wikipedia now blocks requests that only have Api-User-Agent
@@ -19,8 +23,9 @@ axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Pro
   const newConfig = {
     ...config,
     headers: {
-      ...config?.headers,
-      'User-Agent': 'Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)'
+    ...config?.headers,
+      'Api-User-Agent': USER_AGENT,
+      'User-Agent': USER_AGENT
     }
   } as AxiosRequestConfig;
   return originalGet(url, newConfig);
@@ -47,10 +52,12 @@ async function executeWikipediaSearch(
   query: string,
   n_results: number = 10,
   starting_index: number = 0,
+  progress: ProgressReporter,
 ): Promise<string> {
   try {
+    progress.report(getSearchingUpdate());
 
-    wikipedia.setUserAgent('Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)');
+    wikipedia.setUserAgent(USER_AGENT);
     wikipedia.setLang('en');
 
     const searchResults = await wikipedia.search(query, {
@@ -65,6 +72,8 @@ async function executeWikipediaSearch(
         description: result.snippet || '',
         index: starting_index + index + 1
       }));
+      
+    progress.reset();
 
     return JSON.stringify(results);
   } catch (error) {
@@ -77,7 +86,7 @@ const wikipediaSearchToolImpl = tool(
     { query, n_results, starting_index }: { query: string; n_results?: number; starting_index?: number },
     _config: RunnableConfig,
   ) => {
-    const result = await executeWikipediaSearch(query, n_results, starting_index);
+    const result = await executeWikipediaSearch(query, n_results, starting_index, createProgressReporter(_config, "wikipedia_search"));
     return result;
   },
   {

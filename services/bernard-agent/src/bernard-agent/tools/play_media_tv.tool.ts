@@ -359,7 +359,7 @@ export function createPlayMediaTvTool(
 
         const { bestMatch, mediaType } = await searchPlexBestMatch(plexConfig, media_query, deps);
 
-        progress(getUpdate([
+        progress.report(getUpdate([
           "Powering tv...",
           "Starting generator...",
           "Grabbing remote..."
@@ -367,7 +367,7 @@ export function createPlayMediaTvTool(
 
         await ensureTvOn(haEntityId, haRestConfig, adbAddress, actions, deviceName, deps);
 
-        progress(getUpdate([
+        progress.report(getUpdate([
           "Launching plex...",
           "Plexing...",
           "Loading..."
@@ -375,7 +375,7 @@ export function createPlayMediaTvTool(
 
         await ensurePlexActive(haEntityId, haRestConfig, adbAddress, actions, deviceName, deps);
 
-        progress(getUpdate([
+        progress.report(getUpdate([
           "Starting trailers...",
           "Starting previews...",
           "Spoiling the ending...",
@@ -384,6 +384,8 @@ export function createPlayMediaTvTool(
 
         await playMediaOnPlex(haPlexEntityId, haRestConfig, deps, plexConfig, mediaType, bestMatch, deviceName, actions, location_id, playback_mode);
 
+        progress.reset();
+
         if (actions.length === 0) {
           throw new Error(`Found "${bestMatch.title}" (${mediaType}) but no actions are available for location "${location_id}". Please check device configuration.`);
         }
@@ -391,6 +393,7 @@ export function createPlayMediaTvTool(
         return `Successfully started playback:\n${actions.join('\n')}`;
 
       } catch (error) {
+        progress.reset();
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error('play_media_tv failed: %s', errorMessage);
         return `Error playing media: ${errorMessage}`;

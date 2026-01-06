@@ -5,6 +5,8 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { getSettings } from "@/lib/config/settingsCache";
 import { logger } from "@/lib/logging";
 import { ToolFactory } from "./types";
+import { createProgressReporter, ProgressReporter } from "../utils";
+import { getSearchingUpdate } from "../updates";
 
 const DEFAULT_SEARXNG_API_URL = "https://searxng.example.com/search";
 const DEFAULT_RESULT_COUNT = 3;
@@ -256,6 +258,7 @@ async function handleSearchResponse(res: Response, count?: number): Promise<stri
 
 async function executeSearch(
   query: string,
+  progress: ProgressReporter,
   count?: number,
   startingIndex?: number,
 ): Promise<string> {
@@ -265,6 +268,8 @@ async function executeSearch(
     return `Search tool is not configured (${config.reason})`;
   }
 
+  progress.report(getSearchingUpdate());
+
   logger.info('Executing search: query="%s" count=%d starting_index=%d provider=%s',
     query, count ?? DEFAULT_RESULT_COUNT, startingIndex ?? 1, config.provider);
 
@@ -273,6 +278,8 @@ async function executeSearch(
   try {
     const res = await fetchSearXNGSearch(url, config.apiKey);
     const result = await handleSearchResponse(res, count);
+
+    progress.reset();
 
     return result;
   } catch (error) {
@@ -299,7 +306,8 @@ const webSearchTool = tool(
     { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
     _config: RunnableConfig,
   ) => {
-    const result = await executeSearch(query, count, starting_index);
+    const progress = createProgressReporter(_config, "web_search");
+    const result = await executeSearch(query, progress, count, starting_index);
     return result;
   },
   {

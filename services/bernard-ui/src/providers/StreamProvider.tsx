@@ -1,5 +1,5 @@
 import { useStream } from '@langchain/langgraph-sdk/react';
-import { createContext, useContext, ReactNode, useMemo } from 'react';
+import { createContext, useContext, ReactNode, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useThreads } from './ThreadProvider';
 import { type Message } from '@langchain/langgraph-sdk';
@@ -20,7 +20,23 @@ const useTypedStream = useStream<
 
 type StreamContextType = ReturnType<typeof useTypedStream>;
 
-const StreamContext = createContext<StreamContextType | undefined>(undefined);
+/**
+ * Progress event structure received from custom stream events
+ */
+export interface ToolProgressEvent {
+  type: 'progress' | 'step' | 'complete' | 'error';
+  tool: string;
+  message: string;
+  data?: Record<string, unknown>;
+  timestamp: number;
+}
+
+interface ExtendedStreamContextType extends StreamContextType {
+  latestProgress: ToolProgressEvent | null;
+  resetProgress: () => void;
+}
+
+const StreamContext = createContext<ExtendedStreamContextType | undefined>(undefined);
 
 export function useStreamContext() {
   const context = useContext(StreamContext);
@@ -41,11 +57,31 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
   const [, setSearchParams] = useSearchParams();
   const { createThread } = useThreads();
 
+  // Store the latest progress event for UI display
+  const latestProgressRef = useRef<ToolProgressEvent | null>(null);
+
+  // Callback to reset progress when a new message arrives
+  const resetProgress = useCallback(() => {
+    latestProgressRef.current = null;
+  }, []);
+
   const options = useMemo(() => ({
     apiUrl,
     assistantId,
     threadId: threadId ?? null,
-    onCustomEvent: () => {},
+    onCustomEvent: (event: unknown) => {
+      // Capture progress events from the backend
+      const customEvent = event as { _type?: string; tool?: string; phase?: string; message?: string; data?: Record<string, unknown>; timestamp?: number };
+      if (customEvent._type === 'tool_progress') {
+        latestProgressRef.current = {
+          type: (customEvent.phase as ToolProgressEvent['type']) || 'progress',
+          tool: customEvent.tool || 'unknown',
+          message: customEvent.message || '',
+          data: customEvent.data,
+          timestamp: customEvent.timestamp || Date.now(),
+        };
+      }
+    },
     onThreadId: (id: string) => {
       if (id && id !== threadId) {
         setSearchParams((prev) => {
@@ -61,7 +97,14 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
 
   const streamValue = useTypedStream(options);
 
-  const contextValue: StreamContextType = streamValue;
+  // Extend the context value to include progress functionality
+  const contextValue: ExtendedStreamContextType = {
+    ...streamValue,
+    get latestProgress() {
+      return latestProgressRef.current;
+    },
+    resetProgress,
+  };
 
   return (
     <StreamContext.Provider value={contextValue}>

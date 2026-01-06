@@ -10,3 +10,8 @@ export type ToolFactoryResult = {
 };
 
 export type ToolFactory = () => Promise<ToolFactoryResult>;
+
+export interface DisabledTool {
+  name: string;
+  reason?: string | undefined;
+}

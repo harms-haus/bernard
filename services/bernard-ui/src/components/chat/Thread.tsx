@@ -11,6 +11,7 @@ import { useDarkMode } from '../../hooks/useDarkMode';
 import { ConversationHistory, useSidebarState } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
+import { ProgressIndicator } from './messages/progress';
 import { cn } from '../../lib/utils';
 import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '../../lib/ensure-tool-responses';
 import { PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon, Send, StopCircle } from 'lucide-react';
@@ -29,12 +30,10 @@ export function Thread() {
   
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
-  const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const prevMessageLength = useRef(0);
 
   useEffect(() => {
     setInput('');
-    setFirstTokenReceived(false);
     prevMessageLength.current = 0;
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -42,13 +41,6 @@ export function Thread() {
   }, [threadId]);
 
   useEffect(() => {
-    if (
-      messages.length !== prevMessageLength.current &&
-      messages?.length &&
-      messages[messages.length - 1].type === 'ai'
-    ) {
-      setFirstTokenReceived(true);
-    }
     prevMessageLength.current = messages.length;
     
     if (scrollRef.current) {
@@ -59,7 +51,6 @@ export function Thread() {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -93,7 +84,6 @@ export function Thread() {
     parentCheckpoint: Checkpoint | null | undefined,
   ) => {
     prevMessageLength.current = prevMessageLength.current - 1;
-    setFirstTokenReceived(false);
     stream.submit(undefined, {
       checkpoint: parentCheckpoint,
       streamMode: ['values'],
@@ -227,7 +217,13 @@ export function Thread() {
                 );
               })}
             
-            {isLoading && !firstTokenReceived && <AssistantMessageLoading />}
+            {isLoading && (
+  stream.latestProgress ? (
+    <ProgressIndicator />
+  ) : (
+    <AssistantMessageLoading />
+  )
+)}
           </div>
         </div>
 
