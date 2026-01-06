@@ -22,6 +22,9 @@ export { executeHomeAssistantServicesToolFactory } from "./home-assistant-execut
 export { toggleLightToolFactory } from "./home-assistant-toggle-light.tool";
 export { getHistoricalStateToolFactory } from "./home-assistant-historical-state.tool";
 
+// Media Playback Tools
+export { playMediaTvToolFactory } from "./play_media_tv.tool";
+
 export {
   type ToolFactory
 } from "./types";

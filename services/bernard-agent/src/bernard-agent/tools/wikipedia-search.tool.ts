@@ -50,8 +50,11 @@ async function executeWikipediaSearch(
 ): Promise<string> {
   try {
 
+    wikipedia.setUserAgent('Bernard-AI/1.0 (compatible; Wikipedia-API/1.0)');
+    wikipedia.setLang('en');
+
     const searchResults = await wikipedia.search(query, {
-      limit: n_results + starting_index
+      limit: n_results + starting_index,
     });
     
     const results: WikipediaSearchResult[] = (searchResults.results as WikipediaAPIResult[])
