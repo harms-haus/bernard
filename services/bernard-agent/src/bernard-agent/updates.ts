@@ -22,6 +22,30 @@ export function getReadingUpdate(): string {
   return getUpdate(updates);
 } 
 
+export function getSearchingUpdate(): string {
+  const searches = [
+    "Searching web...",
+    "Searching databases...",
+    "Searching filesystems...",
+    "Searching registries...",
+    "Finding information...",
+    "Finding answers...",
+    "Finding solutions...",
+    "Finding insights...",
+    "Finding knowledge...",
+    "Finding secrets...",
+    "Discovering...",
+    "Exploring...",
+    "Investigating...",
+    "Researching...",
+    "Browsing...",
+    "Scrolling...",
+    "Digging...",
+    "Searching...",
+    "Finding...",
+  ];
+  return getUpdate(searches);
+}
 /**
  * Get a random transforming update from the transforming updates list
  * @returns A random transforming update from the transforming updates list

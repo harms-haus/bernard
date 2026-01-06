@@ -9,16 +9,26 @@ export interface LlmOptions {
   baseUrl?: string | undefined;
 }
 
-export type ProgressReporter = (message: string) => void;
+export type ProgressReporter = {
+  report: (message: string) => void;
+  reset: () => void;
+};
 
 export function createProgressReporter(config: LangGraphRunnableConfig, toolName: string): ProgressReporter {
-  return (message: string) => {
-    config['writer']?.({
-      _type: "tool_progress",
-      tool: toolName,
-      phase: "step",
-      message,
-    });
+  return {
+    report: (message: string) =>
+      config['writer']?.({
+        _type: "tool_progress",
+        tool: toolName,
+        phase: "step",
+        message,
+      }),
+    reset: () =>
+      config['writer']?.({
+        _type: "tool_progress",
+        tool: toolName,
+        phase: "step",
+        message: "",
+      })
   };
 }
-

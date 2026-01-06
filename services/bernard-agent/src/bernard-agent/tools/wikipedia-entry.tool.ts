@@ -24,8 +24,9 @@ axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Pro
   const newConfig = {
     ...config,
     headers: {
-      ...config?.headers,
-      'Api-User-Agent': USER_AGENT
+    ...config?.headers,
+      'Api-User-Agent': USER_AGENT,
+      'User-Agent': USER_AGENT
     }
   } as AxiosRequestConfig;
   return originalGet(url, newConfig);
@@ -51,7 +52,7 @@ async function executeWikipediaEntry(
   wikipedia.setLang('en');
 
   const page = await wikipedia.page(page_identifier, { redirect: true });
-  progress(getReadingUpdate());
+  progress.report(getReadingUpdate());
   const fullContent = await page.content({ redirect: true });
 
   // Use token-based slicing instead of character-based slicing
@@ -66,6 +67,7 @@ async function executeWikipediaEntry(
   const n_next_tokens = Math.max(0, totalTokens - effectiveOffset - n_tokens);
 
   const result: WikipediaEntryResult = { n_tokens, content, n_next_tokens };
+  progress.reset();
   return JSON.stringify(result);
 }
 

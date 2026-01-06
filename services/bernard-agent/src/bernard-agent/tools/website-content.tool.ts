@@ -152,7 +152,7 @@ async function getWebsiteContent(
 
     if (!cachedContent) {
       logger.info('Fetching website content: %s', uri);
-      progress(getReadingUpdate());
+      progress.report(getReadingUpdate());
 
       // Fetch HTML
       const html = await fetchHtml(uri);
@@ -160,6 +160,7 @@ async function getWebsiteContent(
       // Extract content with Readability
       const extracted = extractContent(html, uri);
       if (!extracted) {
+        progress.reset();
         return 'Error: Could not extract readable content from the webpage';
       }
 
@@ -201,10 +202,13 @@ async function getWebsiteContent(
       hasMore
     };
 
+    progress.reset();
+
     // Return human-readable summary
     return `**${result.title}**\n\n${result.content}\n\n---\nURL: ${result.url}${result.byline ? `\nBy: ${result.byline}` : ''}\nTokens: ${result.returnedTokens}/${result.totalTokens} (start: ${result.startTokens}, read: ${result.readTokens})${result.hasMore ? ' - More content available' : ''}`;
 
   } catch (error) {
+    progress.reset();
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('getWebsiteContent failed: %s', errorMessage);
     return `Error: Failed to retrieve website content: ${errorMessage}`;

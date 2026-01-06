@@ -26,5 +26,10 @@ export { getHistoricalStateToolFactory } from "./home-assistant-historical-state
 export { playMediaTvToolFactory } from "./play_media_tv.tool";
 
 export {
-  type ToolFactory
+  type ToolFactory,
+  type DisabledTool,
 } from "./types";
+
+export {
+  validateAndGetTools,
+} from "./validation";
