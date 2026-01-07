@@ -23,5 +23,9 @@ export {
   getPlexLibrarySections,
   getPlexItemMetadata,
   rankSearchResults,
-  searchPlexBestMatch
+  searchPlexBestMatch,
+  calculatePlexMediaProgress,
+  getLastPlexPlayTime,
+  searchPlexMediaWithRanking,
+  type RankedPlexMediaItemWithScore
 } from "./media-search";

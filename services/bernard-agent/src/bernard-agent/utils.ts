@@ -28,7 +28,7 @@ export function createProgressReporter(config: LangGraphRunnableConfig, toolName
         _type: "tool_progress",
         tool: toolName,
         phase: "step",
-        message: "",
+        message: "Thinking...",
       })
   };
 }

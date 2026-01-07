@@ -13,7 +13,7 @@ import {
 } from "@/lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { ToolFactory } from "./types";
-import { getSettings } from "@/dist/lib/config/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "execute_home_assistant_services";
 

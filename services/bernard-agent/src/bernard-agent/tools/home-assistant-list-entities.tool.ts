@@ -6,7 +6,7 @@ import { getStates } from "home-assistant-js-websocket";
 import type { HomeAssistantEntity } from "@/lib/home-assistant";
 import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
 import { ToolFactory } from "./types";
-import { getSettings } from "@/dist/lib/config/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "list_home_assistant_entities";
 

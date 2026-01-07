@@ -15,7 +15,7 @@ import {
   verifyHomeAssistantConfigured
 } from "@/lib/home-assistant";
 import { ToolFactory } from "./types";
-import { getSettings } from "@/dist/lib/config/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "toggle_home_assistant_light";
 

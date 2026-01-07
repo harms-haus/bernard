@@ -4,6 +4,7 @@ import { getHistoricalStateToolFactory } from "./home-assistant-historical-state
 import { listHAEntitiesToolFactory } from "./home-assistant-list-entities.tool";
 import { toggleLightToolFactory } from "./home-assistant-toggle-light.tool";
 import { playMediaTvToolFactory } from "./play_media_tv.tool";
+import { searchMediaToolFactory } from "./search_media.tool";
 import { DisabledTool, ToolFactory } from "./types";
 import { webSearchToolFactory } from "./web-search.tool";
 import { getWebsiteContentToolFactory } from "./website-content.tool";
@@ -29,6 +30,7 @@ export async function validateAndGetTools(): Promise<{
     toggleLightToolFactory,
     getHistoricalStateToolFactory,
     playMediaTvToolFactory,
+    searchMediaToolFactory,
   ];
 
   for (const factory of toolDefinitions) {
