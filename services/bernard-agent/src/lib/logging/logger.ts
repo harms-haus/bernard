@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import pino, { stdTimeFunctions, type Logger, type LoggerOptions, type TransportSingleOptions } from "pino";
+import pino, { stdTimeFunctions, type Logger, type LoggerOptions } from "pino";
 
 export type LogContext = {
   requestId?: string;
@@ -32,49 +32,20 @@ export const redactionPaths = [
   "*.authorization"
 ];
 
-// Note: Removed manual thread-stream worker path override due to Turbopack build issues.
-// If logging breaks in production, we may need to find an alternative solution.
-
-function parseJsonOption(raw: string | undefined): Record<string, unknown> | undefined {
-  if (!raw) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function buildTransport(): TransportSingleOptions | undefined {
-  const forcePretty = process.env["LOG_PRETTY"] === "true";
-  const isDev = process.env["NODE_ENV"] !== "production";
-  const customTarget = process.env["LOG_TRANSPORT_TARGET"];
-  const customOptions = parseJsonOption(process.env["LOG_TRANSPORT_OPTIONS"]);
-
-  if (forcePretty || isDev) {
-    return {
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: "SYS:standard",
-        singleLine: true,
-        ignore: "pid,hostname"
-      }
-    };
-  }
-
-  if (customTarget) {
-    return { target: customTarget, options: customOptions ?? {} };
-  }
-
-  return undefined;
-}
+// function parseJsonOption(raw: string | undefined): Record<string, unknown> | undefined {
+//   if (!raw) return undefined;
+//   try {
+//     const parsed: unknown = JSON.parse(raw);
+//     return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+//   } catch {
+//     return undefined;
+//   }
+// }
 
 const service = process.env["SERVICE_NAME"] ?? "bernard";
 const env = process.env["NODE_ENV"] ?? "development";
 const version = process.env["VERCEL_GIT_COMMIT_SHA"] ?? process.env["npm_package_version"];
 
-const transport = buildTransport();
 const options: LoggerOptions = {
   level: process.env["LOG_LEVEL"] ?? "info",
   base: { service, env, ...(version ? { version } : {}) },
@@ -84,8 +55,7 @@ const options: LoggerOptions = {
       return { level: label };
     }
   },
-  timestamp: stdTimeFunctions.isoTime,
-  ...(transport ? { transport } : {})
+  timestamp: stdTimeFunctions.isoTime
 };
 
 export const logger = pino(options);
@@ -121,4 +91,3 @@ export function toErrorObject(err: unknown): { message: string; stack?: string; 
   if (typeof err === "string") return { message: err };
   return { message: JSON.stringify(err) };
 }
-

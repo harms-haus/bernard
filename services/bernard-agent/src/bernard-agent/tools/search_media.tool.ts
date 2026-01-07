@@ -27,6 +27,9 @@ export interface MediaSearchResult {
   name: string;
   lastPlay: number | null;
   progress: number;
+  library: string;
+  score: number;
+  recency: number;
 }
 
 /**
@@ -107,11 +110,20 @@ export function createSearchMediaTool(
         // Search Plex with multi-factor ranking
         const rankedResults = await searchPlexMediaWithRanking(plexConfig, name, {
           limit: validResults,
-          offset: validOffset
+          offset: validOffset,
+          modifyScore: (mediaInfo) => {
+            let scoreMod = 0;
+            if ((mediaInfo.viewOffset || 0) / (mediaInfo.duration || 1) > 0.05) {
+              scoreMod += 0.15
+            }
+            if (mediaInfo.recency > 0) {
+              scoreMod += 0.05 * mediaInfo.recency;
+            }
+            return scoreMod;
+          }
         });
 
         if (rankedResults.length === 0) {
-          progress.report("No matching media found");
           progress.reset();
           return "No media found matching your search.";
         }
@@ -130,11 +142,12 @@ export function createSearchMediaTool(
           searchResultsWithProgress.push({
             name: item.title,
             lastPlay,
-            progress: progressPercent
+            progress: progressPercent,
+            library: item.type,
+            score: ranked.similarity,
+            recency: ranked.recency
           });
         }
-
-        progress.report(`Found ${searchResultsWithProgress.length} results`);
 
         // Format output
         const output = searchResultsWithProgress.map((result, index) => {
@@ -142,14 +155,16 @@ export function createSearchMediaTool(
             ? new Date(result.lastPlay).toLocaleString() 
             : "Never";
           
-          const progressBar = "█".repeat(Math.round(result.progress / 10)) + 
-                            "░".repeat(10 - Math.round(result.progress / 10));
-          
-          return `${index + 1}. ${result.name}
-   Last played: ${lastPlayStr}
-   Progress: ${progressBar} ${result.progress.toFixed(1)}%`;
+          const name = `Name: ${result.name}`;
+          const lastPlay = result.recency > 0 ? `Last played: ${lastPlayStr}` : null;
+          const progress = result.progress > 0.05 ? `Progress: ${Math.round(result.progress)}%` : null;
+          const library = `Library: ${result.library}`;
+          const score = `Score: ${result.score.toFixed(2)}`;
+
+          return `${index + 1}. ${[name, lastPlay, progress, library, score].filter(Boolean).join(" - ")}`;
         }).join("\n\n");
 
+        progress.reset();
         return `Search results for "${name}":\n\n${output}`;
 
       } catch (error) {

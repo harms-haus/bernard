@@ -27,8 +27,8 @@ export function createProgressReporter(config: LangGraphRunnableConfig, toolName
       config['writer']?.({
         _type: "tool_progress",
         tool: toolName,
-        phase: "step",
-        message: "Thinking...",
+        phase: "complete",
+        message: "Done",
       })
   };
 }

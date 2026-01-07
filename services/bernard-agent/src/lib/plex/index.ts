@@ -5,15 +5,17 @@ export {
   resolveHAPlexEntityId,
   resolveAdbAddress,
   getDeviceName,
-  getSupportedLocations
+  getSupportedLocations,
 } from "./device-mapping";
+
+// Client factory exports
+export type { PlexConfig } from "./client";
 
 // Media search exports
 export type {
-  PlexConfig,
   PlexMediaItem,
   LibrarySection,
-  PlexClientInfo
+  PlexClientInfo,
 } from "./media-search";
 
 export {
@@ -27,5 +29,5 @@ export {
   calculatePlexMediaProgress,
   getLastPlexPlayTime,
   searchPlexMediaWithRanking,
-  type RankedPlexMediaItemWithScore
+  type RankedPlexMediaItemWithScore,
 } from "./media-search";

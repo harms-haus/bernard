@@ -115,7 +115,7 @@ async function ensureTvOn(
 
     actions.push(`Powered on ${deviceName}`);
 
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    await new Promise(resolve => setTimeout(resolve, 9000));
 
   } catch (error) {
     console.warn(`Failed to power on ${deviceName} via Home Assistant:`, error);
@@ -356,7 +356,17 @@ export function createPlayMediaTvTool(
 
         // Search Plex with multi-factor ranking (similarity, watch time, recency)
         const rankedResults = await searchPlexMediaWithRanking(plexConfig, media_query, {
-          limit: 1
+          limit: 1,
+          modifyScore: (mediaInfo) => {
+            let scoreMod = 0;
+            if ((mediaInfo.viewOffset || 0) / (mediaInfo.duration || 1) > 0.05) {
+              scoreMod += 0.15
+            }
+            if (mediaInfo.recency > 0) {
+              scoreMod += 0.05 * mediaInfo.recency;
+            }
+            return scoreMod;
+          }
         });
 
         if (rankedResults.length === 0) {
@@ -376,6 +386,10 @@ export function createPlayMediaTvTool(
 
         progress.report(getUpdate([
           "Launching plex...",
+          "Starting Plex...",
+          "Loading Plex...",
+          "Opening Plex...",
+          "Plexercising...",
           "Plexing...",
           "Loading..."
         ]));
