@@ -37,7 +37,9 @@ type PlayPlexMediaDependencies = {
   getPlexItemMetadataImpl: typeof getPlexItemMetadata;
   callHAServiceWebSocketImpl: typeof callHAServiceWebSocket;
   rankSearchResultsImpl: typeof rankSearchResults;
-  recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
+  recordServiceCallImpl: (
+    serviceCall: HomeAssistantServiceCall,
+  ) => void | Promise<void>;
 };
 
 /**
@@ -48,7 +50,7 @@ export async function callHAServiceWebSocket(
   accessToken: string,
   domain: string,
   service: string,
-  serviceData: Record<string, unknown>
+  serviceData: Record<string, unknown>,
 ): Promise<void> {
   try {
     const connection = await getHAConnection(baseUrl, accessToken);
@@ -56,10 +58,10 @@ export async function callHAServiceWebSocket(
       type: "call_service",
       domain,
       service,
-      service_data: serviceData
+      service_data: serviceData,
     });
   } catch (error) {
-    console.error('[HA WebSocket] Failed to call service:', error);
+    console.error("[HA WebSocket] Failed to call service:", error);
     throw error;
   }
 }
@@ -77,17 +79,23 @@ export async function ensureTvOn(
   adbAddress: string | null,
   actions: string[],
   deviceName: string,
-  deps: PlayPlexMediaDependencies
+  deps: PlayPlexMediaDependencies,
 ): Promise<void> {
   if (!haEntityId || !haRestConfig) {
-    console.warn(`No Home Assistant entity configured for ${deviceName} power control`);
+    console.warn(
+      `No Home Assistant entity configured for ${deviceName} power control`,
+    );
     return;
   }
 
   try {
     // Check current power state
-    const state = await getEntityState(haRestConfig.baseUrl, haRestConfig.accessToken || '', haEntityId);
-    if (state?.state === 'on') {
+    const state = await getEntityState(
+      haRestConfig.baseUrl,
+      haRestConfig.accessToken || "",
+      haEntityId,
+    );
+    if (state?.state === "on") {
       console.warn(`${deviceName} is already on`);
       return;
     }
@@ -95,17 +103,16 @@ export async function ensureTvOn(
     // Try to turn on via HA
     await deps.callHAServiceWebSocketImpl(
       haRestConfig.baseUrl,
-      haRestConfig.accessToken || '',
-      'media_player',
-      'turn_on',
-      { entity_id: haEntityId }
+      haRestConfig.accessToken || "",
+      "media_player",
+      "turn_on",
+      { entity_id: haEntityId },
     );
 
     actions.push(`Powered on ${deviceName}`);
 
     // Wait for device to be ready
-    await new Promise(resolve => setTimeout(resolve, 8000));
-
+    await new Promise((resolve) => setTimeout(resolve, 8000));
   } catch (error) {
     console.warn(`Failed to power on ${deviceName} via Home Assistant:`, error);
     actions.push(`Failed to power on ${deviceName} (continuing anyway)`);
@@ -121,7 +128,7 @@ export async function ensurePlexActive(
   adbAddress: string | null,
   actions: string[],
   deviceName: string,
-  deps: PlayPlexMediaDependencies
+  deps: PlayPlexMediaDependencies,
 ): Promise<void> {
   if (!adbAddress) {
     // Use Home Assistant to select Plex source
@@ -129,16 +136,16 @@ export async function ensurePlexActive(
       try {
         await deps.callHAServiceWebSocketImpl(
           haRestConfig.baseUrl,
-          haRestConfig.accessToken || '',
-          'media_player',
-          'select_source',
+          haRestConfig.accessToken || "",
+          "media_player",
+          "select_source",
           {
             entity_id: haEntityId,
-            source: 'Plex'
-          }
+            source: "Plex",
+          },
         );
         actions.push(`Selected Plex source on ${deviceName}`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       } catch (error) {
         console.warn(`Failed to select Plex source via HA:`, error);
       }
@@ -151,22 +158,26 @@ export async function ensurePlexActive(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       logger.info({
-        msg: 'Attempting to launch Plex',
+        msg: "Attempting to launch Plex",
         device: deviceName,
         attempt,
-        maxAttempts
+        maxAttempts,
       });
 
       // Try to launch Plex app
       await execAsync(`adb connect ${adbAddress}`);
-      await execAsync(`adb -s ${adbAddress} shell monkey -p com.plexapp.android -c android.intent.category.LAUNCHER 1`);
+      await execAsync(
+        `adb -s ${adbAddress} shell monkey -p com.plexapp.android -c android.intent.category.LAUNCHER 1`,
+      );
 
       // Wait for app to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Check if Plex is running
-      const { stdout: plexActivity } = await execAsync(`adb -s ${adbAddress} shell dumpsys activity activities | grep -i plex`);
-      const isPlexActive = plexActivity.includes('com.plexapp.android');
+      const { stdout: plexActivity } = await execAsync(
+        `adb -s ${adbAddress} shell dumpsys activity activities | grep -i plex`,
+      );
+      const isPlexActive = plexActivity.includes("com.plexapp.android");
 
       if (isPlexActive) {
         actions.push(`Launched Plex app on ${deviceName}`);
@@ -179,13 +190,13 @@ export async function ensurePlexActive(
           const launchPlexApp = async () => {
             await deps.callHAServiceWebSocketImpl(
               haRestConfig.baseUrl,
-              haRestConfig.accessToken || '',
-              'media_player',
-              'select_source',
+              haRestConfig.accessToken || "",
+              "media_player",
+              "select_source",
               {
                 entity_id: haEntityId,
-                source: 'Plex'
-              }
+                source: "Plex",
+              },
             );
           };
           await launchPlexApp();
@@ -195,22 +206,26 @@ export async function ensurePlexActive(
       }
     } catch (error) {
       logger.error({
-        msg: 'Plex launch attempt failed',
+        msg: "Plex launch attempt failed",
         device: deviceName,
         attempt,
         maxAttempts,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       if (attempt === maxAttempts) {
-        throw new Error(`Failed to launch Plex on ${deviceName} after ${maxAttempts} attempts`);
+        throw new Error(
+          `Failed to launch Plex on ${deviceName} after ${maxAttempts} attempts`,
+        );
       }
     }
 
     // Wait before next attempt
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
-  throw new Error(`Failed to launch Plex on ${deviceName} - all methods exhausted`);
+  throw new Error(
+    `Failed to launch Plex on ${deviceName} - all methods exhausted`,
+  );
 }
 
 /**
@@ -221,12 +236,12 @@ export async function playMediaOnPlex(
   haRestConfig: HARestConfig | undefined,
   deps: PlayPlexMediaDependencies,
   plexConfig: PlexConfig,
-  mediaType: 'movie' | 'show',
+  mediaType: "movie" | "show",
   bestMatch: PlexMediaItem,
   deviceName: string,
   actions: string[],
   location_id: string,
-  playback_mode: "resume" | "restart" = "resume"
+  playback_mode: "resume" | "restart" = "resume",
 ): Promise<void> {
   if (haPlexEntityId && haRestConfig && haRestConfig.accessToken) {
     // Build media_content_id object dynamically
@@ -237,20 +252,23 @@ export async function playMediaOnPlex(
       offset?: number;
       inProgress?: boolean;
     } = {
-      library_name: mediaType === 'movie' ? 'Movies' : 'TV Shows'
+      library_name: mediaType === "movie" ? "Movies" : "TV Shows",
     };
 
     // Add title/show_name based on media type
-    if (mediaType === 'movie') {
+    if (mediaType === "movie") {
       mediaContentId.title = bestMatch.title;
     } else {
       mediaContentId.show_name = bestMatch.title;
     }
 
     // Handle resume mode: get viewOffset from Plex API and convert to seconds
-    if (playback_mode === 'resume') {
+    if (playback_mode === "resume") {
       try {
-        const itemMetadata = await deps.getPlexItemMetadataImpl(plexConfig, bestMatch.ratingKey);
+        const itemMetadata = await deps.getPlexItemMetadataImpl(
+          plexConfig,
+          bestMatch.ratingKey,
+        );
 
         if (itemMetadata?.viewOffset && itemMetadata.viewOffset > 0) {
           // Convert milliseconds to seconds for Home Assistant
@@ -261,7 +279,7 @@ export async function playMediaOnPlex(
         // Continue without offset - will play from beginning
       }
 
-      if (mediaType === 'show') {
+      if (mediaType === "show") {
         // For shows, add inProgress to find latest in-progress episode
         mediaContentId.inProgress = true;
       }
@@ -269,8 +287,8 @@ export async function playMediaOnPlex(
 
     // Build service data with appropriate content type
     const serviceData: Record<string, unknown> = {
-      media_content_type: mediaType === 'movie' ? 'MOVIE' : 'EPISODE',
-      media_content_id: `plex://${JSON.stringify(mediaContentId)}`
+      media_content_type: mediaType === "movie" ? "MOVIE" : "EPISODE",
+      media_content_id: `plex://${JSON.stringify(mediaContentId)}`,
     };
 
     // Use Home Assistant's Plex integration to play media directly
@@ -279,12 +297,12 @@ export async function playMediaOnPlex(
         await deps.callHAServiceWebSocketImpl(
           haRestConfig.baseUrl,
           haRestConfig.accessToken,
-          'media_player',
-          'play_media',
+          "media_player",
+          "play_media",
           {
             entity_id: haPlexEntityId,
-            ...serviceData
-          }
+            ...serviceData,
+          },
         );
       } catch (error) {
         console.warn(`Failed to play media on ${deviceName}:`, error);
@@ -292,14 +310,17 @@ export async function playMediaOnPlex(
           throw error;
         }
       }
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 
-    const playbackDescription = playback_mode === 'resume'
-      ? ' (resuming if available)'
-      : ' (starting from beginning)';
+    const playbackDescription =
+      playback_mode === "resume"
+        ? " (resuming if available)"
+        : " (starting from beginning)";
 
-    actions.push(`Started "${bestMatch.title}" playback on ${deviceName} via Home Assistant Plex${playbackDescription}`);
+    actions.push(
+      `Started "${bestMatch.title}" playback on ${deviceName} via Home Assistant Plex${playbackDescription}`,
+    );
   } else {
     actions.push(`No Home Assistant Plex entity configured for ${location_id}`);
   }

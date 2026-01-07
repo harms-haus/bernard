@@ -1,5 +1,5 @@
 import { useStream } from '@langchain/langgraph-sdk/react';
-import { createContext, useContext, ReactNode, useMemo, useRef, useCallback } from 'react';
+import { createContext, useContext, ReactNode, useMemo, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useThreads } from './ThreadProvider';
 import { type Message } from '@langchain/langgraph-sdk';
@@ -57,12 +57,13 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
   const [, setSearchParams] = useSearchParams();
   const { createThread } = useThreads();
 
-  // Store the latest progress event for UI display
   const latestProgressRef = useRef<ToolProgressEvent | null>(null);
+  const [latestProgress, setLatestProgress] = useState<ToolProgressEvent | null>(null);
 
   // Callback to reset progress when a new message arrives
   const resetProgress = useCallback(() => {
     latestProgressRef.current = null;
+    setLatestProgress(null);
   }, []);
 
   const options = useMemo(() => ({
@@ -70,16 +71,23 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
     assistantId,
     threadId: threadId ?? null,
     onCustomEvent: (event: unknown) => {
-      // Capture progress events from the backend
       const customEvent = event as { _type?: string; tool?: string; phase?: string; message?: string; data?: Record<string, unknown>; timestamp?: number };
       if (customEvent._type === 'tool_progress') {
-        latestProgressRef.current = {
+        // Hide progress indicator on complete phase
+        if (customEvent.phase === 'complete') {
+          latestProgressRef.current = null;
+          setLatestProgress(null);
+          return;
+        }
+        const progressEvent: ToolProgressEvent = {
           type: (customEvent.phase as ToolProgressEvent['type']) || 'progress',
           tool: customEvent.tool || 'unknown',
           message: customEvent.message || '',
           data: customEvent.data,
           timestamp: customEvent.timestamp || Date.now(),
         };
+        latestProgressRef.current = progressEvent;
+        setLatestProgress(progressEvent);
       }
     },
     onThreadId: (id: string) => {
@@ -100,9 +108,7 @@ export function StreamProvider({ children, apiUrl, assistantId, threadId }: Stre
   // Extend the context value to include progress functionality
   const contextValue: ExtendedStreamContextType = {
     ...streamValue,
-    get latestProgress() {
-      return latestProgressRef.current;
-    },
+    latestProgress,
     resetProgress,
   };
 

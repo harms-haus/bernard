@@ -3,13 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStreamContext } from '../../../providers/StreamProvider';
 import { cn } from '../../../lib/utils';
 
+function PulsingIndicator() {
+  return (
+    <div className="flex gap-0.5 items-center">
+      <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_infinite]" />
+      <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_0.2s_infinite]" />
+      <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_0.4s_infinite]" />
+    </div>
+  );
+}
+
 export function ProgressIndicator() {
   const stream = useStreamContext();
   const [visibleProgress, setVisibleProgress] = useState<string | null>(null);
 
   // Sync with the latest progress from the stream context
   useEffect(() => {
-    setVisibleProgress(stream.latestProgress?.message ?? "");
+    setVisibleProgress(stream.latestProgress?.message ?? null);
   }, [stream.latestProgress]);
 
   // Reset progress when loading completes (real message arrives)
@@ -21,7 +31,7 @@ export function ProgressIndicator() {
 
   return (
     <AnimatePresence mode="wait">
-      {visibleProgress && (
+      {visibleProgress ? (
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
@@ -37,16 +47,13 @@ export function ProgressIndicator() {
               "border border-muted-foreground/10"
             )}
           >
-            {/* Subtle pulsing indicator */}
-            <div className="flex gap-0.5 items-center">
-              <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_infinite]" />
-              <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_0.2s_infinite]" />
-              <div className="w-1 h-1 rounded-full bg-primary/40 animate-[pulse_1s_ease-in-out_0.4s_infinite]" />
-            </div>
+            <PulsingIndicator />
             {/* Progress message */}
             <span className="truncate max-w-[200px] sm:max-w-[300px]">{visibleProgress}</span>
           </div>
         </motion.div>
+      ): (
+        <PulsingIndicator />
       )}
     </AnimatePresence>
   );
