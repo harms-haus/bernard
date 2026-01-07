@@ -23,7 +23,7 @@ axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Pro
   const newConfig = {
     ...config,
     headers: {
-    ...config?.headers,
+      ...config?.headers,
       'Api-User-Agent': USER_AGENT,
       'User-Agent': USER_AGENT
     }

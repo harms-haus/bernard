@@ -135,7 +135,7 @@ export function HumanMessage({
             </TooltipIconButton>
           )}
         </div>
-        <div className={cn("flex flex-col gap-2", isEditing && "w-full")}>
+        <div className={cn("flex flex-1 flex-col gap-2", isEditing && "w-full")}>
           {isEditing ? (
             <textarea
               value={value}

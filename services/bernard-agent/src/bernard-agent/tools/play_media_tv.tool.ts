@@ -17,8 +17,7 @@ import {
   searchPlexMedia,
   getPlexLibrarySections,
   getPlexItemMetadata,
-  rankSearchResults,
-  searchPlexBestMatch
+  searchPlexMediaWithRanking
 } from "@/lib/plex";
 import {
   getHAConnection,
@@ -26,7 +25,7 @@ import {
   type HomeAssistantServiceCall
 } from "@/lib/home-assistant";
 import { ToolFactory } from "./types";
-import { getSettings } from "@/dist/lib/config/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 import { createProgressReporter } from "../utils";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { getUpdate } from "../updates";
@@ -44,7 +43,6 @@ export type PlayMediaTvDependencies = {
   getPlexLibrarySectionsImpl: typeof getPlexLibrarySections;
   getPlexItemMetadataImpl: typeof getPlexItemMetadata;
   callHAServiceWebSocketImpl: typeof callHAServiceWebSocket;
-  rankSearchResultsImpl: typeof rankSearchResults;
   recordServiceCallImpl: (serviceCall: HomeAssistantServiceCall) => void | Promise<void>;
 };
 
@@ -78,7 +76,6 @@ function createPlayMediaTvDependencies(
     getPlexLibrarySectionsImpl: getPlexLibrarySections,
     getPlexItemMetadataImpl: getPlexItemMetadata,
     callHAServiceWebSocketImpl: callHAServiceWebSocket,
-    rankSearchResultsImpl: rankSearchResults,
     recordServiceCallImpl: () => {
       throw new Error("recordServiceCallImpl must be provided via dependencies");
     }
@@ -357,7 +354,17 @@ export function createPlayMediaTvTool(
 
       try {
 
-        const { bestMatch, mediaType } = await searchPlexBestMatch(plexConfig, media_query, deps);
+        // Search Plex with multi-factor ranking (similarity, watch time, recency)
+        const rankedResults = await searchPlexMediaWithRanking(plexConfig, media_query, {
+          limit: 1
+        });
+
+        if (rankedResults.length === 0) {
+          throw new Error(`No media found matching "${media_query}" in Plex libraries`);
+        }
+
+        const bestMatch = rankedResults[0]!.item;
+        const mediaType = bestMatch.type === 'movie' ? 'movie' : 'show';
 
         progress.report(getUpdate([
           "Powering tv...",
@@ -419,7 +426,7 @@ export const playMediaTvToolFactory: ToolFactory = async () => {
   const haConfig = settings.services?.homeAssistant;
   const plexConfig = settings.services?.plex;
 
-  if (!plexConfig) {
+  if (!plexConfig?.baseUrl || !plexConfig?.token) {
     return { ok: false, name: TOOL_NAME, reason: "Plex service is not configured" };
   }
 

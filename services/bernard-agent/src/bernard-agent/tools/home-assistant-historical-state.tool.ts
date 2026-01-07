@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
 import { ToolFactory } from "./types";
-import { getSettings } from "@/dist/lib/config/settingsCache";
+import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "get_home_assistant_historical_state";
 

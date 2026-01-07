@@ -1,4 +1,4 @@
-import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
+import { createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 
 import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 import { initChatModel } from "langchain/chat_models/universal";
@@ -43,16 +43,16 @@ export async function createBernardAgent() {
       toolCallLimitMiddleware({ runLimit: 10}),
       toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
       modelRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
-      contextEditingMiddleware({
-        edits: [
-          new ClearToolUsesEdit({
-            trigger: [
-              { tokens: 50000, messages: 20 },
-            ],
-            keep: { messages: 10 },
-          }),
-        ],
-      }),
+      // contextEditingMiddleware({
+      //   edits: [
+      //     new ClearToolUsesEdit({
+      //       trigger: [
+      //         { tokens: 50000, messages: 20 },
+      //       ],
+      //       keep: { messages: 10 },
+      //     }),
+      //   ],
+      // }),
     ],
   });
 }

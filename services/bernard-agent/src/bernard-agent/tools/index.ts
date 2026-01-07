@@ -24,6 +24,7 @@ export { getHistoricalStateToolFactory } from "./home-assistant-historical-state
 
 // Media Playback Tools
 export { playMediaTvToolFactory } from "./play_media_tv.tool";
+export { searchMediaToolFactory } from "./search_media.tool";
 
 export {
   type ToolFactory,
