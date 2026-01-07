@@ -20,6 +20,7 @@ import { resolveModel } from "@/lib/config/models";
 
 import { validateAndGetTools } from "./tools";
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
+import { nameThread } from "./names";
 
 async function callReactModel(
   state: typeof BernardStateAnnotation.State,
@@ -77,10 +78,12 @@ export async function createBernardGraph() {
     BernardStateAnnotation,
     BernardConfigurationAnnotation,
   )
+    .addNode("name_thread", nameThread)
     .addNode("call_react_model", callReactModel)
     .addNode("tools", executeTools)
 
-    .addEdge(START, "call_react_model")
+    .addEdge(START, "name_thread")
+    .addEdge("name_thread", "call_react_model")
     .addConditionalEdges(
       "call_react_model",
       shouldCallTools,
