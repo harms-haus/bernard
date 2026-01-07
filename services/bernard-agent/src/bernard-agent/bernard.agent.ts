@@ -9,6 +9,18 @@ import { resolveModel } from "@/lib/config/models";
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
 import { validateAndGetTools } from "./tools";
 
+// Start the utility queue worker
+startUtilityQueueWorker();
+
+async function startUtilityQueueWorker() {
+  try {
+    const { startUtilityWorker } = await import("@/lib/infra/queue");
+    await startUtilityWorker();
+  } catch (error) {
+    console.error("[BernardAgent] Failed to start utility worker:", error);
+  }
+}
+
 export async function createBernardAgent() {
 
   const createModel = async () => {

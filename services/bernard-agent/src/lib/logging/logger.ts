@@ -14,6 +14,7 @@ export type LogContext = {
   stage?: string;
   component?: string;
   queue?: string;
+  threadId?: string;
 };
 
 export const redactionPaths = [
