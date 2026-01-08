@@ -25,7 +25,8 @@
       "@/*": ["./src/*"],
       "@/lib/*": ["./src/lib/*"],
       "@/components/*": ["./src/components/*"],
-      "@/hooks/*": ["./src/hooks/*"]
+      "@/hooks/*": ["./src/hooks/*"],
+      "@lib/*": ["../lib/*"]
     },
     "baseUrl": ".",
     "forceConsistentCasingInFileNames": true,

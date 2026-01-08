@@ -8,7 +8,10 @@ const nextConfig = {
     },
   },
   webpack: (config, { isServer }) => {
-    if (!isServer) {
+    if (isServer) {
+      // Enable Node.js externals for server-side rendering
+      config.externalsPresets = { node: true };
+    } else {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,

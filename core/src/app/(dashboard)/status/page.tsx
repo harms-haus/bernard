@@ -1,14 +1,14 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useServiceStatus } from '@/hooks/useServiceStatus'
+import { useServiceStatus, type ServiceStatus } from '@/hooks/useServiceStatus'
 import { LogViewer } from '@/components/dashboard/LogViewer'
 
 export default function StatusPage() {
   const router = useRouter()
-  const { statuses, loading, error, refresh } = useServiceStatus({ refreshInterval: 2000 })
+  const { services, loading, error, refresh } = useServiceStatus({ interval: 2000 })
 
-  if (loading && statuses.length === 0) {
+  if (loading && services.length === 0) {
     return (
       <div className="min-h-screen bg-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
@@ -28,8 +28,8 @@ export default function StatusPage() {
     )
   }
 
-  const runningCount = statuses.filter((s) => s.status === 'running').length
-  const totalCount = statuses.length
+  const runningCount = services.filter((s: { status: string }) => s.status === 'running').length
+  const totalCount = services.length
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
@@ -58,7 +58,7 @@ export default function StatusPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {statuses.map((service) => (
+          {services.map((service: ServiceStatus) => (
             <div
               key={service.id}
               className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors cursor-pointer border border-gray-700 hover:border-gray-600"
@@ -111,7 +111,7 @@ export default function StatusPage() {
 
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-white mb-4">Live Logs</h2>
-          <LogViewer service="all" maxHeight="300px" />
+          <LogViewer service="all" height="300px" />
         </div>
       </div>
     </div>

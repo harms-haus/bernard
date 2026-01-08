@@ -71,3 +71,9 @@ export function useServiceStatus({ autoRefresh = true, interval = 3000 }: UseSer
     restartService,
   };
 }
+
+export function useService(serviceId: string) {
+  const result = useServiceStatus({ autoRefresh: true, interval: 3000 });
+  const status = result.services.find(s => s.id === serviceId) || null;
+  return { status, ...result };
+}
