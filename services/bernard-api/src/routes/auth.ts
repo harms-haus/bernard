@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getAuthenticatedUser, requireAdmin } from "../lib/auth";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logging/logger";
 import { startOAuthLogin, handleOAuthCallback, type OAuthProvider, type OAuthStartQuery, type OAuthCallbackQuery } from "../lib/oauth";
 
 export function registerAuthRoutes(fastify: FastifyInstance) {

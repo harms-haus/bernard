@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { SettingsStore, ServicesSettingsSchema, BackupSettingsSchema, OAuthSettingsSchema, ModelsSettingsSchema } from "../lib/settingsStore";
+import { SettingsStore, ServicesSettingsSchema, BackupSettingsSchema, OAuthSettingsSchema, ModelsSettingsSchema } from "../lib/config/settingsStore";
 import { requireAdmin } from "../lib/auth";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logging/logger";
 
 export function registerSettingsRoutes(fastify: FastifyInstance) {
   const store = new SettingsStore();

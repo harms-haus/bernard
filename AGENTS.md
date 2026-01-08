@@ -1,63 +1,15 @@
 # Bernard Services
 
-> **WARNING**: Bernard is a defunct, legacy project. This document exists for historical reference and should not be actively maintained or extended. If you need to work with Bernard, treat it as read-only reference material. Do not add new features, refactor existing code, or make significant changes. Use this as a guide to understand the architecture only.
-
 This document describes the services supported by Bernard, an AI assistant platform. Bernard consists of multiple microservices that work together to provide conversational AI capabilities with speech-to-text, LLM inference, and text-to-speech functionality.
 
 ## Table of Contents
 
-- [bernard-agent](#bernard-agent)
 - [proxy-api](#proxy-api)
 - [bernard-api](#bernard-api)
 - [bernard-ui](#bernard-ui)
 - [whisper](#whisper)
 - [vllm](#vllm)
 - [kokoro](#kokoro)
-
----
-
-## bernard-agent
-
-**Port**: 2024  
-**Directory**: `services/bernard-agent`  
-**Type**: LangGraph-based agent service
-
-The core agent service powered by LangGraph for orchestrating multi-step conversational workflows.
-
-### Available Commands
-
-```bash
-# Check code quality (type-check, lint, build)
-./scripts/bernard-agent.sh check
-
-# Install dependencies
-./scripts/bernard-agent.sh init
-
-# Clean build artifacts and node_modules
-./scripts/bernard-agent.sh clean
-
-# Start the agent service
-./scripts/bernard-agent.sh start
-
-# Stop the agent service
-./scripts/bernard-agent.sh stop
-```
-
-### NPM Scripts (from package.json)
-
-```bash
-# Type-check only
-npm run type-check
-
-# Lint source code
-npm run lint
-
-# Build TypeScript
-npm run build
-
-# Start development server with hot reload
-npm run dev
-```
 
 ---
 
@@ -118,7 +70,7 @@ npm run dev:whisper
 **Directory**: `services/bernard-api`  
 **Type**: Fastify API service
 
-Central API service for Bernard handling settings, authentication, and request logging.
+Central API service for Bernard handling settings, authentication, agents, and request logging.
 
 ### Available Commands
 

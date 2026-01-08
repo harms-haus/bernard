@@ -25,7 +25,6 @@ cleanup_all_services() {
     ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -51,7 +50,6 @@ tail_logs() {
         "shared:${COLOR_SHARED}"
         "bernard-api:${COLOR_BERNARD_API}"
         "proxy-api:${COLOR_PROXY_API}"
-        "bernard-agent:${COLOR_BERNARD_AGENT}"
         "bernard-ui:${COLOR_BERNARD_UI}"
         "vllm:${COLOR_VLLM}"
         "whisper:${COLOR_WHISPER}"
@@ -183,7 +181,6 @@ start() {
     ./scripts/shared.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -230,7 +227,6 @@ start() {
     start_service_with_timeout "./scripts/proxy-api.sh" "PROXY-API" 20
     service_status["PROXY-API"]=$?
 
-    start_service_with_timeout "./scripts/bernard-agent.sh" "BERNARD-AGENT" 20
     service_status["BERNARD-AGENT"]=$?
 
     start_service_with_timeout "./scripts/bernard-ui.sh" "BERNARD-UI" 20
@@ -312,7 +308,6 @@ stop() {
     ./scripts/redis.sh stop
     ./scripts/bernard-api.sh stop
     ./scripts/proxy-api.sh stop
-    ./scripts/bernard-agent.sh stop
     ./scripts/bernard-ui.sh stop
     ./scripts/vllm.sh stop
     ./scripts/whisper.sh stop
@@ -338,7 +333,6 @@ init() {
     ./scripts/proxy-api.sh init
 
     log "Initializing Bernard-Agent..."
-    ./scripts/bernard-agent.sh init
 
     log "Initializing Bernard-UI..."
     ./scripts/bernard-ui.sh init
@@ -372,7 +366,6 @@ clean() {
     ./scripts/proxy-api.sh clean
 
     log "Cleaning Bernard-Agent..."
-    ./scripts/bernard-agent.sh clean
 
     log "Cleaning Bernard-UI..."
     ./scripts/bernard-ui.sh clean
@@ -394,7 +387,6 @@ check() {
     LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
     mkdir -p "$LOG_DIR"
 
-    SERVICES=("shared" "bernard-agent" "bernard-ui" "bernard-api" "proxy-api" "vllm" "whisper" "kokoro" "redis")
     PIDS=()
 
     run_service_check() {

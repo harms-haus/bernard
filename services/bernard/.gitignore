@@ -1,8 +1,0 @@
-# bernard Next.js app
-.next
-node_modules
-.env.local
-.env
-.turbo
-.cache
-.npm

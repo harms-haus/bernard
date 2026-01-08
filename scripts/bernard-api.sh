@@ -3,19 +3,29 @@
 SERVICE_NAME="BERNARD-API"
 COLOR="\033[0;33m"
 NC="\033[0m"
-PORT=8800
+API_PORT=8800
+AGENT_PORT=2024
 DIR="services/bernard-api"
 
 source "$(dirname "$0")/logging.sh"
 
 stop() {
     log "Stopping $SERVICE_NAME..."
-    PID=$(lsof -t -i:$PORT)
+    # Stop API
+    PID=$(lsof -t -i:$API_PORT 2>/dev/null)
     if [ ! -z "$PID" ]; then
-        kill -9 $PID
-        log "Stopped $SERVICE_NAME (PID: $PID)"
+        kill -9 $PID 2>/dev/null
+        log "Stopped API (PID: $PID)"
     else
-        log "$SERVICE_NAME not running on port $PORT"
+        log "$SERVICE_NAME API not running on port $API_PORT"
+    fi
+    # Stop agent
+    PID=$(lsof -t -i:$AGENT_PORT 2>/dev/null)
+    if [ ! -z "$PID" ]; then
+        kill -9 $PID 2>/dev/null
+        log "Stopped agent (PID: $PID)"
+    else
+        log "$SERVICE_NAME agent not running on port $AGENT_PORT"
     fi
 }
 
@@ -77,18 +87,39 @@ start() {
 
     stop
     log "Starting $SERVICE_NAME..."
-    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
-    cd $DIR && npm run dev 2>&1 | sed "s/\[BERNARD-API\]/[  BERNARD-API  ]/g" | tee "$LOG_DIR/bernard-api.log" &
 
-    log "Waiting for $SERVICE_NAME to be reachable..."
+    LOG_DIR="$(cd "$(dirname "$0")/.." && pwd)/logs"
+    mkdir -p "$LOG_DIR"
+
+    # Start API server in background
+    cd $DIR
+    nohup tsx watch src/index.ts > "$LOG_DIR/bernard-api.log" 2>&1 &
+    API_PID=$!
+
+    # Start agent (langgraph-cli) in background, binding to IPv4
+    nohup npx @langchain/langgraph-cli dev --port $AGENT_PORT --host 127.0.0.1 > "$LOG_DIR/bernard-agent.log" 2>&1 &
+    AGENT_PID=$!
+
+    log "Waiting for API to be reachable on port $API_PORT..."
     for i in {1..40}; do
-        if curl -sf http://127.0.0.1:$PORT/health > /dev/null 2>&1; then
-            log "$SERVICE_NAME is ready!"
+        if curl -sf http://127.0.0.1:$API_PORT/health > /dev/null 2>&1; then
+            log "$SERVICE_NAME API is ready!"
+            break
+        fi
+        sleep 0.5
+    done
+
+    log "Waiting for agent to be reachable on port $AGENT_PORT..."
+    for i in {1..40}; do
+        # Try both IPv4 and IPv6 since langgraph-cli may bind to either
+        if curl -sf http://127.0.0.1:$AGENT_PORT/info > /dev/null 2>&1 || curl -sf "http://[::1]:$AGENT_PORT/info" > /dev/null 2>&1; then
+            log "$SERVICE_NAME agent is ready!"
             return 0
         fi
         sleep 0.5
     done
-    log "Timeout waiting for $SERVICE_NAME"
+
+    log "Timeout waiting for services"
     return 1
 }
 
