@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { useStreamContext } from '../../providers/StreamProvider';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { useThreads } from '../../providers/ThreadProvider';
 import { ConversationHistory, useSidebarState } from './ConversationHistory';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
@@ -17,6 +18,7 @@ import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '../../lib
 import { PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon, Send, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
+import { apiClient } from '../../services/api';
 
 export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +33,8 @@ export function Thread() {
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
   const prevMessageLength = useRef(0);
+  const [hasTriggeredAutoRename, setHasTriggeredAutoRename] = useState(false);
+  const { getThreads } = useThreads();
 
   useEffect(() => {
     setInput('');
@@ -47,6 +51,40 @@ export function Thread() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Auto-rename thread after first message exchange
+  useEffect(() => {
+    // Only rename if:
+    // - We have a threadId
+    // - We haven't triggered rename yet
+    // - We have at least 2 messages (human + AI response)
+    if (
+      threadId &&
+      !hasTriggeredAutoRename &&
+      messages.length === 2
+    ) {
+      const firstHumanMessage = messages.find(m => m.type === 'human');
+
+      if (firstHumanMessage) {
+        const messageContent = typeof firstHumanMessage.content === 'string'
+          ? firstHumanMessage.content
+          : JSON.stringify(firstHumanMessage.content);
+
+        // Trigger auto-rename (fire and forget)
+        apiClient.autoRenameThread(threadId, messageContent)
+          .then(() => {
+            // Refresh thread list to show updated name
+            getThreads();
+          })
+          .catch(err => {
+            // Silent fail - don't interrupt user experience
+            console.error('Auto-rename failed:', err);
+          });
+
+        setHasTriggeredAutoRename(true);
+      }
+    }
+  }, [messages, hasTriggeredAutoRename, threadId, getThreads]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

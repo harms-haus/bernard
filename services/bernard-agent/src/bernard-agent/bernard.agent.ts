@@ -1,4 +1,4 @@
-import { createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
+import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 
 import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 import { initChatModel } from "langchain/chat_models/universal";
@@ -8,18 +8,9 @@ import { resolveModel } from "@/lib/config/models";
 
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
 import { validateAndGetTools } from "./tools";
+import { startUtilityWorker } from "@/lib/infra/queue";
 
-// Start the utility queue worker
-startUtilityQueueWorker();
-
-async function startUtilityQueueWorker() {
-  try {
-    const { startUtilityWorker } = await import("@/lib/infra/queue");
-    await startUtilityWorker();
-  } catch (error) {
-    console.error("[BernardAgent] Failed to start utility worker:", error);
-  }
-}
+startUtilityWorker();
 
 export async function createBernardAgent() {
 
@@ -55,16 +46,16 @@ export async function createBernardAgent() {
       toolCallLimitMiddleware({ runLimit: 10}),
       toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
       modelRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
-      // contextEditingMiddleware({
-      //   edits: [
-      //     new ClearToolUsesEdit({
-      //       trigger: [
-      //         { tokens: 50000, messages: 20 },
-      //       ],
-      //       keep: { messages: 10 },
-      //     }),
-      //   ],
-      // }),
+      contextEditingMiddleware({
+        edits: [
+          new ClearToolUsesEdit({
+            trigger: [
+              { tokens: 50000, messages: 20 },
+            ],
+            keep: { messages: 10 },
+          }),
+        ],
+      }),
     ],
   });
 }

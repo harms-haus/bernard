@@ -6,6 +6,8 @@ import { Skeleton } from '../ui/skeleton';
 import { useThreads } from '../../providers/ThreadProvider';
 import type { ThreadListItem } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
+import { apiClient } from '../../services/api';
+import { Client } from '@langchain/langgraph-sdk';
 import {
   PanelRight,
   PanelRightOpen,
@@ -16,6 +18,7 @@ import {
   Trash2,
   Pencil,
   Check,
+  Wand2,
 } from 'lucide-react';
 import { UserBadge } from '../UserBadge';
 import { cn } from '../../lib/utils';
@@ -27,6 +30,7 @@ import {
 } from '../ui/dropdown-menu';
 import { AlertDialog } from '../ui/dialog';
 import { Input } from '../ui/input';
+import { toast } from 'sonner';
 
 export const SIDEBAR_STORAGE_KEY = 'bernard-chat-sidebar-open';
 
@@ -55,13 +59,14 @@ function ThreadItem({
   isActive: boolean;
   onClick: (id: string) => void;
 }) {
-  const { updateThread, deleteThread } = useThreads();
+  const { updateThread, deleteThread, getThreads } = useThreads();
   const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(thread.name || '');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingLoading, setIsDeletingLoading] = useState(false);
+  const [isAutoRenaming, setIsAutoRenaming] = useState(false);
 
   useEffect(() => {
     setNewName(thread.name || '');
@@ -90,6 +95,29 @@ function ThreadItem({
     } finally {
       setIsDeletingLoading(false);
       setIsDeleting(false);
+    }
+  };
+
+  const handleAutoRename = async () => {
+    if (!thread.id) return;
+
+    setIsAutoRenaming(true);
+    try {
+      // Use /threads path - proxies to LangGraph server (bernard-agent:2024)
+      const client = new Client({
+        apiUrl: window.location.origin
+      });
+      const state = await client.threads.getState(thread.id) as { values?: { messages?: Array<{ type: string; content: unknown }> } };
+      const messages = state?.values?.messages || [];
+
+      await apiClient.autoRenameThread(thread.id, undefined, messages);
+      await getThreads();
+      toast.success('Thread renamed successfully');
+    } catch (error) {
+      console.error('Auto-rename failed:', error);
+      toast.error('Failed to rename thread');
+    } finally {
+      setIsAutoRenaming(false);
     }
   };
 
@@ -157,6 +185,16 @@ function ThreadItem({
                 >
                   <Pencil className="mr-2 h-4 w-4" />
                   Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAutoRename();
+                  }}
+                  disabled={isAutoRenaming}
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Auto-Rename
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={(e) => {
