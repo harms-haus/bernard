@@ -1,101 +1,73 @@
-'use client'
+'use client';
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react';
 
 export interface ServiceStatus {
-  id: string
-  name: string
-  port?: number
-  status: 'running' | 'stopped' | 'starting' | 'failed'
-  uptime?: number
-  lastStarted?: Date
-  lastStopped?: Date
-  health: 'healthy' | 'unhealthy' | 'unknown'
-  color: string
+  id: string;
+  name: string;
+  port: number;
+  status: 'running' | 'stopped' | 'starting' | 'failed';
+  uptime?: number;
+  health: 'healthy' | 'unhealthy' | 'unknown';
 }
 
-export interface UseServiceStatusOptions {
-  refreshInterval?: number
-  enabled?: boolean
+interface UseServiceStatusOptions {
+  autoRefresh?: boolean;
+  interval?: number;
 }
 
-export function useServiceStatus(options: UseServiceStatusOptions = {}) {
-  const { refreshInterval = 3000, enabled = true } = options
-  const [statuses, setStatuses] = useState<ServiceStatus[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchStatuses = useCallback(async () => {
-    try {
-      const response = await fetch('/api/services')
-      if (!response.ok) {
-        throw new Error('Failed to fetch service statuses')
-      }
-      const data = await response.json()
-      setStatuses(data)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!enabled) return
-
-    fetchStatuses()
-    const interval = setInterval(fetchStatuses, refreshInterval)
-    return () => clearInterval(interval)
-  }, [enabled, refreshInterval, fetchStatuses])
-
-  const refresh = useCallback(() => {
-    setLoading(true)
-    fetchStatuses()
-  }, [fetchStatuses])
-
-  return {
-    statuses,
-    loading,
-    error,
-    refresh,
-  }
-}
-
-export function useService(serviceId: string, options: UseServiceStatusOptions = {}) {
-  const { refreshInterval = 3000, enabled = true } = options
-  const [status, setStatus] = useState<ServiceStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function useServiceStatus({ autoRefresh = true, interval = 3000 }: UseServiceStatusOptions = {}) {
+  const [services, setServices] = useState<ServiceStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await fetch(`/api/services?service=${serviceId}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch service status')
-      }
-      const data = await response.json()
-      setStatus(data)
-      setError(null)
+      const response = await fetch('/api/services');
+      if (!response.ok) throw new Error('Failed to fetch status');
+      const data = await response.json();
+      setServices(data);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setError((err as Error).message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [serviceId])
+  }, []);
 
   useEffect(() => {
-    if (!enabled) return
+    fetchStatus();
+    if (autoRefresh) {
+      const intervalId = setInterval(fetchStatus, interval);
+      return () => clearInterval(intervalId);
+    }
+  }, [fetchStatus, autoRefresh, interval]);
 
-    fetchStatus()
-    const interval = setInterval(fetchStatus, refreshInterval)
-    return () => clearInterval(interval)
-  }, [enabled, refreshInterval, serviceId, fetchStatus])
+  const startService = useCallback(async (serviceId: string) => {
+    const response = await fetch(`/api/services/${serviceId}/start`, { method: 'POST' });
+    if (!response.ok) throw new Error('Failed to start service');
+    await fetchStatus();
+  }, [fetchStatus]);
+
+  const stopService = useCallback(async (serviceId: string) => {
+    const response = await fetch(`/api/services/${serviceId}/stop`, { method: 'POST' });
+    if (!response.ok) throw new Error('Failed to stop service');
+    await fetchStatus();
+  }, [fetchStatus]);
+
+  const restartService = useCallback(async (serviceId: string) => {
+    const response = await fetch(`/api/services/${serviceId}/restart`, { method: 'POST' });
+    if (!response.ok) throw new Error('Failed to restart service');
+    await fetchStatus();
+  }, [fetchStatus]);
 
   return {
-    status,
+    services,
     loading,
     error,
     refresh: fetchStatus,
-  }
+    startService,
+    stopService,
+    restartService,
+  };
 }
