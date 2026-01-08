@@ -1,134 +1,104 @@
-'use client'
+'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface LogEntry {
-  timestamp: string
-  level: 'info' | 'warn' | 'error' | 'debug'
-  message: string
-  service?: string
-  raw?: string
+  timestamp: string;
+  level: string;
+  service: string;
+  message: string;
+  raw: string;
+  [key: string]: unknown;
 }
 
-export interface UseLogStreamOptions {
-  maxEntries?: number
-  enabled?: boolean
-  service?: string
+interface UseLogStreamOptions {
+  service: string;
+  enabled?: boolean;
+  maxEntries?: number;
+  autoScroll?: boolean;
 }
 
-export function useLogStream(options: UseLogStreamOptions = {}) {
-  const { maxEntries = 1000, enabled = true, service = 'all' } = options
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [connected, setConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const eventSourceRef = useRef<EventSource | null>(null)
+export function useLogStream({
+  service,
+  enabled = true,
+  maxEntries = 1000,
+  autoScroll = true,
+}: UseLogStreamOptions) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const parseLogLine = useCallback((line: string): LogEntry => {
-    const timestamp = new Date().toISOString()
-    
-    // Try to parse as JSON
-    try {
-      const parsed = JSON.parse(line)
-      return {
-        timestamp: parsed.timestamp || timestamp,
-        level: parsed.level || 'info',
-        message: parsed.message || line,
-        service: parsed.service,
-        raw: line,
-      }
-    } catch {
-      // Fallback to text parsing
-      const level = line.toLowerCase().includes('error') ? 'error' 
-        : line.toLowerCase().includes('warn') ? 'warn'
-        : line.toLowerCase().includes('debug') ? 'debug'
-        : 'info'
-      
-      return {
-        timestamp,
-        level,
-        message: line,
-        raw: line,
-      }
-    }
-  }, [])
+  const connect = useCallback(() => {
+    if (!enabled || eventSourceRef.current) return;
 
-  useEffect(() => {
-    if (!enabled) {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-        eventSourceRef.current = null
-        setConnected(false)
-      }
-      return
-    }
-
-    const url = new URL('/api/logs/stream', window.location.origin)
-    url.searchParams.set('service', service)
-
-    const eventSource = new EventSource(url.toString())
-    eventSourceRef.current = eventSource
+    const url = `/api/logs/stream?service=${encodeURIComponent(service)}`;
+    const eventSource = new EventSource(url);
+    eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
-      setConnected(true)
-      setError(null)
-    }
+      setIsConnected(true);
+      setError(null);
+    };
 
     eventSource.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data)
-        const newEntry = parseLogLine(data)
-        
+        const entry: LogEntry = JSON.parse(event.data);
         setLogs((prev) => {
-          const updated = [...prev, newEntry]
-          // Keep only the last maxEntries
-          if (updated.length > maxEntries) {
-            return updated.slice(-maxEntries)
+          const newLogs = [...prev, entry];
+          if (newLogs.length > maxEntries) {
+            return newLogs.slice(-maxEntries);
           }
-          return updated
-        })
+          return newLogs;
+        });
       } catch {
-        // Handle raw line format
-        const newEntry = parseLogLine(event.data)
-        setLogs((prev) => {
-          const updated = [...prev, newEntry]
-          if (updated.length > maxEntries) {
-            return updated.slice(-maxEntries)
-          }
-          return updated
-        })
+        // Skip invalid JSON
       }
-    }
+    };
 
     eventSource.onerror = () => {
-      setConnected(false)
-      setError('Connection lost, attempting to reconnect...')
-      // EventSource will automatically reconnect
-    }
-
-    return () => {
-      eventSource.close()
-      eventSourceRef.current = null
-      setConnected(false)
-    }
-  }, [enabled, service, maxEntries, parseLogLine])
-
-  const clearLogs = useCallback(() => {
-    setLogs([])
-  }, [])
+      setIsConnected(false);
+      setError('Connection lost. Reconnecting...');
+      eventSource.close();
+      eventSourceRef.current = null;
+      
+      setTimeout(() => {
+        if (!eventSourceRef.current) {
+          connect();
+        }
+      }, 3000);
+    };
+  }, [service, enabled, maxEntries]);
 
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-      setConnected(false)
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
-  }, [])
+    setIsConnected(false);
+  }, []);
+
+  useEffect(() => {
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
+
+  useEffect(() => {
+    if (autoScroll && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [logs, autoScroll]);
+
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
 
   return {
     logs,
-    connected,
+    isConnected,
     error,
     clearLogs,
-    disconnect,
-  }
+    containerRef,
+  };
 }
