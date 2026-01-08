@@ -34,87 +34,89 @@ Create a new `core` service using Next.js (App Router) that:
 
 ```
 core/
-├── app/                          # Next.js App Router
-│   ├── (auth)/                   # Route group for auth pages
-│   │   ├── login/
-│   │   │   └── page.tsx         # OAuth login page
-│   │   └── layout.tsx          # Auth layout
-│   ├── (dashboard)/             # Admin dashboard route group
-│   │   ├── layout.tsx           # Dashboard layout with nav
-│   │   ├── status/
-│   │   │   └── page.tsx        # Main status dashboard
-│   │   ├── logs/
-│   │   │   ├── page.tsx        # Combined logs view
-│   │   │   └── [service]/
-│   │   │       └── page.tsx    # Individual service logs
-│   │   └── services/
-│   │       └── [service]/
-│   │           ├── page.tsx    # Service details page
-│   │           └── actions.ts  # Server actions for service control
-│   ├── api/                     # API routes
-│   │   ├── health/
-│   │   │   └── route.ts       # Health check
-│   │   ├── services/
-│   │   │   ├── route.ts       # List all services
-│   │   │   └── [service]/
-│   │   │       ├── route.ts   # GET status, POST command
-│   │   │       ├── status/
-│   │   │       │   └── route.ts
-│   │   │       ├── start/
-│   │   │       │   └── route.ts
-│   │   │       ├── stop/
-│   │   │       │   └── route.ts
-│   │   │       ├── restart/
-│   │   │       │   └── route.ts
-│   │   │       └── check/
-│   │   │           └── route.ts
-│   │   ├── logs/
-│   │   │   └── stream/
-│   │   │       └── route.ts   # SSE endpoint for live logs
-│   │   ├── v1/                # OpenAI-compatible routes (proxy)
-│   │   ├── api/               # Bernard API proxy
-│   │   ├── bernard/           # Bernard UI/API proxy
-│   │   ├── threads/           # LangGraph SDK proxy
-│   │   ├── runs/              # LangGraph SDK proxy
-│   │   ├── assistants/        # LangGraph SDK proxy
-│   │   └── auth/              # Authentication routes
-│   ├── layout.tsx             # Root layout
-│   └── page.tsx              # Root page (redirect to /status)
-├── lib/                       # Shared library code
-│   ├── services/
-│   │   ├── ServiceManager.ts  # Main service manager class
-│   │   ├── ServiceConfig.ts   # Service definitions
-│   │   ├── ProcessManager.ts  # Process spawn/kill/monitor
-│   │   ├── HealthChecker.ts   # Health check logic
-│   │   └── LogStreamer.ts    # Log file tailing/streaming
-│   ├── auth/
-│   │   ├── middleware.ts      # Next.js auth middleware
-│   │   ├── session.ts         # Session management
-│   │   └── stores.ts         # Auth stores (migrate from lib/shared/auth)
-│   ├── config/
-│   │   └── env.ts            # Environment variable validation
-│   ├── logger.ts             # Pino logger setup
-│   └── utils.ts              # Shared utilities
-├── components/
-│   ├── ui/                   # Radix UI components (from bernard-ui)
-│   ├── dashboard/
-│   │   ├── ServiceCard.tsx   # Service status card
-│   │   ├── ServiceList.tsx   # All services grid
-│   │   ├── LogViewer.tsx     # Live log viewer
-│   │   └── CombinedLogs.tsx # Combined logs view
-│   └── layout/
-│       ├── Header.tsx        # Dashboard header
-│       └── Sidebar.tsx       # Navigation sidebar
-├── hooks/
-│   ├── useServiceStatus.ts   # Real-time service status hook
-│   ├── useLogStream.ts       # SSE log streaming hook
-│   └── useAuth.ts           # Authentication hook
-├── public/                   # Static assets
-├── middleware.ts             # Next.js middleware (auth)
-├── next.config.mjs          # Next.js config with rewrites
-├── package.json
-├── tsconfig.json
-└── README.md
+  |
+  src/
+  ├── app/                          # Next.js App Router
+  │   ├── (auth)/                   # Route group for auth pages
+  │   │   ├── login/
+  │   │   │   └── page.tsx         # OAuth login page
+  │   │   └── layout.tsx          # Auth layout
+  │   ├── (dashboard)/             # Admin dashboard route group
+  │   │   ├── layout.tsx           # Dashboard layout with nav
+  │   │   ├── status/
+  │   │   │   └── page.tsx        # Main status dashboard
+  │   │   ├── logs/
+  │   │   │   ├── page.tsx        # Combined logs view
+  │   │   │   └── [service]/
+  │   │   │       └── page.tsx    # Individual service logs
+  │   │   └── services/
+  │   │       └── [service]/
+  │   │           ├── page.tsx    # Service details page
+  │   │           └── actions.ts  # Server actions for service control
+  │   ├── api/                     # API routes
+  │   │   ├── health/
+  │   │   │   └── route.ts       # Health check
+  │   │   ├── services/
+  │   │   │   ├── route.ts       # List all services
+  │   │   │   └── [service]/
+  │   │   │       ├── route.ts   # GET status, POST command
+  │   │   │       ├── status/
+  │   │   │       │   └── route.ts
+  │   │   │       ├── start/
+  │   │   │       │   └── route.ts
+  │   │   │       ├── stop/
+  │   │   │       │   └── route.ts
+  │   │   │       ├── restart/
+  │   │   │       │   └── route.ts
+  │   │   │       └── check/
+  │   │   │           └── route.ts
+  │   │   ├── logs/
+  │   │   │   └── stream/
+  │   │   │       └── route.ts   # SSE endpoint for live logs
+  │   │   ├── v1/                # OpenAI-compatible routes (proxy)
+  │   │   ├── api/               # Bernard API proxy
+  │   │   ├── bernard/           # Bernard UI/API proxy
+  │   │   ├── threads/           # LangGraph SDK proxy
+  │   │   ├── runs/              # LangGraph SDK proxy
+  │   │   ├── assistants/        # LangGraph SDK proxy
+  │   │   └── auth/              # Authentication routes
+  │   ├── layout.tsx             # Root layout
+  │   └── page.tsx              # Root page (redirect to /status)
+  ├── lib/                       # Shared library code
+  │   ├── services/
+  │   │   ├── ServiceManager.ts  # Main service manager class
+  │   │   ├── ServiceConfig.ts   # Service definitions
+  │   │   ├── ProcessManager.ts  # Process spawn/kill/monitor
+  │   │   ├── HealthChecker.ts   # Health check logic
+  │   │   └── LogStreamer.ts    # Log file tailing/streaming
+  │   ├── auth/
+  │   │   ├── middleware.ts      # Next.js auth middleware
+  │   │   ├── session.ts         # Session management
+  │   │   └── stores.ts         # Auth stores (migrate from lib/shared/auth)
+  │   ├── config/
+  │   │   └── env.ts            # Environment variable validation
+  │   ├── logger.ts             # Pino logger setup
+  │   └── utils.ts              # Shared utilities
+  ├── components/
+  │   ├── ui/                   # Radix UI components (from bernard-ui)
+  │   ├── dashboard/
+  │   │   ├── ServiceCard.tsx   # Service status card
+  │   │   ├── ServiceList.tsx   # All services grid
+  │   │   ├── LogViewer.tsx     # Live log viewer
+  │   │   └── CombinedLogs.tsx # Combined logs view
+  │   └── layout/
+  │       ├── Header.tsx        # Dashboard header
+  │       └── Sidebar.tsx       # Navigation sidebar
+  ├── hooks/
+  │   ├── useServiceStatus.ts   # Real-time service status hook
+  │   ├── useLogStream.ts       # SSE log streaming hook
+  │   └── useAuth.ts           # Authentication hook
+  ├── public/                   # Static assets
+  ├── middleware.ts             # Next.js middleware (auth)
+  ├── next.config.mjs          # Next.js config with rewrites
+  ├── package.json
+  ├── tsconfig.json
+  └── README.md
 ```
 
 ---
@@ -797,7 +799,7 @@ export const config = {
 **Example:**
 ```typescript
 // scripts/dev.ts
-import { ServiceManager } from '../core/lib/services/ServiceManager'
+import { ServiceManager } from '../core/src/lib/services/ServiceManager'
 import { spawn } from 'child_process'
 
 async function main() {
