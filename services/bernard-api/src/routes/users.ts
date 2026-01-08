@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getRedis } from "@shared/infra/redis";
 import { UserStore, UserStatus } from "@shared/auth";
 import { requireAdmin } from "../lib/auth";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logging/logger";
 
 export function registerUserRoutes(fastify: FastifyInstance) {
   const getUserStore = () => new UserStore(getRedis());

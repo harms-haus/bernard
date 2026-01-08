@@ -13,7 +13,7 @@ import { getRedis } from "@shared/infra/redis";
 import { UserStore } from "@shared/auth/index";
 import { SessionStore } from "@shared/auth/index";
 import { buildSessionCookie } from "./auth"; // Wait, I need to check if auth.ts has buildSessionCookie
-import { logger } from "./logger";
+import { logger } from "./logging/logger";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 const STATE_TTL_SECONDS = 10 * 60;

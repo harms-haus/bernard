@@ -9,7 +9,7 @@ import {
   type AccessGrant
 } from "@shared/auth/index";
 import { getRedis } from "@shared/infra/redis";
-import { logger } from "./logger";
+import { logger } from "./logging/logger";
 
 export type { AuthenticatedUser, AccessGrant };
 

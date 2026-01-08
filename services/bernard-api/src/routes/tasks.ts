@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getRedis } from "@shared/infra/redis";
 import { TaskRecordKeeper } from "../lib/taskKeeper";
 import { getAuthenticatedUser } from "../lib/auth";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logging/logger";
 
 export function registerTaskRoutes(fastify: FastifyInstance) {
   const getTaskKeeper = () => new TaskRecordKeeper(getRedis());

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getRedis } from "@shared/infra/redis";
 import { TokenStore } from "@shared/auth";
 import { requireAdmin } from "../lib/auth";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logging/logger";
 
 export function registerTokenRoutes(fastify: FastifyInstance) {
   const getTokenStore = () => new TokenStore(getRedis());

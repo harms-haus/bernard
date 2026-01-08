@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import Redis from "ioredis";
 import { initChatModel } from "langchain/chat_models/universal";
 import { Client } from "@langchain/langgraph-sdk";
-import { resolveModel } from "../lib/resolveModel";
+import { resolveModel } from "../lib/config/models";
 
 const REDIS_URL = process.env["REDIS_URL"] || "redis://localhost:6379";
 

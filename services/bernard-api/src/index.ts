@@ -2,7 +2,7 @@ import "dotenv/config";
 import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
-import { logger } from "./lib/logger";
+import { logger } from "./lib/logging/logger";
 import { registerSettingsRoutes } from "./routes/settings";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerProviderRoutes } from "./routes/providers";
