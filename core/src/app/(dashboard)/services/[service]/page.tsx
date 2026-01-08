@@ -180,7 +180,7 @@ export default function ServicePage() {
 
         <div>
           <h3 className="text-white font-semibold mb-4">Live Logs</h3>
-          <LogViewer service={serviceId} maxHeight="400px" />
+          <LogViewer service={serviceId} height="400px" />
         </div>
       </div>
     </div>

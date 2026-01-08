@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
 import { V1_UPSTREAMS } from '@/lib/services/config';
 
 const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
@@ -27,19 +26,37 @@ function findUpstream(path: string) {
   return null;
 }
 
-async function fetchFromAgent<T>(path: string, timeout = 2000): Promise<T | null> {
+async function fetchWithTimeout(url: string, timeout = 2000): Promise<Response | null> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    const resp = await axios.get<T>(`${BERNARD_AGENT_URL}${path}`, { timeout });
-    return resp.data;
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch {
+    clearTimeout(id);
+    return null;
+  }
+}
+
+async function fetchFromAgent<T>(path: string, timeout = 2000): Promise<T | null> {
+  const resp = await fetchWithTimeout(`${BERNARD_AGENT_URL}${path}`, timeout);
+  if (!resp || !resp.ok) return null;
+  
+  try {
+    return await resp.json() as T;
   } catch {
     return null;
   }
 }
 
 async function fetchFromVLLM<T>(path: string, timeout = 2000): Promise<T | null> {
+  const resp = await fetchWithTimeout(`${VLLM_URL}${path}`, timeout);
+  if (!resp || !resp.ok) return null;
+  
   try {
-    const resp = await axios.get<T>(`${VLLM_URL}${path}`, { timeout });
-    return resp.data;
+    return await resp.json() as T;
   } catch {
     return null;
   }
@@ -99,7 +116,6 @@ export async function POST(request: NextRequest) {
       method: request.method,
       headers: new Headers(headers),
       body: body,
-      duplex: 'half',
     });
 
     const response = await fetch(proxyReq);
