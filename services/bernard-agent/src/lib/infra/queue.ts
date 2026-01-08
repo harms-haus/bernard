@@ -4,9 +4,8 @@
  * Provides a background job queue for utility operations like automatic thread naming.
  */
 import { Queue, Worker, QueueEvents } from "bullmq";
-import IORedis from "ioredis";
+import Redis from "ioredis";
 
-import { getRedis } from "./redis";
 import { childLogger, logger, startTimer, type LogContext } from "@/lib/logging/logger";
 
 // ============================================================================
@@ -99,16 +98,42 @@ const UTILITY_QUEUE_PREFIX = "bernard:queue:utility";
 let utilityQueue: Queue<UtilityJobData, ThreadNamingJobData, string> | null = null;
 let utilityWorker: Worker<UtilityJobData, UtilityJobResult, string> | null = null;
 let queueEvents: QueueEvents | null = null;
+let bullMqRedis: Redis | null = null;
+
+/**
+ * Create a BullMQ-compatible Redis connection
+ * BullMQ requires maxRetriesPerRequest to be null
+ */
+function getBullMqRedis(): Redis {
+  if (!bullMqRedis) {
+    const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+    bullMqRedis = new Redis(url, {
+      maxRetriesPerRequest: null, // Required by BullMQ
+      // BullMQ handles retries internally, so don't configure retryStrategy
+      enableReadyCheck: false, // BullMQ handles readiness
+      lazyConnect: true,
+    });
+
+    bullMqRedis.on("error", (err) => {
+      logger.error({ error: err.message }, "[UtilityQueue] Redis connection error");
+    });
+
+    bullMqRedis.on("connect", () => {
+      logger.info("[UtilityQueue] Redis connected for BullMQ");
+    });
+  }
+  return bullMqRedis;
+}
 
 /**
  * Get the utility queue instance (singleton pattern)
  */
 export function getUtilityQueue(): Queue<UtilityJobData, ThreadNamingJobData, string> {
   if (!utilityQueue) {
-    const connection = getRedis();
+    const connection = getBullMqRedis();
     
     utilityQueue = new Queue<UtilityJobData, ThreadNamingJobData, string>(QUEUE_NAME, {
-      connection: connection as unknown as IORedis,
+      connection: connection,
       prefix: UTILITY_QUEUE_PREFIX,
       defaultJobOptions: {
         removeOnComplete: {
@@ -208,7 +233,7 @@ export async function startUtilityWorker(): Promise<void> {
     return;
   }
   
-  const connection = getRedis();
+  const connection = getBullMqRedis();
   const concurrency = parseInt(process.env["UTILITY_QUEUE_CONCURRENCY"] ?? "5");
   
   utilityWorker = new Worker<UtilityJobData, UtilityJobResult, string>(
@@ -222,7 +247,7 @@ export async function startUtilityWorker(): Promise<void> {
       }
     },
     {
-      connection: connection as unknown as IORedis,
+      connection: connection,
       prefix: UTILITY_QUEUE_PREFIX,
       concurrency,
     }
@@ -290,7 +315,7 @@ export async function startUtilityWorker(): Promise<void> {
 
   // Also set up global queue events for monitoring
   queueEvents = new QueueEvents(QUEUE_NAME, {
-    connection: connection as unknown as IORedis,
+    connection: getBullMqRedis(),
     prefix: UTILITY_QUEUE_PREFIX,
   });
 

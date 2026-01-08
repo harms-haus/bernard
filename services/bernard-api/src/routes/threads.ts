@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import Redis from "ioredis";
+import { initChatModel } from "langchain/chat_models/universal";
+import { Client } from "@langchain/langgraph-sdk";
+import { resolveModel } from "../lib/resolveModel";
 
 const REDIS_URL = process.env["REDIS_URL"] || "redis://localhost:6379";
 
@@ -258,6 +261,95 @@ export function registerThreadsRoutes(fastify: FastifyInstance) {
       fastify.log.error({ error }, "Failed to delete thread");
       return reply.status(500).send({
         error: "Failed to delete thread",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  fastify.post<{
+    Params: { threadId: string };
+    Body: { firstMessage?: string; messages?: Array<{ type: string; content: unknown }> };
+  }>("/threads/:threadId/auto-rename", async (
+    request: FastifyRequest<{ Params: { threadId: string }; Body: { firstMessage?: string; messages?: Array<{ type: string; content: unknown }> } }>,
+    reply: FastifyReply
+  ) => {
+    try {
+      const { threadId } = request.params;
+      const { firstMessage, messages } = request.body;
+
+      // Build conversation text from either firstMessage or all messages
+      let conversationText: string;
+      if (messages && messages.length > 0) {
+        // Use all messages for manual rename
+        conversationText = messages
+          .map(m => {
+            const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+            return `[${m.type}]: ${content}`;
+          })
+          .join("\n\n");
+      } else if (firstMessage) {
+        // Use only first message for automatic rename
+        conversationText = firstMessage;
+      } else {
+        return reply.status(400).send({ error: "firstMessage or messages is required" });
+      }
+
+      fastify.log.info({ threadId, hasMessages: !!messages }, "Starting auto-rename");
+
+      // Resolve utility model
+      const { id: modelId, options } = await resolveModel("utility");
+      const namingModel = await initChatModel(modelId, options);
+
+      // Generate title
+      const min = 3;
+      const max = 5;
+      const prompt = "";
+
+      const fullPrompt = "Generate a concise title for this conversation.\n\n" +
+        prompt + (prompt ? "\n\n" : "") +
+        `Your title must be between ${min} and ${max} words.\n\n` +
+        `The conversation so far is:\n${conversationText}`;
+
+      const response = await namingModel.invoke([
+        { role: "user", content: fullPrompt }
+      ]);
+
+      // Clean response
+      const title = typeof response.content === "string"
+        ? response.content.trim().replace(/"/g, "")
+        : "New Chat";
+
+      // Truncate if too long
+      let finalTitle = title;
+      if (finalTitle.length > 50) {
+        finalTitle = finalTitle.substring(0, 47) + "...";
+      }
+
+      fastify.log.info({ threadId, title: finalTitle }, "Generated title");
+
+      // Update thread via LangGraph Client
+      const client = new Client({
+        apiUrl: process.env["LANGGRAPH_API_URL"] ?? "http://localhost:2024",
+      });
+
+      await client.threads.update(threadId, {
+        metadata: {
+          name: finalTitle,
+          created_at: new Date().toISOString()
+        },
+      });
+
+      fastify.log.info({ threadId, name: finalTitle }, "Thread renamed successfully");
+
+      return reply.send({
+        success: true,
+        threadId,
+        name: finalTitle,
+      });
+    } catch (error) {
+      fastify.log.error({ error, threadId: request.params.threadId }, "Failed to auto-rename thread");
+      return reply.status(500).send({
+        error: "Failed to auto-rename thread",
         details: error instanceof Error ? error.message : "Unknown error",
       });
     }

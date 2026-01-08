@@ -584,6 +584,41 @@ class APIClient {
       return { id: threadId, deleted: true };
     }
   }
+
+  async autoRenameThread(
+    threadId: string,
+    firstMessage?: string,
+    messages?: Array<{ type: string; content: unknown }>
+  ): Promise<{
+    success: boolean;
+    threadId: string;
+    name: string;
+  }> {
+    const body: Record<string, unknown> = {};
+    if (firstMessage) {
+      body.firstMessage = firstMessage;
+    }
+    if (messages) {
+      body.messages = messages;
+    }
+
+    const response = await fetch(`/api/threads/${threadId}/auto-rename`, {
+      credentials: 'same-origin',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders()
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || 'Failed to auto-rename thread');
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new APIClient('', '/api', '/api');
