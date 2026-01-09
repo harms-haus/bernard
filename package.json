@@ -8,7 +8,11 @@
     "lib": "lib"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "cd core && npm run dev",
+    "build": "cd core && npm run build",
+    "start": "cd core && npm run start",
+    "check": "cd core && npm run check",
+    "type-check": "cd core && npm run type-check"
   },
   "repository": {
     "type": "git",

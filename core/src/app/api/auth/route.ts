@@ -77,48 +77,86 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    case 'admin-login': {
+      const key = searchParams.get('key')
+      const returnTo = searchParams.get('returnTo') || '/status'
+
+      if (!key) {
+        return NextResponse.json({ error: 'Missing key parameter' }, { status: 400 })
+      }
+
+      const user = await getCurrentUser(`Bearer ${key}`)
+      
+      if (!user || !user.user.isAdmin) {
+        return NextResponse.json({ error: 'Invalid admin key' }, { status: 401 })
+      }
+
+      // For admin key login, we'll set a special session
+      // This is a simplified approach - in production you'd want proper session management
+      const response = NextResponse.redirect(new URL(returnTo, request.url))
+      response.cookies.set('bernard_admin_session', key, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24, // 1 day
+        path: '/',
+      })
+      return response
+    }
+
     case 'callback': {
       const provider = searchParams.get('provider')
       const code = searchParams.get('code')
       const state = searchParams.get('state')
       const errorParam = searchParams.get('error')
-      const returnTo = searchParams.get('returnTo') || '/status'
+      const host = request.headers.get('host')
 
-      if (errorParam) {
-        return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(errorParam)}`, request.url))
-      }
+      console.log('[OAuth callback] host:', host, 'url:', request.url)
 
       if (!provider || !VALID_PROVIDERS.includes(provider)) {
-        return NextResponse.redirect(new URL(`/login?error=invalid_provider`, request.url))
+        const loginUrl = new URL('/login', 'https://bernard.harms.haus')
+        loginUrl.searchParams.set('error', 'invalid_provider')
+        return NextResponse.redirect(loginUrl)
+      }
+
+      const config = await getOAuthConfig(provider)
+
+      if (errorParam) {
+        return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(errorParam)}`, config.redirectUri))
       }
 
       if (!code || !state) {
-        return NextResponse.redirect(new URL(`/login?error=missing_params`, request.url))
+        return NextResponse.redirect(new URL('/login?error=missing_params', config.redirectUri))
       }
 
       try {
         // Validate state and get code verifier
         const stateData = await validateOAuthState(provider, state)
+        console.log('[OAuth callback] stateData:', stateData ? 'found' : 'null')
         if (!stateData) {
-          return NextResponse.redirect(new URL(`/login?error=invalid_state`, request.url))
+          return NextResponse.redirect(new URL('/login?error=invalid_state', config.redirectUri))
         }
 
         // Exchange code for token
         const tokenResponse = await exchangeCodeForToken(provider, code, stateData.codeVerifier)
+        console.log('[OAuth callback] tokenResponse:', tokenResponse ? 'success' : 'null')
         
         // Fetch user info
         const userInfo = await fetchUserInfo(provider, tokenResponse.accessToken)
+        console.log('[OAuth callback] userInfo:', userInfo ? userInfo.id : 'null')
         
         // Create session
         const { sessionId } = await createOAuthSession(provider, userInfo)
+        console.log('[OAuth callback] sessionId:', sessionId)
         
         // Set session cookie
         await setSessionCookie(sessionId)
+        console.log('[OAuth callback] cookie set, redirecting to:', stateData.returnTo)
 
-        return NextResponse.redirect(new URL(stateData.returnTo, request.url))
+        return NextResponse.redirect(new URL(stateData.returnTo, config.redirectUri))
       } catch (error) {
         console.error('OAuth callback error:', error)
-        return NextResponse.redirect(new URL(`/login?error=auth_failed`, request.url))
+        return NextResponse.redirect(new URL('/login?error=auth_failed', config.redirectUri))
       }
     }
 

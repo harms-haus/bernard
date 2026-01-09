@@ -1,12 +1,14 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { useServiceStatus, type ServiceStatus } from '@/hooks/useServiceStatus'
 import { LogViewer } from '@/components/dashboard/LogViewer'
 
 export default function StatusPage() {
   const router = useRouter()
   const { services, loading, error, refresh } = useServiceStatus({ interval: 2000 })
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   if (loading && services.length === 0) {
     return (
@@ -28,8 +30,30 @@ export default function StatusPage() {
     )
   }
 
-  const runningCount = services.filter((s: { status: string }) => s.status === 'running').length
+  const healthyCount = services.filter((s: ServiceStatus) => 
+    s.health === 'healthy' || s.status === 'running'
+  ).length
   const totalCount = services.length
+
+  const handleAction = async (serviceId: string, action: 'restart' | 'stop' | 'check') => {
+    setActionLoading(`${serviceId}-${action}`)
+    try {
+      const response = await fetch(`/api/services/${serviceId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: action }),
+      })
+      const result = await response.json()
+      if (!response.ok || (!result.success && result.error)) {
+        alert(`${action.charAt(0).toUpperCase() + action.slice(1)} failed: ${result.error || result.message || 'Unknown error'}`)
+      }
+      refresh()
+    } catch (err) {
+      alert(`Error: ${err}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
@@ -38,7 +62,7 @@ export default function StatusPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Service Status</h1>
             <p className="text-gray-400 mt-1">
-              {runningCount}/{totalCount} services running
+              {healthyCount}/{totalCount} services healthy
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -61,25 +85,18 @@ export default function StatusPage() {
           {services.map((service: ServiceStatus) => (
             <div
               key={service.id}
-              className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors cursor-pointer border border-gray-700 hover:border-gray-600"
-              onClick={() => router.push(`/services/${service.id}`)}
+              className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors border border-gray-700 hover:border-gray-600"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest('.action-buttons')) return
+                router.push(`/services/${service.id}`)
+              }}
             >
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      service.status === 'running' ? 'bg-green-500 animate-pulse' :
-                      service.status === 'stopped' ? 'bg-gray-500' :
-                      service.status === 'starting' ? 'bg-yellow-500 animate-pulse' :
-                      'bg-red-500'
-                    }`}
-                  />
-                  <div>
-                    <h3 className="text-white font-semibold">{service.name}</h3>
-                    {service.port && (
-                      <p className="text-gray-400 text-sm">Port {service.port}</p>
-                    )}
-                  </div>
+                <div>
+                  <h3 className="text-white font-semibold">{service.name}</h3>
+                  {service.port && (
+                    <p className="text-gray-400 text-sm">Port {service.port}</p>
+                  )}
                 </div>
                 <span className={`text-xs font-medium px-2 py-1 rounded ${
                   service.health === 'healthy' ? 'bg-green-900/50 text-green-400' :
@@ -90,20 +107,36 @@ export default function StatusPage() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-sm mb-3">
                 <div className="flex gap-4 text-gray-400">
                   {service.uptime !== undefined && (
                     <span>Uptime: {formatDuration(service.uptime)}</span>
                   )}
                 </div>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                  service.status === 'running' ? 'bg-green-900/50 text-green-400' :
-                  service.status === 'stopped' ? 'bg-gray-700 text-gray-400' :
-                  service.status === 'starting' ? 'bg-yellow-900/50 text-yellow-400' :
-                  'bg-red-900/50 text-red-400'
-                }`}>
-                  {service.status.toUpperCase()}
-                </span>
+              </div>
+
+              <div className="action-buttons flex items-center gap-2 pt-3 border-t border-gray-700">
+                <button
+                  onClick={() => handleAction(service.id, 'restart')}
+                  disabled={actionLoading !== null}
+                  className="flex-1 px-3 py-1.5 bg-yellow-900/40 hover:bg-yellow-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-yellow-200 hover:text-white text-xs rounded transition-colors"
+                >
+                  {actionLoading === `${service.id}-restart` ? '...' : 'Restart'}
+                </button>
+                <button
+                  onClick={() => handleAction(service.id, 'stop')}
+                  disabled={actionLoading !== null || service.health !== 'healthy'}
+                  className="flex-1 px-3 py-1.5 bg-red-900/40 hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-red-200 hover:text-white text-xs rounded transition-colors"
+                >
+                  {actionLoading === `${service.id}-stop` ? '...' : 'Stop'}
+                </button>
+                <button
+                  onClick={() => handleAction(service.id, 'check')}
+                  disabled={actionLoading !== null}
+                  className="flex-1 px-3 py-1.5 bg-blue-900/40 hover:bg-blue-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-blue-200 hover:text-white text-xs rounded transition-colors"
+                >
+                  {actionLoading === `${service.id}-check` ? '...' : 'Check'}
+                </button>
               </div>
             </div>
           ))}

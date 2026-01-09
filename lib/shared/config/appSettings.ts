@@ -4,6 +4,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
 import { getRedis } from "../infra/redis";
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- Schemas ---
 
@@ -349,6 +353,9 @@ export class SettingsManager {
   static getInstance(): SettingsManager {
     if (!SettingsManager.instance) {
       SettingsManager.instance = new SettingsManager();
+      // Load .env from project root (parent of core/)
+      const envPath = path.resolve(__dirname, '..', '..', '..', '.env');
+      SettingsManager.instance.loadEnv(envPath);
     }
     return SettingsManager.instance;
   }

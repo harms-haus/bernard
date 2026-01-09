@@ -843,7 +843,7 @@ main()
 
 ---
 
-## Phase 8: Testing & Validation
+## Phase 8: Testing & Cleanup
 
 ### 8.1 Unit Tests
 
@@ -863,33 +863,7 @@ main()
 - [ ] Test proxy routes to upstream services
 - [ ] Test OAuth flow
 
-### 8.3 Manual Validation
-
-**Tasks:**
-- [ ] Verify all services start in correct order
-- [ ] Verify status page displays correctly
-- [ ] Verify service control buttons work
-- [ ] Verify log streaming works (individual and combined)
-- [ ] Verify proxy routes forward requests correctly
-- [ ] Verify OAuth authentication works
-- [ ] Verify admin key authentication works
-- [ ] Verify live logs update in real-time
-- [ ] Verify service health checks work
-- [ ] Verify uptime tracking works
-
-### 8.4 Performance Testing
-
-**Tasks:**
-- [ ] Test with all services running
-- [ ] Test log streaming under load
-- [ ] Test concurrent service control requests
-- [ ] Measure memory usage
-
----
-
-## Phase 9: Cleanup
-
-### 9.1 Remove Legacy Components
+### 8.3 Remove Legacy Components
 
 **After core is validated and working:**
 
@@ -899,14 +873,6 @@ main()
 - [ ] Update root `package.json` to remove old scripts
 - [ ] Update `.gitignore` if needed
 - [ ] Update documentation (AGENTS.md, README.md)
-
-### 9.2 Update Documentation
-
-**Tasks:**
-- [ ] Update AGENTS.md to reference core service
-- [ ] Update root README.md with new startup commands
-- [ ] Create core/README.md with core-specific documentation
-- [ ] Document environment variables
 
 ---
 

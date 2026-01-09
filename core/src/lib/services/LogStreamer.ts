@@ -1,10 +1,13 @@
 import { promises as fs } from 'node:fs';
 
-const LOG_DIR = process.env.LOG_DIR || '/home/blake/Documents/software/bernard/logs';
+function getLogDir(): string {
+  return process.env.LOG_DIR || '/home/blake/Documents/software/bernard/logs';
+}
 
 const SENSITIVE_FIELDS = [
   'apiKey', 'token', 'password', 'secret', 'authorization',
-  'access_token', 'refresh_token', 'client_secret'
+  'access_token', 'refresh_token', 'client_secret', 'privateKey',
+  'private_key', 'credential', 'passphrase'
 ];
 
 export interface ParsedLogEntry {
@@ -79,7 +82,7 @@ export class LogStreamer {
 
   getLogPath(service: string): string {
     const serviceName = service.toLowerCase().replace(/_/g, '-');
-    return `${LOG_DIR}/${serviceName}.log`;
+    return `${getLogDir()}/${serviceName}.log`;
   }
 
   async logExists(service: string): Promise<boolean> {
