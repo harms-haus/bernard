@@ -21,8 +21,8 @@ export default function ServicePage() {
         body: JSON.stringify({ command: action }),
       })
       const result = await response.json()
-      if (!response.ok) {
-        alert(`Failed to ${action}: ${result.error}`)
+      if (!response.ok || (!result.success && result.error)) {
+        alert(`${action.charAt(0).toUpperCase() + action.slice(1)} failed: ${result.error || result.message || 'Unknown error'}`)
       }
       refresh()
     } catch (err) {

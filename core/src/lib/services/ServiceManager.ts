@@ -477,7 +477,23 @@ export class ServiceManager {
     const config = SERVICES[serviceId]
     if (!config) return null
 
-    const isRunning = await this.processManager.isRunning(config)
+    // For docker services, check container status directly
+    let isRunning = false
+    if (config.type === 'docker') {
+      try {
+        const { execSync } = await import('node:child_process')
+        const result = execSync(`docker inspect -f '{{.State.Running}}' ${config.container}`, {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        })
+        isRunning = result.trim() === 'true'
+      } catch {
+        isRunning = false
+      }
+    } else {
+      isRunning = await this.processManager.isRunning(config)
+    }
+    
     const health = await this.healthChecker.check(serviceId)
 
     const startTime = this.startTimes.get(serviceId)
