@@ -116,14 +116,20 @@ export async function POST(request: NextRequest) {
       method: request.method,
       headers: new Headers(headers),
       body: body,
-    });
+      duplex: 'half',
+    } as RequestInit);
 
     const response = await fetch(proxyReq);
 
     if (upstream.streaming && response.body) {
+      const streamingHeaders = new Headers(response.headers);
+      streamingHeaders.set('Transfer-Encoding', 'chunked');
+      streamingHeaders.set('Cache-Control', 'no-cache');
+      streamingHeaders.set('X-Accel-Buffering', 'no');
+      
       return new Response(response.body, {
         status: response.status,
-        headers: new Headers(response.headers),
+        headers: streamingHeaders,
       });
     }
 

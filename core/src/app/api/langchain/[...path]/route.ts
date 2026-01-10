@@ -42,14 +42,20 @@ export async function GET(
     const proxyReq = new Request(targetUrl, {
       method: request.method,
       headers: new Headers(headers),
-    });
+      duplex: 'half',
+    } as RequestInit);
 
     const response = await fetch(proxyReq);
 
     if (upstream.streaming && response.body) {
+      const streamingHeaders = new Headers(response.headers);
+      streamingHeaders.set('Transfer-Encoding', 'chunked');
+      streamingHeaders.set('Cache-Control', 'no-cache');
+      streamingHeaders.set('X-Accel-Buffering', 'no');
+      
       return new Response(response.body, {
         status: response.status,
-        headers: new Headers(response.headers),
+        headers: streamingHeaders,
       });
     }
 
@@ -84,14 +90,20 @@ export async function POST(
       method: request.method,
       headers: new Headers(headers),
       body: body,
-    });
+      duplex: 'half',
+    } as RequestInit);
 
     const response = await fetch(proxyReq);
 
     if (upstream.streaming && response.body) {
+      const streamingHeaders = new Headers(response.headers);
+      streamingHeaders.set('Transfer-Encoding', 'chunked');
+      streamingHeaders.set('Cache-Control', 'no-cache');
+      streamingHeaders.set('X-Accel-Buffering', 'no');
+      
       return new Response(response.body, {
         status: response.status,
-        headers: new Headers(response.headers),
+        headers: streamingHeaders,
       });
     }
 
@@ -131,7 +143,8 @@ export async function PUT(
       method: request.method,
       headers: new Headers(headers),
       body: body,
-    });
+      duplex: 'half',
+    } as RequestInit);
 
     const response = await fetch(proxyReq);
 
@@ -169,7 +182,8 @@ export async function DELETE(
     const proxyReq = new Request(targetUrl, {
       method: request.method,
       headers: new Headers(headers),
-    });
+      duplex: 'half',
+    } as RequestInit);
 
     const response = await fetch(proxyReq);
 

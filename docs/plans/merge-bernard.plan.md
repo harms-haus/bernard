@@ -172,9 +172,9 @@ import { logger } from "@/lib/logging";
 import { getHAConnection } from "@/lib/home-assistant";
 
 // After
-import { getSettings } from "../../lib/config/settingsCache";
-import { logger } from "../../lib/logging/logger";
-import { getHAConnection } from "../../lib/home-assistant";
+import { getSettings } from "@/lib/config/settingsCache";
+import { logger } from "@/lib/logging/logger";
+import { getHAConnection } from "@/lib/home-assistant";
 ```
 
 ### Agent Internal Imports

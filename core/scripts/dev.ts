@@ -36,6 +36,10 @@ function log(message: string, color: keyof typeof colors = 'white') {
 }
 
 function logService(service: string, message: string, color: keyof typeof colors = 'white') {
+  // Filter out successful GET /api/services requests (they're noisy)
+  if (service === 'next' && /GET \/api\/services 200 in \d+ms/.test(message)) {
+    return
+  }
   log(`[${service.padEnd(12)}] ${message}`, color)
 }
 
