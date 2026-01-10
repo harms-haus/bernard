@@ -100,7 +100,7 @@ export const SERVICES: Record<string, ServiceConfig> = {
     port: 8880,
     type: "python",
     directory: "services/kokoro",
-    script: "./.venv/bin/python -m kokoro api",
+    script: "./.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880",
     healthPath: "/health",
     dependencies: [],
     startupTimeout: 30,

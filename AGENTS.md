@@ -1,221 +1,211 @@
-# Bernard - Agent Guidelines
+# AGENTS.md - Bernard Codebase Guide
 
-This document provides build commands and code style guidelines for agentic coding.
+This guide helps AI agents work effectively in this monorepo containing Next.js, React, Python, and C++ services.
+
+## Project Structure
+
+```
+bernard/
+├── core/                   # Next.js + LangGraph server (TypeScript)
+├── services/
+│   ├── bernard-ui/        # React Vite frontend (TypeScript)
+│   ├── kokoro/            # FastAPI TTS service (Python)
+│   └── whisper.cpp/       # Whisper speech recognition (C++)
+└── lib/shared/            # Shared libraries
+```
 
 ## Build, Lint, and Test Commands
 
-### Root Level
+### Root Commands (from `/`)
 ```bash
-npm run dev          # Start core dev server
-npm run build        # Build core
-npm run start        # Start core production
-npm run check        # Run core checks
-npm run type-check   # TypeScript type checking
+npm run build              # Build core app
+npm run dev                # Start core dev server
+npm run type-check         # TypeScript type check
 ```
 
-### Core (Next.js)
+### TypeScript Projects (core, bernard-ui)
 ```bash
-cd core
-npm run dev              # Development server
-npm run build            # Build Next.js
-npm run start            # Production server
-npm run lint             # ESLint
-npm run type-check       # TypeScript check
-npm run test             # Run all tests
-npm run test:watch       # Watch mode
-npm run test:coverage    # Coverage report
-npm run test:ui          # Vitest UI
+cd core                    # or cd services/bernard-ui
+
+# Build
+npm run build              # Production build
+npm run dev                # Dev server
+npm run type-check         # tsc --noEmit
+
+# Linting
+npm run lint              # ESLint check
+
+# Testing
+npm run test               # Run all tests (vitest run)
+npm run test:watch         # Watch mode
+npm run test:coverage      # With coverage
+npx vitest run filename.test.ts              # Single test file
+npx vitest run -t "test name"                 # Single test by name
+npx vitest run --run src/lib/services/       # Tests in directory
 ```
 
-### Running Single Tests
-```bash
-# Run a single test file
-cd core && npx vitest run src/lib/services/HealthChecker.test.ts
-
-# Watch mode on single file
-cd core && npx vitest HealthChecker.test.ts
-
-# Run specific test by name pattern
-cd core && npx vitest run -t "should return down status"
-
-# Run tests matching pattern
-cd core && npx vitest run --reporter=verbose "HealthChecker"
-```
-
-### Bernard API
-```bash
-cd services/bernard-api
-npm run dev          # Development server
-npm run build        # TypeScript compile
-npm run lint         # ESLint
-npm run test         # Run tests
-```
-
-### Bernard UI
-```bash
-cd services/bernard-ui
-npm run dev              # Vite dev server
-npm run build            # Build + TypeScript compile
-npm run type-check       # TypeScript check
-npm run lint             # ESLint
-npm run tests            # Run all tests
-```
-
-### Kokoro (Python)
+### Python Project (kokoro)
 ```bash
 cd services/kokoro
-uv sync --extra test     # Install dependencies
-pytest -v                # Run tests with verbose output
-pytest --cov=api         # Run tests with coverage
+
+# Build/Run
+./start-cpu.sh            # Start with CPU (auto-install deps)
+./start-gpu.sh            # Start with GPU (auto-install deps)
+uv run python api/src/main.py
+
+# Linting/Formatting (Ruff)
+uv run ruff check .       # Check linting
+uv run ruff check --fix . # Auto-fix
+uv run ruff format .      # Format code
+uv run ruff format --check . # Check formatting
+
+# Testing (Pytest)
+python -m pytest          # Run all tests
+python -m pytest -v       # Verbose
+python -m pytest api/tests/test_file.py              # Single file
+python -m pytest -k "test_name"                     # By name
+python -m pytest api/tests/test_file.py::test_func   # Specific test
+```
+
+### C++ Project (whisper.cpp)
+```bash
+cd services/whisper.cpp
+
+# Build
+cmake -B build && cmake --build build --config Release
+
+# Test/Run
+./build/bin/whisper-cli -f samples/jfk.wav
+make base.en              # Download and test model
 ```
 
 ## Code Style Guidelines
 
-### Import Patterns
-1. **External dependencies** first (npm packages like `@langchain/langgraph`, `zod`)
-2. **Type-only imports** using `import type`
-3. **Path-aliased internal imports** (`@/lib/config/settingsCache`)
-4. **Relative imports** last (`./types`, `./utils`)
+### Import Style
+- **ES Modules only** - No `require()`
+- **Named imports preferred**: `import { BaseMessage } from "@langchain/core/messages"`
+- **Path aliases**: Use `@/` for internal modules: `import { logger } from '@/lib/logging/logger'`
+- **Type-only imports**: `import type { User } from '../types/auth'`
 
-**Example:**
-```typescript
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-import type { RunnableConfig } from "@langchain/core/runnables";
-
-import { getSettings } from "@/lib/config/settingsCache";
-import { ToolFactory } from "./types";
-```
-
-### Formatting
-- **2 spaces** indentation
-- **Trailing commas** on multi-line arrays/objects
-- **Always use semicolons**
-- ES modules exclusively
-
-### TypeScript Patterns
-- **Strict mode** enabled (`strict: true`)
-- **Prefer type inference** where possible
-- **Export types** with `export type` for type-only exports
-- **Zod schemas** for runtime validation
-- **Union types with discriminators** for error handling
+### TypeScript Usage
+- **Strict mode enabled** - No `as any` or `@ts-ignore`
+- **Explicit type annotations** on function parameters and returns
+- **Type definitions** for simple objects, **interfaces** for public APIs
+- **Discriminated unions** for result types:
 
 ```typescript
-type Result = { ok: true; data: string } | { ok: false; reason: string };
-
-const schema = z.object({
-  query: z.string().min(3),
-  count: z.number().int().min(1).max(8).optional()
-});
+type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 ```
 
 ### Naming Conventions
-- **Files**: kebab-case (`web-search.tool.ts`, `get-weather-data.tool.ts`)
-- **Functions/Variables**: camelCase (`calculateStringSimilarity`, `const apiKey`)
-- **Components/Classes**: PascalCase (`LogViewer`, `ToolFactory`)
-- **Constants**: SCREAMING_SNAKE_CASE (`DEFAULT_SEARXNG_API_URL`)
-- **React Hooks**: camelCase with `use` prefix (`useLogStream`, `useServiceStatus`)
-- **Tool Factories**: camelCase with `ToolFactory` suffix (`webSearchToolFactory`)
+- **camelCase**: Functions, variables, methods (`getMessageText`, `loadChatModel`)
+- **PascalCase**: Types, interfaces, classes, components (`ServiceManager`, `LogEntry`, `CombinedLogs`)
+- **SCREAMING_SNAKE_CASE**: Constants (`DEFAULT_TIMEOUT_MS`, `QUEUE_NAME`)
+- **Descriptive names**: Verbs for actions (`formatDoc`, `buildUrl`, `startTimer`)
+- **File naming**: `.tool.ts` for LangGraph tools, `.test.ts` for tests, `.tsx` for React components, `index.ts` for barrel exports
 
 ### Error Handling
-- **Prefer return-type discriminators** over throwing:
+- **Result type pattern** for async operations:
 ```typescript
-function normalizeApiKey(key: string | null): { ok: true; apiKey: string } | { ok: false; reason: string } {
-  if (!key?.trim()) return { ok: false, reason: "Missing key" };
-  return { ok: true, apiKey: key.trim() };
+type WeatherFetchResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+try {
+  const res = await fetch(url);
+  if (!res.ok) return { ok: false, error: weatherError(`${res.status} ${res.statusText}`) };
+  return { ok: true, data: await res.json() };
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return { ok: false, error: msg };
 }
 ```
-- **Use `instanceof Error`** for type checking
-- **Structured logging** with Pino logger
-
-### Documentation
-- **JSDoc comments** for exported functions with `@param` and `@returns`
-- **Module header comments** at top of files
-- **Minimal inline comments** - code should be self-documenting
-
-```typescript
-/**
- * Calculate Jaro-Winkler similarity between two strings
- * @param s1 First string
- * @param s2 Second string
- * @returns Similarity score between 0 and 1
- */
-export function jaroWinklerSimilarity(s1: string, s2: string): number { }
-```
+- **Try-catch with explicit error conversion**: Convert unknown errors to Error objects
+- **Context-aware logging**: Include request IDs, duration, error codes
+- **No custom Error classes** - Use standard Error with discriminators
 
 ### File Organization
-- **agents/**: LangGraph agents (bernard/, shared/)
-- **app/**: Next.js app directory with route groups
-- **components/**: React components
-- **hooks/**: Custom React hooks
-- **lib/**: Utilities, config, infra
-- **tests/**: Co-located in `tests/unit/` and `tests/integration/`
+- **Monorepo structure** - Separate packages for different services
+- **Agent pattern**:
+  ```
+  agents/agent-name/
+  ├── agent-name.agent.ts      # Main entry
+  ├── configuration.ts          # Config
+  ├── state.ts                  # State definitions
+  ├── tools/                    # .tool.ts files
+  │   └── index.ts              # Barrel export
+  ├── utils.ts
+  └── prompts/                  # .prompt.ts files
+  ```
+- **Barrel exports** (index.ts) for logical groupings
+- **Path aliases** in tsconfig.json: `@/*` → `./src/*`
 
-### Tool Implementation Pattern
+### Component/Function Patterns
+- **Custom hooks**: `useLogStream`, `useDialogManager` with useCallback/useEffect cleanup
+- **Factory functions**: `webSearchToolFactory` returning `ToolFactoryResult`
+- **Singleton patterns**: Lazy initialization with `getUtilityQueue()` style
+- **Pure utility functions**: Small, testable, side-effect free
+
+## Linting and Formatting
+
+### TypeScript (core, bernard-ui)
+- **ESLint**: Configured in `.eslintrc.cjs` for UI, Next.js built-in for core
+  - `@typescript-eslint/no-unused-vars`: Error (underscore prefix ignored)
+  - `@typescript-eslint/no-explicit-any`: Off
+- **No Prettier configured** - Code formatting relies on ESLint rules or manual formatting
+- **Line length**: No enforced limit for TypeScript
+
+### Python (kokoro)
+- **Ruff** for linting and formatting
+- **Line length**: 88 characters
+- **Import sorting**: `isort` rules with force-wrap-aliases and combine-as-imports
+- **Config**: `.ruff.toml`
+
+### C++ (whisper.cpp)
+- **No linter configured** - Follow project conventions
+
+## Testing
+
+### Vitest (TypeScript)
+- **Test files**: `*.test.ts`, `*.test.tsx`
+- **Framework**: Vitest with globals enabled
+- **Environment**: `node` for core, `jsdom` for UI
+- **Setup**: `vitest.setup.ts` for global mocks and directory creation
+- **Timeout**: 30 seconds default
+- **Coverage**: v8 provider, excludes `node_modules`, `.next`, `dist`, test files
+
+### Test Patterns
 ```typescript
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-
-const myTool = tool(
-  async ({ param }, config) => {
-    // Implementation
-    return result;
-  },
-  {
-    name: "my_tool",
-    description: "Description here",
-    schema: z.object({
-      param: z.string().min(1)
-    })
-  }
-);
-
-export const myToolFactory: ToolFactory = async () => {
-  return { ok: true, tool: myTool, name: myTool.name };
-};
+describe('Component', () => {
+  beforeEach(() => { /* Setup */ })
+  it('should do X', () => {
+    // Arrange, Act, Assert
+    expect(result).toBe(expected)
+  })
+})
 ```
 
-### React Components
-```typescript
-'use client'; // Mark client components
+### React Testing
+- **Library**: `@testing-library/react`
+- **Pattern**: Render → Query → Assert
+- **Mocking**: `vi.fn()` for mocks, `vi.stubEnv()` for environment variables
 
-interface ComponentProps {
-  prop1: string;
-  prop2?: number;
-}
+### Pytest (Python)
+- **Test files**: `test_*.py` in `api/tests/` and `ui/tests/`
+- **Coverage**: Enabled by default
+- **Config**: `pytest.ini`
 
-export function MyComponent({ prop1, prop2 }: ComponentProps) {
-  // Use custom hooks
-  const { data, loading } = useSomeHook();
-  // ...
-}
-```
+## Additional Notes
 
-### Testing
-- **Vitest** for TypeScript, **Pytest** for Python
-- **Global test functions** enabled (`describe`, `it`, `expect`)
-- **30 second timeout** for tests
-- **Coverage** with v8 provider
+### Styling
+- **Tailwind CSS** with shadcn/ui design system
+- **Dark mode**: Class-based
+- **CSS variables** for theming (primary, secondary, destructive, muted, accent, etc.)
+- **Tailwind configs**: `tailwind.config.ts` in core, `tailwind.config.js` in UI
 
-```typescript
-import { describe, it, expect } from "@jest/globals";
+### Configuration
+- **Environment**: `.env` files (use `.env.example` as template)
+- **TypeScript paths**: `@/` → `./src/*` configured in tsconfig.json
+- **Proxying**: Core Next.js proxies to services on specific ports (3456, 8800, 8810, 2024)
 
-describe("MyComponent", () => {
-  it("should do something", () => {
-    expect(result).toBe(expected);
-  });
-});
-```
-
-### Logging
-- **Pino logger** with structured logging
-- **Sensitive data redaction** configured (apiKey, token, password, etc.)
-- **Context-aware logging** with `childLogger`
-```typescript
-logger.info('Message with context', { requestId, userId });
-```
-
-### Security
-- **Never log secrets** - use redaction paths in logger config
-- **Validate inputs** with Zod schemas
-- **Sanitize error messages** before exposing to users
+### No Cursor/Copilot Rules
+- No `.cursor/rules/` or `.cursorrules` found
+- No `.github/copilot-instructions.md` found

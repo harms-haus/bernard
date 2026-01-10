@@ -292,6 +292,12 @@ export class ServiceManager {
       if (!result.success) {
         console.error(`[ServiceManager] Failed to start ${id}: ${result.error}`)
       }
+
+    // Wait longer after Redis - it needs time to be fully ready for clients
+    const config = SERVICES[id]
+    if (result.success && config.dependencies.length > 0) {
+      await this.delay(3000)
+    }
     }
 
     console.log("[ServiceManager] All services started")
@@ -351,6 +357,7 @@ export class ServiceManager {
         let attempts = 0
         while (attempts < 30) {
           try {
+            // Use docker exec to run redis-cli ping - this actually tests Redis is ready
             execSync("docker exec bernard-redis redis-cli ping", {
               encoding: "utf-8",
               stdio: "pipe",
@@ -411,7 +418,7 @@ export class ServiceManager {
     const success = await this.processManager.stop(config)
     this.startTimes.delete(serviceId)
 
-    return { service: serviceId, success }
+    return { service: serviceId, success: success }
   }
 
   private async stopDockerService(config: ServiceConfig): Promise<StopResult> {

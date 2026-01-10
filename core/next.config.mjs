@@ -24,12 +24,12 @@ const nextConfig = {
   },
   async rewrites() {
     return [
-      // Bernard API proxy - forwards /api/* to bernard-api:8800
+      // API routes - serve directly from core (no proxy needed)
       {
-        source: '/api/bernard/:path*',
-        destination: 'http://127.0.0.1:8800/api/:path*',
+        source: '/api/settings/:path*',
+        destination: '/api/settings/:path*',
       },
-      // Bernard UI proxy - forwards /bernard/* to bernard-ui:8810
+      // Bernard UI proxy - forwards /bernard/* to bernard-ui:8810/bernard/*
       {
         source: '/bernard/:path*',
         destination: 'http://127.0.0.1:8810/bernard/:path*',
