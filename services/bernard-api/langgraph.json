@@ -1,8 +1,0 @@
-{
-  "node_version": "20",
-  "dependencies": ["."],
-  "graphs": {
-    "bernard_agent": "./src/agents/bernard/bernard.agent.ts:agent"
-  },
-  "env": ".env"
-}

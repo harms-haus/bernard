@@ -3,8 +3,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ServiceConfig } from '@/lib/services/ServiceConfig';
 
-const PIDS_DIR = path.join(process.cwd(), "logs", "pids")
-
 interface ProcessInfo {
   pid: number
   serviceId: string
@@ -15,21 +13,41 @@ export class ProcessManager {
   private processes: Map<string, ProcessInfo> = new Map()
 
   constructor() {
-    if (!fs.existsSync(PIDS_DIR)) {
-      fs.mkdirSync(PIDS_DIR, { recursive: true })
+    if (!fs.existsSync(this.getPidsDir())) {
+      fs.mkdirSync(this.getPidsDir(), { recursive: true })
     }
   }
 
+  private getPidsDir(): string {
+    return path.join(this.getBaseDir(), "logs", "pids")
+  }
+
   async start(config: ServiceConfig): Promise<{ pid: number; success: boolean; error?: string }> {
-    const isCurrentlyRunning = await this.isRunning(config)
-    if (isCurrentlyRunning) {
+    // Check if port is already in use
+    const portInUse = config.port ? await this.isPortInUse(config.port) : false
+
+    if (portInUse) {
+      // Port is in use - check PID file
       const pid = await this.getPid(config)
+
       if (pid) {
-        return { pid, success: true }
+        // PID file exists - check if process is still running
+        if (this.isPidRunning(pid)) {
+          // Process is running - return success (connect logs)
+          return { pid, success: true }
+        }
+        // Process is dead but port in use - kill it
+        await this.killByPort(config.port!)
+        await this.delay(200)
+      } else {
+        // No PID file but port in use - kill it
+        await this.killByPort(config.port!)
+        await this.delay(200)
       }
     }
 
-    const logFile = path.join(process.cwd(), "logs", `${config.id}.log`)
+    // Start the service
+    const logFile = path.join(this.getBaseDir(), "logs", `${config.id}.log`)
 
     try {
       const pid = await this.spawnProcess(config, logFile)
@@ -56,8 +74,14 @@ export class ProcessManager {
       const [command, ...args] = config.script.split(" ")
       const fullArgs = [...args]
 
+      let cwd = process.cwd()
+
+      if (config.directory) {
+        cwd = path.join(this.getBaseDir(), config.directory)
+      }
+
       const options: SpawnOptions = {
-        cwd: config.directory ? path.join(process.cwd(), config.directory) : process.cwd(),
+        cwd,
         stdio: ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")],
         detached: false,
         env: {
@@ -66,7 +90,9 @@ export class ProcessManager {
         },
       }
 
-      const child = spawn(command, fullArgs, options)
+      const resolvedCommand = path.isAbsolute(command) ? command : path.join(cwd, command)
+
+      const child = spawn(resolvedCommand, fullArgs, options)
 
       child.on("error", (error) => {
         reject(error)
@@ -82,6 +108,18 @@ export class ProcessManager {
         }
       })
     })
+  }
+
+  private getBaseDir(): string {
+    const cwd = process.cwd()
+    const cwdParts = cwd.split(path.sep)
+
+    if (cwdParts.includes('core')) {
+      const coreIndex = cwdParts.indexOf('core')
+      return cwdParts.slice(0, coreIndex).join(path.sep) || '/'
+    }
+
+    return cwd
   }
 
   async stop(config: ServiceConfig): Promise<boolean> {
@@ -102,18 +140,17 @@ export class ProcessManager {
   }
 
   async restart(config: ServiceConfig): Promise<{ success: boolean; error?: string }> {
-    const wasRunning = await this.isRunning(config)
-    
-    if (wasRunning) {
-      const stopped = await this.stop(config)
-      if (!stopped) {
-        return { success: false, error: "Failed to stop service" }
-      }
-      await this.delay(500)
+    // Force kill any process on the port
+    if (config.port) {
+      await this.killByPort(config.port)
+      await this.delay(200)
     }
 
-    const result = await this.start(config)
-    return result
+    // Also try to stop via PID file
+    await this.stop(config)
+
+    // Start fresh
+    return this.start(config)
   }
 
   async isRunning(config: ServiceConfig): Promise<boolean> {
@@ -173,7 +210,7 @@ export class ProcessManager {
   }
 
   private getPidPath(serviceId: string): string {
-    return path.join(PIDS_DIR, `${serviceId}.pid`)
+    return path.join(this.getPidsDir(), `${serviceId}.pid`)
   }
 
   private savePid(serviceId: string, pid: number): void {
@@ -201,5 +238,39 @@ export class ProcessManager {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Check if a port is currently in use
+   */
+  async isPortInUse(port: number): Promise<boolean> {
+    try {
+      const { execSync } = await import('node:child_process')
+      execSync(`lsof -ti:${port} > /dev/null 2>&1 || fuser ${port}/tcp > /dev/null 2>&1`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Kill any process using a specific port
+   */
+  async killByPort(port: number): Promise<boolean> {
+    try {
+      const { execSync } = await import('node:child_process')
+      // Use lsof or fuser to find and kill process on port
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || fuser -k ${port}/tcp 2>/dev/null || true`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      await this.delay(200)
+      return true
+    } catch {
+      return false
+    }
   }
 }

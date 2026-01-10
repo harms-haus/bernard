@@ -74,6 +74,16 @@ const SERVICE_ORDER = [
   'Kokoro'
 ];
 
+const SERVICE_NAME_TO_ID: Record<string, string> = {
+  'Bernard Agent': 'bernard-agent',
+  'Bernard UI': 'bernard-ui',
+  'Bernard-UI': 'bernard-ui',
+  'Redis': 'redis',
+  'VLLM': 'vllm',
+  'Whisper': 'whisper',
+  'Kokoro': 'kokoro',
+};
+
 const STATUS_COLORS = {
   online: 'bg-green-500',
   degraded: 'bg-yellow-500',
@@ -127,23 +137,25 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
     if (!isAdmin) return;
     setRestartingService(serviceName);
     try {
-      const response = await fetch('/api/admin/services/restart', {
+      const serviceId = SERVICE_NAME_TO_ID[serviceName] || serviceName.toLowerCase();
+      const response = await fetch(`/api/services/${serviceId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ service: serviceName.toLowerCase() }),
+        body: JSON.stringify({ command: 'restart' }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to restart service');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to restart service' }));
+        throw new Error(errorData.error || 'Failed to restart service');
       }
 
       toast.success(`Restart initiated for ${serviceName}`);
       fetchStatus(true, true);
     } catch (error) {
       console.error('Failed to restart service:', error);
-      toast.error(`Failed to restart ${serviceName}`);
+      toast.error(`Failed to restart ${serviceName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setRestartingService(null);
     }

@@ -1,5 +1,12 @@
 import { promises as fs } from 'node:fs';
 
+// ANSI escape code regex pattern
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+
+function stripAnsiCodes(input: string): string {
+  return input.replace(ANSI_PATTERN, '');
+}
+
 function getLogDir(): string {
   return process.env.LOG_DIR || '/home/blake/Documents/software/bernard/logs';
 }
@@ -27,7 +34,8 @@ export class LogStreamer {
   private activeStreams: Map<string, CleanupFunction> = new Map();
 
   parseLogLine(line: string): ParsedLogEntry {
-    const raw = line.trim();
+    // Strip ANSI escape codes first (e.g., [32m for green color)
+    const raw = stripAnsiCodes(line).trim();
     if (!raw) {
       throw new Error('Empty line');
     }
@@ -55,7 +63,7 @@ export class LogStreamer {
       }
 
       let service = 'unknown';
-      const serviceMatch = raw.match(/\[(PROXY-API|BERNARD|BERNARD-API|BERNARD-UI|VLLM|WHISPER|KOKORO|REDIS)\]/i);
+      const serviceMatch = raw.match(/\[(PROXY-API|BERNARD|BERNARD-AGENT|BERNARD-API|BERNARD-UI|VLLM|WHISPER|KOKORO|REDIS)\]/i);
       if (serviceMatch) {
         service = serviceMatch[1].toLowerCase().replace('-', '-');
       }

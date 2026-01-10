@@ -18,14 +18,7 @@ startServer({
   nWorkers: 1,
   host: '0.0.0.0',
   cwd: process.cwd(),
-  graphs: {
-    agent: './src/agents/shared/src/react-agent/graph.ts:graph',
-    memory_agent: './src/agents/shared/src/memory-agent/graph.ts:graph',
-    research_agent: './src/agents/shared/src/research-agent/retrieval-graph/graph.ts:graph',
-    research_index_graph: './src/agents/shared/src/research-agent/index-graph/graph.ts:graph',
-    retrieval_agent: './src/agents/shared/src/retrieval-agent/graph.ts:graph',
-    bernard: './src/agents/bernard/bernard.agent.ts:agent'
-  }
+  graphs: langgraphConfig.graphs
 }).then(() => {
   console.log('✅ Bernard Agent server started on port 2024')
 }).catch((error: Error) => {
