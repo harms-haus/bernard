@@ -1,391 +1,221 @@
-# Bernard Services
+# Bernard - Agent Guidelines
 
-This document describes the services supported by Bernard, an AI assistant platform. Bernard consists of multiple microservices that work together to provide conversational AI capabilities with speech-to-text, LLM inference, and text-to-speech functionality.
+This document provides build commands and code style guidelines for agentic coding.
 
-## Table of Contents
+## Build, Lint, and Test Commands
 
-- [proxy-api](#proxy-api)
-- [bernard-api](#bernard-api)
-- [bernard-ui](#bernard-ui)
-- [whisper](#whisper)
-- [vllm](#vllm)
-- [kokoro](#kokoro)
-
----
-
-## proxy-api
-
-**Port**: 3456  
-**Directory**: `proxy-api`  
-**Type**: Fastify unified server
-
-A unified Fastify server providing OAuth authentication, API proxying, and service integration. This is the main entry point for the Bernard UI.
-
-### Available Commands
-
+### Root Level
 ```bash
-# Check code quality (type-check, lint, build)
-./scripts/proxy-api.sh check
-
-# Install dependencies
-./scripts/proxy-api.sh init
-
-# Clean build artifacts and node_modules
-./scripts/proxy-api.sh clean
-
-# Start the proxy API
-./scripts/proxy-api.sh start
-
-# Stop the proxy API
-./scripts/proxy-api.sh stop
+npm run dev          # Start core dev server
+npm run build        # Build core
+npm run start        # Start core production
+npm run check        # Run core checks
+npm run type-check   # TypeScript type checking
 ```
 
-### NPM Scripts (from package.json)
-
+### Core (Next.js)
 ```bash
-# Type-check only
-npm run type-check
-
-# Lint source code
-npm run lint
-
-# Build TypeScript
-npm run build
-
-# Start development server with hot reload
-npm run dev
-
-# Build and start production server
-npm run build && npm run start
-
-# Start Whisper service only
-npm run dev:whisper
+cd core
+npm run dev              # Development server
+npm run build            # Build Next.js
+npm run start            # Production server
+npm run lint             # ESLint
+npm run type-check       # TypeScript check
+npm run test             # Run all tests
+npm run test:watch       # Watch mode
+npm run test:coverage    # Coverage report
+npm run test:ui          # Vitest UI
 ```
 
----
-
-## bernard-api
-
-**Port**: 8800  
-**Directory**: `services/bernard-api`  
-**Type**: Fastify API service
-
-Central API service for Bernard handling settings, authentication, agents, and request logging.
-
-### Available Commands
-
+### Running Single Tests
 ```bash
-# Check code quality (type-check, lint, build)
-./scripts/bernard-api.sh check
+# Run a single test file
+cd core && npx vitest run src/lib/services/HealthChecker.test.ts
 
-# Install dependencies
-./scripts/bernard-api.sh init
+# Watch mode on single file
+cd core && npx vitest HealthChecker.test.ts
 
-# Clean build artifacts and node_modules
-./scripts/bernard-api.sh clean
+# Run specific test by name pattern
+cd core && npx vitest run -t "should return down status"
 
-# Start the API service
-./scripts/bernard-api.sh start
-
-# Stop the API service
-./scripts/bernard-api.sh stop
+# Run tests matching pattern
+cd core && npx vitest run --reporter=verbose "HealthChecker"
 ```
 
-### NPM Scripts (from package.json)
-
+### Bernard API
 ```bash
-# Type-check only
-npm run type-check
-
-# Lint source code
-npm run lint
-
-# Build TypeScript
-npm run build
-
-# Start development server with hot reload
-npm run dev
-
-# Build and start production server
-npm run build && npm run start
+cd services/bernard-api
+npm run dev          # Development server
+npm run build        # TypeScript compile
+npm run lint         # ESLint
+npm run test         # Run tests
 ```
 
----
-
-## bernard-ui
-
-**Port**: 8810  
-**Directory**: `services/bernard-ui`  
-**Type**: React/Vite frontend application
-
-The Bernard web interface built with React, Vite, and Radix UI components.
-
-### Available Commands
-
+### Bernard UI
 ```bash
-# Check code quality (type-check, lint, build)
-./scripts/bernard-ui.sh check
-
-# Install dependencies
-./scripts/bernard-ui.sh init
-
-# Clean build artifacts and node_modules
-./scripts/bernard-ui.sh clean
-
-# Start the UI development server
-./scripts/bernard-ui.sh start
-
-# Stop the UI development server
-./scripts/bernard-ui.sh stop
+cd services/bernard-ui
+npm run dev              # Vite dev server
+npm run build            # Build + TypeScript compile
+npm run type-check       # TypeScript check
+npm run lint             # ESLint
+npm run tests            # Run all tests
 ```
 
-### NPM Scripts (from package.json)
-
+### Kokoro (Python)
 ```bash
-# Type-check only
-npm run type-check
-
-# Lint source code
-npm run lint
-
-# Build for production
-npm run build
-
-# Preview production build locally
-npm run preview
-
-# Run tests
-npm run tests
-
-# Run tests in watch mode
-npm run tests:watch
-
-# Run tests with coverage
-npm run tests:coverage
-
-# Start development server with hot reload
-npm run dev
+cd services/kokoro
+uv sync --extra test     # Install dependencies
+pytest -v                # Run tests with verbose output
+pytest --cov=api         # Run tests with coverage
 ```
 
----
+## Code Style Guidelines
 
-## whisper
+### Import Patterns
+1. **External dependencies** first (npm packages like `@langchain/langgraph`, `zod`)
+2. **Type-only imports** using `import type`
+3. **Path-aliased internal imports** (`@/lib/config/settingsCache`)
+4. **Relative imports** last (`./types`, `./utils`)
 
-**Port**: 8870  
-**Directory**: `services/whisper.cpp`  
-**Type**: Whisper.cpp speech-to-text service
+**Example:**
+```typescript
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import type { RunnableConfig } from "@langchain/core/runnables";
 
-Whisper.cpp-based speech recognition service for audio transcription.
-
-### Available Commands
-
-```bash
-# Check binary and model availability
-./scripts/whisper.sh check
-
-# Initialize whisper.cpp and download model
-./scripts/whisper.sh init
-
-# Clean build artifacts
-./scripts/whisper.sh clean
-
-# Start whisper server
-./scripts/whisper.sh start
-
-# Stop whisper server
-./scripts/whisper.sh stop
+import { getSettings } from "@/lib/config/settingsCache";
+import { ToolFactory } from "./types";
 ```
 
-### Initialization Details
+### Formatting
+- **2 spaces** indentation
+- **Trailing commas** on multi-line arrays/objects
+- **Always use semicolons**
+- ES modules exclusively
 
-The `init` command:
-- Clones whisper.cpp repository if not present
-- Builds whisper-server with CMake (with CUDA support)
-- Downloads the small Whisper model to `models/whisper/ggml-small.bin`
+### TypeScript Patterns
+- **Strict mode** enabled (`strict: true`)
+- **Prefer type inference** where possible
+- **Export types** with `export type` for type-only exports
+- **Zod schemas** for runtime validation
+- **Union types with discriminators** for error handling
 
-### Binary and Model Requirements
+```typescript
+type Result = { ok: true; data: string } | { ok: false; reason: string };
 
-- Binary: `services/whisper.cpp/build/bin/whisper-server`
-- Model: `models/whisper/ggml-small.bin`
-
----
-
-## vllm
-
-**Port**: 8860  
-**Directory**: `services/vllm`  
-**Type**: vLLM embedding service
-
-vLLM-based embedding service running the nomic-embed-text-v1.5 model for text embeddings.
-
-### Available Commands
-
-```bash
-# Check venv and model availability
-./scripts/vllm.sh check
-
-# Initialize virtual environment and install vllm
-./scripts/vllm.sh init
-
-# Clean (no-op for this service)
-./scripts/vllm.sh clean
-
-# Start vLLM server
-./scripts/vllm.sh start
-
-# Stop vLLM server
-./scripts/vllm.sh stop
+const schema = z.object({
+  query: z.string().min(3),
+  count: z.number().int().min(1).max(8).optional()
+});
 ```
 
-### Initialization Details
+### Naming Conventions
+- **Files**: kebab-case (`web-search.tool.ts`, `get-weather-data.tool.ts`)
+- **Functions/Variables**: camelCase (`calculateStringSimilarity`, `const apiKey`)
+- **Components/Classes**: PascalCase (`LogViewer`, `ToolFactory`)
+- **Constants**: SCREAMING_SNAKE_CASE (`DEFAULT_SEARXNG_API_URL`)
+- **React Hooks**: camelCase with `use` prefix (`useLogStream`, `useServiceStatus`)
+- **Tool Factories**: camelCase with `ToolFactory` suffix (`webSearchToolFactory`)
 
-The `init` command:
-- Creates Python 3.11 virtual environment at `services/vllm/.venv`
-- Installs vllm, transformers, and torch
-- Downloads nomic-embed-text-v1.5 model to HuggingFace cache
+### Error Handling
+- **Prefer return-type discriminators** over throwing:
+```typescript
+function normalizeApiKey(key: string | null): { ok: true; apiKey: string } | { ok: false; reason: string } {
+  if (!key?.trim()) return { ok: false, reason: "Missing key" };
+  return { ok: true, apiKey: key.trim() };
+}
+```
+- **Use `instanceof Error`** for type checking
+- **Structured logging** with Pino logger
 
-### Health Check
+### Documentation
+- **JSDoc comments** for exported functions with `@param` and `@returns`
+- **Module header comments** at top of files
+- **Minimal inline comments** - code should be self-documenting
 
-GPU memory is automatically detected. If nvidia-smi is available, GPU memory utilization is calculated as `max(0.3 * 1024 / total_mem_mib, 0.05)`.
-
----
-
-## kokoro
-
-**Port**: 8880  
-**Directory**: `services/kokoro`  
-**Type**: Kokoro TTS service
-
-Kokoro-FastAPI text-to-speech service for voice synthesis.
-
-### Available Commands
-
-```bash
-# Health check (no-op)
-./scripts/kokoro.sh check
-
-# Initialize Kokoro and download model
-./scripts/kokoro.sh init
-
-# Clean (no-op for this service)
-./scripts/kokoro.sh clean
-
-# Start Kokoro TTS server
-./scripts/kokoro.sh start
-
-# Stop Kokoro TTS server
-./scripts/kokoro.sh stop
+```typescript
+/**
+ * Calculate Jaro-Winkler similarity between two strings
+ * @param s1 First string
+ * @param s2 Second string
+ * @returns Similarity score between 0 and 1
+ */
+export function jaroWinklerSimilarity(s1: string, s2: string): number { }
 ```
 
-### Initialization Details
+### File Organization
+- **agents/**: LangGraph agents (bernard/, shared/)
+- **app/**: Next.js app directory with route groups
+- **components/**: React components
+- **hooks/**: Custom React hooks
+- **lib/**: Utilities, config, infra
+- **tests/**: Co-located in `tests/unit/` and `tests/integration/`
 
-The `init` command:
-- Clones Kokoro-FastAPI repository if not present
-- Creates Python virtual environment with uv
-- Installs Kokoro with torch
-- Downloads Kokoro model to `services/kokoro/api/src/models/v1_0`
+### Tool Implementation Pattern
+```typescript
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
 
-### Environment Variables
+const myTool = tool(
+  async ({ param }, config) => {
+    // Implementation
+    return result;
+  },
+  {
+    name: "my_tool",
+    description: "Description here",
+    schema: z.object({
+      param: z.string().min(1)
+    })
+  }
+);
 
-The service requires:
-- `PYTHONPATH`: Points to `$DIR:$DIR/api`
-- `MODEL_DIR`: Model files location
-- `VOICES_DIR`: Voice files location
-- `ESPEAK_DATA_PATH`: eSpeak NG data path (default: `/usr/lib/x86_64-linux-gnu/espeak-ng-data`)
-
----
-
-## Orchestration
-
-### Master Services Script
-
-Use `scripts/services.sh` to manage all services at once:
-
-```bash
-# Check all services
-./scripts/services.sh check
-
-# Initialize all services
-./scripts/services.sh init
-
-# Clean all services
-./scripts/services.sh clean
-
-# Start all services
-./scripts/services.sh start
-
-# Start all services and exit immediately (services run in background)
-./scripts/services.sh start --exit-after-start
-
-# Stop all services
-./scripts/services.sh stop
+export const myToolFactory: ToolFactory = async () => {
+  return { ok: true, tool: myTool, name: myTool.name };
+};
 ```
 
-### Service Startup Order
+### React Components
+```typescript
+'use client'; // Mark client components
 
-Services are started in the following order:
+interface ComponentProps {
+  prop1: string;
+  prop2?: number;
+}
 
-1. Redis (port 6379)
-2. Shared library build
-3. Bernard-API (port 8800)
-4. Proxy-API (port 3456)
-5. Bernard-Agent (port 2024)
-6. Bernard-UI (port 8810)
-7. VLLM (port 8860)
-8. Whisper (port 8870)
-9. Kokoro (port 8880)
-
-### Log Files
-
-All service logs are stored in the `logs/` directory:
-
-- `logs/bernard-agent.log`
-- `logs/proxy.log`
-- `logs/bernard-api.log`
-- `logs/bernard-ui.log`
-- `logs/vllm-embeddings.log`
-- `logs/whisper.log`
-- `logs/kokoro.log`
-- `logs/redis.log`
-
-### Tail All Logs
-
-```bash
-# Monitor all service logs in real-time
-./scripts/services.sh
+export function MyComponent({ prop1, prop2 }: ComponentProps) {
+  // Use custom hooks
+  const { data, loading } = useSomeHook();
+  // ...
+}
 ```
 
-Press Ctrl+C to stop all services.
+### Testing
+- **Vitest** for TypeScript, **Pytest** for Python
+- **Global test functions** enabled (`describe`, `it`, `expect`)
+- **30 second timeout** for tests
+- **Coverage** with v8 provider
 
----
+```typescript
+import { describe, it, expect } from "@jest/globals";
 
-## Environment Variables
-
-All services load configuration from the root `.env` file. Key variables include:
-
-| Variable | Description |
-|----------|-------------|
-| `REDIS_URL` | Redis connection URL |
-| `TZ` | Timezone for timestamp formatting |
-| `HF_HOME` | HuggingFace cache directory |
-| `PYTHONPATH` | Python module search path (for Kokoro) |
-
-### OAuth Configuration (for proxy-api)
-
-```env
-OAUTH_GITHUB_CLIENT_ID=your-client-id
-OAUTH_GITHUB_CLIENT_SECRET=your-client-secret
-ADMIN_API_KEY=your-secure-admin-token
+describe("MyComponent", () => {
+  it("should do something", () => {
+    expect(result).toBe(expected);
+  });
+});
 ```
 
----
+### Logging
+- **Pino logger** with structured logging
+- **Sensitive data redaction** configured (apiKey, token, password, etc.)
+- **Context-aware logging** with `childLogger`
+```typescript
+logger.info('Message with context', { requestId, userId });
+```
 
-## Dependencies
-
-- **Node.js**: TypeScript services require Node.js with npm
-- **Python 3.11**: For vLLM and Kokoro services
-- **uv**: Python package manager (for Kokoro)
-- **CMake**: For building whisper.cpp
-- **CUDA**: Optional, for GPU-accelerated Whisper inference
-- **Redis**: Required for all services
-
+### Security
+- **Never log secrets** - use redaction paths in logger config
+- **Validate inputs** with Zod schemas
+- **Sanitize error messages** before exposing to users

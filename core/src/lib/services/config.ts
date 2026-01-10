@@ -5,9 +5,9 @@ export const SERVICES = {
     url: process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024',
     healthPath: '/health',
   },
-  bernardApi: {
-    name: 'BERNARD_API',
-    url: process.env.BERNARD_API_URL || 'http://127.0.0.1:8800',
+  bernardUi: {
+    name: 'BERNARD_UI',
+    url: process.env.BERNARD_UI_URL || 'http://127.0.0.1:8810',
     healthPath: '/health',
   },
   vllm: {
@@ -55,9 +55,7 @@ export const V1_UPSTREAMS = {
 export const VALID_LOG_SERVICES = [
   'redis',
   'shared',
-  'bernard-api',
   'bernard-agent',
-  'proxy-api',
   'bernard-ui',
   'vllm',
   'whisper',

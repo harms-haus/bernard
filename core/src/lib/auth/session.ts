@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers'
-import { getRedis } from '@lib/shared/infra/redis'
-import { buildStores, type AuthStores, type SessionRecord } from '@lib/shared/auth'
+import { getRedis } from '@/lib/infra/redis'
+import { buildStores, type AuthStores, type SessionRecord } from '@/lib/auth'
 import { getAdminUser } from './adminAuth'
+export { bearerToken } from './helpers'
 
 const SESSION_COOKIE_NAME = 'bernard_session'
 
@@ -208,7 +209,7 @@ export async function requireAuth(): Promise<AuthenticatedSession> {
   if (!user) {
     throw new Error('Authentication required')
   }
-
+  
   return user
 }
 
@@ -218,9 +219,11 @@ export async function requireAdmin(): Promise<AuthenticatedSession> {
   if (!user.user.isAdmin) {
     throw new Error('Admin access required')
   }
-
+  
   return user
 }
+
+export { requireAuth as requireAuthFn, requireAdmin as requireAdminFn }
 
 export async function setSessionCookie(sessionId: string): Promise<void> {
   const maxAge = parseInt(process.env.SESSION_TTL_SECONDS || '604800', 10)

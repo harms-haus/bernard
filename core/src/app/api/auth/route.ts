@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser, setSessionCookie, clearSessionCookie } from '@/lib/auth/session'
 import { getOAuthConfig, createOAuthState, validateOAuthState, exchangeCodeForToken, fetchUserInfo, createOAuthSession } from '@/lib/auth/oauth'
 
-export const runtime = 'nodejs';
+export const runtime = 'nodejs'
 
 const VALID_PROVIDERS = ['github', 'google']
 
@@ -13,39 +13,41 @@ export async function GET(request: NextRequest) {
   switch (action) {
     case 'me': {
       const authHeader = request.headers.get('authorization')
-      const user = await getCurrentUser(authHeader)
+      const authUser = await getCurrentUser(authHeader)
       
-      if (!user) {
+      if (!authUser) {
         return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
       }
 
       return NextResponse.json({
         user: {
-          id: user.user.id,
-          displayName: user.user.displayName,
-          isAdmin: user.user.isAdmin,
-          status: user.user.status,
-          email: user.user.email,
-          avatarUrl: user.user.avatarUrl,
+          id: authUser.user.id,
+          displayName: authUser.user.displayName,
+          isAdmin: authUser.user.isAdmin,
+          status: authUser.user.status,
+          createdAt: authUser.user.createdAt,
+          updatedAt: authUser.user.updatedAt,
+          avatarUrl: authUser.user.avatarUrl,
+          email: authUser.user.email,
         },
-        sessionId: user.sessionId,
+        sessionId: authUser.sessionId,
       })
     }
 
     case 'admin': {
       const authHeader = request.headers.get('authorization')
-      const user = await getCurrentUser(authHeader)
+      const authUser = await getCurrentUser(authHeader)
       
-      if (!user || !user.user.isAdmin) {
+      if (!authUser || !authUser.user.isAdmin) {
         return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
       }
 
       return NextResponse.json({
         user: {
-          id: user.user.id,
-          displayName: user.user.displayName,
-          isAdmin: user.user.isAdmin,
-          status: user.user.status,
+          id: authUser.user.id,
+          displayName: authUser.user.displayName,
+          isAdmin: authUser.user.isAdmin,
+          status: authUser.user.status,
         },
       })
     }
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
     case 'login': {
       const provider = searchParams.get('provider')
       const returnTo = searchParams.get('returnTo') || '/status'
-
+      
       if (!provider || !VALID_PROVIDERS.includes(provider)) {
         return NextResponse.json({ error: 'Invalid provider' }, { status: 400 })
       }
@@ -62,7 +64,6 @@ export async function GET(request: NextRequest) {
         const config = await getOAuthConfig(provider)
         const state = await createOAuthState(provider, returnTo)
         
-        // Build authorization URL with PKCE
         const authUrl = new URL(config.authUrl)
         authUrl.searchParams.set('response_type', 'code')
         authUrl.searchParams.set('client_id', config.clientId)
@@ -80,25 +81,23 @@ export async function GET(request: NextRequest) {
     case 'admin-login': {
       const key = searchParams.get('key')
       const returnTo = searchParams.get('returnTo') || '/status'
-
+      
       if (!key) {
         return NextResponse.json({ error: 'Missing key parameter' }, { status: 400 })
       }
 
-      const user = await getCurrentUser(`Bearer ${key}`)
+      const ADMIN_API_KEY = process.env.ADMIN_API_KEY
       
-      if (!user || !user.user.isAdmin) {
+      if (key !== ADMIN_API_KEY) {
         return NextResponse.json({ error: 'Invalid admin key' }, { status: 401 })
       }
 
-      // For admin key login, we'll set a special session
-      // This is a simplified approach - in production you'd want proper session management
       const response = NextResponse.redirect(new URL(returnTo, request.url))
       response.cookies.set('bernard_admin_session', key, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24, // 1 day
+        maxAge: 60 * 60 * 24,
         path: '/',
       })
       return response
@@ -110,9 +109,9 @@ export async function GET(request: NextRequest) {
       const state = searchParams.get('state')
       const errorParam = searchParams.get('error')
       const host = request.headers.get('host')
-
+      
       console.log('[OAuth callback] host:', host, 'url:', request.url)
-
+      
       if (!provider || !VALID_PROVIDERS.includes(provider)) {
         const loginUrl = new URL('/login', 'https://bernard.harms.haus')
         loginUrl.searchParams.set('error', 'invalid_provider')
@@ -120,7 +119,7 @@ export async function GET(request: NextRequest) {
       }
 
       const config = await getOAuthConfig(provider)
-
+      
       if (errorParam) {
         return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(errorParam)}`, config.redirectUri))
       }
@@ -130,26 +129,21 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        // Validate state and get code verifier
         const stateData = await validateOAuthState(provider, state)
         console.log('[OAuth callback] stateData:', stateData ? 'found' : 'null')
         if (!stateData) {
           return NextResponse.redirect(new URL('/login?error=invalid_state', config.redirectUri))
         }
 
-        // Exchange code for token
         const tokenResponse = await exchangeCodeForToken(provider, code, stateData.codeVerifier)
         console.log('[OAuth callback] tokenResponse:', tokenResponse ? 'success' : 'null')
         
-        // Fetch user info
         const userInfo = await fetchUserInfo(provider, tokenResponse.accessToken)
         console.log('[OAuth callback] userInfo:', userInfo ? userInfo.id : 'null')
         
-        // Create session
         const { sessionId } = await createOAuthSession(provider, userInfo)
         console.log('[OAuth callback] sessionId:', sessionId)
         
-        // Set session cookie
         await setSessionCookie(sessionId)
         console.log('[OAuth callback] cookie set, redirecting to:', stateData.returnTo)
 
@@ -158,6 +152,29 @@ export async function GET(request: NextRequest) {
         console.error('OAuth callback error:', error)
         return NextResponse.redirect(new URL('/login?error=auth_failed', config.redirectUri))
       }
+    }
+
+    case 'validate': {
+      const body = await request.json() as { token?: string }
+      
+      if (!body.token) {
+        return NextResponse.json({ error: 'Token required' }, { status: 400 })
+      }
+
+      const authUser = await getCurrentUser(`Bearer ${body.token}`)
+      if (!authUser) {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      }
+
+      return NextResponse.json({
+        valid: true,
+        user: {
+          id: authUser.user.id,
+          displayName: authUser.user.displayName,
+          isAdmin: authUser.user.isAdmin,
+          status: authUser.user.status,
+        }
+      })
     }
 
     default:

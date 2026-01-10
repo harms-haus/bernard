@@ -1,4 +1,4 @@
-import { ServiceConfig, SERVICES } from "./ServiceConfig"
+import { ServiceConfig, SERVICES } from '@/lib/services/ServiceConfig';
 
 export type HealthStatusType = "up" | "down" | "starting" | "degraded"
 

@@ -1,7 +1,7 @@
-import { spawn, ChildProcess, SpawnOptions } from "node:child_process"
-import * as fs from "node:fs"
-import * as path from "node:path"
-import { ServiceConfig } from "./ServiceConfig"
+import { spawn, ChildProcess, SpawnOptions } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { ServiceConfig } from '@/lib/services/ServiceConfig';
 
 const PIDS_DIR = path.join(process.cwd(), "logs", "pids")
 

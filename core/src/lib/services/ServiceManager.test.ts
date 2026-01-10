@@ -12,7 +12,7 @@ describe('ServiceManager', () => {
   describe('ServiceConfig', () => {
     it('should have all required services defined', () => {
       expect(SERVICES.redis).toBeDefined()
-      expect(SERVICES['bernard-api']).toBeDefined()
+      expect(SERVICES['bernard-agent']).toBeDefined()
       expect(SERVICES['bernard-ui']).toBeDefined()
       expect(SERVICES.vllm).toBeDefined()
       expect(SERVICES.whisper).toBeDefined()
@@ -21,22 +21,22 @@ describe('ServiceManager', () => {
 
     it('should have correct service types', () => {
       expect(SERVICES.redis.type).toBe('docker')
-      expect(SERVICES['bernard-api'].type).toBe('node')
+      expect(SERVICES['bernard-agent'].type).toBe('node')
       expect(SERVICES.vllm.type).toBe('python')
       expect(SERVICES.whisper.type).toBe('cpp')
     })
 
     it('should have valid startup order', () => {
       expect(SERVICE_START_ORDER).toContain('redis')
-      expect(SERVICE_START_ORDER).toContain('bernard-api')
+      expect(SERVICE_START_ORDER).toContain('bernard-agent')
       expect(SERVICE_START_ORDER).toContain('bernard-ui')
-      expect(SERVICE_START_ORDER.indexOf('redis')).toBeLessThan(SERVICE_START_ORDER.indexOf('bernard-api'))
-      expect(SERVICE_START_ORDER.indexOf('bernard-api')).toBeLessThan(SERVICE_START_ORDER.indexOf('bernard-ui'))
+      expect(SERVICE_START_ORDER.indexOf('redis')).toBeLessThan(SERVICE_START_ORDER.indexOf('bernard-agent'))
+      expect(SERVICE_START_ORDER.indexOf('bernard-agent')).toBeLessThan(SERVICE_START_ORDER.indexOf('bernard-ui'))
     })
 
     it('should have correct dependencies', () => {
-      expect(SERVICES['bernard-api'].dependencies).toContain('redis')
-      expect(SERVICES['bernard-ui'].dependencies).toContain('bernard-api')
+      expect(SERVICES['bernard-agent'].dependencies).toContain('redis')
+      expect(SERVICES['bernard-ui'].dependencies).toContain('redis')
     })
 
     it('should have valid port numbers', () => {
