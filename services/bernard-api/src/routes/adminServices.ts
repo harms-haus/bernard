@@ -46,7 +46,7 @@ export function registerAdminServicesRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const fullPath = `${process.cwd()}/../${scriptPath}`;
+      const fullPath = `${process.cwd()}/../../${scriptPath}`;
       const { stdout, stderr } = await execAsync(`${fullPath} restart`);
 
       logger.info({ action: "services.restart", adminId: admin.user.id, service });

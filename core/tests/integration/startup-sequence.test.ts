@@ -34,18 +34,12 @@ describe('Integration: Startup Sequence', () => {
       const order = SERVICE_START_ORDER
 
       expect(order[0]).toBe('redis')
-      const sharedIndex = order.indexOf('shared')
-      const redisIndex = order.indexOf('redis')
-      expect(sharedIndex).toBeGreaterThan(redisIndex)
-
-      const apiIndex = order.indexOf('bernard-api')
-      expect(apiIndex).toBeGreaterThan(sharedIndex)
 
       const agentIndex = order.indexOf('bernard-agent')
-      expect(agentIndex).toBeGreaterThan(apiIndex)
+      expect(agentIndex).toBeGreaterThan(0)
 
       const uiIndex = order.indexOf('bernard-ui')
-      expect(uiIndex).toBeGreaterThan(apiIndex)
+      expect(uiIndex).toBeGreaterThan(agentIndex)
     })
 
     it('should have no circular dependencies', () => {

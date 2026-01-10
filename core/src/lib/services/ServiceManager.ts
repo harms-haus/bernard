@@ -1,13 +1,12 @@
-import * as fs from "node:fs"
-import * as path from "node:path"
-import { ProcessManager } from "./ProcessManager"
-import { HealthChecker, HealthStatus } from "./HealthChecker"
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { ProcessManager } from '@/lib/services/ProcessManager';
+import { HealthChecker, HealthStatus } from '@/lib/services/HealthChecker';
 import {
   ServiceConfig,
   SERVICES,
   SERVICE_START_ORDER,
-  ServiceId,
-} from "./ServiceConfig"
+} from '@/lib/services/ServiceConfig';
 
 export type ServiceStatusType = "running" | "stopped" | "starting" | "failed"
 

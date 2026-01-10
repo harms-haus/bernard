@@ -1,7 +1,7 @@
-import { getRedis } from '@lib/shared/infra/redis'
-import { buildStores } from '@lib/shared/auth'
-import { appSettings } from '@lib/shared/config/appSettings'
-import type { OAuthSettings, OAuthClientSettings } from '@lib/shared/config/appSettings'
+import { getRedis } from '@/lib/infra/redis'
+import { buildStores } from '@/lib/auth'
+import { appSettings } from '@/lib/config/appSettings'
+import type { OAuthSettings, OAuthClientSettings } from '@/lib/config/appSettings'
 
 export interface OAuthConfig {
   authUrl: string
