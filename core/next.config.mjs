@@ -69,7 +69,35 @@ const nextConfig = {
         ],
       },
       {
+        source: '/api/langchain/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+          { key: 'X-Accel-Buffering', value: 'no' },
+        ],
+      },
+      {
         source: '/api/logs/stream',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+          { key: 'X-Accel-Buffering', value: 'no' },
+        ],
+      },
+      // LangGraph SDK routes that use streaming
+      {
+        source: '/threads/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+          { key: 'X-Accel-Buffering', value: 'no' },
+        ],
+      },
+      {
+        source: '/runs/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },

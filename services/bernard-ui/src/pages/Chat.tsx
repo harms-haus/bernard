@@ -16,8 +16,8 @@ export function Chat() {
     }
   }, [threadId, setSearchParams]);
 
-  // Connect through the proxy API (port 3456) which routes to bernard-agent (port 2024)
-  const apiUrl = window.location.origin;
+  // Connect through proxy route that bypasses Next.js rewrites (port 3456)
+  const apiUrl = 'http://127.0.0.1:3456/api/proxy-stream';
   const assistantId = 'bernard_agent';
 
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;

@@ -8,6 +8,7 @@ const PUBLIC_PATHS = [
   '/health',
   '/api/health',
   '/api/auth',
+  '/api/proxy-stream',
   '/auth',
   '/bernard',
   '/bernard/',
@@ -26,8 +27,6 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const host = request.headers.get('host')
 
-  console.log('[Middleware]', pathname, 'host:', host)
-
   if (isPublicPath(pathname)) {
     return NextResponse.next()
   }
@@ -35,8 +34,6 @@ export async function middleware(request: NextRequest) {
   // Check authentication
   const authHeader = request.headers.get('authorization')
   const user = await getCurrentUser(authHeader)
-
-  console.log('[Middleware] User:', user ? user.user.id : 'null')
 
   if (!user) {
     if (pathname.startsWith('/api/')) {

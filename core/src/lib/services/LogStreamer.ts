@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
 
 // ANSI escape code regex pattern
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
@@ -8,7 +9,7 @@ function stripAnsiCodes(input: string): string {
 }
 
 function getLogDir(): string {
-  return process.env.LOG_DIR || '/home/blake/Documents/software/bernard/logs';
+  return process.env.LOG_DIR || join(process.cwd(), 'logs');
 }
 
 const SENSITIVE_FIELDS = [

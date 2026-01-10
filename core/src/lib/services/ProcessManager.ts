@@ -71,8 +71,29 @@ export class ProcessManager {
         return
       }
 
-      const [command, ...args] = config.script.split(" ")
-      const fullArgs = [...args]
+      // Parse environment variables from the start of the script
+      // Format: "VAR1=value1 VAR2=value2 command arg1 arg2..."
+      const parts = config.script.split(" ")
+      const envVars: Record<string, string> = {}
+      let commandIndex = 0
+
+      // Parse KEY=value pairs at the start
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]
+        if (part.includes("=")) {
+          const [key, ...valueParts] = part.split("=")
+          if (key && valueParts.length > 0) {
+            envVars[key] = valueParts.join("=")
+          }
+          commandIndex = i + 1
+        } else {
+          // First part that's not a KEY=value is the command
+          break
+        }
+      }
+
+      const command = parts[commandIndex]
+      const args = parts.slice(commandIndex + 1)
 
       let cwd = process.cwd()
 
@@ -80,19 +101,23 @@ export class ProcessManager {
         cwd = path.join(this.getBaseDir(), config.directory)
       }
 
+      // Build environment variables - merge config env vars with process.env
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        TZ: process.env.TZ || "America/Chicago",
+        ...envVars,
+      }
+
       const options: SpawnOptions = {
         cwd,
         stdio: ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")],
         detached: false,
-        env: {
-          ...process.env,
-          TZ: process.env.TZ || "America/Chicago",
-        },
+        env,
       }
 
       const resolvedCommand = path.isAbsolute(command) ? command : path.join(cwd, command)
 
-      const child = spawn(resolvedCommand, fullArgs, options)
+      const child = spawn(resolvedCommand, args, options)
 
       child.on("error", (error) => {
         reject(error)

@@ -15,6 +15,7 @@ export interface ServiceConfig {
   dependencies: string[]
   startupTimeout: number
   color: string
+  env?: Record<string, string>
   check?: {
     typeCheck?: string
     lint?: string
@@ -100,7 +101,7 @@ export const SERVICES: Record<string, ServiceConfig> = {
     port: 8880,
     type: "python",
     directory: "services/kokoro",
-    script: "./.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880",
+    script: "PYTHONPATH=services/kokoro:services/kokoro/api ESPEAK_DATA_PATH=/usr/lib/x86_64-linux-gnu/espeak-ng-data MODEL_DIR=src/models VOICES_DIR=src/voices/v1_0 ./.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880",
     healthPath: "/health",
     dependencies: [],
     startupTimeout: 30,

@@ -37,8 +37,6 @@ export async function getSessionFromCookie(): Promise<AuthenticatedSession | nul
   const cookieStore = await cookies()
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value
 
-  console.log('[Session] Cookie found:', !!sessionId, 'sessionId:', sessionId?.substring(0, 8))
-
   if (!sessionId) {
     return null
   }
@@ -46,8 +44,6 @@ export async function getSessionFromCookie(): Promise<AuthenticatedSession | nul
   const authStores = getStores()
   const session = await authStores.sessionStore.get(sessionId)
   
-  console.log('[Session] Session in Redis:', !!session)
-
   if (!session) {
     return null
   }
