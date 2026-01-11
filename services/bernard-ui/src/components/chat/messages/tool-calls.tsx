@@ -30,6 +30,16 @@ function formatResult(message: ToolMessage): { content: string; isJson: boolean 
   return { content: contentStr, isJson: isJsonContent };
 }
 
+function formatValue(value: any): { formatted: string; isJson: boolean } {
+  if (typeof value === 'object' && value !== null) {
+    return {
+      formatted: JSON.stringify(value, null, 2),
+      isJson: true
+    };
+  }
+  return { formatted: String(value), isJson: false };
+}
+
 function ToolResultContent({ message }: { message: ToolMessage }) {
   const { content, isJson } = formatResult(message);
 
@@ -48,14 +58,21 @@ function ToolResultContent({ message }: { message: ToolMessage }) {
     return (
       <table className="min-w-full divide-y divide-border text-xs">
         <tbody className="divide-y divide-border">
-          {entries.map(([key, value], argIdx: number) => (
-            <tr key={argIdx}>
-              <td className="px-3 py-1.5 font-medium whitespace-nowrap">{key}</td>
-              <td className="px-3 py-1.5 text-muted-foreground">
-                <MarkdownText>{String(value)}</MarkdownText>
-              </td>
-            </tr>
-          ))}
+          {entries.map(([key, value], argIdx: number) => {
+            const { formatted, isJson: valueIsJson } = formatValue(value);
+            return (
+              <tr key={argIdx}>
+                <td className="px-3 py-1.5 font-medium whitespace-nowrap">{key}</td>
+                <td className="px-3 py-1.5 text-muted-foreground">
+                  {valueIsJson ? (
+                    <pre className="text-xs whitespace-pre-wrap">{formatted}</pre>
+                  ) : (
+                    <MarkdownText>{formatted}</MarkdownText>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     );

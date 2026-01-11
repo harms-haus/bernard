@@ -2,34 +2,16 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { RunnableConfig } from "@langchain/core/runnables";
 
-import wiki from "wikipedia";
-
-// The wikipedia package has an ESM/CJS interop issue where in ESM mode,
-// the wiki function is exported at default.default instead of default
-const wikipedia = (wiki as { default?: typeof wiki }).default ?? wiki;
-
-const USER_AGENT = 'Bernard/1.0 (a.harms.haus; blake@harms.haus) wikipedia/2.4.2';
-
-import axios from 'axios';
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import {
+  resolveSearchConfig,
+  buildSearXNGUrl,
+  safeJson,
+  parseSearXNGResults,
+  SearchResultItem,
+} from "@/lib/searxng";
 import { ToolFactory } from "./types";
 import { createProgressReporter, ProgressReporter } from "../utils";
 import { getSearchingUpdate } from "../updates";
-
-// Monkey patch the wikipedia library's request function to add User-Agent header
-// This is needed because Wikipedia now blocks requests that only have Api-User-Agent
-const originalGet = axios.get;
-axios.get = (function(this: void, url: string, config?: AxiosRequestConfig): Promise<AxiosResponse> {
-  const newConfig = {
-    ...config,
-    headers: {
-      ...config?.headers,
-      'Api-User-Agent': USER_AGENT,
-      'User-Agent': USER_AGENT
-    }
-  } as AxiosRequestConfig;
-  return originalGet(url, newConfig);
-} as typeof axios.get);
 
 type WikipediaSearchResult = {
   page_id: number;
@@ -38,16 +20,6 @@ type WikipediaSearchResult = {
   index: number;
 };
 
-// Type for raw Wikipedia API result
-interface WikipediaAPIResult {
-  pageid: number;
-  title: string;
-  snippet?: string;
-}
-
-/**
- * Execute Wikipedia search using the wikipedia package
- */
 async function executeWikipediaSearch(
   query: string,
   n_results: number = 10,
@@ -57,26 +29,47 @@ async function executeWikipediaSearch(
   try {
     progress.report(getSearchingUpdate());
 
-    wikipedia.setUserAgent(USER_AGENT);
-    wikipedia.setLang('en');
+    const config = await resolveSearchConfig();
+    if (!config.ok) {
+      return `Wikipedia search tool is not configured (${config.reason})`;
+    }
 
-    const searchResults = await wikipedia.search(query, {
-      limit: n_results + starting_index,
+    const url = buildSearXNGUrl(config.apiUrl, query, n_results + starting_index, starting_index + 1, "site:wikipedia.org");
+
+    const response = await fetch(url, {
+      headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+      signal: AbortSignal.timeout(5000),
     });
-    
-    const results: WikipediaSearchResult[] = (searchResults.results as WikipediaAPIResult[])
+
+    if (!response.ok) {
+      const body = await response.text();
+      return `Wikipedia search failed: ${response.status} ${response.statusText}`;
+    }
+
+    const data = await safeJson(response);
+    const rawResults = parseSearXNGResults(data);
+
+    const results: WikipediaSearchResult[] = rawResults
       .slice(starting_index)
-      .map((result, index) => ({
-        page_id: result.pageid,
-        page_title: result.title,
-        description: result.snippet || '',
-        index: starting_index + index + 1
+      .map((item: SearchResultItem, idx: number) => ({
+        page_id: idx + 1,
+        page_title: item.title ?? "",
+        description: item.description ?? "",
+        index: starting_index + idx + 1,
       }));
-      
+
     progress.reset();
 
-    return JSON.stringify(results);
+    // CRITICAL: Ensure proper JSON stringification
+    const jsonString = JSON.stringify(results);
+    console.log("[wikipedia-search] JSON.stringify result type:", typeof jsonString);
+    console.log("[wikipedia-search] JSON output length:", jsonString.length);
+    console.log("[wikipedia-search] First 200 chars:", jsonString.substring(0, 200));
+    console.log("[wikipedia-search] Result is valid JSON:", jsonString.startsWith("["));
+
+    return jsonString;
   } catch (error) {
+    console.log("[wikipedia-search] Error:", error);
     return `Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
@@ -87,6 +80,7 @@ const wikipediaSearchToolImpl = tool(
     _config: RunnableConfig,
   ) => {
     const result = await executeWikipediaSearch(query, n_results, starting_index, createProgressReporter(_config, "wikipedia_search"));
+    console.log("[wikipedia-search] Tool returning:", typeof result, result?.substring?.(0, 100));
     return result;
   },
   {
@@ -97,13 +91,13 @@ const wikipediaSearchToolImpl = tool(
     schema: z.object({
       query: z.string().min(1),
       n_results: z.number().int().min(1).max(50).optional().default(10),
-      starting_index: z.number().int().min(0).optional().default(0)
-    })
-  }
+      starting_index: z.number().int().min(0).optional().default(0),
+    }),
+  },
 );
 
 export const wikipediaSearchTool = Object.assign(wikipediaSearchToolImpl, {
-  interpretationPrompt: ``
+  interpretationPrompt: ``,
 });
 
 export const wikipediaSearchToolFactory: ToolFactory = async () => {
