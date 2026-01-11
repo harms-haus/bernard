@@ -93,7 +93,7 @@ export function LogViewer({
             No logs to display
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="px-2 space-y-0">
             {filteredLogs.map((log, index) => (
               <LogEntryRow
                 key={`${log.timestamp}-${index}`}
@@ -114,7 +114,7 @@ function LogEntryRow({ entry, showService }: { entry: LogEntry; showService: boo
   const bgClass = levelBgColors[level] || levelBgColors.info;
 
   return (
-    <div className={`flex gap-2 px-2 py-0.5 ${bgClass} hover:bg-opacity-20 rounded`}>
+    <div className={`flex gap-2 px-2 py-0`}>
       <span className="text-gray-500 shrink-0 text-xs whitespace-nowrap">
         {new Date(entry.timestamp).toLocaleTimeString()}
       </span>

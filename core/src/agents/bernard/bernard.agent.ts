@@ -9,9 +9,11 @@ import { resolveModel } from "@/lib/config/models";
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
 import { validateAndGetTools } from "./tools";
 import { startUtilityWorker } from "@/lib/infra/queue";
+import { startHealthMonitor } from "@/lib/services/HealthMonitor";
 
 
 startUtilityWorker();
+startHealthMonitor();
 
 export async function createBernardAgent() {
 
