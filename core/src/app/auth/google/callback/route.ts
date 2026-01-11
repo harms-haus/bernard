@@ -9,10 +9,10 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const errorParam = searchParams.get('error')
-  const provider = 'github'
+  const provider = 'google'
   const host = request.headers.get('host')
 
-  console.log('[GitHub OAuth callback] host:', host, 'url:', request.url)
+  console.log('[Google OAuth callback] host:', host, 'url:', request.url)
 
   const config = await getOAuthConfig(provider)
 
@@ -26,26 +26,26 @@ export async function GET(request: NextRequest) {
 
   try {
     const stateData = await validateOAuthState(provider, state)
-    console.log('[GitHub OAuth callback] stateData:', stateData ? 'found' : 'null')
+    console.log('[Google OAuth callback] stateData:', stateData ? 'found' : 'null')
     if (!stateData) {
       return NextResponse.redirect(new URL('/login?error=invalid_state', config.redirectUri))
     }
 
     const tokenResponse = await exchangeCodeForToken(provider, code, stateData.codeVerifier)
-    console.log('[GitHub OAuth callback] tokenResponse:', tokenResponse ? 'success' : 'null')
+    console.log('[Google OAuth callback] tokenResponse:', tokenResponse ? 'success' : 'null')
 
     const userInfo = await fetchUserInfo(provider, tokenResponse.accessToken)
-    console.log('[GitHub OAuth callback] userInfo:', userInfo ? userInfo.id : 'null')
+    console.log('[Google OAuth callback] userInfo:', userInfo ? userInfo.id : 'null')
 
     const { sessionId } = await createOAuthSession(provider, userInfo)
-    console.log('[GitHub OAuth callback] sessionId:', sessionId)
+    console.log('[Google OAuth callback] sessionId:', sessionId)
 
     await setSessionCookie(sessionId)
-    console.log('[GitHub OAuth callback] cookie set, redirecting to:', stateData.returnTo)
+    console.log('[Google OAuth callback] cookie set, redirecting to:', stateData.returnTo)
 
     return NextResponse.redirect(new URL(stateData.returnTo, config.redirectUri))
   } catch (error) {
-    console.error('[GitHub OAuth callback] error:', error)
+    console.error('[Google OAuth callback] error:', error)
     return NextResponse.redirect(new URL('/login?error=auth_failed', config.redirectUri))
   }
 }

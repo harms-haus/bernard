@@ -191,15 +191,13 @@ class APIClient {
   }
 
   async githubLogin(): Promise<void> {
-    // Use direct navigation to bypass React Router
-    const baseUrl = `${window.location.protocol}//${window.location.host}`;
-    window.open(`${baseUrl}/auth/github/login`, '_self');
+    // Redirect to core login page with provider specified
+    window.location.href = '/auth/login?provider=github';
   }
 
   async googleLogin(): Promise<void> {
-    // Use direct navigation to bypass React Router
-    const baseUrl = `${window.location.protocol}//${window.location.host}`;
-    window.open(`${baseUrl}/auth/google/login`, '_self');
+    // Redirect to core login page with provider specified
+    window.location.href = '/auth/login?provider=google';
   }
 
   async logout(): Promise<void> {

@@ -37,6 +37,24 @@ export const SERVICES: Record<string, ServiceConfig> = {
     startupTimeout: 20,
     color: "#ff6b6b",
   },
+  core: {
+    id: "core",
+    name: "CORE",
+    displayName: "Core API",
+    port: 3456,
+    type: "node",
+    directory: "core",
+    script: "./node_modules/.bin/next dev",
+    healthPath: "/api/health",
+    dependencies: ["redis"],
+    startupTimeout: 30,
+    color: "#a29bfe",
+    check: {
+      typeCheck: "npm run type-check",
+      lint: "npm run lint",
+      build: "npm run build",
+    },
+  },
   "bernard-agent": {
     id: "bernard-agent",
     name: "BERNARD-AGENT",
@@ -111,6 +129,7 @@ export const SERVICES: Record<string, ServiceConfig> = {
 
 export const SERVICE_START_ORDER = [
   "redis",
+  "core",
   "bernard-agent",
   "bernard-ui",
   "vllm",
