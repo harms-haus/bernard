@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ServiceManager } from "@/lib/services/ServiceManager"
 import { SERVICES } from "@/lib/services/ServiceConfig"
+import { addServiceJob } from "@/lib/infra/service-queue"
+import { initializeServiceQueue } from "@/lib/infra/service-queue/init"
+import type { ServiceAction } from "@/lib/infra/service-queue/types"
 
 export async function GET(
   request: NextRequest,
@@ -62,41 +65,24 @@ export async function POST(
     )
   }
 
-  const manager = new ServiceManager()
+  await initializeServiceQueue();
 
   try {
-    let result
-
-    switch (command) {
-      case "start":
-        result = await manager.start(service)
-        break
-      case "stop":
-        const stopResult = await manager.stop(service)
-        result = { success: stopResult.success }
-        break
-      case "restart":
-        result = await manager.restart(service)
-        break
-      case "check":
-        result = await manager.check(service)
-        break
-      default:
-        return NextResponse.json(
-          { error: "Unknown command" },
-          { status: 400 }
-        )
-    }
+    const jobId = await addServiceJob(service, command as ServiceAction, {
+      initiatedBy: 'api',
+    });
 
     return NextResponse.json({
       service,
       command,
-      ...result,
-    })
+      jobId,
+      status: 'queued',
+      message: 'Action queued for execution',
+    });
   } catch (error) {
-    console.error(`[API] Failed to execute ${command} on ${service}:`, error)
+    console.error(`[API] Failed to queue ${command} for ${service}:`, error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to queue action" },
       { status: 500 }
     )
   }
