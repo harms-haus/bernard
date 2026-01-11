@@ -269,7 +269,7 @@ export function createSearchMediaTool(
                 10
               );
               const currentYear = new Date().getFullYear();
-              recency = Math.max(0, currentYear - releaseYear);
+              recency = Math.max(0, releaseYear - currentYear);
             }
 
             searchResults.push({
