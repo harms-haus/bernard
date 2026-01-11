@@ -104,7 +104,7 @@ let bullMqRedis: Redis | null = null;
  * Create a BullMQ-compatible Redis connection
  * BullMQ requires maxRetriesPerRequest to be null
  */
-function getBullMqRedis(): Redis {
+export function getBullMqRedis(): Redis {
   if (!bullMqRedis) {
     const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
     bullMqRedis = new Redis(url, {
