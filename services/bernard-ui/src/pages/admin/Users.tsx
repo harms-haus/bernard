@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
+import { Switch as SwitchComponent } from '../../components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,11 +22,13 @@ import {
   Shield,
   Mail,
   MoreVertical,
-  Key
+  Key,
+  Users as UsersIcon
 } from 'lucide-react';
 import { adminApiClient } from '../../services/adminApi';
 import type { User, UserStatus } from '../../types/auth';
-import { useAlertDialog, useConfirmDialog } from '../../components/DialogManager';
+import { useToast } from '../../components/ToastManager';
+import { useConfirmDialog } from '../../components/DialogManager';
 
 interface UserForm {
   id: string;
@@ -45,13 +48,15 @@ export default function Users() {
     isAdmin: false
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [allowUserCreation, setAllowUserCreation] = useState(true);
   
   // Hook calls - must be at the top level of the component function
-  const alertDialog = useAlertDialog();
+  const toast = useToast();
   const confirmDialog = useConfirmDialog();
 
   useEffect(() => {
     loadUsers();
+    loadLimitsSettings();
   }, []);
 
   const loadUsers = async () => {
@@ -61,13 +66,34 @@ export default function Users() {
       setUsers(userList);
     } catch (error) {
       console.error('Failed to load users:', error);
-      alertDialog({
-        title: 'Error',
-        description: 'Failed to load users',
-        variant: 'error'
-      });
+      toast.error('Failed to load users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLimitsSettings = async () => {
+    try {
+      const limits = await adminApiClient.getLimitsSettings();
+      setAllowUserCreation(limits.allowUserCreation);
+    } catch (error) {
+      console.error('Failed to load limits settings:', error);
+    }
+  };
+
+  const handleUserCreationToggle = async (enabled: boolean) => {
+    setAllowUserCreation(enabled);
+    try {
+      const limits = await adminApiClient.getLimitsSettings();
+      await adminApiClient.updateLimitsSettings({
+        ...limits,
+        allowUserCreation: enabled
+      });
+      toast.success(`User creation ${enabled ? 'enabled' : 'disabled'} successfully!`);
+    } catch (error) {
+      console.error('Failed to update limits settings:', error);
+      setAllowUserCreation(!enabled);
+      toast.error('Failed to update user creation setting');
     }
   };
 
@@ -76,11 +102,7 @@ export default function Users() {
     
     const trimmedName = userForm.displayName.trim();
     if (!trimmedName) {
-      alertDialog({
-        title: 'Validation Error',
-        description: 'Display name is required',
-        variant: 'warning'
-      });
+      toast.warning('Display name is required');
       return;
     }
 
@@ -92,11 +114,7 @@ export default function Users() {
           isAdmin: userForm.isAdmin
         });
         setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
-        alertDialog({
-          title: 'Success',
-          description: 'User updated successfully!',
-          variant: 'success'
-        });
+        toast.success('User updated successfully!');
       } else {
         const newUser = await adminApiClient.createUser({
           id: userForm.id.trim(),
@@ -104,11 +122,7 @@ export default function Users() {
           isAdmin: userForm.isAdmin
         });
         setUsers([...users, newUser]);
-        alertDialog({
-          title: 'Success',
-          description: 'User created successfully!',
-          variant: 'success'
-        });
+        toast.success('User created successfully!');
       }
       
       setShowUserForm(false);
@@ -117,11 +131,7 @@ export default function Users() {
     } catch (error: any) {
       console.error('Failed to save user:', error);
       const errorMessage = error?.details || error?.message || 'Failed to save user';
-      alertDialog({
-        title: 'Error',
-        description: `Error: ${errorMessage}`,
-        variant: 'error'
-      });
+      toast.error(`Error: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
@@ -149,18 +159,10 @@ export default function Users() {
         try {
           const updatedUser = await adminApiClient.deleteUser(userId);
           setUsers(users.map(u => u.id === userId ? updatedUser : u));
-          alertDialog({
-            title: 'Success',
-            description: 'User deleted successfully!',
-            variant: 'success'
-          });
+          toast.success('User deleted successfully!');
         } catch (error) {
           console.error('Failed to delete user:', error);
-          alertDialog({
-            title: 'Error',
-            description: 'Failed to delete user',
-            variant: 'error'
-          });
+          toast.error('Failed to delete user');
         } finally {
           setDeletingId(null);
         }
@@ -173,18 +175,10 @@ export default function Users() {
     try {
       const updatedUser = await adminApiClient.updateUser(user.id, { status: newStatus });
       setUsers(users.map(u => u.id === user.id ? updatedUser : u));
-      alertDialog({
-        title: 'Success',
-        description: `User ${newStatus === 'active' ? 'enabled' : 'disabled'} successfully!`,
-        variant: 'success'
-      });
+      toast.success(`User ${newStatus === 'active' ? 'enabled' : 'disabled'} successfully!`);
     } catch (error) {
       console.error('Failed to update user status:', error);
-      alertDialog({
-        title: 'Error',
-        description: 'Failed to update user status',
-        variant: 'error'
-      });
+      toast.error('Failed to update user status');
     }
   };
 
@@ -197,18 +191,10 @@ export default function Users() {
       onConfirm: async () => {
         try {
           await adminApiClient.resetUser(userId);
-          alertDialog({
-            title: 'Success',
-            description: 'Password reset successfully!',
-            variant: 'success'
-          });
+          toast.success('Password reset successfully!');
         } catch (error) {
           console.error('Failed to reset password:', error);
-          alertDialog({
-            title: 'Error',
-            description: 'Failed to reset password',
-            variant: 'error'
-          });
+          toast.error('Failed to reset password');
         }
       }
     });
@@ -240,6 +226,33 @@ export default function Users() {
           Add User
         </Button>
       </div>
+
+      {/* User Creation Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <UsersIcon className="h-5 w-5" />
+            <span>User Creation Settings</span>
+          </CardTitle>
+          <CardDescription>Control whether new users can be created through the admin panel</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="allowUserCreation" className="text-base">Allow User Creation</Label>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                When enabled, administrators can create new users through the "Add User" button.
+                Existing users can still log in via OAuth regardless of this setting.
+              </p>
+            </div>
+            <SwitchComponent
+              id="allowUserCreation"
+              checked={allowUserCreation}
+              onCheckedChange={handleUserCreationToggle}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
 
       {/* Users Table */}
