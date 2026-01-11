@@ -122,6 +122,11 @@ const SttServiceSchema = z.object({
   apiKey: z.string().optional()
 });
 
+export const OverseerrServiceSchema = z.object({
+  baseUrl: z.string().url(),
+  apiKey: z.string().min(1)
+});
+
 const InfrastructureServiceSchema = z.object({
   redisUrl: z.string().url().optional(),
   queuePrefix: z.string().optional(),
@@ -145,6 +150,7 @@ export const ServicesSettingsSchema = z.object({
   kokoro: KokoroServiceSchema.optional(),
   tts: TtsServiceSchema.optional(),
   stt: SttServiceSchema.optional(),
+  overseerr: OverseerrServiceSchema.optional(),
   infrastructure: InfrastructureServiceSchema
 });
 
@@ -276,6 +282,11 @@ export type SttServiceSettings = {
   apiKey?: string | undefined;
 };
 
+export type OverseerrServiceSettings = {
+  baseUrl: string;
+  apiKey: string;
+};
+
 export type ServicesSettings = {
   memory: MemoryServiceSettings;
   search: SearchServiceSettings;
@@ -286,6 +297,7 @@ export type ServicesSettings = {
   kokoro?: KokoroServiceSettings | undefined;
   tts?: TtsServiceSettings | undefined;
   stt?: SttServiceSettings | undefined;
+  overseerr?: OverseerrServiceSettings | undefined;
   infrastructure: InfrastructureServiceSettings;
 };
 
@@ -705,6 +717,15 @@ export class SettingsManager {
       settings.stt = {
         ...(sttUrl && { baseUrl: sttUrl }),
         ...(sttApiKey && { apiKey: sttApiKey })
+      };
+    }
+
+    const overseerrUrl = this.getFromEnv("OVERSEERR_URL");
+    const overseerrApiKey = this.getFromEnv("OVERSEERR_API_KEY");
+    if (overseerrUrl && overseerrApiKey) {
+      settings.overseerr = {
+        baseUrl: overseerrUrl,
+        apiKey: overseerrApiKey
       };
     }
 
