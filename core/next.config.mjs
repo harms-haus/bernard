@@ -20,6 +20,9 @@ const nextConfig = {
         crypto: false,
       }
     }
+    // Suppress critical dependency warning from langchain/chat_models/universal
+    // which uses dynamic require() internally
+    config.module.exprContextCritical = false;
     return config
   },
   async rewrites() {

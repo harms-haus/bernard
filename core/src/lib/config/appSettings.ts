@@ -731,9 +731,9 @@ export class SettingsManager {
     if (googleSecret) google.clientSecret = googleSecret;
 
     const github: OAuthClientSettings = {
-      authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? base.authUrl,
-      tokenUrl: this.getFromEnv("OAUTH_GITHUB_TOKEN_URL") ?? base.tokenUrl,
-      userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? base.userInfoUrl,
+      authUrl: this.getFromEnv("OAUTH_GITHUB_AUTH_URL") ?? "https://github.com/login/oauth/authorize",
+      tokenUrl: this.getFromEnv("OAUTH_GITHUB_TOKEN_URL") ?? "https://github.com/login/oauth/access_token",
+      userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? "https://api.github.com/user",
       clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "",
       redirectUri: this.getFromEnv("OAUTH_GITHUB_REDIRECT_URI") ?? base.redirectUri,
       scope: base.scope
