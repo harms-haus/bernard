@@ -221,6 +221,12 @@ export interface BackupSettings {
   retentionCount: number;
 }
 
+export interface LimitsSettings {
+  currentRequestMaxTokens: number;
+  responseMaxTokens: number;
+  allowUserCreation: boolean;
+}
+
 export interface AutomationInfo {
   id: string;
   name: string;
@@ -603,6 +609,17 @@ class AdminApiClient {
 
   async updateBackupSettings(body: BackupSettings): Promise<BackupSettings> {
     return this.request<BackupSettings>('/settings/backups', {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+  }
+
+  async getLimitsSettings(): Promise<LimitsSettings> {
+    return this.request<LimitsSettings>('/settings/limits');
+  }
+
+  async updateLimitsSettings(body: LimitsSettings): Promise<LimitsSettings> {
+    return this.request<LimitsSettings>('/settings/limits', {
       method: 'PUT',
       body: JSON.stringify(body)
     });

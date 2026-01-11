@@ -171,9 +171,10 @@ export const BackupSettingsSchema = z.object({
   retentionCount: z.number().int().positive()
 });
 
-const LimitsSettingsSchema = z.object({
+export const LimitsSettingsSchema = z.object({
   currentRequestMaxTokens: z.coerce.number().int().positive(),
-  responseMaxTokens: z.coerce.number().int().positive()
+  responseMaxTokens: z.coerce.number().int().positive(),
+  allowUserCreation: z.boolean().default(true)
 });
 
 // --- Types ---
@@ -314,6 +315,7 @@ export type BackupSettings = {
 export type LimitsSettings = {
   currentRequestMaxTokens: number;
   responseMaxTokens: number;
+  allowUserCreation: boolean;
 };
 
 export type AutomationSettings = {
@@ -485,6 +487,10 @@ export class SettingsManager {
 
   async setBackups(data: BackupSettings): Promise<void> {
     await this.setSection("backups", data);
+  }
+
+  async setLimits(data: LimitsSettings): Promise<void> {
+    await this.setSection("limits", data);
   }
 
   async setOAuth(data: OAuthSettings): Promise<void> {
@@ -756,7 +762,8 @@ export class SettingsManager {
   getDefaultLimits(): LimitsSettings {
     return {
       currentRequestMaxTokens: Number(this.getFromEnv("CURRENT_REQUEST_MAX_TOKENS")) || 8000,
-      responseMaxTokens: Number(this.getFromEnv("RESPONSE_MAX_TOKENS")) || 8000
+      responseMaxTokens: Number(this.getFromEnv("RESPONSE_MAX_TOKENS")) || 8000,
+      allowUserCreation: this.getFromEnv("ALLOW_USER_CREATION") !== "false"
     } as LimitsSettings;
   }
 }

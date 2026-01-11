@@ -13,6 +13,7 @@ export {
   ServicesSettingsSchema, 
   OAuthSettingsSchema, 
   BackupSettingsSchema,
+  LimitsSettingsSchema,
   type Provider,
   type ModelCategorySettings,
   type ModelsSettings,
@@ -116,6 +117,10 @@ export class SettingsStore {
 
   async setBackups(data: BackupSettings): Promise<void> {
     return appSettings.setBackups(data);
+  }
+
+  async setLimits(data: LimitsSettings): Promise<void> {
+    return appSettings.setLimits(data);
   }
 
   async setOAuth(data: OAuthSettings): Promise<void> {

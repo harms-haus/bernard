@@ -3,9 +3,14 @@ import { requireAdmin } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logging/logger';
 import { UserStore } from '@/lib/auth/userStore';
 import { getRedis } from '@/lib/infra/redis';
+import { SettingsManager } from '@/lib/config/appSettings';
 
 function getUserStore() {
   return new UserStore(getRedis());
+}
+
+function getSettingsManager() {
+  return SettingsManager.getInstance();
 }
 
 export async function GET(request: NextRequest) {
@@ -28,6 +33,11 @@ export async function POST(request: NextRequest) {
   try {
     const admin = await requireAdmin(request);
     if (admin instanceof NextResponse) return admin;
+
+    const settings = await getSettingsManager().getLimits();
+    if (!settings.allowUserCreation) {
+      return NextResponse.json({ error: 'User creation is disabled' }, { status: 403 });
+    }
 
     const body = await request.json() as { id: string; displayName: string; isAdmin: boolean };
     const { id, displayName, isAdmin } = body;
