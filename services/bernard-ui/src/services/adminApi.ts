@@ -191,6 +191,10 @@ export interface ServicesSettings {
     baseUrl: string;
     apiKey?: string;
   };
+  overseerr?: {
+    baseUrl: string;
+    apiKey: string;
+  };
 }
 
 export interface OAuthSettings {
@@ -587,6 +591,19 @@ class AdminApiClient {
     testedAt: string;
   }> {
     return this.request('/settings/services/test/stt', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async testOverseerrConnection(): Promise<{
+    status: 'success' | 'failed';
+    error?: string;
+    errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
+    message?: string;
+    testedAt: string;
+  }> {
+    return this.request('/settings/services/test/overseerr', {
       method: 'POST',
       body: JSON.stringify({})
     });

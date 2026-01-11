@@ -26,6 +26,13 @@ export { getHistoricalStateToolFactory } from "./home-assistant-historical-state
 export { playMediaTvToolFactory } from "./play_media_tv.tool";
 export { searchMediaToolFactory } from "./search_media.tool";
 
+// Overseerr Tools
+export { findMediaStatusToolFactory } from "./overseerr-find-media.tool";
+export { requestMediaToolFactory } from "./overseerr-request-media.tool";
+export { listMediaRequestsToolFactory } from "./overseerr-list-requests.tool";
+export { cancelMediaRequestToolFactory } from "./overseerr-cancel-request.tool";
+export { reportMediaIssueToolFactory } from "./overseerr-report-issue.tool";
+
 export {
   type ToolFactory,
   type DisabledTool,

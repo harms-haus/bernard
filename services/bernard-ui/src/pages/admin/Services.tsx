@@ -26,6 +26,9 @@ export default function Services() {
   const [sttTestStatus, setSttTestStatus] = useState<ServiceTestStatus>('idle');
   const [sttTestError, setSttTestError] = useState<string>('');
   const [sttTestErrorType, setSttTestErrorType] = useState<string>('');
+  const [overseerrTestStatus, setOverseerrTestStatus] = useState<ServiceTestStatus>('idle');
+  const [overseerrTestError, setOverseerrTestError] = useState<string>('');
+  const [overseerrTestErrorType, setOverseerrTestErrorType] = useState<string>('');
 
   const toast = useToast();
 
@@ -116,6 +119,17 @@ export default function Services() {
       return {
         ...prev,
         stt: { ...currentStt, ...sttUpdates }
+      };
+    });
+  };
+
+  const updateOverseerrSettings = (overseerrUpdates: Partial<NonNullable<ServicesSettings['overseerr']>>) => {
+    setSettings(prev => {
+      if (!prev) return null;
+      const currentOverseerr = prev.overseerr || { baseUrl: '', apiKey: '' };
+      return {
+        ...prev,
+        overseerr: { ...currentOverseerr, ...overseerrUpdates }
       };
     });
   };
@@ -225,6 +239,32 @@ export default function Services() {
     }
   }, [toast]);
 
+  const runOverseerrTest = React.useCallback(async (showNotification = false) => {
+    setOverseerrTestStatus('loading');
+    setOverseerrTestError('');
+    setOverseerrTestErrorType('');
+
+    try {
+      const result = await adminApiClient.testOverseerrConnection();
+
+      if (result.status === 'success') {
+        setOverseerrTestStatus('success');
+        if (showNotification) toast.success('Overseerr connection successful!');
+      } else {
+        setOverseerrTestStatus(result.errorType as ServiceTestStatus || 'failed');
+        setOverseerrTestError(result.error || 'Unknown error');
+        setOverseerrTestErrorType(result.errorType || 'unknown');
+        if (showNotification) toast.error(`Overseerr: ${result.error || 'Connection failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setOverseerrTestStatus('failed');
+      setOverseerrTestError(errorMessage);
+      setOverseerrTestErrorType('unknown');
+      console.error('Failed to test Overseerr connection:', error);
+    }
+  }, [toast]);
+
   useEffect(() => {
     if (!settings) return;
     if (settings.homeAssistant?.baseUrl && settings.homeAssistant?.accessToken && haTestStatus === 'idle') {
@@ -238,6 +278,9 @@ export default function Services() {
     }
     if (settings.stt?.baseUrl && sttTestStatus === 'idle') {
       runSttTest(false);
+    }
+    if (settings.overseerr?.baseUrl && settings.overseerr?.apiKey && overseerrTestStatus === 'idle') {
+      runOverseerrTest(false);
     }
   }, [settings]);
 
@@ -461,6 +504,58 @@ export default function Services() {
           <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
             <p>
               Configure an STT endpoint. Supports Whisper running locally or OpenAI-compatible API endpoints with access tokens.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Overseerr Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Overseerr</CardTitle>
+              <CardDescription>Connect Bernard to Overseerr for media request management</CardDescription>
+            </div>
+            <ServiceTestButton
+              serviceName="Overseerr"
+              status={overseerrTestStatus}
+              errorMessage={overseerrTestError}
+              errorType={overseerrTestErrorType}
+              onTest={() => runOverseerrTest(true)}
+              isConfigured={!!(settings?.overseerr?.baseUrl && settings?.overseerr?.apiKey)}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="overseerr-baseUrl">Server URL *</Label>
+              <Input
+                id="overseerr-baseUrl"
+                type="url"
+                value={settings?.overseerr?.baseUrl || ''}
+                onChange={(e) => updateOverseerrSettings({ baseUrl: e.target.value })}
+                placeholder="http://your-overseerr.local:5055/api/v1"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="overseerr-apiKey">API Key *</Label>
+              <Input
+                id="overseerr-apiKey"
+                type="password"
+                value={settings?.overseerr?.apiKey || ''}
+                onChange={(e) => updateOverseerrSettings({ apiKey: e.target.value })}
+                placeholder="Your Overseerr API key"
+                required
+              />
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+            <p>
+              Get your Overseerr API key from your Overseerr settings page under &quot;API Access&quot;.
+              Settings configured here will override .env values.
             </p>
           </div>
         </CardContent>
