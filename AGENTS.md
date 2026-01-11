@@ -1,211 +1,109 @@
-# AGENTS.md - Bernard Codebase Guide
+# Bernard - AI Agent Monorepo
 
-This guide helps AI agents work effectively in this monorepo containing Next.js, React, Python, and C++ services.
+**Generated:** Sun Jan 11 2026
+**Commit:** 8b0e23c
+**Branch:** dev
 
-## Project Structure
+## OVERVIEW
+Monorepo with Next.js API server, LangGraph AI agent (Bernard), React Vite frontend, Python FastAPI TTS (Kokoro), and C++ speech recognition (whisper.cpp). Core orchestrates services via API gateway pattern.
 
+## STRUCTURE
 ```
-bernard/
-├── core/                   # Next.js + LangGraph server (TypeScript)
+./
+├── core/                    # Next.js + LangGraph server (port 3456)
+│   ├── src/
+│   │   ├── agents/bernard/ # LangGraph agent (port 2024)
+│   │   ├── app/api/        # Next.js API routes + service proxying
+│   │   ├── components/      # Dashboard components
+│   │   ├── hooks/          # Custom React hooks
+│   │   └── lib/           # Shared libraries (auth, config, services, infra)
+│   └── scripts/            # Dev server, agent starter
 ├── services/
-│   ├── bernard-ui/        # React Vite frontend (TypeScript)
-│   ├── kokoro/            # FastAPI TTS service (Python)
-│   └── whisper.cpp/       # Whisper speech recognition (C++)
-└── lib/shared/            # Shared libraries
+│   ├── bernard-ui/        # React Vite frontend (port 8810)
+│   ├── kokoro/            # FastAPI TTS (port 8880)
+│   └── whisper.cpp/       # Whisper STT (port 8870)
+└── scripts/                # Service management scripts
 ```
 
-## Build, Lint, and Test Commands
+## WHERE TO LOOK
+| Task | Location | Notes |
+|-------|----------|-------|
+| Agent tools | `core/src/agents/bernard/tools/` | 12 tools using factory pattern |
+| Service config | `core/src/lib/services/ServiceConfig.ts` | All services defined here |
+| Auth system | `core/src/lib/auth/` | Session-based with OAuth |
+| API proxying | `core/next.config.mjs` | Next.js rewrites to services |
+| UI components | `services/bernard-ui/src/components/` | shadcn/ui + chat components |
+| TTS service | `services/kokoro/api/src/main.py` | FastAPI entry point |
 
-### Root Commands (from `/`)
+## SERVICES (7 total)
+| Name | Port | Type | Description |
+|------|------|------|-------------|
+| redis | 6379 | docker | Cache/queue |
+| core | 3456 | node | API gateway |
+| bernard-agent | 2024 | node | LangGraph agent |
+| bernard-ui | 8810 | node | React frontend |
+| vllm | 8860 | python | Embedding service |
+| whisper | 8870 | cpp | Speech-to-text |
+| kokoro | 8880 | python | Text-to-speech |
+
+## CONVENTIONS
+- **TypeScript strict mode**: No `as any`, `@ts-ignore`, or `@ts-expect-error`
+- **Result types**: Discriminated unions `{ok: true; data: T} | {ok: false; error: string}`
+- **Tool factories**: Async functions returning `{ok: true; tool} | {ok: false; name, reason}`
+- **Barrel exports**: `index.ts` files for module organization
+- **ES Modules only**: No `require()`, use `import/export`
+- **Path aliases**: `@/` → `./src/*` in all TS projects
+
+## ANTI-PATTERNS (THIS PROJECT)
+- **NO cross-service imports**: Bernard agent must be standalone (copy code, don't import)
+- **NO emojis/markdown in agent responses**: Bernard outputs plain text for TTS
+- **NO custom Error classes**: Use standard Error with discriminators
+- **NO `set_timer_sync`**: Use `set_timer` for background tasks
+
+## COMMANDS
 ```bash
-npm run build              # Build core app
-npm run dev                # Start core dev server
-npm run type-check         # TypeScript type check
-```
+# Root (delegates to core)
+npm run dev              # Start core dev server
+npm run build            # Build core app
+npm run type-check       # TypeScript type check
 
-### TypeScript Projects (core, bernard-ui)
-```bash
-cd core                    # or cd services/bernard-ui
+# Core (TypeScript)
+cd core
+npm run agent:bernard   # Start LangGraph agent
+npm run test            # Vitest (node environment)
+npm run lint            # ESLint check
 
-# Build
-npm run build              # Production build
-npm run dev                # Dev server
-npm run type-check         # tsc --noEmit
+# Bernard UI (TypeScript)
+cd services/bernard-ui
+npm run dev             # Vite dev server (proxies to core:3456)
+npm run test            # Vitest (jsdom environment)
 
-# Linting
-npm run lint              # ESLint check
-
-# Testing
-npm run test               # Run all tests (vitest run)
-npm run test:watch         # Watch mode
-npm run test:coverage      # With coverage
-npx vitest run filename.test.ts              # Single test file
-npx vitest run -t "test name"                 # Single test by name
-npx vitest run --run src/lib/services/       # Tests in directory
-```
-
-### Python Project (kokoro)
-```bash
+# Kokoro (Python)
 cd services/kokoro
+./start-cpu.sh          # CPU TTS (uvicorn + CPU PyTorch)
+./start-gpu.sh          # GPU TTS (uvicorn + CUDA)
+uv run ruff check .     # Linting
+python -m pytest        # Pytest tests
 
-# Build/Run
-./start-cpu.sh            # Start with CPU (auto-install deps)
-./start-gpu.sh            # Start with GPU (auto-install deps)
-uv run python api/src/main.py
-
-# Linting/Formatting (Ruff)
-uv run ruff check .       # Check linting
-uv run ruff check --fix . # Auto-fix
-uv run ruff format .      # Format code
-uv run ruff format --check . # Check formatting
-
-# Testing (Pytest)
-python -m pytest          # Run all tests
-python -m pytest -v       # Verbose
-python -m pytest api/tests/test_file.py              # Single file
-python -m pytest -k "test_name"                     # By name
-python -m pytest api/tests/test_file.py::test_func   # Specific test
-```
-
-### C++ Project (whisper.cpp)
-```bash
+# Whisper.cpp (C++)
 cd services/whisper.cpp
-
-# Build
 cmake -B build && cmake --build build --config Release
-
-# Test/Run
 ./build/bin/whisper-cli -f samples/jfk.wav
-make base.en              # Download and test model
 ```
 
-## Code Style Guidelines
+## TESTING
+- **Vitest**: TypeScript projects (core, bernard-ui)
+  - Core: `node` environment, global mocks in `vitest.setup.ts`
+  - UI: `jsdom` environment for React components
+  - Coverage: v8 provider, excludes node_modules/.next/dist
+- **Pytest**: Python (kokoro)
+  - Async tests with `@pytest.mark.asyncio`
+  - Coverage enabled by default
+- **No C++ tests**: whisper.cpp has no test infrastructure
 
-### Import Style
-- **ES Modules only** - No `require()`
-- **Named imports preferred**: `import { BaseMessage } from "@langchain/core/messages"`
-- **Path aliases**: Use `@/` for internal modules: `import { logger } from '@/lib/logging/logger'`
-- **Type-only imports**: `import type { User } from '../types/auth'`
-
-### TypeScript Usage
-- **Strict mode enabled** - No `as any` or `@ts-ignore`
-- **Explicit type annotations** on function parameters and returns
-- **Type definitions** for simple objects, **interfaces** for public APIs
-- **Discriminated unions** for result types:
-
-```typescript
-type Result<T> = { ok: true; data: T } | { ok: false; error: string }
-```
-
-### Naming Conventions
-- **camelCase**: Functions, variables, methods (`getMessageText`, `loadChatModel`)
-- **PascalCase**: Types, interfaces, classes, components (`ServiceManager`, `LogEntry`, `CombinedLogs`)
-- **SCREAMING_SNAKE_CASE**: Constants (`DEFAULT_TIMEOUT_MS`, `QUEUE_NAME`)
-- **Descriptive names**: Verbs for actions (`formatDoc`, `buildUrl`, `startTimer`)
-- **File naming**: `.tool.ts` for LangGraph tools, `.test.ts` for tests, `.tsx` for React components, `index.ts` for barrel exports
-
-### Error Handling
-- **Result type pattern** for async operations:
-```typescript
-type WeatherFetchResult<T> = { ok: true; data: T } | { ok: false; error: string }
-
-try {
-  const res = await fetch(url);
-  if (!res.ok) return { ok: false, error: weatherError(`${res.status} ${res.statusText}`) };
-  return { ok: true, data: await res.json() };
-} catch (err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  return { ok: false, error: msg };
-}
-```
-- **Try-catch with explicit error conversion**: Convert unknown errors to Error objects
-- **Context-aware logging**: Include request IDs, duration, error codes
-- **No custom Error classes** - Use standard Error with discriminators
-
-### File Organization
-- **Monorepo structure** - Separate packages for different services
-- **Agent pattern**:
-  ```
-  agents/agent-name/
-  ├── agent-name.agent.ts      # Main entry
-  ├── configuration.ts          # Config
-  ├── state.ts                  # State definitions
-  ├── tools/                    # .tool.ts files
-  │   └── index.ts              # Barrel export
-  ├── utils.ts
-  └── prompts/                  # .prompt.ts files
-  ```
-- **Barrel exports** (index.ts) for logical groupings
-- **Path aliases** in tsconfig.json: `@/*` → `./src/*`
-
-### Component/Function Patterns
-- **Custom hooks**: `useLogStream`, `useDialogManager` with useCallback/useEffect cleanup
-- **Factory functions**: `webSearchToolFactory` returning `ToolFactoryResult`
-- **Singleton patterns**: Lazy initialization with `getUtilityQueue()` style
-- **Pure utility functions**: Small, testable, side-effect free
-
-## Linting and Formatting
-
-### TypeScript (core, bernard-ui)
-- **ESLint**: Configured in `.eslintrc.cjs` for UI, Next.js built-in for core
-  - `@typescript-eslint/no-unused-vars`: Error (underscore prefix ignored)
-  - `@typescript-eslint/no-explicit-any`: Off
-- **No Prettier configured** - Code formatting relies on ESLint rules or manual formatting
-- **Line length**: No enforced limit for TypeScript
-
-### Python (kokoro)
-- **Ruff** for linting and formatting
-- **Line length**: 88 characters
-- **Import sorting**: `isort` rules with force-wrap-aliases and combine-as-imports
-- **Config**: `.ruff.toml`
-
-### C++ (whisper.cpp)
-- **No linter configured** - Follow project conventions
-
-## Testing
-
-### Vitest (TypeScript)
-- **Test files**: `*.test.ts`, `*.test.tsx`
-- **Framework**: Vitest with globals enabled
-- **Environment**: `node` for core, `jsdom` for UI
-- **Setup**: `vitest.setup.ts` for global mocks and directory creation
-- **Timeout**: 30 seconds default
-- **Coverage**: v8 provider, excludes `node_modules`, `.next`, `dist`, test files
-
-### Test Patterns
-```typescript
-describe('Component', () => {
-  beforeEach(() => { /* Setup */ })
-  it('should do X', () => {
-    // Arrange, Act, Assert
-    expect(result).toBe(expected)
-  })
-})
-```
-
-### React Testing
-- **Library**: `@testing-library/react`
-- **Pattern**: Render → Query → Assert
-- **Mocking**: `vi.fn()` for mocks, `vi.stubEnv()` for environment variables
-
-### Pytest (Python)
-- **Test files**: `test_*.py` in `api/tests/` and `ui/tests/`
-- **Coverage**: Enabled by default
-- **Config**: `pytest.ini`
-
-## Additional Notes
-
-### Styling
-- **Tailwind CSS** with shadcn/ui design system
-- **Dark mode**: Class-based
-- **CSS variables** for theming (primary, secondary, destructive, muted, accent, etc.)
-- **Tailwind configs**: `tailwind.config.ts` in core, `tailwind.config.js` in UI
-
-### Configuration
-- **Environment**: `.env` files (use `.env.example` as template)
-- **TypeScript paths**: `@/` → `./src/*` configured in tsconfig.json
-- **Proxying**: Core Next.js proxies to services on specific ports (3456, 8800, 8810, 2024)
-
-### No Cursor/Copilot Rules
-- No `.cursor/rules/` or `.cursorrules` found
-- No `.github/copilot-instructions.md` found
+## NOTES
+- **No CI/CD**: No GitHub Actions workflows configured
+- **Duplicate configs**: `tailwind.config.js` AND `tailwind.config.ts` in core (remove one)
+- **No Prettier**: Formatting relies on ESLint or manual formatting
+- **No `.cursor/rules`**: AGENTS.md is the primary style guide
+- **No `/lib/shared`**: Mentioned in AGENTS.md but doesn't exist
