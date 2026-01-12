@@ -10,11 +10,6 @@ export const SERVICES = {
     url: process.env.BERNARD_UI_URL || 'http://127.0.0.1:8810',
     healthPath: '/health',
   },
-  vllm: {
-    name: 'VLLM',
-    url: process.env.VLLM_URL || 'http://127.0.0.1:8860',
-    healthPath: '/health',
-  },
   whisper: {
     name: 'WHISPER',
     url: process.env.WHISPER_URL || 'http://127.0.0.1:8870',
@@ -34,11 +29,6 @@ export const V1_UPSTREAMS = {
     path: '/v1/chat/completions',
     streaming: true,
   },
-  embeddings: {
-    url: SERVICES.vllm.url,
-    path: '/v1/embeddings',
-    streaming: false,
-  },
   'audio/transcriptions': {
     url: SERVICES.whisper.url,
     path: '/inference',
@@ -57,7 +47,6 @@ export const VALID_LOG_SERVICES = [
   'shared',
   'bernard-agent',
   'bernard-ui',
-  'vllm',
   'whisper',
   'kokoro',
   'core',

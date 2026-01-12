@@ -58,9 +58,9 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const { command } = body
 
-  if (!command || !["start", "stop", "restart", "check"].includes(command)) {
+  if (!command || !["start", "stop", "restart"].includes(command)) {
     return NextResponse.json(
-      { error: "Invalid command. Use: start, stop, restart, or check" },
+      { error: "Invalid command. Use: start, stop, or restart" },
       { status: 400 }
     )
   }

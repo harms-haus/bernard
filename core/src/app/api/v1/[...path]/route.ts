@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { V1_UPSTREAMS } from '@/lib/services/config';
 
 const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
-const VLLM_URL = process.env.VLLM_URL || 'http://127.0.0.1:8860';
 
 function passThroughAuth(headers: Headers): Record<string, string> {
   const result: Record<string, string> = {};
@@ -51,17 +50,6 @@ async function fetchFromAgent<T>(path: string, timeout = 2000): Promise<T | null
   }
 }
 
-async function fetchFromVLLM<T>(path: string, timeout = 2000): Promise<T | null> {
-  const resp = await fetchWithTimeout(`${VLLM_URL}${path}`, timeout);
-  if (!resp || !resp.ok) return null;
-  
-  try {
-    return await resp.json() as T;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const path = searchParams.get('path') || '';
@@ -72,11 +60,6 @@ export async function GET(request: NextRequest) {
     const agentModels = await fetchFromAgent<{ data: any[] }>('/v1/models');
     if (agentModels?.data) {
       models.push(...agentModels.data);
-    }
-
-    const vllmModels = await fetchFromVLLM<{ data: any[] }>('/v1/models');
-    if (vllmModels?.data) {
-      models.push(...vllmModels.data);
     }
 
     models.push({

@@ -55,9 +55,6 @@ export async function startServiceWorker(): Promise<void> {
           case "restart":
             result = await processRestart(manager, serviceId);
             break;
-          case "check":
-            result = await processCheck(manager, serviceId);
-            break;
           default:
             throw new Error(`Unknown action: ${action}`);
         }
@@ -227,27 +224,5 @@ async function processRestart(
     action: 'restart',
     timestamp: new Date(),
     error: restartResult.error,
-  };
-}
-
-async function processCheck(
-  manager: ServiceManager,
-  serviceId: string
-): Promise<ServiceActionResult> {
-  const checkResult = await manager.check(serviceId);
-  const status = await manager.getStatus(serviceId);
-
-  const data: ServiceActionResultData = {
-    uptime: status?.uptime,
-    health: status?.health,
-  };
-
-  return {
-    success: checkResult.passed,
-    serviceId,
-    action: 'check',
-    timestamp: new Date(),
-    data,
-    error: checkResult.error,
   };
 }

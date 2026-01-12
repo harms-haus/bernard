@@ -14,7 +14,6 @@ describe('ServiceManager', () => {
       expect(SERVICES.redis).toBeDefined()
       expect(SERVICES['bernard-agent']).toBeDefined()
       expect(SERVICES['bernard-ui']).toBeDefined()
-      expect(SERVICES.vllm).toBeDefined()
       expect(SERVICES.whisper).toBeDefined()
       expect(SERVICES.kokoro).toBeDefined()
     })
@@ -22,7 +21,6 @@ describe('ServiceManager', () => {
     it('should have correct service types', () => {
       expect(SERVICES.redis.type).toBe('docker')
       expect(SERVICES['bernard-agent'].type).toBe('node')
-      expect(SERVICES.vllm.type).toBe('python')
       expect(SERVICES.whisper.type).toBe('cpp')
     })
 
@@ -114,19 +112,6 @@ describe('ServiceManager', () => {
     it('should return health status for all services', async () => {
       const healthMap = await serviceManager.healthCheckAll()
       expect(healthMap.size).toBe(Object.keys(SERVICES).length)
-    })
-  })
-
-  describe('check', () => {
-    it('should return passed for service without check config', async () => {
-      const result = await serviceManager.check('redis')
-      expect(result.passed).toBe(true)
-    })
-
-    it('should return error for unknown service', async () => {
-      const result = await serviceManager.check('unknown-service')
-      expect(result.passed).toBe(false)
-      expect(result.error).toBe('Unknown service')
     })
   })
 })
