@@ -27,11 +27,6 @@ export async function restartService(serviceId: string) {
   return result
 }
 
-export async function checkService(serviceId: string) {
-  const manager = new ServiceManager()
-  return manager.check(serviceId)
-}
-
 export async function getServiceStatus(serviceId: string) {
   const manager = new ServiceManager()
   return manager.getStatus(serviceId)

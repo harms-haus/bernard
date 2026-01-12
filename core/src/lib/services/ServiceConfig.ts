@@ -16,11 +16,6 @@ export interface ServiceConfig {
   startupTimeout: number
   color: string
   env?: Record<string, string>
-  check?: {
-    typeCheck?: string
-    lint?: string
-    build?: string
-  }
 }
 
 export const SERVICES: Record<string, ServiceConfig> = {
@@ -49,11 +44,6 @@ export const SERVICES: Record<string, ServiceConfig> = {
     dependencies: ["redis"],
     startupTimeout: 30,
     color: "#a29bfe",
-    check: {
-      typeCheck: "npm run type-check",
-      lint: "npm run lint",
-      build: "npm run build",
-    },
   },
   "bernard-agent": {
     id: "bernard-agent",
@@ -80,24 +70,6 @@ export const SERVICES: Record<string, ServiceConfig> = {
     dependencies: ["redis"],
     startupTimeout: 20,
     color: "#5f27cd",
-    check: {
-      typeCheck: "npm run type-check",
-      lint: "npm run lint",
-      build: "npm run build",
-    },
-  },
-  vllm: {
-    id: "vllm",
-    name: "VLLM",
-    displayName: "vLLM Embeddings",
-    port: 8860,
-    type: "python",
-    directory: "services/vllm",
-    script: "./.venv/bin/python -m vllm.entrypoints.openai.api_server --model nomic-ai/nomic-embed-text-v1.5 --host 0.0.0.0 --port 8860 --trust-remote-code --gpu-memory-utilization 0.5",
-    healthPath: "/health",
-    dependencies: [],
-    startupTimeout: 120,
-    color: "#48dbfb",
   },
   whisper: {
     id: "whisper",
@@ -132,7 +104,6 @@ export const SERVICE_START_ORDER = [
   "core",
   "bernard-agent",
   "bernard-ui",
-  "vllm",
   "whisper",
   "kokoro",
 ] as const

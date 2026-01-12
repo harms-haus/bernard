@@ -22,17 +22,6 @@ export interface ServiceStatus {
   color: string
 }
 
-export interface CheckResult {
-  service?: string
-  passed: boolean
-  details?: {
-    typeCheck?: boolean
-    lint?: boolean
-    build?: boolean
-  }
-  error?: string
-}
-
 export interface StartResult {
   service?: string
   success: boolean
@@ -59,74 +48,6 @@ export class ServiceManager {
   constructor() {
     this.processManager = new ProcessManager()
     this.healthChecker = new HealthChecker()
-  }
-
-  async check(serviceId?: string): Promise<CheckResult> {
-    if (serviceId) {
-      return this.checkService(serviceId)
-    }
-
-    const results: CheckResult[] = []
-    for (const id of Object.keys(SERVICES)) {
-      const result = await this.checkService(id)
-      results.push(result)
-    }
-
-    const allPassed = results.every((r) => r.passed)
-    return { passed: allPassed }
-  }
-
-  private async checkService(serviceId: string): Promise<CheckResult> {
-    const config = SERVICES[serviceId]
-    if (!config) {
-      return { service: serviceId, passed: false, error: "Unknown service" }
-    }
-
-    if (!config.check) {
-      return { service: serviceId, passed: true }
-    }
-
-    const details: CheckResult["details"] = {}
-
-    try {
-      if (config.check.typeCheck) {
-        details.typeCheck = await this.runCheck(config.check.typeCheck, config.directory)
-      }
-      if (config.check.lint) {
-        details.lint = await this.runCheck(config.check.lint, config.directory)
-      }
-      if (config.check.build) {
-        details.build = await this.runCheck(config.check.build, config.directory)
-      }
-
-      const passed = Object.values(details).every((v) => v === true)
-      return { service: serviceId, passed, details }
-    } catch (error) {
-      return {
-        service: serviceId,
-        passed: false,
-        error: error instanceof Error ? error.message : String(error),
-      }
-    }
-  }
-
-  private async runCheck(command: string, directory?: string): Promise<boolean> {
-    const { execSync } = await import("node:child_process")
-    const cwd = directory
-      ? path.join(process.cwd(), directory)
-      : process.cwd()
-
-    try {
-      execSync(command, {
-        cwd,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 120000,
-      })
-      return true
-    } catch {
-      return false
-    }
   }
 
   async init(serviceId?: string): Promise<void> {

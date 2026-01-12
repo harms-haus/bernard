@@ -29,30 +29,6 @@ describe('Integration: Service Commands', () => {
     vi.restoreAllMocks()
   })
 
-  describe('check command', () => {
-    it('should return passed for core with check config', async () => {
-      const result = await serviceManager.check('core')
-      expect(result).toBeDefined()
-      expect(result.service).toBe('core')
-      expect(result.passed).toBeTypeOf('boolean')
-    })
-
-    it('should return error for unknown service', async () => {
-      const result = await serviceManager.check('nonexistent')
-      expect(result.passed).toBe(false)
-      expect(result.error).toBe('Unknown service')
-    })
-
-    it('should include check details for services with check config', async () => {
-      const result = await serviceManager.check('core')
-      expect(result.service).toBe('core')
-      expect(result.details).toBeDefined()
-      expect(result.details?.typeCheck).toBeDefined()
-      expect(result.details?.lint).toBeDefined()
-      expect(result.details?.build).toBeDefined()
-    })
-  })
-
   describe('getStatus', () => {
     it('should return status object with all required fields', async () => {
       const status = await serviceManager.getStatus('redis')
@@ -165,14 +141,6 @@ describe('Integration: Service Commands', () => {
       expect(core.directory).toBe('core')
       expect(core.script).toBeDefined()
       expect(core.healthPath).toBe('/api/health')
-    })
-
-    it('should have valid python service configuration', () => {
-      const vllm = SERVICES.vllm
-      expect(vllm.type).toBe('python')
-      expect(vllm.directory).toBe('services/vllm')
-      expect(vllm.script).toContain('vllm')
-      expect(vllm.startupTimeout).toBe(120)
     })
 
     it('should have valid cpp service configuration', () => {

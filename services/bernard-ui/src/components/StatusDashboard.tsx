@@ -10,12 +10,12 @@ import {
   EyeOff,
   Server,
   Database,
-  Cpu,
   Mic,
   Volume2,
   Monitor,
   Globe,
-  Activity
+  Activity,
+  Square
 } from 'lucide-react';
 import { useToast } from './ToastManager';
 import { useAuth } from '../hooks/useAuth';
@@ -55,7 +55,6 @@ interface StatusDashboardProps {
 
 const SERVICE_ICONS: Record<string, any> = {
   Redis: Database,
-  vLLM: Cpu,
   Kokoro: Volume2,
   Whisper: Mic,
   Bernard: Server,
@@ -69,7 +68,6 @@ const SERVICE_ORDER = [
   'Bernard-UI',
   'Redis',
   'Server',
-  'vLLM',
   'Whisper',
   'Kokoro'
 ];
@@ -79,7 +77,6 @@ const SERVICE_NAME_TO_ID: Record<string, string> = {
   'Bernard UI': 'bernard-ui',
   'Bernard-UI': 'bernard-ui',
   'Redis': 'redis',
-  'VLLM': 'vllm',
   'Whisper': 'whisper',
   'Kokoro': 'kokoro',
 };
@@ -156,6 +153,62 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
     } catch (error) {
       console.error('Failed to restart service:', error);
       toast.error(`Failed to restart ${serviceName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setRestartingService(null);
+    }
+  };
+
+  const startService = async (serviceName: string) => {
+    if (!isAdmin) return;
+    setRestartingService(serviceName);
+    try {
+      const serviceId = SERVICE_NAME_TO_ID[serviceName] || serviceName.toLowerCase();
+      const response = await fetch(`/api/services/${serviceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command: 'start' }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to start service' }));
+        throw new Error(errorData.error || 'Failed to start service');
+      }
+
+      toast.success(`Start initiated for ${serviceName}`);
+      fetchStatus(true, true);
+    } catch (error) {
+      console.error('Failed to start service:', error);
+      toast.error(`Failed to start ${serviceName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setRestartingService(null);
+    }
+  };
+
+  const stopService = async (serviceName: string) => {
+    if (!isAdmin) return;
+    setRestartingService(serviceName);
+    try {
+      const serviceId = SERVICE_NAME_TO_ID[serviceName] || serviceName.toLowerCase();
+      const response = await fetch(`/api/services/${serviceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command: 'stop' }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to stop service' }));
+        throw new Error(errorData.error || 'Failed to stop service');
+      }
+
+      toast.success(`Stop initiated for ${serviceName}`);
+      fetchStatus(true, true);
+    } catch (error) {
+      console.error('Failed to stop service:', error);
+      toast.error(`Failed to stop ${serviceName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setRestartingService(null);
     }
@@ -276,11 +329,18 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem 
-                          onClick={() => restartService(service.name)}
+                          onClick={() => service.status === 'online' ? restartService(service.name) : startService(service.name)}
                           disabled={restartingService === service.name}
                         >
                           <Play className="mr-2 h-4 w-4" />
-                          Restart Service
+                          {service.status === 'online' ? 'Restart Service' : 'Start Service'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => stopService(service.name)}
+                          disabled={restartingService === service.name || service.status === 'offline'}
+                        >
+                          <Square className="mr-2 h-4 w-4" />
+                          Stop Service
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => toggleLogs(service.name)}>
                           {isExpanded ? (
