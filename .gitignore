@@ -152,3 +152,4 @@ dump.rdb
 
 trace.json
 services/bernard/traces
+core/coverage

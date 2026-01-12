@@ -22,13 +22,13 @@ export function parseCheckpointKey(key: string): CheckpointKey {
   if (parts.length < 4) {
     throw new Error(`Invalid checkpoint key format: ${key}`);
   }
-  
+
   const namespace = parts[0];
   const threadId = fromStorageSafeId(parts[1]);
-  // Checkpoint_ns is everything between threadId and checkpointId
+  // checkpoint_ns is everything between threadId and checkpointId
   const checkpointId = fromStorageSafeId(parts[parts.length - 1]);
   const checkpointNs = fromStorageSafeNs(parts.slice(2, -1).join(":"));
-  
+
   return {
     namespace,
     threadId,
@@ -39,8 +39,8 @@ export function parseCheckpointKey(key: string): CheckpointKey {
 
 /**
  * Format checkpoint components into a Redis key.
- * Escapes colons in checkpoint_ns to prevent parsing issues.
- * 
+ * Escapes colons in namespace to prevent parsing issues.
+ *
  * @param threadId - Thread identifier
  * @param checkpointNs - Checkpoint namespace (may contain special chars)
  * @param checkpointId - Checkpoint identifier
@@ -51,14 +51,24 @@ export function formatCheckpointKey(
   checkpointNs: string,
   checkpointId: string
 ): string {
-  const escapedNs = checkpointNs.replace(/:/g, "\\:");
-  return `checkpoint:${toStorageSafeId(threadId)}:${escapedNs}:${toStorageSafeId(checkpointId)}`;
+  const escapedThreadId = toStorageSafeId(threadId);
+  const escapedCheckpointId = toStorageSafeId(checkpointId);
+
+  if (checkpointNs === "") {
+    // Empty namespace: checkpoint:{threadId}::{checkpointId}
+    return `checkpoint:${escapedThreadId}::${escapedCheckpointId}`;
+  }
+
+  // Non-empty namespace: checkpoint:{threadId}:{escapedNs}:{checkpointId}
+  // where escapedNs has colons escaped with backslashes
+  const escapedNs = toStorageSafeNs(checkpointNs);
+  return `checkpoint:${escapedThreadId}:${escapedNs}:${escapedCheckpointId}`;
 }
 
 /**
  * Convert to storage-safe string for IDs (thread_id, checkpoint_id).
  * Escapes colons which could interfere with key parsing.
- * 
+ *
  * @param id - The ID to make safe for storage
  * @returns Storage-safe string
  */
@@ -69,7 +79,7 @@ export function toStorageSafeId(id: string): string {
 
 /**
  * Convert from storage-safe string for IDs.
- * 
+ *
  * @param id - The storage-safe ID
  * @returns Original ID
  */
