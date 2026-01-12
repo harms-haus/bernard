@@ -57,7 +57,8 @@ describe("redis-key", () => {
       const checkpointId = "cp-123";
 
       const key = formatCheckpointKey(threadId, checkpointNs, checkpointId);
-      expect(key).toBe("checkpoint:thread\\:id\\:with\\:colons:cp-123");
+      // With empty namespace, format is checkpoint:{escaped_threadId}::{escaped_checkpointId}
+      expect(key).toBe("checkpoint:thread\\:id\\:with\\:colons::cp-123");
 
       const parsed = parseCheckpointKey(key);
       expect(parsed.threadId).toBe(threadId);
@@ -71,7 +72,8 @@ describe("redis-key", () => {
       const checkpointId = "cp:id:456";
 
       const key = formatCheckpointKey(threadId, checkpointNs, checkpointId);
-      expect(key).toBe("checkpoint:thread-1:cp\\:id\\:456");
+      // With empty namespace, format is checkpoint:{escaped_threadId}::{escaped_checkpointId}
+      expect(key).toBe("checkpoint:thread-1::cp\\:id\\:456");
 
       const parsed = parseCheckpointKey(key);
       expect(parsed.threadId).toBe(threadId);
@@ -85,8 +87,8 @@ describe("redis-key", () => {
       const checkpointId = "cp\\123";
 
       const key = formatCheckpointKey(threadId, checkpointNs, checkpointId);
-      // Backslashes are NOT escaped, only colons
-      expect(key).toBe("checkpoint:thread\\with\\backslash::cp\\123");
+      // Backslashes are escaped to preserve them through parsing
+      expect(key).toBe("checkpoint:thread\\\\with\\\\backslash::cp\\\\123");
 
       const parsed = parseCheckpointKey(key);
       expect(parsed.threadId).toBe(threadId);
@@ -138,8 +140,10 @@ describe("redis-key", () => {
     });
 
     it("should preserve backslashes (not escaped)", () => {
-      expect(toStorageSafeId("a\\b")).toBe("a\\b");
-      expect(fromStorageSafeId("a\\b")).toBe("a\\b");
+      // Backslashes are escaped to preserve them through round-trip
+      // "a\\b" (JS string with single backslash) becomes "a\\\\b" when escaped
+      expect(toStorageSafeId("a\\b")).toBe("a\\\\b");
+      expect(fromStorageSafeId("a\\\\b")).toBe("a\\b");
     });
 
     it("should be idempotent for simple strings", () => {

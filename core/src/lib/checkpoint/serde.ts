@@ -51,14 +51,50 @@ export async function loadsTyped<T>(type: string, data: Uint8Array | string): Pr
  * Stringify with custom serialization for special types.
  */
 function _dumps(obj: unknown): string {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  
+  // For top-level Date objects, we need special handling because
+  // JSON.stringify calls toJSON() before the replacer
+  if (obj instanceof Date) {
+    return JSON.stringify(_encodeConstructorArgs("Date", undefined, [obj.toISOString()]));
+  }
+
+  // For nested structures, we need to pre-process to handle Date objects
+  // because JSON.stringify calls toJSON() before the replacer
+  function preprocess(value: unknown): unknown {
+    if (value instanceof Date) {
+      return _encodeConstructorArgs("Date", undefined, [value.toISOString()]);
+    }
+    if (value instanceof Set) {
+      return _encodeConstructorArgs("Set", undefined, [Array.from(value)]);
+    }
+    if (value instanceof Map) {
+      return _encodeConstructorArgs("Map", undefined, [Array.from(value.entries())]);
+    }
+    if (value instanceof RegExp) {
+      return _encodeConstructorArgs("RegExp", undefined, [value.source, value.flags]);
+    }
+    if (value instanceof Error) {
+      return _encodeConstructorArgs(value.constructor.name, undefined, [value.message]);
+    }
+    if (Array.isArray(value)) {
+      return value.map(preprocess);
+    }
+    if (value && typeof value === "object") {
+      const result: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) {
+        result[k] = preprocess(v);
+      }
+      return result;
+    }
+    return value;
+  }
+
+  const preprocessed = preprocess(obj);
+
   function stringifyReplacer(_key: string, value: unknown): unknown {
     return _default(value);
   }
-  
-  return JSON.stringify(obj, stringifyReplacer);
+
+  return JSON.stringify(preprocessed, stringifyReplacer);
 }
 
 /**
@@ -68,33 +104,46 @@ function _default(obj: unknown): unknown {
   if (obj === undefined) {
     return { lc: 2, type: "undefined" };
   }
-  
+
+  // Handle special number values (JSON doesn't support these natively)
+  if (typeof obj === "number") {
+    if (Number.isNaN(obj)) {
+      return { lc: 2, type: "NaN" };
+    }
+    if (obj === Infinity) {
+      return { lc: 2, type: "Infinity" };
+    }
+    if (obj === -Infinity) {
+      return { lc: 2, type: "-Infinity" };
+    }
+  }
+
   if (obj instanceof Set) {
     return _encodeConstructorArgs("Set", undefined, [Array.from(obj)]);
   }
-  
+
   if (obj instanceof Map) {
     return _encodeConstructorArgs("Map", undefined, [Array.from(obj.entries())]);
   }
-  
+
   if (obj instanceof RegExp) {
     return _encodeConstructorArgs("RegExp", undefined, [obj.source, obj.flags]);
   }
-  
+
   if (obj instanceof Error) {
     return _encodeConstructorArgs(obj.constructor.name, undefined, [obj.message]);
   }
-  
+
   if (obj instanceof Date) {
     return _encodeConstructorArgs("Date", undefined, [obj.toISOString()]);
   }
-  
+
   // Check for LangChain Send objects
   if (obj && typeof obj === "object" && (obj as Record<string, unknown>).lg_name === "Send") {
     const sendObj = obj as { node: string; args: unknown };
     return { node: sendObj.node, args: sendObj.args };
   }
-  
+
   return obj;
 }
 
@@ -153,6 +202,17 @@ async function _loads(value: unknown): Promise<unknown> {
     return undefined;
   }
   
+  // Handle special number types
+  if (revivedObj.lc === 2 && revivedObj.type === "NaN") {
+    return NaN;
+  }
+  if (revivedObj.lc === 2 && revivedObj.type === "Infinity") {
+    return Infinity;
+  }
+  if (revivedObj.lc === 2 && revivedObj.type === "-Infinity") {
+    return -Infinity;
+  }
+
   // Handle constructor types (Set, Map, RegExp, Error)
   if (
     revivedObj.lc === 2 &&

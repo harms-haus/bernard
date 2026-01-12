@@ -12,7 +12,9 @@
     "build": "cd core && npm run build",
     "start": "cd core && npm run start",
     "check": "bash scripts/check.sh",
-    "type-check": "cd core && npm run type-check"
+    "type-check": "cd core && npm run type-check",
+    "test": "cd core && npm run test & cd services/bernard-ui && npm run tests",
+    "test:coverage": "cd core && npm run test:coverage & cd services/bernard-ui && npm run tests:coverage"
   },
   "repository": {
     "type": "git",
