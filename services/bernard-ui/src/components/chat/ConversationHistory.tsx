@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { TypedText } from './TypedText';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 import { useThreads } from '../../providers/ThreadProvider';
@@ -50,7 +51,7 @@ export function useSidebarState() {
   return [isOpen, setIsOpen] as const;
 }
 
-function ThreadItem({
+function ThreadItemInner({
   thread,
   isActive,
   onClick,
@@ -161,7 +162,11 @@ function ThreadItem({
               onClick(thread.id);
             }}
           >
-            <p className="truncate text-sm">{thread.name || `Thread ${thread.id.slice(0, 8)}`}</p>
+            <TypedText
+              text={thread.name || `Thread ${thread.id.slice(0, 8)}`}
+              speed={10}
+              className="truncate text-sm"
+            />
           </Button>
 
           <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center">
@@ -227,6 +232,15 @@ function ThreadItem({
   );
 }
 
+// Custom comparator for ThreadItem - only re-render if id, name, or isActive changes
+const areThreadItemEqual = (prev: { thread: ThreadListItem; isActive: boolean }, next: { thread: ThreadListItem; isActive: boolean }) => {
+  return prev.thread.id === next.thread.id &&
+    prev.thread.name === next.thread.name &&
+    prev.isActive === next.isActive;
+};
+
+const ThreadItem = memo(ThreadItemInner, areThreadItemEqual);
+
 function ThreadList({
   threads,
   activeId,
@@ -253,6 +267,18 @@ function ThreadList({
   );
 }
 
+// Custom comparator to prevent re-renders when thread objects are replaced but content is same
+const areThreadsEqual = (prev: { threads: ThreadListItem[]; activeId: string | null }, next: { threads: ThreadListItem[]; activeId: string | null }) => {
+  if (prev.activeId !== next.activeId) return false;
+  if (prev.threads.length !== next.threads.length) return false;
+  return prev.threads.every((t, i) => {
+    const nextT = next.threads[i];
+    return t.id === nextT.id && t.name === nextT.name;
+  });
+};
+
+const MemoizedThreadList = memo(ThreadList, areThreadsEqual);
+
 function ThreadHistoryLoading() {
   return (
     <div className="flex flex-col w-full gap-2 px-2">
@@ -278,9 +304,9 @@ export function ConversationHistory() {
     }
   }, [getThreads, threads.length]);
 
-  const handleThreadClick = (id: string) => {
+  const handleThreadClick = useCallback((id: string) => {
     setSearchParams({ threadId: id });
-  };
+  }, []);
 
   const handleNewChat = async () => {
     setIsCreating(true);
@@ -323,7 +349,7 @@ export function ConversationHistory() {
           {threadsLoading ? (
             <ThreadHistoryLoading />
           ) : (
-            <ThreadList
+            <MemoizedThreadList
               threads={threads}
               activeId={threadId || null}
               onThreadClick={handleThreadClick}
@@ -380,7 +406,7 @@ export function ConversationHistory() {
           {threadsLoading ? (
             <ThreadHistoryLoading />
           ) : (
-            <ThreadList
+            <MemoizedThreadList
               threads={threads}
               activeId={threadId || null}
               onThreadClick={(id) => {

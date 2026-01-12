@@ -39,6 +39,7 @@ function logService(service: string, message: string, color: keyof typeof colors
 }
 
 let nextDevProcess: ChildProcess | null = null
+let utilityWorkerProcess: ChildProcess | null = null
 let shuttingDown = false
 
 function spawnProcess(
@@ -128,11 +129,33 @@ async function startNextDev(): Promise<ChildProcess> {
   return nextProcess
 }
 
+async function startUtilityWorker(): Promise<ChildProcess> {
+  log('\n=== Starting Utility Queue Worker ===\n', 'magenta')
+
+  const workerProcess = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
+    cwd: CORE_DIR,
+    name: 'utility-worker',
+    color: 'yellow',
+    env: {
+      ...process.env,
+      REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
+    },
+  })
+
+  return workerProcess
+}
+
 async function stopAllServices(): Promise<void> {
   if (shuttingDown) return
   shuttingDown = true
 
   log('\n=== Stopping Services ===\n', 'magenta')
+
+  if (utilityWorkerProcess && !utilityWorkerProcess.killed) {
+    logService('utility-worker', 'Sending SIGINT...', 'yellow')
+    utilityWorkerProcess.kill('SIGINT')
+    await sleep(1000)
+  }
 
   if (nextDevProcess && !nextDevProcess.killed) {
     logService('next-dev', 'Sending SIGINT...', 'yellow')
@@ -168,6 +191,10 @@ async function main() {
     log('\n=== Service Queue Architecture ===', 'magenta')
     log('Services are now managed via queue', 'cyan')
     log('Access dashboard to start services: http://localhost:3456', 'green')
+
+    log('\n=== Starting Utility Queue Worker ===\n', 'magenta')
+    utilityWorkerProcess = await startUtilityWorker()
+
     log('\n=== Starting Next.js Dev Server ===\n', 'magenta')
 
     nextDevProcess = await startNextDev()
