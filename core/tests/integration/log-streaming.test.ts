@@ -35,9 +35,9 @@ describe('Integration: Log Streaming', () => {
     })
 
     it('should handle service ID normalization', () => {
-      const logPath1 = logStreamer.getLogPath('bernard-api')
-      const logPath2 = logStreamer.getLogPath('BERNARD-API')
-      const logPath3 = logStreamer.getLogPath('bernard_api')
+      const logPath1 = logStreamer.getLogPath('bernard_ui')
+      const logPath2 = logStreamer.getLogPath('BERNARD-UI')
+      const logPath3 = logStreamer.getLogPath('bernard-ui')
 
       expect(logPath1).toBe(logPath2)
       expect(logPath1).toBe(logPath3)

@@ -30,10 +30,10 @@ describe('Integration: Service Commands', () => {
   })
 
   describe('check command', () => {
-    it('should return passed for bernard-api with check config', async () => {
-      const result = await serviceManager.check('bernard-api')
+    it('should return passed for core with check config', async () => {
+      const result = await serviceManager.check('core')
       expect(result).toBeDefined()
-      expect(result.service).toBe('bernard-api')
+      expect(result.service).toBe('core')
       expect(result.passed).toBeTypeOf('boolean')
     })
 
@@ -44,8 +44,8 @@ describe('Integration: Service Commands', () => {
     })
 
     it('should include check details for services with check config', async () => {
-      const result = await serviceManager.check('bernard-api')
-      expect(result.service).toBe('bernard-api')
+      const result = await serviceManager.check('core')
+      expect(result.service).toBe('core')
       expect(result.details).toBeDefined()
       expect(result.details?.typeCheck).toBeDefined()
       expect(result.details?.lint).toBeDefined()
@@ -71,10 +71,10 @@ describe('Integration: Service Commands', () => {
 
     it('should return different statuses for different services', async () => {
       const redisStatus = await serviceManager.getStatus('redis')
-      const apiStatus = await serviceManager.getStatus('bernard-api')
+      const coreStatus = await serviceManager.getStatus('core')
 
-      expect(redisStatus?.id).not.toBe(apiStatus?.id)
-      expect(redisStatus?.port).not.toBe(apiStatus?.port)
+      expect(redisStatus?.id).not.toBe(coreStatus?.id)
+      expect(redisStatus?.port).not.toBe(coreStatus?.port)
     })
   })
 
@@ -160,11 +160,11 @@ describe('Integration: Service Commands', () => {
     })
 
     it('should have valid node service configuration', () => {
-      const api = SERVICES['bernard-api']
-      expect(api.type).toBe('node')
-      expect(api.directory).toBe('services/bernard-api')
-      expect(api.script).toBeDefined()
-      expect(api.healthPath).toBe('/health')
+      const core = SERVICES['core']
+      expect(core.type).toBe('node')
+      expect(core.directory).toBe('core')
+      expect(core.script).toBeDefined()
+      expect(core.healthPath).toBe('/api/health')
     })
 
     it('should have valid python service configuration', () => {

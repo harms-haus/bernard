@@ -27,14 +27,14 @@ describe('ProcessManager', () => {
 
   describe('getPid', () => {
     it('should return null for service without pid file', async () => {
-      const pid = await processManager.getPid(SERVICES['bernard-api'])
+      const pid = await processManager.getPid(SERVICES['core'])
       expect(pid).toBeNull()
     })
   })
 
   describe('isRunning', () => {
     it('should return false for non-running service', async () => {
-      const isRunning = await processManager.isRunning(SERVICES['bernard-api'])
+      const isRunning = await processManager.isRunning(SERVICES['core'])
       expect(isRunning).toBe(false)
     })
   })
@@ -54,7 +54,7 @@ describe('ProcessManager', () => {
 
   describe('stop', () => {
     it('should return true for non-running service', async () => {
-      const result = await processManager.stop(SERVICES['bernard-api'])
+      const result = await processManager.stop(SERVICES['core'])
       expect(result).toBe(true)
     })
   })

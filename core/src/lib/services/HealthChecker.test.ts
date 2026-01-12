@@ -34,18 +34,6 @@ describe('HealthChecker', () => {
       expect(status.service).toBe('redis')
       expect(status.lastChecked).toBeInstanceOf(Date)
     })
-
-    it('should return health status for bernard-api', async () => {
-      const status = await healthChecker.check('bernard-api')
-      expect(status).toBeDefined()
-      expect(status.service).toBe('bernard-api')
-      expect(status.lastChecked).toBeInstanceOf(Date)
-    })
-
-    it('should return down status for non-running service', async () => {
-      const status = await healthChecker.check('bernard-api')
-      expect(status.status).toMatch(/^(up|down|starting|degraded)$/)
-    })
   })
 
   describe('checkAll', () => {

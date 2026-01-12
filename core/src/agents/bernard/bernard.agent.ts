@@ -1,6 +1,6 @@
 import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 
-import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
+import { RedisSaver } from "@/lib/checkpoint";
 import { initChatModel } from "langchain/chat_models/universal";
 
 import { getSettings } from "@/lib/config/settingsCache";
