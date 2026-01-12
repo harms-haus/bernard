@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { RedisSaver } from "../redis-saver.js";
+import { RedisSaver } from "./redis-saver";
 
 // Helper to convert Uint8Array to base64 string (matching redis-saver implementation)
 function toBase64(buffer: Uint8Array): string {

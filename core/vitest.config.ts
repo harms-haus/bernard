@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['**/*.test.ts'],
+    include: ['**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next', 'dist'],
     coverage: {
       provider: 'v8',
@@ -15,9 +15,15 @@ export default defineConfig({
         '.next/',
         'dist/',
         '**/*.d.ts',
-        '**/*.test.ts',
+        '**/*.test.{ts,tsx}',
         '**/*.test-setup.ts',
       ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
     },
     setupFiles: ['./vitest.setup.ts'],
     testTimeout: 30000,

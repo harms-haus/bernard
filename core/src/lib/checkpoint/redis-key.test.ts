@@ -6,7 +6,7 @@ import {
   fromStorageSafeId,
   toStorageSafeNs,
   fromStorageSafeNs,
-} from "../redis-key.js";
+} from "./redis-key";
 
 describe("redis-key", () => {
   describe("formatCheckpointKey/parseCheckpointKey round-trip", () => {
