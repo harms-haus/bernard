@@ -577,7 +577,7 @@ export class SettingsManager {
   // --- Default Factories ---
 
   getDefaultModels(): ModelsSettings {
-    const DEFAULT_MODEL = "kwaipilot/KAT-coder-v1:free";
+    const DEFAULT_MODEL = "gpt-3.5-turbo";
     
     const ollamaBaseUrl = this.getFromEnv("OLLAMA_BASE_URL") ?? "http://localhost:11434/v1";
     const ollamaApiKey = this.getFromEnv("OLLAMA_API_KEY");

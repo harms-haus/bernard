@@ -7,6 +7,7 @@
 import { getRedis } from '@/lib/infra/redis'
 import { resolveModel } from '../config/models'
 import { initChatModel } from 'langchain/chat_models/universal'
+import { Client } from '@langchain/langgraph-sdk'
 import { childLogger } from '../logging/logger'
 import type { LogContext } from '../logging/logger'
 
@@ -101,6 +102,18 @@ export async function processThreadNamingJob(
     };
     
     await redis.set(threadKey, JSON.stringify(threadData));
+    
+    // Also update via LangGraph SDK so UI sees the new name
+    const client = new Client({
+      apiUrl: process.env['LANGGRAPH_API_URL'] ?? "http://localhost:2024",
+    });
+    
+    await client.threads.update(threadId, {
+      metadata: {
+        name: title,
+        updatedAt: new Date().toISOString(),
+      },
+    });
     
     log.info({ threadId, title }, "[ThreadNaming] ✓ Thread named successfully");
     
