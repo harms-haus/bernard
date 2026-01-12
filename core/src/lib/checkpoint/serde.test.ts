@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dumpsTyped, loadsTyped, isUnserialized, deserializeUnserialized } from "../serde.js";
+import { dumpsTyped, loadsTyped, isUnserialized, deserializeUnserialized } from "./serde";
 
 describe("serde", () => {
   describe("dumpsTyped/loadsTyped round-trip", () => {
