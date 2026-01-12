@@ -33,8 +33,8 @@ describe('LogStreamer', () => {
     })
 
     it('should handle underscores', () => {
-      const path = logStreamer.getLogPath('bernard_api')
-      expect(path).toContain('bernard-api.log')
+      const path = logStreamer.getLogPath('bernard_ui')
+      expect(path).toContain('bernard-ui.log')
     })
   })
 
