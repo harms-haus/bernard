@@ -18,20 +18,10 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number, la
   const ms = asMs(timeoutMs);
   if (!ms || ms <= 0) return promise;
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  return new Promise<T>((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-
-    promise
-      .then((value) => {
-        if (timer) clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((err) => {
-        if (timer) clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      });
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
   });
+
+  return Promise.race([promise, timeoutPromise]);
 }
 

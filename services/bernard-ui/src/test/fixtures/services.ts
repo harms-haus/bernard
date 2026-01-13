@@ -12,7 +12,11 @@ export function mockServiceStatus(
     },
   }
 
-  return { ...base, ...overrides }
+  return {
+    ...base,
+    ...overrides,
+    health: { ...base.health, ...overrides.health },
+  };
 }
 
 export function mockServiceHealth(

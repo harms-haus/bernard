@@ -10,13 +10,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'node_modules/',
         '.next/',
         'dist/',
         '**/*.d.ts',
         '**/*.test.{ts,tsx}',
-        '**/*.test-setup.ts',
+        '**/vitest.setup.ts',
       ],
       thresholds: {
         lines: 80,

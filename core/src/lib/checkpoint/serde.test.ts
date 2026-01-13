@@ -182,7 +182,7 @@ describe("serde", () => {
       expect(result).toBeInstanceOf(Set);
     });
 
-    it("should handle nested unserialized objects", async () => {
+    it("should convert Map from lc: 1 format", async () => {
       const unserialized = {
         lc: 1,
         type: "constructor",

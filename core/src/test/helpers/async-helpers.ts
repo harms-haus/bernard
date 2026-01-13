@@ -22,9 +22,10 @@ export async function retry<T>(
   fn: () => Promise<T>,
   options: { maxAttempts?: number; delay?: number; shouldRetry?: (error: Error) => boolean } = {}
 ): Promise<T> {
-  const { maxAttempts = 3, delay = 1000, shouldRetry = () => true } = options
+  const { maxAttempts: rawMaxAttempts = 3, delay = 1000, shouldRetry = () => true } = options
+  const maxAttempts = Math.max(1, rawMaxAttempts)
 
-  let lastError: Error
+  let lastError: Error | undefined
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -40,7 +41,8 @@ export async function retry<T>(
     }
   }
 
-  throw lastError!
+  // This line is unreachable when maxAttempts >= 1, but satisfies TypeScript
+  throw lastError ?? new Error('Retry failed')
 }
 
 export function mockDelay(ms: number): Promise<void> {

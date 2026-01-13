@@ -39,9 +39,8 @@ export function createRedisMock() {
 
 export function createConnectedRedisMock() {
   const mock = createRedisMock()
-  // Auto-connect on creation
-  mock.connect.mockImplementation(async () => {
-    // Implementation from createRedisMock
-  })
+  // Auto-connect by calling connect, then clear call history
+  mock.connect()
+  mock.connect.mockClear()
   return mock
 }

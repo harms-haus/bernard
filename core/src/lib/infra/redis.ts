@@ -2,15 +2,17 @@ import { Redis } from "ioredis";
 
 const globalForRedis = global as unknown as { redis?: Redis };
 
+export function retryStrategy(times: number): number {
+  // Linear backoff with cap at 5 seconds
+  const delay = Math.min(times * 200, 5000);
+  return delay;
+}
+
 export function getRedis(): Redis {
   if (!globalForRedis.redis) {
     const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
     globalForRedis.redis = new Redis(url, {
-      retryStrategy: (times: number) => {
-        // Retry with exponential backoff, max 5 seconds delay
-        const delay = Math.min(times * 200, 5000);
-        return delay;
-      },
+      retryStrategy,
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true, // Don't connect until actually needed - prevents startup errors

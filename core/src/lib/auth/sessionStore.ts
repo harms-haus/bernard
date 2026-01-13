@@ -23,7 +23,7 @@ export class SessionStore {
   }
 
   async create(userId: string, metadata: { userAgent?: string; ipAddress?: string } = {}): Promise<SessionRecord> {
-    const id = crypto.randomBytes(18).toString("hex");
+    const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000).toISOString();
 

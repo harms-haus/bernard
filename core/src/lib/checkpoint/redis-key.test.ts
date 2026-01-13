@@ -81,7 +81,7 @@ describe("redis-key", () => {
       expect(parsed.checkpointId).toBe(checkpointId);
     });
 
-    it("should handle backslashes in IDs (not escaped)", () => {
+    it("should escape backslashes in IDs to preserve them through parsing", () => {
       const threadId = "thread\\with\\backslash";
       const checkpointNs = "";
       const checkpointId = "cp\\123";
@@ -139,8 +139,7 @@ describe("redis-key", () => {
       expect(fromStorageSafeId("a\\:b\\:c")).toBe("a:b:c");
     });
 
-    it("should preserve backslashes (not escaped)", () => {
-      // Backslashes are escaped to preserve them through round-trip
+    it("should escape backslashes to preserve them through round-trip", () => {
       // "a\\b" (JS string with single backslash) becomes "a\\\\b" when escaped
       expect(toStorageSafeId("a\\b")).toBe("a\\\\b");
       expect(fromStorageSafeId("a\\\\b")).toBe("a\\b");
