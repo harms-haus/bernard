@@ -147,26 +147,38 @@ export class TaskRecordKeeper {
     const completedKey = this.key("tasks:user:completed");
     const archivedKey = this.key("tasks:user:archived");
 
+    // Get all tasks for counting total
+    const allActiveTasks = await this.redis.zrevrange(activeKey, 0, -1, "WITHSCORES");
+    const allCompletedTasks = await this.redis.zrevrange(completedKey, 0, -1, "WITHSCORES");
+    const allArchivedTasks = includeArchived ? await this.redis.zrevrange(archivedKey, 0, -1, "WITHSCORES") : [];
+
+    const totalTasks = [
+      ...allActiveTasks.filter((_, i) => i % 2 === 0 && allActiveTasks[i]?.startsWith(`${userId}:`)),
+      ...allCompletedTasks.filter((_, i) => i % 2 === 0 && allCompletedTasks[i]?.startsWith(`${userId}:`)),
+      ...(includeArchived ? allArchivedTasks.filter((_, i) => i % 2 === 0 && allArchivedTasks[i]?.startsWith(`${userId}:`)) : [])
+    ].length;
+
+    // Get paginated tasks
     const activeTasks = await this.redis.zrevrange(activeKey, offset, offset + limit - 1, "WITHSCORES");
     const completedTasks = await this.redis.zrevrange(completedKey, offset, offset + limit - 1, "WITHSCORES");
     const archivedTasks = includeArchived ? await this.redis.zrevrange(archivedKey, offset, offset + limit - 1, "WITHSCORES") : [];
 
-    const allTasks = [
+    const paginatedTasks = [
       ...activeTasks.filter((_, i) => i % 2 === 0 && activeTasks[i]?.startsWith(`${userId}:`)).map((item) => item?.replace(`${userId}:`, "")),
       ...completedTasks.filter((_, i) => i % 2 === 0 && completedTasks[i]?.startsWith(`${userId}:`)).map((item) => item?.replace(`${userId}:`, "")),
       ...(includeArchived ? archivedTasks.filter((_, i) => i % 2 === 0 && archivedTasks[i]?.startsWith(`${userId}:`)).map((item) => item?.replace(`${userId}:`, "")) : [])
     ];
 
     const tasks = await Promise.all(
-      allTasks.slice(0, limit).map((taskId) => this.getTask(taskId))
+      paginatedTasks.slice(0, limit).map((taskId) => this.getTask(taskId))
     );
 
     const validTasks = tasks.filter((task): task is Task => task !== null);
 
     return {
       tasks: validTasks,
-      total: allTasks.length,
-      hasMore: allTasks.length > limit
+      total: totalTasks,
+      hasMore: offset + limit < totalTasks
     };
   }
 

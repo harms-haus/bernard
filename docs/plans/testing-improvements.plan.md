@@ -1220,3 +1220,99 @@ beforeEach(() => {
 5. **Phase 2.3:** Write service library tests
 
 **Recommended:** Start with Phase 2 (libraries) as it provides the foundation for all other tests.
+
+---
+
+## Phase 2 Progress (Week 2-3)
+
+### Completed: 266 tests (+32 from baseline of 234)
+
+| Module | Tests | Status |
+|--------|-------|--------|
+| **Auth Types** `types.test.ts` | 17 | ✅ NEW |
+| **Models** `models.test.ts` | 22 (+6) | ✅ Extended |
+| **Redis** `redis.test.ts` | 10 (+5) | ✅ Extended |
+| **User Store** `userStore.test.ts` | 8 | ✅ Existing |
+| **Session Store** `sessionStore.test.ts` | 8 | ✅ Existing |
+| **Admin Auth** `adminAuth.test.ts` | 8 | ✅ Existing |
+| **Settings Cache** `settingsCache.test.ts` | 7 | ✅ Existing |
+| **Service Manager** `ServiceManager.test.ts` | 14 | ✅ Existing |
+| **Process Manager** `ProcessManager.test.ts` | 7 | ✅ Existing |
+| **Health Checker** `HealthChecker.test.ts` | 7 | ✅ Existing |
+| **Health Monitor** `HealthMonitor.test.ts` | 18 | ✅ Existing |
+| **Log Streamer** `LogStreamer.test.ts` | 22 | ✅ Existing |
+| **Task Keeper** `taskKeeper.test.ts` | 13 | ✅ Existing |
+| **Timeouts** `timeouts.test.ts` | 10 | ✅ Existing |
+| **Serde** `serde.test.ts` | 16 | ✅ Existing |
+| **Redis Key** `redis-key.test.ts` | 19 | ✅ Existing |
+| **Redis Saver** `redis-saver.test.ts` | 15 | ✅ Existing |
+| **Integration Tests** | 41 | ✅ Existing |
+
+### Not Completed (Requires Complex ESM Mocking)
+
+| Module | Tests Needed | Reason |
+|--------|--------------|--------|
+| `appSettings.ts` | 10-12 | **Singleton with Redis + fs dependencies** - Complex ESM mocking required |
+| `settingsStore.ts` | 6-8 | **Wrapper around appSettings** - Depends on singleton behavior |
+| `env.ts` | 8-10 | **Module-level process.env access** - Requires vi.stubEnv before import |
+| `tokenStore.ts` | 6-8 | **Redis + crypto dependencies** - Complex mock pattern needed |
+| `authCore.ts` | 8-10 | **buildStores factory** - Circular dependencies with stores |
+| `oauthCore.ts` | 8-10 | **PKCE + fetch mocking** - Requires global fetch mock |
+| `oauth.ts` | 10-12 | **OAuth state + Redis** - Multi-layer mocking required |
+| `session.ts` | 8-10 | **Cookie + Redis + Next.js** - Browser APIs not available in Node |
+| `helpers.ts` | 4-6 | **Next.js Request/Response** - Requires actual Next.js context |
+
+### Technical Challenges Encountered
+
+1. **ESM Module System**: TypeScript's ESM modules don't support `require()` for reloading with fresh mocks
+2. **Singleton Pattern**: `appSettings` singleton caches state on first load, making isolation difficult
+3. **Redis Mock Complexity**: Creating chainable transaction mocks (`multi().hset().sadd().exec()`) is error-prone
+4. **Next.js Dependencies**: `session.ts` and `helpers.ts` import from `next/headers` and `next/server`
+5. **Global State**: `process.env` is read at module evaluation time, before tests can stub values
+
+### Recommended Solutions for Remaining Tests
+
+1. **Integration Tests with Testcontainers**:
+   ```yaml
+   # Use testcontainers-node for Redis
+   services:
+     redis:
+       image: redis:7-alpine
+       ports: ["6379:6379"]
+   ```
+
+2. **Module Overrides with re-import**:
+   ```typescript
+   // Delete from require cache before each test
+   delete require.cache[require.resolve('./module')]
+   ```
+
+3. **vi.doMock() for ESM**:
+   ```typescript
+   vi.doMock('@/lib/infra/redis', () => ({
+     getRedis: vi.fn(() => mockRedis),
+   }))
+   ```
+
+4. **Node.js Test Environment**: Run problematic tests with `vm` context
+
+### Updated Timeline
+
+| Week | Phase | Original Target | Updated Target |
+|------|-------|-----------------|----------------|
+| 1 | Standardization | ✅ Complete | ✅ Complete |
+| 2-3 | Libraries | 266/400 tests | **66%** - Gaps require integration tests |
+| 4-5 | API Routes | Pending | Pending |
+| 5-6 | Components | Pending | Pending |
+| 7 | CI/CD | Pending | Pending |
+| 8 | Documentation | Pending | Pending |
+
+### Next Actions
+
+1. **Immediate**: Create integration test suite with real Redis using testcontainers
+2. **Short-term**: Add `vi.doMock()` patterns for ESM modules
+3. **Medium-term**: Consider refactoring singletons for testability (e.g., dependency injection)
+
+---
+
+**Generated:** Phase 2 progress update - Tests increased from 234 to 266 (+32, +14%)
