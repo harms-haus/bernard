@@ -40,6 +40,7 @@ function logService(service: string, message: string, color: keyof typeof colors
 
 let nextDevProcess: ChildProcess | null = null
 let utilityWorkerProcess: ChildProcess | null = null
+let serviceWorkerProcess: ChildProcess | null = null
 let shuttingDown = false
 
 function spawnProcess(
@@ -145,11 +146,33 @@ async function startUtilityWorker(): Promise<ChildProcess> {
   return workerProcess
 }
 
+async function startServiceWorker(): Promise<ChildProcess> {
+  log('\n=== Starting Service Queue Worker ===\n', 'magenta')
+
+  const workerProcess = spawnProcess('npx', ['tsx', 'scripts/service-worker.ts'], {
+    cwd: CORE_DIR,
+    name: 'service-worker',
+    color: 'green',
+    env: {
+      ...process.env,
+      REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
+    },
+  })
+
+  return workerProcess
+}
+
 async function stopAllServices(): Promise<void> {
   if (shuttingDown) return
   shuttingDown = true
 
   log('\n=== Stopping Services ===\n', 'magenta')
+
+  if (serviceWorkerProcess && !serviceWorkerProcess.killed) {
+    logService('service-worker', 'Sending SIGINT...', 'green')
+    serviceWorkerProcess.kill('SIGINT')
+    await sleep(1000)
+  }
 
   if (utilityWorkerProcess && !utilityWorkerProcess.killed) {
     logService('utility-worker', 'Sending SIGINT...', 'yellow')
@@ -180,17 +203,14 @@ async function main() {
   try {
     log('Checking prerequisites...', 'cyan')
 
-    const redisOk = await checkRedis()
-    if (!redisOk) {
-      log('Redis is not running. Starting Redis...', 'yellow')
-      await startRedisDocker()
-    } else {
-      log('Redis is already running', 'green')
-    }
+    await ensureRedisRunning()
 
     log('\n=== Service Queue Architecture ===', 'magenta')
     log('Services are now managed via queue', 'cyan')
     log('Access dashboard to start services: http://localhost:3456', 'green')
+
+    log('\n=== Starting Service Queue Worker ===\n', 'magenta')
+    serviceWorkerProcess = await startServiceWorker()
 
     log('\n=== Starting Utility Queue Worker ===\n', 'magenta')
     utilityWorkerProcess = await startUtilityWorker()
@@ -225,14 +245,87 @@ async function main() {
 async function checkRedis(): Promise<boolean> {
   try {
     const { execSync } = await import('node:child_process')
-    execSync('docker inspect -f "{{.State.Running}}" bernard-redis 2>/dev/null', {
+
+    const containerRunning = execSync(
+      'docker inspect -f "{{.State.Running}}" bernard-redis 2>/dev/null',
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim() === 'true'
+
+    if (!containerRunning) {
+      return false
+    }
+
+    execSync('docker exec bernard-redis redis-cli ping', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+
     return true
   } catch {
     return false
   }
+}
+
+async function ensureRedisRunning(): Promise<void> {
+  const { execSync } = await import('node:child_process')
+
+  log('Checking Redis status...', 'cyan')
+
+  try {
+    execSync('docker inspect -f "{{.Name}}" bernard-redis 2>/dev/null', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    log('Redis container exists', 'cyan')
+  } catch {
+    log('Redis container not found. Creating...', 'yellow')
+    await startRedisDocker()
+    return
+  }
+
+  try {
+    execSync('docker exec bernard-redis redis-cli ping', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    log('Redis is already running and healthy', 'green')
+    return
+  } catch {
+    log('Redis is not responding. Restarting...', 'yellow')
+  }
+
+  try {
+    execSync('docker restart bernard-redis', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+  } catch (error) {
+    log(`Failed to restart Redis: ${error}`, 'red')
+    log('Attempting to recreate container...', 'yellow')
+    execSync('docker rm -f bernard-redis 2>/dev/null || true', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    await startRedisDocker()
+    return
+  }
+
+  let attempts = 0
+  while (attempts < 30) {
+    try {
+      execSync('docker exec bernard-redis redis-cli ping', {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      log('Redis is ready!', 'green')
+      return
+    } catch {
+      await sleep(1000)
+      attempts++
+    }
+  }
+
+  throw new Error('Redis health check failed after restart')
 }
 
 async function startRedisDocker(): Promise<void> {

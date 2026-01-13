@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { clearSessionCookie } from '@/lib/auth/session'
+import { error, ok } from '../../../../lib/api/response'
+import { clearSessionCookie } from '../../../../lib/auth/session'
 
-export const runtime = 'nodejs'
-
-export async function POST(request: NextRequest) {
+export async function handleLogout(): Promise<NextResponse> {
   try {
     await clearSessionCookie()
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Logout error:', error)
-    return NextResponse.json({ error: 'Failed to logout' }, { status: 500 })
+    return ok({ success: true })
+  } catch {
+    return error('Failed to logout', 500)
   }
+}
+
+export async function POST(_request: NextRequest) {
+  return handleLogout()
 }

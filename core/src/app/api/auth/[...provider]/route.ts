@@ -9,29 +9,28 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   const providerPath = resolvedParams.provider;
-  const action = providerPath[0];
-  const rest = providerPath.slice(1);
+  const provider = providerPath[0];
+  const action = providerPath[1];
+  const rest = providerPath.slice(2);
 
-  if (!VALID_PROVIDERS.includes(providerPath[0])) {
+  if (!VALID_PROVIDERS.includes(provider)) {
     return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
   }
-
-  const provider = providerPath[0];
 
   switch (action) {
     case 'login':
       const state = rest[0] || '';
       const callbackUrl = rest[1] || '/status';
       const authUrl = `/bernard/api/auth/${provider}/login?state=${encodeURIComponent(state)}&callbackUrl=${encodeURIComponent(callbackUrl)}`;
-      return NextResponse.redirect(new URL(authUrl, request.url));
+      return NextResponse.redirect(new URL(authUrl, request.url), { status: 302 });
 
     case 'callback':
       const searchParams = new URL(request.url).searchParams;
       const error = searchParams.get('error');
       if (error) {
-        return NextResponse.redirect(new URL(`/login?error=${error}`, request.url));
+        return NextResponse.redirect(new URL(`/login?error=${error}`, request.url), { status: 302 });
       }
-      return NextResponse.redirect(new URL('/status', request.url));
+      return NextResponse.redirect(new URL('/status', request.url), { status: 302 });
 
     default:
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -43,7 +42,7 @@ export async function POST(
   { params }: { params: Promise<{ provider: string[] }> }
 ) {
   const resolvedParams = await params;
-  const action = resolvedParams.provider[0];
+  const action = resolvedParams.provider[1];
 
   if (action === 'logout') {
     const response = NextResponse.json({ success: true });

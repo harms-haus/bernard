@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser, setSessionCookie, clearSessionCookie } from '@/lib/auth/session'
 import { getOAuthConfig, createOAuthState, validateOAuthState, exchangeCodeForToken, fetchUserInfo, createOAuthSession } from '@/lib/auth/oauth'
+import { validateReturnTo } from './login/route'
 
 export const runtime = 'nodejs'
 
@@ -81,13 +82,18 @@ export async function GET(request: NextRequest) {
     case 'admin-login': {
       const key = searchParams.get('key')
       const returnTo = searchParams.get('returnTo') || '/status'
-      
+
       if (!key) {
         return NextResponse.json({ error: 'Missing key parameter' }, { status: 400 })
       }
 
+      // Validate returnTo for security (prevent open redirect)
+      if (!validateReturnTo(returnTo)) {
+        return NextResponse.json({ error: 'Invalid returnTo parameter' }, { status: 400 })
+      }
+
       const ADMIN_API_KEY = process.env.ADMIN_API_KEY
-      
+
       if (key !== ADMIN_API_KEY) {
         return NextResponse.json({ error: 'Invalid admin key' }, { status: 401 })
       }

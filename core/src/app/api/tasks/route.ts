@@ -1,110 +1,126 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth/helpers';
-import { logger } from '@/lib/logging/logger';
-import { TaskRecordKeeper, type TaskListQuery } from '@/lib/infra';
-import { getRedis } from '@/lib/infra';
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '../../../lib/auth/helpers'
+import { getTaskKeeper } from '../../../lib/api/factory'
+import { error, ok, badRequest } from '../../../lib/api/response'
 
-function getTaskKeeper() {
-  return new TaskRecordKeeper(getRedis());
+interface TaskActionBody {
+  action?: unknown
+  taskId?: unknown
+}
+
+export async function handleGetTasks(request: NextRequest): Promise<NextResponse> {
+  try {
+    const authUser = await requireAuth(request)
+    if (authUser instanceof NextResponse) return authUser
+
+    const userId = authUser.user.id
+    const searchParams = request.nextUrl.searchParams
+    const includeArchived = searchParams.get('includeArchived') === 'true'
+    const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const offset = parseInt(searchParams.get('offset') || '0', 10)
+
+    const keeper = getTaskKeeper()
+    const result = await keeper.listTasks({ userId, includeArchived, limit, offset })
+
+    const responseData = {
+      items: result.tasks,
+      total: result.total,
+      limit,
+      offset,
+    }
+    return NextResponse.json({ success: true, data: responseData })
+  } catch (err) {
+    console.error('Failed to list tasks:', err)
+    return error('Internal server error', 500)
+  }
+}
+
+export async function handlePostTaskAction(
+  request: NextRequest,
+  body: TaskActionBody
+): Promise<NextResponse> {
+  try {
+    const authUser = await requireAuth(request)
+    if (authUser instanceof NextResponse) return authUser
+
+    const userId = authUser.user.id
+    const { action, taskId } = body
+
+    if (!taskId || !action) {
+      return badRequest('taskId and action are required')
+    }
+
+    const keeper = getTaskKeeper()
+
+    if (action !== 'cancel') {
+      return badRequest('Invalid action')
+    }
+
+    const task = await keeper.getTask(taskId as string)
+    if (!task) {
+      return error('Task not found', 404)
+    }
+    if (task.userId !== userId) {
+      return error('Forbidden', 403)
+    }
+    const success = await keeper.cancelTask(taskId as string)
+    if (!success) {
+      return error('Cannot cancel task', 400)
+    }
+
+    return ok({ success: true })
+  } catch (err) {
+    console.error('Failed to perform task action:', err)
+    return error('Internal server error', 500)
+  }
+}
+
+export async function handleDeleteTask(
+  request: NextRequest,
+  searchParams: URLSearchParams
+): Promise<NextResponse> {
+  try {
+    const authUser = await requireAuth(request)
+    if (authUser instanceof NextResponse) return authUser
+
+    const userId = authUser.user.id
+    const taskId = searchParams.get('taskId')
+
+    if (!taskId) {
+      return badRequest('taskId is required')
+    }
+
+    const keeper = getTaskKeeper()
+    const task = await keeper.getTask(taskId)
+
+    if (!task) {
+      return error('Task not found', 404)
+    }
+    if (task.userId !== userId) {
+      return error('Forbidden', 403)
+    }
+
+    const success = await keeper.deleteTask(taskId)
+    if (!success) {
+      return error('Cannot delete task', 400)
+    }
+
+    return ok({ success: true })
+  } catch (err) {
+    console.error('Failed to delete task:', err)
+    return error('Internal server error', 500)
+  }
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const authUser = await requireAuth(request);
-    if (authUser instanceof NextResponse) return authUser;
-
-    const userId = authUser.user.id;
-    const searchParams = request.nextUrl.searchParams;
-    const includeArchived = searchParams.get('includeArchived') === 'true';
-    const limit = searchParams.get('limit') ? Number(searchParams.get('limit')) : 50;
-    const offset = searchParams.get('offset') ? Number(searchParams.get('offset')) : 0;
-
-    const keeper = getTaskKeeper();
-    const query: TaskListQuery = {
-      userId,
-      includeArchived,
-      limit,
-      offset
-    };
-    const result = await keeper.listTasks(query);
-
-    return NextResponse.json(result);
-  } catch (error) {
-    logger.error({ error }, 'Failed to list tasks');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return handleGetTasks(request)
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const authUser = await requireAuth(request);
-    if (authUser instanceof NextResponse) return authUser;
-
-    const userId = authUser.user.id;
-    const body = await request.json() as { action: string; taskId: string };
-    const { action, taskId } = body;
-
-    if (!taskId || !action) {
-      return NextResponse.json({ error: 'taskId and action are required' }, { status: 400 });
-    }
-
-    const keeper = getTaskKeeper();
-
-    switch (action) {
-      case 'cancel': {
-        const task = await keeper.getTask(taskId);
-        if (!task) {
-          return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-        }
-        if (task.userId !== userId) {
-          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        const success = await keeper.cancelTask(taskId);
-        if (!success) {
-          return NextResponse.json({ error: 'Cannot cancel task' }, { status: 400 });
-        }
-        return NextResponse.json({ success: true });
-      }
-      default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-  } catch (error) {
-    logger.error({ error }, 'Failed to perform task action');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  const body = await request.json().catch(() => ({}))
+  return handlePostTaskAction(request, body)
 }
 
 export async function DELETE(request: NextRequest) {
-  try {
-    const authUser = await requireAuth(request);
-    if (authUser instanceof NextResponse) return authUser;
-
-    const userId = authUser.user.id;
-    const searchParams = request.nextUrl.searchParams;
-    const taskId = searchParams.get('taskId');
-
-    if (!taskId) {
-      return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
-    }
-
-    const keeper = getTaskKeeper();
-    const task = await keeper.getTask(taskId);
-
-    if (!task) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
-    if (task.userId !== userId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const success = await keeper.deleteTask(taskId);
-    if (!success) {
-      return NextResponse.json({ error: 'Cannot delete task' }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    logger.error({ error }, 'Failed to delete task');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return handleDeleteTask(request, request.nextUrl.searchParams)
 }

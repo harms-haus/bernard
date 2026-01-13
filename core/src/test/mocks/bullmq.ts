@@ -23,17 +23,17 @@ export interface MockJob {
  */
 export interface MockQueue {
   /** Add job to queue */
-  add(name: string, data: any, opts?: any): Promise<MockJob>
+  add: ReturnType<typeof vi.fn>
   /** Get job by ID */
-  getJob(id: string): Promise<MockJob | null>
+  getJob: ReturnType<typeof vi.fn>
   /** Get jobs by state */
-  getJobs(state: string, start?: number, end?: number): Promise<MockJob[]>
+  getJobs: ReturnType<typeof vi.fn>
   /** Get job counts */
-  getJobCounts(): Promise<{ waiting: number; active: number; completed: number; failed: number; delayed: number }>
+  getJobCounts: ReturnType<typeof vi.fn>
   /** Close queue */
-  close(): Promise<void>
+  close: ReturnType<typeof vi.fn>
   /** Duplicate check */
-  getDuplicateJobId(id: string, jobId: string): Promise<string | null>
+  getDuplicateJobId: ReturnType<typeof vi.fn>
 }
 
 /**
@@ -41,11 +41,11 @@ export interface MockQueue {
  */
 export interface MockWorker {
   /** Start worker */
-  run(): Promise<void>
+  run: ReturnType<typeof vi.fn>
   /** Stop worker */
-  close(): Promise<void>
+  close: ReturnType<typeof vi.fn>
   /** Worker is running */
-  isRunning(): boolean
+  isRunning: ReturnType<typeof vi.fn>
 }
 
 /**
@@ -53,9 +53,9 @@ export interface MockWorker {
  */
 export interface MockQueueEvents {
   /** Subscribe to event */
-  on(event: string, handler: (...args: any[]) => void): void
+  on: ReturnType<typeof vi.fn>
   /** Close events */
-  close(): Promise<void>
+  close: ReturnType<typeof vi.fn>
   /** Internal handlers map (for testing) */
   _handlers: Map<string, Function[]>
 }

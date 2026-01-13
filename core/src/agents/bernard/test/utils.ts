@@ -704,8 +704,8 @@ export function resetMocks(): void {
  * Useful for testing module re-import scenarios.
  */
 export function clearModuleCache(modulePath: string): void {
-  const module = require.cache[require.resolve(modulePath)];
-  if (module) {
+  const cachedModule = require.cache[require.resolve(modulePath)];
+  if (cachedModule) {
     delete require.cache[require.resolve(modulePath)];
   }
 }

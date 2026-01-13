@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { redisClientMock, resetRedisMock } from '../test/mocks/redis-client.ts'
+import { redisClientMock, resetRedisMock } from '../test/mocks/redis-client'
 
 describe('Redis mock transaction fixes', () => {
   beforeEach(() => {

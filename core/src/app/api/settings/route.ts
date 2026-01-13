@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin as requireAdminAuth } from '@/lib/auth/helpers'
-import { SettingsStore } from '@/lib/config/settingsStore'
+import { requireAdmin } from '../../../lib/auth/helpers'
+import { getSettingsStore } from '../../../lib/api/factory'
+import { error, ok } from '../../../lib/api/response'
 
-const store = new SettingsStore()
-
-export async function GET(request: NextRequest) {
-  const admin = await requireAdminAuth(request)
+export async function handleGetSettings(request: NextRequest): Promise<NextResponse> {
+  const admin = await requireAdmin(request)
   if (admin instanceof NextResponse) return admin
 
-  const settings = await store.getAll()
-  return NextResponse.json(settings)
+  try {
+    const store = getSettingsStore()
+    const settings = await store.getAll()
+    return ok(settings)
+  } catch {
+    return error('Failed to get settings', 500)
+  }
+}
+
+export async function GET(request: NextRequest) {
+  return handleGetSettings(request)
 }

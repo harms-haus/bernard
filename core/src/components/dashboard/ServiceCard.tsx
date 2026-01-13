@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 export interface ServiceStatus {
   id: string
@@ -109,7 +109,7 @@ function useService(id: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/services?service=${id}`)
       if (!response.ok) throw new Error('Failed to fetch')
@@ -121,13 +121,13 @@ function useService(id: string) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     fetchStatus()
     const interval = setInterval(fetchStatus, 2000)
     return () => clearInterval(interval)
-  }, [id])
+  }, [fetchStatus])
 
   return { status, loading, error, refresh: fetchStatus }
 }

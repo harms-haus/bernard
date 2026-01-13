@@ -28,7 +28,7 @@ export function clearUpdateOverrides(): void {
  * Get a random update from a list, or use override if set.
  * @internal
  */
-function getUpdate(list: string[]): string {
+export function getUpdate(list: string[]): string {
   if (updateOverrides.length > 0) {
     const result = updateOverrides[overrideIndex % updateOverrides.length];
     overrideIndex++;
