@@ -1,13 +1,18 @@
-import type { TaskRecord } from '@/lib/infra/taskKeeper'
+import type { Task } from '@/lib/infra/taskKeeper'
 
-export function mockTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {
+export function mockTaskRecord(overrides: Record<string, any> = {}): Task {
   return {
     id: 'task-123',
     status: 'running',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: new Date().toISOString(),
     userId: 'user-123',
-    title: 'Test Task',
+    name: 'Test Task',
+    toolName: 'test-tool',
+    messageCount: 0,
+    toolCallCount: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    archived: false,
     ...overrides,
   }
 }

@@ -1,44 +1,92 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ServiceManager } from "@/lib/services/ServiceManager"
-import { SERVICES } from "@/lib/services/ServiceConfig"
-import { addServiceJob } from "@/lib/infra/service-queue"
-import { initializeServiceQueue } from "@/lib/infra/service-queue/init"
-import type { ServiceAction } from "@/lib/infra/service-queue/types"
+import { SERVICES } from "../../../../lib/services/ServiceConfig"
+import { getServiceManager } from "../../../../lib/api/factory"
+import { addServiceJob } from "../../../../lib/infra/service-queue"
+import type { ServiceAction } from "../../../../lib/infra/service-queue/types"
+import { error, ok, notFound, badRequest } from "../../../../lib/api/response"
+
+export interface ServiceStatusResponse {
+  config: (typeof SERVICES)[keyof typeof SERVICES]
+  status: Awaited<ReturnType<ReturnType<typeof getServiceManager>['getStatus']>>
+  health: Awaited<ReturnType<ReturnType<typeof getServiceManager>['healthCheck']>>
+}
+
+export interface ServiceCommandBody {
+  command?: unknown
+}
+
+export interface ServiceCommandResponse {
+  service: string
+  command: string
+  jobId: string
+  status: string
+  message: string
+}
+
+// @ts-ignore
+export async function handleGetService(serviceId: string): Promise<any> {
+  const config = SERVICES[serviceId]
+
+  if (!config) {
+    return notFound("Service not found")
+  }
+
+  const manager = getServiceManager()
+
+  try {
+    const [status, health] = await Promise.all([
+      manager.getStatus(serviceId),
+      manager.healthCheck(serviceId),
+    ])
+
+    return ok({ config, status, health })
+  } catch {
+    return error("Failed to get service status", 500)
+  }
+}
+
+// @ts-ignore
+export async function handleServiceCommand(
+  serviceId: string,
+  body: ServiceCommandBody
+): Promise<any> {
+  const config = SERVICES[serviceId]
+
+  if (!config) {
+    return notFound("Service not found")
+  }
+
+  const { command } = body
+
+  if (!command || !['start', 'stop', 'restart'].includes(command as string)) {
+    return badRequest("Invalid command. Use: start, stop, or restart")
+  }
+
+  try {
+    const jobId = await addServiceJob(
+      serviceId,
+      command as ServiceAction,
+      { initiatedBy: 'api' }
+    )
+
+    return ok<ServiceCommandResponse>({
+      service: serviceId,
+      command: command as string,
+      jobId,
+      status: 'queued',
+      message: 'Action queued for execution',
+    })
+  } catch {
+    return error("Failed to queue action", 500)
+  }
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ service: string }> }
 ) {
   const { service } = await params
-  const config = SERVICES[service]
-
-  if (!config) {
-    return NextResponse.json(
-      { error: "Service not found" },
-      { status: 404 }
-    )
-  }
-
-  const manager = new ServiceManager()
-
-  try {
-    const [status, health] = await Promise.all([
-      manager.getStatus(service),
-      manager.healthCheck(service),
-    ])
-
-    return NextResponse.json({
-      config,
-      status,
-      health,
-    })
-  } catch (error) {
-    console.error(`[API] Failed to get service ${service}:`, error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
-  }
+  return handleGetService(service)
 }
 
 export async function POST(
@@ -46,44 +94,6 @@ export async function POST(
   { params }: { params: Promise<{ service: string }> }
 ) {
   const { service } = await params
-  const config = SERVICES[service]
-
-  if (!config) {
-    return NextResponse.json(
-      { error: "Service not found" },
-      { status: 404 }
-    )
-  }
-
   const body = await request.json().catch(() => ({}))
-  const { command } = body
-
-  if (!command || !["start", "stop", "restart"].includes(command)) {
-    return NextResponse.json(
-      { error: "Invalid command. Use: start, stop, or restart" },
-      { status: 400 }
-    )
-  }
-
-  await initializeServiceQueue();
-
-  try {
-    const jobId = await addServiceJob(service, command as ServiceAction, {
-      initiatedBy: 'api',
-    });
-
-    return NextResponse.json({
-      service,
-      command,
-      jobId,
-      status: 'queued',
-      message: 'Action queued for execution',
-    });
-  } catch (error) {
-    console.error(`[API] Failed to queue ${command} for ${service}:`, error);
-    return NextResponse.json(
-      { error: "Failed to queue action" },
-      { status: 500 }
-    )
-  }
+  return handleServiceCommand(service, body)
 }

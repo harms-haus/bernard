@@ -38,6 +38,7 @@
   "devDependencies": {
     "@langchain/langgraph-cli": "^1.1.10",
     "@vitest/ui": "^4.0.16",
+    "tsconfig-paths": "^4.2.0",
     "vite-tsconfig-paths": "^6.0.3",
     "vitest": "^4.0.16"
   }

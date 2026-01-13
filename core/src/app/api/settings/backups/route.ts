@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   if (admin instanceof NextResponse) return admin
 
   const backups = await store.getBackups()
-  return NextResponse.json(backups)
+  return NextResponse.json(backups || {})
 }
 
 export async function PUT(request: NextRequest) {
