@@ -1,8 +1,42 @@
+/**
+ * Random update messages for Bernard agent progress reporting.
+ * Provides deterministic mode for testing.
+ */
+
+// Override state for testing - provides deterministic output
+let updateOverrides: string[] = [];
+let overrideIndex = 0;
 
 /**
- * Get a random update from the reading updates list
- * @returns A random update from the reading updates list
+ * Set override values for testing.
+ * When set, getUpdate will return values from this array instead of random selection.
  */
+export function setUpdateOverrides(overrides: string[]): void {
+  updateOverrides = [...overrides];
+  overrideIndex = 0;
+}
+
+/**
+ * Clear override values and return to random behavior.
+ */
+export function clearUpdateOverrides(): void {
+  updateOverrides = [];
+  overrideIndex = 0;
+}
+
+/**
+ * Get a random update from a list, or use override if set.
+ * @internal
+ */
+function getUpdate(list: string[]): string {
+  if (updateOverrides.length > 0) {
+    const result = updateOverrides[overrideIndex % updateOverrides.length];
+    overrideIndex++;
+    return result;
+  }
+  return list[Math.floor(Math.random() * list.length)] ?? "...";
+}
+
 export function getReadingUpdate(): string {
   const updates = [
     "Reading content...",
@@ -46,10 +80,7 @@ export function getSearchingUpdate(): string {
   ];
   return getUpdate(searches);
 }
-/**
- * Get a random transforming update from the transforming updates list
- * @returns A random transforming update from the transforming updates list
- */
+
 export function getTransformingUpdate(): string {
   const transforms = [
     "Transforming content...",
@@ -71,10 +102,6 @@ export function getTransformingUpdate(): string {
   return getUpdate(transforms);
 }
 
-/**
- * Get a random processing update from the processing updates list
- * @returns A random processing update from the processing updates list
- */
 export function getProcessingUpdate(): string {
   const processes = [
     "Processing information...",
@@ -89,10 +116,6 @@ export function getProcessingUpdate(): string {
   return getUpdate(processes);
 }
 
-/**
- * Get a random creation update from the creation updates list
- * @returns A random creation update from the creation updates list
- */
 export function getCreationUpdate(): string {
   const creations = [
     "Creating content...",
@@ -117,8 +140,3 @@ export function getCreationUpdate(): string {
   ];
   return getUpdate(creations);
 }
-
-export function getUpdate(list: string[]): string {
-  return list[Math.floor(Math.random() * list.length)] ?? "...";
-}
-

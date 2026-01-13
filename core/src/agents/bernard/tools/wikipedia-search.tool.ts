@@ -13,30 +13,44 @@ import { ToolFactory } from "./types";
 import { createProgressReporter, ProgressReporter } from "../utils";
 import { getSearchingUpdate } from "../updates";
 
-type WikipediaSearchResult = {
+export type WikipediaSearchResult = {
   page_id: number;
   page_title: string;
   description: string;
   index: number;
 };
 
+/**
+ * Dependencies for the Wikipedia search tool.
+ */
+export interface WikipediaDependencies {
+  resolveSearchConfig: typeof resolveSearchConfig;
+  buildSearXNGUrl: typeof buildSearXNGUrl;
+  safeJson: typeof safeJson;
+  parseSearXNGResults: typeof parseSearXNGResults;
+  fetch: typeof fetch;
+  createProgressReporter: typeof createProgressReporter;
+  getSearchingUpdate: typeof getSearchingUpdate;
+}
+
 async function executeWikipediaSearch(
   query: string,
-  n_results: number = 10,
-  starting_index: number = 0,
+  n_results: number,
+  starting_index: number,
   progress: ProgressReporter,
+  deps: WikipediaDependencies,
 ): Promise<string> {
   try {
-    progress.report(getSearchingUpdate());
+    progress.report(deps.getSearchingUpdate());
 
-    const config = await resolveSearchConfig();
+    const config = await deps.resolveSearchConfig();
     if (!config.ok) {
       return `Wikipedia search tool is not configured (${config.reason})`;
     }
 
-    const url = buildSearXNGUrl(config.apiUrl, query, n_results + starting_index, starting_index + 1, "site:wikipedia.org");
+    const url = deps.buildSearXNGUrl(config.apiUrl, query, n_results + starting_index, starting_index + 1, "site:wikipedia.org");
 
-    const response = await fetch(url, {
+    const response = await deps.fetch(url, {
       headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
       signal: AbortSignal.timeout(5000),
     });
@@ -46,8 +60,8 @@ async function executeWikipediaSearch(
       return `Wikipedia search failed: ${response.status} ${response.statusText}`;
     }
 
-    const data = await safeJson(response);
-    const rawResults = parseSearXNGResults(data);
+    const data = await deps.safeJson(response);
+    const rawResults = deps.parseSearXNGResults(data);
 
     const results: WikipediaSearchResult[] = rawResults
       .slice(starting_index)
@@ -60,46 +74,84 @@ async function executeWikipediaSearch(
 
     progress.reset();
 
-    // CRITICAL: Ensure proper JSON stringification
-    const jsonString = JSON.stringify(results);
-    console.log("[wikipedia-search] JSON.stringify result type:", typeof jsonString);
-    console.log("[wikipedia-search] JSON output length:", jsonString.length);
-    console.log("[wikipedia-search] First 200 chars:", jsonString.substring(0, 200));
-    console.log("[wikipedia-search] Result is valid JSON:", jsonString.startsWith("["));
-
-    return jsonString;
+    return JSON.stringify(results);
   } catch (error) {
-    console.log("[wikipedia-search] Error:", error);
     return `Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
-const wikipediaSearchToolImpl = tool(
-  async (
-    { query, n_results, starting_index }: { query: string; n_results?: number; starting_index?: number },
-    _config: RunnableConfig,
-  ) => {
-    const result = await executeWikipediaSearch(query, n_results, starting_index, createProgressReporter(_config, "wikipedia_search"));
-    console.log("[wikipedia-search] Tool returning:", typeof result, result?.substring?.(0, 100));
-    return result;
-  },
-  {
-    name: "wikipedia_search",
-    description: `Search Wikipedia for articles by title or topic.
- e.g. for finding information about a specific person, place, animal, event, category, etc.
- e.g. "What is the capital of France?" -> "France", "Who was the 8th president of the United States?" -> "United States Presidents`,
-    schema: z.object({
-      query: z.string().min(1),
-      n_results: z.number().int().min(1).max(50).optional().default(10),
-      starting_index: z.number().int().min(0).optional().default(0),
-    }),
-  },
-);
+/**
+ * Create the Wikipedia search tool with injected dependencies.
+ */
+export function createWikipediaSearchTool(deps: WikipediaDependencies) {
+  const toolImpl = tool(
+    async (
+      { query, n_results, starting_index }: { query: string; n_results?: number; starting_index?: number },
+      _config: RunnableConfig,
+    ) => {
+      const progress = deps.createProgressReporter(_config, "wikipedia_search");
+      return executeWikipediaSearch(
+        query,
+        n_results ?? 10,
+        starting_index ?? 0,
+        progress,
+        deps,
+      );
+    },
+    {
+      name: "wikipedia_search",
+      description: `Search Wikipedia for articles by title or topic.`,
+      schema: z.object({
+        query: z.string().min(1),
+        n_results: z.number().int().min(1).max(50).optional().default(10),
+        starting_index: z.number().int().min(0).optional().default(0),
+      }),
+    },
+  );
 
-export const wikipediaSearchTool = Object.assign(wikipediaSearchToolImpl, {
-  interpretationPrompt: ``,
+  return Object.assign(toolImpl, {
+    interpretationPrompt: ``,
+  });
+}
+
+/**
+ * Create the Wikipedia search tool factory with optional dependency overrides.
+ */
+export function createWikipediaSearchToolFactory(
+  overrides?: Partial<WikipediaDependencies>
+): ToolFactory {
+  const defaultDependencies: WikipediaDependencies = {
+    resolveSearchConfig,
+    buildSearXNGUrl,
+    safeJson,
+    parseSearXNGResults,
+    fetch,
+    createProgressReporter,
+    getSearchingUpdate,
+  };
+
+  const deps = { ...defaultDependencies, ...overrides };
+
+  return async () => {
+    const tool = createWikipediaSearchTool(deps);
+    return { ok: true, tool, name: tool.name };
+  };
+}
+
+/**
+ * Default factory for backward compatibility.
+ */
+export const wikipediaSearchToolFactory = createWikipediaSearchToolFactory();
+
+/**
+ * Wikipedia search tool instance for backward compatibility.
+ */
+export const wikipediaSearchTool = createWikipediaSearchTool({
+  resolveSearchConfig,
+  buildSearXNGUrl,
+  safeJson,
+  parseSearXNGResults,
+  fetch,
+  createProgressReporter,
+  getSearchingUpdate,
 });
-
-export const wikipediaSearchToolFactory: ToolFactory = async () => {
-  return { ok: true, tool: wikipediaSearchTool, name: wikipediaSearchTool.name };
-};
