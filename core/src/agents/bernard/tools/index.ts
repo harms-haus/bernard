@@ -40,4 +40,9 @@ export {
 
 export {
   validateAndGetTools,
+  validateTools,
+  getToolDefinitions,
+  type ToolDefinition,
+  type ToolValidationResult,
+  type ToolsValidationResult,
 } from "./validation";

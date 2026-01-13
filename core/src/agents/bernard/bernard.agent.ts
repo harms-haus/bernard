@@ -11,44 +11,87 @@ import { validateAndGetTools } from "./tools";
 import { startUtilityWorker } from "@/lib/infra/queue";
 import { startHealthMonitor } from "@/lib/services/HealthMonitor";
 
+// ============================================================================
+// Initialization State
+// ============================================================================
 
-startUtilityWorker();
-startHealthMonitor();
+let initialized = false;
 
-export async function createBernardAgent() {
+/**
+ * Initialize agent services (utility worker and health monitor).
+ * Safe to call multiple times - will only run once.
+ */
+export function initializeAgentServices(): void {
+  if (!initialized) {
+    startUtilityWorker();
+    startHealthMonitor();
+    initialized = true;
+  }
+}
+
+// ============================================================================
+// Dependencies
+// ============================================================================
+
+export interface AgentDependencies {
+  resolveModel: typeof resolveModel;
+  initChatModel: typeof initChatModel;
+  getSettings: typeof getSettings;
+  validateAndGetTools: typeof validateAndGetTools;
+  RedisSaver: typeof RedisSaver;
+  buildReactSystemPrompt: typeof buildReactSystemPrompt;
+}
+
+const defaultDependencies: AgentDependencies = {
+  resolveModel,
+  initChatModel,
+  getSettings,
+  validateAndGetTools,
+  RedisSaver,
+  buildReactSystemPrompt,
+};
+
+// ============================================================================
+// Agent Creation
+// ============================================================================
+
+export async function createBernardAgent(
+  overrides?: Partial<AgentDependencies>
+) {
+  const deps = { ...defaultDependencies, ...overrides };
 
   const createModel = async () => {
-    const {id, options} = await resolveModel("router");
-    return await initChatModel(id, options);
-  }
+    const { id, options } = await deps.resolveModel("router");
+    return await deps.initChatModel(id, options);
+  };
+
   const modelware = createMiddleware({
     name: "DynamicModel",
     wrapModelCall: async (request, handler) => {
       const model = await createModel();
-      
       return handler({
         ...request,
         model,
       });
     },
   });
-  
-  const settings = await getSettings();
-  const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
-  const checkpointer = await RedisSaver.fromUrl(redisUrl);
 
-  const { validTools, disabledTools } = await validateAndGetTools();
+  const settings = await deps.getSettings();
+  const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
+  const checkpointer = await deps.RedisSaver.fromUrl(redisUrl);
+
+  const { validTools, disabledTools } = await deps.validateAndGetTools();
 
   return createAgent({
     model: await createModel(),
     tools: validTools,
-    systemPrompt: buildReactSystemPrompt(new Date(), [], disabledTools),
+    systemPrompt: deps.buildReactSystemPrompt(new Date(), [], disabledTools),
     checkpointer,
     middleware: [
       modelware,
-      toolCallLimitMiddleware({ runLimit: 10}),
-      toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
-      modelRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000}),
+      toolCallLimitMiddleware({ runLimit: 10 }),
+      toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000 }),
+      modelRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000 }),
       contextEditingMiddleware({
         edits: [
           new ClearToolUsesEdit({
@@ -63,4 +106,14 @@ export async function createBernardAgent() {
   });
 }
 
+// ============================================================================
+// Module Initialization
+// ============================================================================
+
+// Initialize services when module loads
+initializeAgentServices();
+
+/**
+ * Default agent instance for backward compatibility.
+ */
 export const agent = await createBernardAgent();

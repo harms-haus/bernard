@@ -2,45 +2,82 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 /**
- * Create the timer tool that starts a background timer task
+ * Result of validating timer parameters.
  */
-function createTimerTool(
-  taskContext?: {
-    conversationId: string;
-    userId: string;
-    createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
+export type TimerValidationResult =
+  | { ok: true; name: string; time: number; message: string }
+  | { ok: false; reason: string };
+
+/**
+ * Dependencies for the timer tool.
+ */
+export interface TimerDependencies {
+  createTask: (
+    toolName: string,
+    args: Record<string, unknown>,
+    settings: Record<string, unknown>
+  ) => Promise<{ taskId: string; taskName: string }>;
+}
+
+/**
+ * Validate timer parameters.
+ * This is a pure function for easy testing.
+ */
+export function validateTimerParams(params: {
+  name: unknown;
+  time: unknown;
+  message: unknown;
+}): TimerValidationResult {
+  // Validate name
+  if (!params.name || typeof params.name !== 'string' || params.name.trim().length === 0) {
+    return { ok: false, reason: "name parameter is required and must be a non-empty string" };
   }
-) {
+
+  // Validate time
+  if (!params.time || typeof params.time !== 'number' || params.time <= 0) {
+    return { ok: false, reason: "time parameter is required and must be a positive number (seconds)" };
+  }
+
+  if (params.time > 3600) { // 1 hour max
+    return { ok: false, reason: "timer duration cannot exceed 3600 seconds (1 hour)" };
+  }
+
+  // Validate message
+  if (!params.message || typeof params.message !== 'string') {
+    return { ok: false, reason: "message parameter is required and must be a string" };
+  }
+
+  return {
+    ok: true,
+    name: params.name.trim(),
+    time: params.time,
+    message: params.message,
+  };
+}
+
+/**
+ * Create the timer tool with injected dependencies.
+ */
+export function createTimerTool(deps?: TimerDependencies) {
   return tool(
     async ({ name, time, message }) => {
-      // Validate inputs
-      if (!name || typeof name !== 'string' || name.trim().length === 0) {
-        return "Error: name parameter is required and must be a non-empty string";
+      const validation = validateTimerParams({ name, time, message });
+      
+      if (!validation.ok) {
+        return `Error: ${validation.reason}`;
       }
 
-      if (!time || typeof time !== 'number' || time <= 0) {
-        return "Error: time parameter is required and must be a positive number (seconds)";
-      }
-
-      if (time > 3600) { // 1 hour max
-        return "Error: timer duration cannot exceed 3600 seconds (1 hour)";
-      }
-
-      if (!message || typeof message !== 'string') {
-        return "Error: message parameter is required and must be a string";
-      }
-
-      // Create a background task
-      if (!taskContext) {
+      // Check if dependencies are available
+      if (!deps) {
         return "Error: Task context not available - cannot create background timer tasks";
       }
 
       try {
-        const args = { name: name.trim(), time, message };
-        const settings = {}; // Timer doesn't need service configurations
+        const args = { name: validation.name, time: validation.time, message: validation.message };
+        const settings = {};
 
-        const { taskId } = await taskContext.createTask("timer", args, settings);
-        return `Timer task started: "${name}" (ID: ${taskId}) - will wait ${time} seconds then record: "${message}"`;
+        const { taskId } = await deps.createTask("timer", args, settings);
+        return `Timer task started: "${validation.name}" (ID: ${taskId}) - will wait ${validation.time} seconds then record: "${validation.message}"`;
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -60,7 +97,24 @@ function createTimerTool(
 }
 
 /**
- * The timer tool instance factory
+ * The timer tool instance factory with optional dependency overrides.
+ */
+export function createTimerToolFactory(
+  overrides?: Partial<TimerDependencies>
+): () => ReturnType<typeof createTimerTool> {
+  const defaultDependencies: TimerDependencies = {
+    createTask: async () => {
+      throw new Error("createTask not configured");
+    },
+  };
+
+  const deps = { ...defaultDependencies, ...overrides };
+
+  return () => createTimerTool(deps);
+}
+
+/**
+ * Backward compatible factory - task context must be provided at runtime.
  */
 export function createTimerToolInstance(
   taskContext?: {
@@ -69,7 +123,13 @@ export function createTimerToolInstance(
     createTask: (toolName: string, args: Record<string, unknown>, settings: Record<string, unknown>) => Promise<{ taskId: string; taskName: string }>;
   }
 ) {
-  return createTimerTool(taskContext);
+  const deps: TimerDependencies = {
+    createTask: taskContext?.createTask ?? (async () => {
+      throw new Error("createTask not configured");
+    }),
+  };
+  
+  return createTimerTool(deps);
 }
 
 // Legacy export for backward compatibility (synchronous version)

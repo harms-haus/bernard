@@ -4,25 +4,37 @@ import { ToolFactory } from './types';
 import { getSettings } from '@/lib/config/settingsCache';
 import { getOverseerrClient } from '@/lib/overseerr/validation';
 import type { OverseerrClient } from '@/lib/overseerr/client';
+import type { BernardSettings } from '@/lib/config/settingsStore';
 import { logger } from '@/lib/logging';
 
 const TOOL_NAME = 'find_media_status';
 
-function createFindMediaStatusTool() {
+/**
+ * Dependencies for the Overseerr media tools.
+ */
+export interface OverseerrDependencies {
+  fetchSettings: () => Promise<BernardSettings>;
+  getOverseerrClient: typeof getOverseerrClient;
+  logger: typeof logger;
+}
+
+interface SearchResult {
+  id: number;
+  title: string;
+  overview?: string;
+  releaseDate?: string;
+  mediaType: 'movie' | 'tv';
+  status?: string;
+}
+
+function createFindMediaStatusToolImpl(
+  client: OverseerrClient,
+) {
   return tool(
     async (
       { type, filter }: { type: 'movie' | 'tv'; filter?: string },
       _config
-    ) => {
-      const settings = await getSettings();
-      const overseerrResult = getOverseerrClient(settings.services?.overseerr);
-
-      if (!overseerrResult.ok) {
-        return `Error: ${overseerrResult.reason}`;
-      }
-
-      const client = overseerrResult.client;
-
+    ): Promise<string> => {
       try {
         if (/^\d+$/.test(filter || '')) {
           const id = parseInt(filter!, 10);
@@ -62,9 +74,8 @@ function createFindMediaStatusTool() {
             media = response.tvShow;
           }
 
-          // Defensive access with fallbacks
           const title = media.title || 'Unknown Title';
-          const mediaId = media.id ?? id; // fallback to parsed ID if missing
+          const mediaId = media.id ?? id;
           const status = media.status || 'unknown';
           const overview = media.overview || 'N/A';
 
@@ -89,7 +100,7 @@ function createFindMediaStatusTool() {
           return `No ${type}s found matching "${filter || '(all)'}"`;
         }
 
-        const output = finalResults.slice(0, 10).map((item, index) => {
+        const output = finalResults.slice(0, 10).map((item: SearchResult, index: number) => {
           const lines = [
             `${index + 1}. ${item.title} (${item.releaseDate?.split('-')[0] || 'N/A'})`,
             `   ID: ${item.id} | Type: ${item.mediaType}`,
@@ -123,14 +134,48 @@ function createFindMediaStatusTool() {
   );
 }
 
-export const findMediaStatusToolFactory: ToolFactory = async () => {
-  const settings = await getSettings();
-  const overseerrResult = getOverseerrClient(settings.services?.overseerr);
-
-  if (!overseerrResult.ok) {
-    return { ok: false, name: TOOL_NAME, reason: overseerrResult.reason };
+/**
+ * Create the Overseerr find media status tool with injected dependencies.
+ */
+export async function createFindMediaStatusTool(
+  deps: OverseerrDependencies
+) {
+  const settings = await deps.fetchSettings();
+  const clientResult = deps.getOverseerrClient(settings.services?.overseerr);
+  if (!clientResult.ok) {
+    throw new Error(clientResult.reason);
   }
+  return createFindMediaStatusToolImpl(clientResult.client);
+}
 
-  const tool = createFindMediaStatusTool();
-  return { ok: true, tool, name: tool.name };
-};
+/**
+ * Create the Overseerr find media status tool factory with optional dependency overrides.
+ */
+export function createFindMediaStatusToolFactory(
+  overrides?: Partial<OverseerrDependencies>
+): ToolFactory {
+  const defaultDependencies: OverseerrDependencies = {
+    fetchSettings: () => getSettings(),
+    getOverseerrClient,
+    logger,
+  };
+
+  const deps = { ...defaultDependencies, ...overrides };
+
+  return async () => {
+    const settings = await deps.fetchSettings();
+    const overseerrResult = deps.getOverseerrClient(settings.services?.overseerr);
+
+    if (!overseerrResult.ok) {
+      return { ok: false, name: TOOL_NAME, reason: overseerrResult.reason };
+    }
+
+    const tool = createFindMediaStatusToolImpl(overseerrResult.client);
+    return { ok: true, tool, name: tool.name };
+  };
+}
+
+/**
+ * Default factory for backward compatibility.
+ */
+export const findMediaStatusToolFactory = createFindMediaStatusToolFactory();

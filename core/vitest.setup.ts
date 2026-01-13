@@ -34,6 +34,9 @@ vi.mock('node:child_process', () => ({
     kill: vi.fn(),
   }),
   execSync: vi.fn().mockReturnValue(''),
+  exec: vi.fn(),
+  execFile: vi.fn(),
+  spawnSync: vi.fn(),
 }))
 
 const originalKill = process.kill

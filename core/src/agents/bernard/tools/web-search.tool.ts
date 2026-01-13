@@ -10,36 +10,32 @@ import { getSearchingUpdate } from "../updates";
 
 const DEFAULT_RESULT_COUNT = 3;
 
-type SearchConfigResult =
+export type SearchConfigResult =
   | { ok: true; apiKey: string; apiUrl: string; provider: "searxng" }
   | { ok: false; reason: string };
 
-type SearchResultItem = { title?: string; url?: string; description?: string };
+export type SearchResultItem = { title?: string; url?: string; description?: string };
 
-const PLACEHOLDER_API_KEYS = new Set(["changeme", "searxng-api-key"]);
-const MISSING_KEY_REASON = "Missing search API configuration.";
-const MISSING_CONFIG_REASON = "Missing search API configuration.";
-
-async function fetchSettingsWithTimeout(timeoutMs: number): Promise<Awaited<ReturnType<typeof import("@/lib/config/settingsCache").getSettings>> | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const result = await Promise.race([
-    import("@/lib/config/settingsCache")
-      .then((mod) => mod.getSettings())
-      .catch(() => null),
-    new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), timeoutMs);
-    }),
-  ]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-  return result;
+/**
+ * Dependencies for the web search tool.
+ * All external calls are abstracted for testability.
+ */
+export interface WebSearchDependencies {
+  verifySearchConfigured: () => Promise<{ ok: boolean; reason?: string }>;
+  fetchSettings: () => Promise<Awaited<ReturnType<typeof import("@/lib/config/settingsCache").getSettings>> | null>;
+  executeSearXNGSearch: typeof executeSearXNGSearch;
+  createProgressReporter: typeof createProgressReporter;
+  getSearchingUpdate: typeof getSearchingUpdate;
 }
+
+const MISSING_KEY_REASON = "Missing search API configuration.";
 
 function normalizeApiKey(rawKey: string | null | undefined): { ok: true; apiKey: string } | { ok: false; reason: string } {
   const apiKey = rawKey?.trim();
   if (!apiKey) {
     return { ok: false, reason: MISSING_KEY_REASON };
   }
+  const PLACEHOLDER_API_KEYS = new Set(["changeme", "searxng-api-key"]);
   if (PLACEHOLDER_API_KEYS.has(apiKey.toLowerCase())) {
     return { ok: false, reason: "Replace API key with a real token." };
   }
@@ -58,9 +54,25 @@ function normalizeApiUrl(rawUrl: string | null | undefined): { ok: true; apiUrl:
   }
 }
 
-async function resolveSearchConfigFromSettings(): Promise<SearchConfigResult> {
-  const settings = await fetchSettingsWithTimeout(500);
+async function fetchSettingsWithTimeout(
+  fetchSettings: WebSearchDependencies['fetchSettings'],
+  timeoutMs: number
+): Promise<Awaited<ReturnType<typeof import("@/lib/config/settingsCache").getSettings>> | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    fetchSettings().catch(() => null),
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+  return result;
+}
 
+function resolveSearchConfigFromSettings(
+  settings: Awaited<ReturnType<typeof import("@/lib/config/settingsCache").getSettings>> | null
+): SearchConfigResult {
   const searchSvc = settings?.services?.search;
   if (searchSvc?.apiUrl) {
     const urlResult = normalizeApiUrl(searchSvc.apiUrl);
@@ -78,55 +90,87 @@ async function resolveSearchConfigFromSettings(): Promise<SearchConfigResult> {
   return { ok: false, reason: MISSING_KEY_REASON };
 }
 
-const webSearchTool = tool(
-  async (
-    { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
-    _config: RunnableConfig,
-  ) => {
-    const progress = createProgressReporter(_config, "web_search");
-    progress.report(getSearchingUpdate());
-
-    const result = await executeSearch(query, progress, count, starting_index);
-
-    progress.reset();
-
-    return result;
-  },
-  {
-    name: "web_search",
-    description: "Search the web for fresh information.",
-    schema: z.object({
-      query: z.string().min(3),
-      count: z.number().int().min(1).max(8).optional(),
-      starting_index: z.number().int().min(1).optional().default(1),
-    }),
-  },
-);
-
 async function executeSearch(
   query: string,
   progress: ProgressReporter,
-  count?: number,
-  startingIndex?: number,
+  count: number | undefined,
+  startingIndex: number | undefined,
+  deps: WebSearchDependencies
 ): Promise<string> {
-  const config = await resolveSearchConfigFromSettings();
+  const settings = await fetchSettingsWithTimeout(deps.fetchSettings, 500);
+  const config = resolveSearchConfigFromSettings(settings);
+  
   if (!config.ok) {
     return `Search tool is not configured (${config.reason})`;
   }
 
-  progress.report(getSearchingUpdate());
+  progress.report(deps.getSearchingUpdate());
 
-  const result = await executeSearXNGSearch(query, count ?? DEFAULT_RESULT_COUNT, startingIndex ?? 1);
+  const result = await deps.executeSearXNGSearch(query, count ?? DEFAULT_RESULT_COUNT, startingIndex ?? 1);
 
   progress.reset();
 
   return result;
 }
 
-export const webSearchToolFactory: ToolFactory = async () => {
-  const isValid = await verifySearchConfigured();
-  if (!isValid.ok) {
-    return { ok: false, name: webSearchTool.name, reason: isValid.reason ?? "" };
-  }
-  return { ok: true, tool: webSearchTool, name: webSearchTool.name };
-};
+/**
+ * Create the web search tool with injected dependencies.
+ * This allows for easier testing by mocking external dependencies.
+ */
+export function createWebSearchTool(deps: WebSearchDependencies) {
+  return tool(
+    async (
+      { query, count, starting_index }: { query: string; count?: number; starting_index?: number },
+      _config: RunnableConfig,
+    ) => {
+      const progress = deps.createProgressReporter(_config, "web_search");
+
+      const result = await executeSearch(query, progress, count, starting_index, deps);
+
+      progress.reset();
+
+      return result;
+    },
+    {
+      name: "web_search",
+      description: "Search the web for fresh information.",
+      schema: z.object({
+        query: z.string().min(3),
+        count: z.number().int().min(1).max(8).optional(),
+        starting_index: z.number().int().min(1).optional().default(1),
+      }),
+    },
+  );
+}
+
+/**
+ * Create the web search tool factory with optional dependency overrides.
+ * This allows for easier testing by mocking external dependencies.
+ */
+export function createWebSearchToolFactory(
+  overrides?: Partial<WebSearchDependencies>
+): ToolFactory {
+  const defaultDependencies: WebSearchDependencies = {
+    verifySearchConfigured,
+    fetchSettings: () => import("@/lib/config/settingsCache").then((mod) => mod.getSettings()),
+    executeSearXNGSearch,
+    createProgressReporter,
+    getSearchingUpdate,
+  };
+
+  const deps = { ...defaultDependencies, ...overrides };
+
+  return async () => {
+    const isValid = await deps.verifySearchConfigured();
+    if (!isValid.ok) {
+      return { ok: false, name: "web_search", reason: isValid.reason ?? "" };
+    }
+    const tool = createWebSearchTool(deps);
+    return { ok: true, tool, name: tool.name };
+  };
+}
+
+/**
+ * Default web search tool factory (backward compatible).
+ */
+export const webSearchToolFactory = createWebSearchToolFactory();
