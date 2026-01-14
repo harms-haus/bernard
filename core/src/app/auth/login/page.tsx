@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
@@ -8,9 +8,10 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const redirect = searchParams.get('redirect') || '/status'
+  const redirect = searchParams.get('redirect') || '/bernard/chat'
+  const providerParam = searchParams.get('provider')
 
-  const handleOAuthLogin = async (provider: 'github' | 'google') => {
+  const handleOAuthLogin = useCallback(async (provider: 'github' | 'google') => {
     console.log('[Login] Starting OAuth login for provider:', provider, 'redirect:', redirect)
     setIsLoading(true)
     setError(null)
@@ -22,13 +23,39 @@ function LoginForm() {
         body: JSON.stringify({ provider, returnTo: redirect })
       })
       console.log('[Login] Response status:', response.status, response.ok)
+      
       if (!response.ok) {
-        const data = await response.json()
-        console.error('[Login] Error response:', data)
+        const errorText = await response.text()
+        console.error('[Login] Error response:', errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const responseText = await response.text()
+      console.log('[Login] Raw response:', responseText)
+      
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        console.error('[Login] Failed to parse JSON:', e)
+        throw new Error('Invalid JSON response from server')
+      }
+      
+      console.log('[Login] Parsed response:', data)
+      
+      if (!data.success) {
+        console.error('[Login] Server error:', data.error)
         throw new Error(data.error || 'Failed to initiate login')
       }
 
-      const { authUrl } = await response.json()
+      const { authUrl } = data.data
+      console.log('[Login] authUrl:', authUrl)
+      
+      if (!authUrl || typeof authUrl !== 'string') {
+        console.error('[Login] Invalid authUrl:', authUrl)
+        throw new Error('Invalid authUrl from server')
+      }
+      
       console.log('[Login] Redirecting to:', authUrl)
       window.location.href = authUrl
     } catch (err) {
@@ -36,7 +63,14 @@ function LoginForm() {
       setError(err instanceof Error ? err.message : 'An error occurred')
       setIsLoading(false)
     }
-  }
+  }, [redirect])
+
+  // Auto-trigger OAuth flow if provider is specified in URL
+  useEffect(() => {
+    if (providerParam === 'github' || providerParam === 'google') {
+      handleOAuthLogin(providerParam)
+    }
+  }, [providerParam, handleOAuthLogin])
 
   return (
     <>
@@ -104,6 +138,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      {/* Cache-busting: v=2024-01-14-1 */}
       <LoginForm />
     </div>
   )

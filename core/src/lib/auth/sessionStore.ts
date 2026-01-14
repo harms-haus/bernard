@@ -80,6 +80,42 @@ export class SessionStore {
     await multi.exec();
   }
 
+  /**
+   * Refresh session TTL if it's within the refresh threshold.
+   * This enables sliding session expiration - sessions stay alive
+   * as long as the user is active.
+   * @param id Session ID to refresh
+   * @param refreshThresholdSeconds Refresh if TTL is less than this (default: 24 hours)
+   * @returns true if session was refreshed, false if not needed or session not found
+   */
+  async refreshIfNeeded(id: string, refreshThresholdSeconds: number = 60 * 60 * 24): Promise<boolean> {
+    const data = await this.redis.hgetall(this.sessionKey(id));
+    if (!data || !data["expiresAt"]) return false;
+
+    const expiresAt = new Date(data["expiresAt"]).getTime();
+    const ttl = await this.redis.ttl(this.sessionKey(id));
+
+    // Check if session needs refresh (within threshold)
+    if (ttl > refreshThresholdSeconds) {
+      return false; // Session has plenty of time left
+    }
+
+    if (ttl < 0) {
+      return false; // Session has no TTL (shouldn't happen with expire)
+    }
+
+    // Extend the session TTL
+    const newExpiresAt = new Date(Date.now() + this.ttlSeconds * 1000).toISOString();
+    await this.redis
+      .multi()
+      .hset(this.sessionKey(id), "expiresAt", newExpiresAt)
+      .expire(this.sessionKey(id), this.ttlSeconds)
+      .exec();
+
+    console.log(`[SessionStore] Refreshed session ${id}, new expiresAt: ${newExpiresAt}`);
+    return true;
+  }
+
   async listAll(): Promise<SessionRecord[]> {
     const keys = await this.redis.keys(`${this.namespace}:id:*`);
     const sessions = await Promise.all(

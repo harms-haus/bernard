@@ -3,7 +3,7 @@ import { requireAdmin } from '../../../lib/auth/helpers'
 import { getSettingsStore } from '../../../lib/api/factory'
 import { error, ok } from '../../../lib/api/response'
 
-export async function handleGetSettings(request: NextRequest): Promise<NextResponse> {
+async function handleGetSettings(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin(request)
   if (admin instanceof NextResponse) return admin
 

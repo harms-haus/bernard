@@ -238,6 +238,32 @@ export async function getCurrentUser(authHeader?: string | null, deps?: SessionD
   return getSessionFromHeader(authHeader || null, d)
 }
 
+/**
+ * Refresh session TTL if it's close to expiration.
+ * This implements sliding session expiration - sessions stay alive
+ * as long as the user is active.
+ * Call this after validating a session to keep it alive.
+ */
+export async function refreshSessionIfNeeded(
+  sessionId: string | null,
+  deps?: SessionDependencies
+): Promise<void> {
+  if (!sessionId || sessionId.startsWith('token-') || sessionId === 'admin' || sessionId === 'admin-cookie') {
+    // Don't refresh API tokens or admin sessions
+    return;
+  }
+
+  const d = deps || getDefaultDependencies()
+  const { stores } = d
+
+  try {
+    await stores.sessionStore.refreshIfNeeded(sessionId)
+  } catch (error) {
+    // Log but don't fail - session refresh is best-effort
+    console.error('[Session] Failed to refresh session:', error)
+  }
+}
+
 export async function requireAuth(deps?: SessionDependencies): Promise<AuthenticatedSession> {
   const user = await getCurrentUser(undefined, deps)
   

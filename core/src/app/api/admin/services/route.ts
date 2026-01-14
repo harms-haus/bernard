@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '../../../../lib/auth/helpers'
 import { SERVICES } from '../../../../lib/services/ServiceConfig'
-import { ok, error, badRequest, forbidden } from '../../../../lib/api/response'
+import { ok } from '../../../../lib/api/response'
 
-export interface ServiceInfo {
+interface ServiceInfo {
   id: string
   name: string
   displayName: string
@@ -12,16 +12,7 @@ export interface ServiceInfo {
   available: boolean
 }
 
-export interface ServiceListResponse {
-  services: ServiceInfo[]
-}
-
-export interface ServiceManageBody {
-  service?: unknown
-  action?: string
-}
-
-export async function handleListServices(request: NextRequest): Promise<NextResponse> {
+async function handleListServices(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin(request)
   if (admin instanceof NextResponse) return admin
 
@@ -34,10 +25,15 @@ export async function handleListServices(request: NextRequest): Promise<NextResp
     available: true,
   }))
 
-  return ok<ServiceListResponse>({ services })
+  return ok<{ services: ServiceInfo[] }>({ services })
 }
 
-export async function handleManageService(
+interface ServiceManageBody {
+  service?: unknown
+  action?: string
+}
+
+async function handleManageService(
   request: NextRequest,
   body: ServiceManageBody
 ): Promise<NextResponse> {
@@ -49,24 +45,20 @@ export async function handleManageService(
   // Validate action against allowlist
   const allowedActions = ['restart', 'stop', 'start']
   if (!allowedActions.includes(action)) {
-    return badRequest(
-      `Invalid action '${action}' for service '${serviceId || 'unknown'}'. Allowed actions: ${allowedActions.join(', ')}`,
-      { allowedActions, requestedAction: action, serviceId }
-    )
+    return NextResponse.json({ error: `Invalid action. Allowed: ${allowedActions.join(', ')}` }, { status: 400 })
   }
 
   if (!serviceId || typeof serviceId !== 'string') {
-    return badRequest('Service name is required', { availableServices: Object.keys(SERVICES) })
+    return NextResponse.json({ error: 'Missing or invalid service ID' }, { status: 400 })
   }
 
-  const serviceConfig = SERVICES[serviceId]
+  const serviceConfig = SERVICES[serviceId as keyof typeof SERVICES]
   if (!serviceConfig) {
-    return badRequest('Invalid service name', { availableServices: Object.keys(SERVICES) })
+    return NextResponse.json({ error: `Service "${serviceId}" not found` }, { status: 404 })
   }
 
-  if (serviceConfig.type === 'docker') {
-    return forbidden('Cannot restart docker services via API')
-  }
+  // Note: Actual service management is done via shell scripts or process manager
+  // This endpoint just validates and returns a success message
 
   return ok({
     success: true,

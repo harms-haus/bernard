@@ -3,7 +3,7 @@ import { getServiceManager } from "../../../lib/api/factory"
 import { error, ok } from "../../../lib/api/response"
 import type { ServiceStatus } from "../../../lib/services/ServiceManager"
 
-export async function handleGetServices(_request: NextRequest): Promise<NextResponse> {
+async function handleGetServices(_request: NextRequest): Promise<NextResponse> {
   try {
     const manager = getServiceManager()
     const statuses = await manager.getAllStatus()

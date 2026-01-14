@@ -16,7 +16,7 @@ export interface HealthCheckResponse {
   timestamp: string
 }
 
-export async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
+async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
   const searchParams = request.nextUrl.searchParams
   const service = searchParams.get("service")
 

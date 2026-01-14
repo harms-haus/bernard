@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { ok } from "@/lib/api/response"
 
-export function handleOkCheck() {
+function handleOkCheck() {
   return ok({
     status: "ok",
     timestamp: new Date().toISOString(),

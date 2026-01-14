@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { setSessionCookie } from '@/lib/auth/session'
-import { getOAuthConfig, validateOAuthState, exchangeCodeForToken, fetchUserInfo, createOAuthSession } from '@/lib/auth/oauth'
+import { setSessionCookie, initializeSession, createSessionDependencies } from '@/lib/auth/session'
+import { getOAuthConfig, validateOAuthState, exchangeCodeForToken, fetchUserInfo, createOAuthSession, initializeOAuth, createOAuthDependencies } from '@/lib/auth/oauth'
+import { initializeSettingsManager } from '@/lib/config/appSettings'
+import { getRedis } from '@/lib/infra/redis'
+import { buildStores } from '@/lib/auth/authCore'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  // Initialize all dependencies
+  await initializeSettingsManager()
+  const redis = getRedis()
+  const stores = buildStores(redis)
+  
+  initializeOAuth(createOAuthDependencies(redis, stores))
+  initializeSession(createSessionDependencies(stores, {
+    get(_name: string): { value: string } | undefined { return undefined },
+    set(_name: string, _value: string, _options?: unknown): void {},
+    delete(_name: string): void {},
+  }, 604800, process.env.NODE_ENV === 'production'))
+  
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const state = searchParams.get('state')

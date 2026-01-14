@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { error, ok } from '../../../../lib/api/response'
 import { clearSessionCookie } from '../../../../lib/auth/session'
 
-export async function handleLogout(): Promise<NextResponse> {
+async function handleLogout(): Promise<NextResponse> {
   try {
     await clearSessionCookie()
     return ok({ success: true })

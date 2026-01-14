@@ -18,7 +18,7 @@ export interface MeResponse {
   sessionId: string
 }
 
-export async function handleMe(request: NextRequest): Promise<NextResponse> {
+async function handleMe(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization')
   const session = await getSessionFromHeader(authHeader)
 

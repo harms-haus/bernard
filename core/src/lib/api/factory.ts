@@ -6,7 +6,7 @@ import { ServiceManager } from '../services/ServiceManager'
 import { HealthChecker } from '../services/HealthChecker'
 import { TaskRecordKeeper } from '../infra/taskKeeper'
 import { getRedis } from '../infra/redis'
-import { SettingsStore } from '../config/settingsStore'
+import { SettingsStoreCore } from '../config/settingsStore'
 
 // Interface for dependency injection in tests
 export interface ApiServices {
@@ -21,7 +21,7 @@ const defaultServices: ApiServices = {
   createServiceManager: () => new ServiceManager(),
   createHealthChecker: () => new HealthChecker(),
   createTaskKeeper: () => new TaskRecordKeeper(getRedis()),
-  getSettingsStore: () => new SettingsStore(),
+  getSettingsStore: () => new SettingsStoreCore(),
 }
 
 // Global reference for overriding in tests

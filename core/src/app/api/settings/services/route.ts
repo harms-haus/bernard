@@ -4,7 +4,7 @@ import { getSettingsStore } from '../../../../lib/api/factory'
 import { ServicesSettingsSchema } from '../../../../lib/config/settingsStore'
 import { error, ok, badRequest } from '../../../../lib/api/response'
 
-export async function handleGetServicesSettings(request: NextRequest): Promise<NextResponse> {
+async function handleGetServicesSettings(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin(request)
   if (admin instanceof NextResponse) return admin
 
@@ -13,7 +13,7 @@ export async function handleGetServicesSettings(request: NextRequest): Promise<N
   return ok(services)
 }
 
-export async function handlePutServicesSettings(
+async function handlePutServicesSettings(
   request: NextRequest
 ): Promise<NextResponse> {
   const admin = await requireAdmin(request)

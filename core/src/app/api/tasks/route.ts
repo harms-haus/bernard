@@ -8,7 +8,7 @@ interface TaskActionBody {
   taskId?: unknown
 }
 
-export async function handleGetTasks(request: NextRequest): Promise<NextResponse> {
+async function handleGetTasks(request: NextRequest): Promise<NextResponse> {
   try {
     const authUser = await requireAuth(request)
     if (authUser instanceof NextResponse) return authUser
@@ -35,7 +35,7 @@ export async function handleGetTasks(request: NextRequest): Promise<NextResponse
   }
 }
 
-export async function handlePostTaskAction(
+async function handlePostTaskAction(
   request: NextRequest,
   body: TaskActionBody
 ): Promise<NextResponse> {
@@ -75,7 +75,7 @@ export async function handlePostTaskAction(
   }
 }
 
-export async function handleDeleteTask(
+async function handleDeleteTask(
   request: NextRequest,
   searchParams: URLSearchParams
 ): Promise<NextResponse> {

@@ -7,7 +7,7 @@ export interface AutoRenameBody {
   messages?: Array<{ type: string; content: unknown }>
 }
 
-export async function handleAutoRename(
+async function handleAutoRename(
   threadId: string,
   body: AutoRenameBody
 ): Promise<NextResponse> {

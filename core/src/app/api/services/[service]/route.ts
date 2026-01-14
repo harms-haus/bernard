@@ -24,7 +24,7 @@ export interface ServiceCommandResponse {
 }
 
 // @ts-ignore
-export async function handleGetService(serviceId: string): Promise<any> {
+async function handleGetService(serviceId: string): Promise<any> {
   const config = SERVICES[serviceId]
 
   if (!config) {
@@ -46,7 +46,7 @@ export async function handleGetService(serviceId: string): Promise<any> {
 }
 
 // @ts-ignore
-export async function handleServiceCommand(
+async function handleServiceCommand(
   serviceId: string,
   body: ServiceCommandBody
 ): Promise<any> {

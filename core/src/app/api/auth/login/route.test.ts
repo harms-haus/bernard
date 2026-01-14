@@ -5,6 +5,8 @@ import { handleLogin, validateLoginBody, validateReturnTo } from './route'
 vi.mock('../../../../lib/auth/oauth', () => ({
   getOAuthConfig: vi.fn(),
   createOAuthState: vi.fn(),
+  initializeOAuth: vi.fn(),
+  createOAuthDependencies: vi.fn(),
 }))
 
 // Re-import to get the mocked version
@@ -23,7 +25,7 @@ describe('POST /api/auth/login', () => {
         redirectUri: 'http://localhost:3456/api/auth/callback',
         scopes: 'read:user user:email',
       })
-      createOAuthState.mockResolvedValue('mock-state-123')
+      createOAuthState.mockResolvedValue({ state: 'mock-state-123', codeChallenge: 'mock-challenge' })
 
       const result = await handleLogin({ provider: 'github', returnTo: '/status' })
 
@@ -90,7 +92,7 @@ describe('POST /api/auth/login', () => {
       const result = await handleLogin({ provider: 'github' })
 
       expect(result.status).toBe(200)
-      expect(createOAuthState).toHaveBeenCalledWith('github', '/')
+      expect(createOAuthState).toHaveBeenCalledWith('github', '/bernard/chat')
     })
 
     it('should return 500 when OAuth is not configured', async () => {

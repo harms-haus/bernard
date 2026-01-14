@@ -1,7 +1,6 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { Home } from './pages/Home'
 import { About } from './pages/About'
-import { Login } from './pages/Login'
 import { Chat } from './pages/Chat'
 import { Profile } from './pages/Profile'
 import { Keys } from './pages/Keys'
@@ -37,7 +36,8 @@ function App() {
             <ThreadProvider>
               <Router basename="/bernard/">
                 <Routes>
-                  <Route path="/login" element={<Login />} />
+                  {/* Redirect /login to core auth login */}
+                  <Route path="/login" element={<Navigate to="/auth/login" replace />} />
 
                   {/* User routes with navigation */}
                   <Route
