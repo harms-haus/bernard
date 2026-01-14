@@ -83,26 +83,27 @@ export async function getOAuthConfig(provider: string, _deps?: OAuthDependencies
 
 export async function createOAuthState(
   provider: string,
-  returnTo: string = '/status',
+  returnTo: string = '/bernard/chat',
   deps?: OAuthDependencies
-): Promise<string> {
+): Promise<{ state: string; codeChallenge: string }> {
   const d = deps || getDefaultDependencies()
   const { redis } = d
 
   const codeVerifier = createCodeVerifier()
-  
+  const codeChallenge = createCodeChallenge(codeVerifier)
+
   const stateData: OAuthState = {
     codeVerifier,
     returnTo,
     provider,
   }
-  
+
   const state = generateState()
   const stateKey = `bernard:oauth:state:${provider}:${state}`
-  
+
   await redis.setex(stateKey, 600, JSON.stringify(stateData))
-  
-  return state
+
+  return { state, codeChallenge }
 }
 
 export async function validateOAuthState(
@@ -182,6 +183,7 @@ export async function fetchUserInfo(
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json',
+      ...(provider === 'github' && { 'User-Agent': 'bernard-oauth' }),
     },
   })
 
@@ -248,6 +250,13 @@ function createCodeVerifier(): string {
     }
   }
   return base64UrlEncode(array)
+}
+
+function createCodeChallenge(verifier: string): string {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(verifier)
+  const hashBuffer = require('node:crypto').createHash('sha256').update(data).digest()
+  return base64UrlEncode(new Uint8Array(hashBuffer))
 }
 
 function base64UrlEncode(buffer: Uint8Array): string {

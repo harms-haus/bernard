@@ -738,7 +738,7 @@ export class SettingsManagerCore {
       userInfoUrl: this.getFromEnv("OAUTH_GITHUB_USERINFO_URL") ?? "https://api.github.com/user",
       clientId: this.getFromEnv("OAUTH_GITHUB_CLIENT_ID") ?? "",
       redirectUri: this.getFromEnv("OAUTH_GITHUB_REDIRECT_URI") ?? base.redirectUri,
-      scope: base.scope
+      scope: "read:user user:email"
     }
     if (githubSecret) github.clientSecret = githubSecret
 

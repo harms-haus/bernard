@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser, setSessionCookie, clearSessionCookie } from '@/lib/auth/session'
 import { getOAuthConfig, createOAuthState, validateOAuthState, exchangeCodeForToken, fetchUserInfo, createOAuthSession } from '@/lib/auth/oauth'
-import { validateReturnTo } from './login/route'
+import { validateReturnTo } from '@/lib/auth/validation'
 
 export const runtime = 'nodejs'
 
@@ -55,24 +55,26 @@ export async function GET(request: NextRequest) {
 
     case 'login': {
       const provider = searchParams.get('provider')
-      const returnTo = searchParams.get('returnTo') || '/status'
-      
+      const returnTo = searchParams.get('returnTo') || '/bernard/chat'
+
       if (!provider || !VALID_PROVIDERS.includes(provider)) {
         return NextResponse.json({ error: 'Invalid provider' }, { status: 400 })
       }
 
       try {
         const config = await getOAuthConfig(provider)
-        const state = await createOAuthState(provider, returnTo)
-        
+        const { state, codeChallenge } = await createOAuthState(provider, returnTo)
+
         const authUrl = new URL(config.authUrl)
         authUrl.searchParams.set('response_type', 'code')
         authUrl.searchParams.set('client_id', config.clientId)
         authUrl.searchParams.set('redirect_uri', config.redirectUri)
         authUrl.searchParams.set('scope', config.scopes)
         authUrl.searchParams.set('state', state)
+        authUrl.searchParams.set('code_challenge', codeChallenge)
+        authUrl.searchParams.set('code_challenge_method', 'S256')
 
-        return NextResponse.redirect(authUrl.toString())
+        return NextResponse.redirect(authUrl.toString(), 302)
       } catch (error) {
         console.error('OAuth login error:', error)
         return NextResponse.json({ error: 'Failed to initiate login' }, { status: 500 })
