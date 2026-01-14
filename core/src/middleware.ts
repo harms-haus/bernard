@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getCurrentUser } from '@/lib/auth/session'
+import { getCurrentUser, initializeSession, createSessionDependencies } from '@/lib/auth/session'
+import { initializeSettingsManager } from '@/lib/config/appSettings'
+import { getRedis } from '@/lib/infra/redis'
+import { buildStores } from '@/lib/auth/authCore'
 
 export const runtime = 'nodejs';
 
@@ -23,6 +26,36 @@ function isPublicPath(pathname: string): boolean {
   )
 }
 
+// Track whether dependencies have been initialized for this process
+let dependenciesInitialized = false
+
+async function ensureDependenciesInitialized(): Promise<void> {
+  if (dependenciesInitialized) return
+
+  try {
+    await initializeSettingsManager()
+    const redis = getRedis()
+    const stores = buildStores(redis)
+
+    initializeSession(
+      createSessionDependencies(
+        stores,
+        {
+          get(name: string): { value: string } | undefined { return undefined },
+          set(_name: string, _value: string, _options?: unknown): void {},
+          delete(_name: string): void {},
+        },
+        604800,
+        process.env.NODE_ENV === 'production'
+      )
+    )
+
+    dependenciesInitialized = true
+  } catch (err) {
+    console.error('Failed to initialize session dependencies in middleware:', err)
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const host = request.headers.get('host')
@@ -30,6 +63,9 @@ export async function middleware(request: NextRequest) {
   if (isPublicPath(pathname)) {
     return NextResponse.next()
   }
+
+  // Initialize session dependencies if not already done
+  await ensureDependenciesInitialized()
 
   // Check authentication
   const authHeader = request.headers.get('authorization')
