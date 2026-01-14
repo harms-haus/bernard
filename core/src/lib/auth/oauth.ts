@@ -1,7 +1,4 @@
-import { getRedis } from '@/lib/infra/redis'
-import { buildStores } from '@/lib/auth'
-import { appSettings } from '@/lib/config/appSettings'
-import type { OAuthSettings, OAuthClientSettings } from '@/lib/config/appSettings'
+import type { OAuthSettings } from '@/lib/config/appSettings'
 
 export interface OAuthConfig {
   authUrl: string
@@ -19,8 +16,52 @@ export interface OAuthState {
   provider: string
 }
 
-export async function getOAuthConfig(provider: string): Promise<OAuthConfig> {
-  const oauthSettings = await appSettings.getOAuth()
+export interface RedisClient {
+  get(key: string): Promise<string | null>
+  set(key: string, value: string): Promise<string>
+  setex(key: string, seconds: number, value: string): Promise<string>
+  del(key: string): Promise<number>
+}
+
+export interface AuthStores {
+  userStore: {
+    upsertOAuthUser: (id: string, displayName: string, email?: string, avatarUrl?: string) => Promise<{ id: string }>
+  }
+  sessionStore: {
+    create: (userId: string, data?: { userAgent?: string }) => Promise<{ id: string }>
+  }
+}
+
+export interface OAuthDependencies {
+  redis: RedisClient
+  stores: AuthStores
+}
+
+export function createOAuthDependencies(redis: RedisClient, stores: AuthStores): OAuthDependencies {
+  return { redis, stores }
+}
+
+let defaultDependencies: OAuthDependencies | null = null
+
+function getDefaultDependencies(): OAuthDependencies {
+  if (!defaultDependencies) {
+    throw new Error('OAuth dependencies not initialized. Pass dependencies explicitly or call initializeOAuth().')
+  }
+  return defaultDependencies
+}
+
+export function initializeOAuth(dependencies: OAuthDependencies): void {
+  defaultDependencies = dependencies
+}
+
+export function resetOAuth(): void {
+  defaultDependencies = null
+}
+
+export async function getOAuthConfig(provider: string, _deps?: OAuthDependencies): Promise<OAuthConfig> {
+  const { SettingsManagerCore } = await import('@/lib/config/appSettings')
+  const manager = SettingsManagerCore.getInstance()
+  const oauthSettings = await manager.getOAuth()
   
   const providerKey = provider.toLowerCase() as keyof OAuthSettings
   const config = oauthSettings[providerKey] || oauthSettings.default
@@ -42,15 +83,14 @@ export async function getOAuthConfig(provider: string): Promise<OAuthConfig> {
 
 export async function createOAuthState(
   provider: string,
-  returnTo: string = '/status'
+  returnTo: string = '/status',
+  deps?: OAuthDependencies
 ): Promise<string> {
-  const redis = getRedis()
-  const stores = buildStores(redis)
+  const d = deps || getDefaultDependencies()
+  const { redis } = d
 
-  // Generate code verifier
   const codeVerifier = createCodeVerifier()
   
-  // Create state with code verifier
   const stateData: OAuthState = {
     codeVerifier,
     returnTo,
@@ -60,7 +100,6 @@ export async function createOAuthState(
   const state = generateState()
   const stateKey = `bernard:oauth:state:${provider}:${state}`
   
-  // Store state for 10 minutes
   await redis.setex(stateKey, 600, JSON.stringify(stateData))
   
   return state
@@ -68,9 +107,11 @@ export async function createOAuthState(
 
 export async function validateOAuthState(
   provider: string,
-  state: string
+  state: string,
+  deps?: OAuthDependencies
 ): Promise<OAuthState | null> {
-  const redis = getRedis()
+  const d = deps || getDefaultDependencies()
+  const { redis } = d
   const stateKey = `bernard:oauth:state:${provider}:${state}`
   
   const stored = await redis.get(stateKey)
@@ -78,7 +119,6 @@ export async function validateOAuthState(
     return null
   }
 
-  // Delete state after retrieval (one-time use)
   await redis.del(stateKey)
   
   try {
@@ -151,7 +191,6 @@ export async function fetchUserInfo(
 
   const data = await response.json()
 
-  // Provider-specific parsing
   switch (provider) {
     case 'github':
       return {
@@ -179,12 +218,12 @@ export async function fetchUserInfo(
 
 export async function createOAuthSession(
   provider: string,
-  userInfo: { id: string; displayName: string; email?: string; avatarUrl?: string }
+  userInfo: { id: string; displayName: string; email?: string; avatarUrl?: string },
+  deps?: OAuthDependencies
 ): Promise<{ sessionId: string; userId: string }> {
-  const redis = getRedis()
-  const stores = buildStores(redis)
+  const d = deps || getDefaultDependencies()
+  const { stores } = d
 
-  // Upsert user
   const user = await stores.userStore.upsertOAuthUser(
     userInfo.id,
     userInfo.displayName,
@@ -192,7 +231,6 @@ export async function createOAuthSession(
     userInfo.avatarUrl
   )
 
-  // Create session
   const session = await stores.sessionStore.create(user.id, {
     userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
   })
@@ -200,13 +238,11 @@ export async function createOAuthSession(
   return { sessionId: session.id, userId: user.id }
 }
 
-// PKCE utilities
 function createCodeVerifier(): string {
   const array = new Uint8Array(64)
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(array)
   } else {
-    // Fallback for non-secure contexts
     for (let i = 0; i < array.length; i++) {
       array[i] = Math.floor(Math.random() * 256)
     }

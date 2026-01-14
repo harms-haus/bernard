@@ -18,7 +18,7 @@ import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '../../lib
 import { PanelRightOpen, PenSquare, MoreVertical, Ghost, Plus, Copy, Download, Sun, Moon, Send, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
-import { apiClient } from '../../services/api';
+import { getAPIClient } from '../../lib/api/client';
 
 export function Thread() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,12 +71,13 @@ export function Thread() {
           : JSON.stringify(firstHumanMessage.content);
 
         // Trigger auto-rename (fire and forget)
+        const apiClient = getAPIClient();
         apiClient.autoRenameThread(threadId, messageContent)
           .then(() => {
             // Refresh thread list to show updated name
             getThreads();
           })
-          .catch(err => {
+          .catch((err: unknown) => {
             // Silent fail - don't interrupt user experience
             console.error('Auto-rename failed:', err);
           });
@@ -215,15 +216,16 @@ export function Thread() {
 
         <div 
           ref={scrollRef}
+          data-testid="chat-messages-container"
           className={cn(
             "flex-1 overflow-y-auto px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent",
             !chatStarted && "flex flex-col items-center pt-[25vh]",
             chatStarted && "pt-8"
           )}
         >
-          <div className="pt-8 pb-4 max-w-3xl mx-auto flex flex-col gap-0 w-full min-h-full">
+          <div className="pt-8 pb-4 max-w-3xl mx-auto flex flex-col gap-0 w-full min-h-full" data-testid="chat-messages-list">
             {!chatStarted && (
-              <div className="flex flex-col items-center gap-4 mb-8">
+              <div className="flex flex-col items-center gap-4 mb-8" data-testid="welcome-message">
                 <Avatar className="h-12 w-12">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xl">B</AvatarFallback>
                 </Avatar>
@@ -268,11 +270,12 @@ export function Thread() {
         <div className={cn(
           "bg-background/95 backdrop-blur-sm p-4 shrink-0",
           !chatStarted && "flex flex-col items-center"
-        )}>
+        )} data-testid="chat-input-area">
           <div className="max-w-3xl w-full mx-auto relative px-4 sm:px-0">
             <div className="bg-muted/50 hover:bg-muted/80 transition-colors rounded-3xl border shadow-sm p-2">
-              <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-2" data-testid="chat-form">
                 <Textarea
+                  data-testid="chat-input"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -299,6 +302,7 @@ export function Thread() {
                   <div className="flex items-center gap-2">
                     {isLoading ? (
                       <Button 
+                        data-testid="stop-button"
                         key="stop" 
                         onClick={stop} 
                         type="button" 
@@ -310,6 +314,7 @@ export function Thread() {
                       </Button>
                     ) : (
                       <Button 
+                        data-testid="send-button"
                         type="submit" 
                         disabled={!input.trim()} 
                         size="icon"

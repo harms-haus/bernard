@@ -8,7 +8,6 @@ const envSchema = z.object({
   ADMIN_API_KEY: z.string().min(32).optional(),
   SESSION_TTL_SECONDS: z.coerce.number().default(604800),
   TZ: z.string().default("America/Chicago"),
-  // Service URLs
   BERNARD_API_URL: z.string().url().default("http://localhost:8800"),
   VLLM_URL: z.string().url().default("http://localhost:8860"),
   WHISPER_URL: z.string().url().default("http://localhost:8870"),
@@ -16,6 +15,21 @@ const envSchema = z.object({
   BERNARD_UI_URL: z.string().url().default("http://localhost:8810"),
 })
 
-export const env = envSchema.parse(process.env)
-
 export type Env = z.infer<typeof envSchema>
+
+export function createEnv(source: Record<string, unknown> = process.env): Env {
+  const result = envSchema.safeParse(source)
+
+  if (!result.success) {
+    const errors = result.error.issues.map(issue => {
+      const path = issue.path.join('.')
+      const message = issue.message
+      return `${path}: ${message}`
+    }).join(', ')
+    throw new Error(`Environment validation failed: ${errors}`)
+  }
+
+  return result.data
+}
+
+export const env = createEnv(process.env)

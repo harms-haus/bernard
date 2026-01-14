@@ -1,5 +1,7 @@
 import { createContext, useContext, ReactNode, useCallback, useState } from 'react';
-import { apiClient, type ThreadListItem } from '../services/api';
+import { getAPIClient } from '../lib/api/client';
+import type { ThreadListItem } from '../services/api';
+import type { IAPIClient } from '../lib/api/types';
 
 interface ThreadContextType {
   threads: ThreadListItem[];
@@ -14,7 +16,12 @@ interface ThreadContextType {
 
 const ThreadContext = createContext<ThreadContextType | undefined>(undefined);
 
-export function ThreadProvider({ children }: { children: ReactNode }) {
+interface ThreadProviderProps {
+  children: ReactNode;
+  apiClient?: IAPIClient;
+}
+
+export function ThreadProvider({ children, apiClient = getAPIClient() }: ThreadProviderProps) {
   const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
 
@@ -38,7 +45,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     } finally {
       setThreadsLoading(false);
     }
-  }, []);
+  }, [apiClient]);
 
 
   const createThread = useCallback((id: string) => {
@@ -65,7 +72,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       console.error('Failed to create new thread:', error);
       throw error;
     }
-  }, [createThread]);
+  }, [apiClient, createThread]);
 
   const updateThread = useCallback(async (threadId: string, name: string) => {
     try {
@@ -77,7 +84,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       console.error('Failed to update thread:', error);
       throw error;
     }
-  }, []);
+  }, [apiClient]);
 
   const deleteThread = useCallback(async (threadId: string) => {
     try {
@@ -87,7 +94,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       console.error('Failed to delete thread:', error);
       throw error;
     }
-  }, []);
+  }, [apiClient]);
 
   const value = {
     threads,

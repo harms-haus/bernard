@@ -69,35 +69,49 @@ export function AssistantMessage({
 
   if (isToolResult) {
     return (
-      <div className="flex items-start mr-auto gap-2 group">
+      <div data-testid="tool-result" className="flex items-start mr-auto gap-2 group">
         <ToolCalls toolCalls={[{ id: message.tool_call_id!, name: message.name || 'unknown', args: {} }]} toolResults={[message]} />
       </div>
     );
   }
 
   return (
-    <div className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", hasBranches ? "w-full" : "mr-auto")}>
+    <div
+      data-testid="assistant-message"
+      className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", hasBranches ? "w-full" : "mr-auto")}
+    >
       <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
         <ContentCopyable content={contentString} disabled={false} side="left" />
-        <TooltipIconButton onClick={handleRegenerate} tooltip="Regenerate" variant="ghost" side="left">
+        <TooltipIconButton
+          data-testid="regenerate-button"
+          onClick={handleRegenerate}
+          tooltip="Regenerate"
+          variant="ghost"
+          side="left"
+        >
           <RefreshCcw className="w-4 h-4" />
         </TooltipIconButton>
       </div>
       <div className="flex flex-col gap-0 w-full">
         <BranchSwitcher
+          data-testid="assistant-branch-switcher"
           branch={meta?.branch}
           branchOptions={meta?.branchOptions}
           onSelect={(branch) => thread.setBranch(branch)}
           isLoading={isLoading}
         />
         {contentString.length > 0 && (
-          <div>
+          <div data-testid="assistant-message-content">
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         )}
 
         {hasToolCalls && toolCallsHaveContents && (
-          <ToolCalls toolCalls={message.tool_calls} toolResults={toolResults} />
+          <ToolCalls
+            data-testid="assistant-tool-calls"
+            toolCalls={message.tool_calls}
+            toolResults={toolResults}
+          />
         )}
       </div>
     </div>
@@ -106,7 +120,7 @@ export function AssistantMessage({
 
 export function AssistantMessageLoading() {
   return (
-    <div className="flex items-start mr-auto gap-2">
+    <div data-testid="assistant-message-loading" className="flex items-start mr-auto gap-2">
       <div className="flex items-center gap-1 rounded-2xl bg-muted px-4 py-2 h-8">
         <div className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-[pulse_1.5s_ease-in-out_infinite]"></div>
         <div className="w-1.5 h-1.5 rounded-full bg-foreground/50 animate-[pulse_1.5s_ease-in-out_0.5s_infinite]"></div>

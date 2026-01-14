@@ -3,6 +3,8 @@ export * from './mocks/redis'
 export * from './mocks/child-process'
 export * from './mocks/axios'
 export * from './mocks/redis-client'
+export * from './mocks/cookie-store'
+export * from './mocks/crypto'
 
 // Fixtures
 export * from './fixtures/services'

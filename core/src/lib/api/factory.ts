@@ -13,7 +13,7 @@ export interface ApiServices {
   createServiceManager: () => ServiceManager
   createHealthChecker: () => HealthChecker
   createTaskKeeper: () => TaskRecordKeeper
-  getSettingsStore: () => SettingsStore
+  getSettingsStore: () => SettingsStoreCore
 }
 
 // Default implementation - uses real services
@@ -72,6 +72,6 @@ export function getTaskKeeper(): TaskRecordKeeper {
 /**
  * Get a SettingsStore instance
  */
-export function getSettingsStore(): SettingsStore {
+export function getSettingsStore(): SettingsStoreCore {
   return apiServices.getSettingsStore()
 }

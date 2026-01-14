@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin as requireAdminAuth, requireAuth as requireAuthFn, type AuthenticatedSession } from './session'
+import { getCurrentUser, type AuthenticatedSession } from './session'
 
 export function bearerToken(req: NextRequest): string | null {
   const header = req.headers.get('authorization')
@@ -11,7 +11,17 @@ export function bearerToken(req: NextRequest): string | null {
 
 export async function requireAdmin(req: NextRequest): Promise<AuthenticatedSession | NextResponse> {
   try {
-    const user = await requireAdminAuth()
+    const authHeader = bearerToken(req)
+    const user = await getCurrentUser(authHeader)
+
+    if (!user) {
+      throw new Error('Authentication required')
+    }
+
+    if (!user.user.isAdmin) {
+      throw new Error('Admin access required')
+    }
+
     return user
   } catch (error) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
@@ -20,8 +30,13 @@ export async function requireAdmin(req: NextRequest): Promise<AuthenticatedSessi
 
 export async function requireAuth(req: NextRequest): Promise<AuthenticatedSession | NextResponse> {
   try {
-    const token = bearerToken(req)
-    const user = await requireAuthFn()
+    const authHeader = bearerToken(req)
+    const user = await getCurrentUser(authHeader)
+
+    if (!user) {
+      throw new Error('Authentication required')
+    }
+
     return user
   } catch (error) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

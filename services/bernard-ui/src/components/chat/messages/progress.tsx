@@ -33,6 +33,7 @@ export function ProgressIndicator() {
     <AnimatePresence mode="wait">
       {visibleProgress ? (
         <motion.div
+          data-testid="progress-indicator"
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
@@ -40,6 +41,7 @@ export function ProgressIndicator() {
           className="flex items-start mr-auto gap-2"
         >
           <div
+            data-testid="progress-content"
             className={cn(
               "flex items-center gap-2 rounded-2xl",
               "bg-muted/80 px-4 py-2 h-8",
@@ -49,11 +51,13 @@ export function ProgressIndicator() {
           >
             <PulsingIndicator />
             {/* Progress message */}
-            <span className="truncate max-w-[200px] sm:max-w-[300px]">{visibleProgress}</span>
+            <span data-testid="progress-message" className="truncate max-w-[200px] sm:max-w-[300px]">{visibleProgress}</span>
           </div>
         </motion.div>
-      ): (
-        <PulsingIndicator />
+      ) : (
+        <div data-testid="progress-pulsing-indicator">
+          <PulsingIndicator />
+        </div>
       )}
     </AnimatePresence>
   );

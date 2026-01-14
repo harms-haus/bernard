@@ -1,20 +1,6 @@
-import { cookies } from 'next/headers'
-import { getRedis } from '@/lib/infra/redis'
-import { buildStores, type AuthStores, type SessionRecord } from '@/lib/auth'
+import type { AuthStores, SessionRecord } from '@/lib/auth'
 import { getAdminUser } from './adminAuth'
 export { bearerToken } from './helpers'
-
-const SESSION_COOKIE_NAME = 'bernard_session'
-
-let stores: AuthStores | null = null
-
-function getStores(): AuthStores {
-  if (!stores) {
-    const redis = getRedis()
-    stores = buildStores(redis)
-  }
-  return stores
-}
 
 export interface SessionUser {
   id: string
@@ -33,15 +19,71 @@ export interface AuthenticatedSession {
   session?: SessionRecord
 }
 
-export async function getSessionFromCookie(): Promise<AuthenticatedSession | null> {
-  const cookieStore = await cookies()
+const SESSION_COOKIE_NAME = 'bernard_session'
+
+export interface CookieStore {
+  get(name: string): { value: string } | undefined
+  set(name: string, value: string, options?: CookieOptions): void
+  delete(name: string): void
+}
+
+export interface CookieOptions {
+  httpOnly?: boolean
+  secure?: boolean
+  sameSite?: 'lax' | 'strict' | 'none'
+  maxAge?: number
+  path?: string
+  domain?: string
+}
+
+export interface SessionDependencies {
+  stores: AuthStores
+  cookieStore: CookieStore
+  sessionTtlSeconds: number
+  isProduction: boolean
+}
+
+// Factory function for creating session dependencies
+export function createSessionDependencies(
+  stores: AuthStores,
+  cookieStore: CookieStore,
+  sessionTtlSeconds: number = 604800,
+  isProduction: boolean = false
+): SessionDependencies {
+  return { stores, cookieStore, sessionTtlSeconds, isProduction }
+}
+
+let defaultDependencies: SessionDependencies | null = null
+
+export function initializeSession(dependencies: SessionDependencies): void {
+  defaultDependencies = dependencies
+}
+
+export function resetSession(): void {
+  defaultDependencies = null
+}
+
+function getDefaultDependencies(): SessionDependencies {
+  if (!defaultDependencies) {
+    throw new Error('Session dependencies not initialized. Pass dependencies explicitly or call initializeSession().')
+  }
+  return defaultDependencies
+}
+
+function getStores(deps: SessionDependencies): AuthStores {
+  return deps.stores
+}
+
+export async function getSessionFromCookie(deps?: SessionDependencies): Promise<AuthenticatedSession | null> {
+  const d = deps || getDefaultDependencies()
+  const { cookieStore, stores } = d
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value
 
   if (!sessionId) {
     return null
   }
 
-  const authStores = getStores()
+  const authStores = getStores(d)
   const session = await authStores.sessionStore.get(sessionId)
   
   if (!session) {
@@ -70,15 +112,15 @@ export async function getSessionFromCookie(): Promise<AuthenticatedSession | nul
   }
 }
 
-export async function getSessionFromHeader(authHeader: string | null): Promise<AuthenticatedSession | null> {
+export async function getSessionFromHeader(authHeader: string | null, deps?: SessionDependencies): Promise<AuthenticatedSession | null> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
   }
 
   const token = authHeader.slice(7)
-  const authStores = getStores()
+  const d = deps || getDefaultDependencies()
+  const authStores = getStores(d)
 
-  // Try validating as API token first
   const tokenRecord = await authStores.tokenStore.validate(token)
   if (tokenRecord) {
     if (tokenRecord.status !== 'active') {
@@ -119,7 +161,6 @@ export async function getSessionFromHeader(authHeader: string | null): Promise<A
     }
   }
 
-  // Try validating as session
   const session = await authStores.sessionStore.get(token)
   if (session) {
     const user = await authStores.userStore.get(session.userId)
@@ -147,8 +188,9 @@ export async function getSessionFromHeader(authHeader: string | null): Promise<A
   return null
 }
 
-export async function getCurrentUser(authHeader?: string | null): Promise<AuthenticatedSession | null> {
-  // Check admin key first
+export async function getCurrentUser(authHeader?: string | null, deps?: SessionDependencies): Promise<AuthenticatedSession | null> {
+  const d = deps || getDefaultDependencies()
+  
   const adminUser = getAdminUser(
     process.env.ADMIN_API_KEY,
     authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
@@ -168,8 +210,7 @@ export async function getCurrentUser(authHeader?: string | null): Promise<Authen
     }
   }
 
-  // Check admin session cookie
-  const cookieStore = await cookies()
+  const cookieStore = d.cookieStore
   const adminSessionKey = cookieStore.get('bernard_admin_session')?.value
   if (adminSessionKey) {
     const adminFromCookie = getAdminUser(process.env.ADMIN_API_KEY, adminSessionKey)
@@ -189,18 +230,16 @@ export async function getCurrentUser(authHeader?: string | null): Promise<Authen
     }
   }
 
-  // Try session cookie
-  const sessionUser = await getSessionFromCookie()
+  const sessionUser = await getSessionFromCookie(d)
   if (sessionUser) {
     return sessionUser
   }
 
-  // Try session/token in header
-  return getSessionFromHeader(authHeader || null)
+  return getSessionFromHeader(authHeader || null, d)
 }
 
-export async function requireAuth(): Promise<AuthenticatedSession> {
-  const user = await getCurrentUser()
+export async function requireAuth(deps?: SessionDependencies): Promise<AuthenticatedSession> {
+  const user = await getCurrentUser(undefined, deps)
   
   if (!user) {
     throw new Error('Authentication required')
@@ -209,8 +248,8 @@ export async function requireAuth(): Promise<AuthenticatedSession> {
   return user
 }
 
-export async function requireAdmin(): Promise<AuthenticatedSession> {
-  const user = await requireAuth()
+export async function requireAdmin(deps?: SessionDependencies): Promise<AuthenticatedSession> {
+  const user = await requireAuth(deps)
   
   if (!user.user.isAdmin) {
     throw new Error('Admin access required')
@@ -221,28 +260,18 @@ export async function requireAdmin(): Promise<AuthenticatedSession> {
 
 export { requireAuth as requireAuthFn, requireAdmin as requireAdminFn }
 
-export async function setSessionCookie(sessionId: string): Promise<void> {
-  const maxAge = parseInt(process.env.SESSION_TTL_SECONDS || '604800', 10)
-  const isProduction = process.env.NODE_ENV === 'production'
-  const cookieStore = await cookies()
+export async function setSessionCookie(sessionId: string, deps?: SessionDependencies): Promise<void> {
+  const d = deps || getDefaultDependencies()
+  const { cookieStore, sessionTtlSeconds, isProduction } = d
   
-  // Set cookie options - use secure in production
-  const cookieOptions: {
-    httpOnly: boolean;
-    secure: boolean;
-    sameSite: 'lax';
-    maxAge: number;
-    path: string;
-    domain?: string;
-  } = {
+  const cookieOptions: CookieOptions = {
     httpOnly: true,
     secure: isProduction,
     sameSite: 'lax',
-    maxAge,
+    maxAge: sessionTtlSeconds,
     path: '/',
   }
   
-  // Only set domain for production to match the actual host
   if (isProduction) {
     cookieOptions.domain = 'bernard.harms.haus'
   }
@@ -250,18 +279,11 @@ export async function setSessionCookie(sessionId: string): Promise<void> {
   cookieStore.set(SESSION_COOKIE_NAME, sessionId, cookieOptions)
 }
 
-export async function clearSessionCookie(): Promise<void> {
-  const isProduction = process.env.NODE_ENV === 'production'
-  const cookieStore = await cookies()
+export async function clearSessionCookie(deps?: SessionDependencies): Promise<void> {
+  const d = deps || getDefaultDependencies()
+  const { cookieStore, isProduction } = d
   
-  const cookieOptions: {
-    httpOnly: boolean;
-    secure: boolean;
-    sameSite: 'lax';
-    maxAge: number;
-    path: string;
-    domain?: string;
-  } = {
+  const cookieOptions: CookieOptions = {
     httpOnly: true,
     secure: isProduction,
     sameSite: 'lax',

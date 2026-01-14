@@ -7,8 +7,8 @@ import { Skeleton } from '../ui/skeleton';
 import { useThreads } from '../../providers/ThreadProvider';
 import type { ThreadListItem } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
-import { apiClient } from '../../services/api';
 import { Client } from '@langchain/langgraph-sdk';
+import { getAPIClient } from '../../lib/api/client';
 import {
   PanelRight,
   PanelRightOpen,
@@ -111,6 +111,7 @@ function ThreadItemInner({
       const state = await client.threads.getState(thread.id) as { values?: { messages?: Array<{ type: string; content: unknown }> } };
       const messages = state?.values?.messages || [];
 
+      const apiClient = getAPIClient();
       await apiClient.autoRenameThread(thread.id, undefined, messages);
       await getThreads();
       toast.success('Thread renamed successfully');
@@ -123,10 +124,11 @@ function ThreadItemInner({
   };
 
   return (
-    <div className="w-full px-1 group relative">
+    <div data-testid={`thread-item-${thread.id}`} className="w-full px-1 group relative">
       {isRenaming ? (
         <div className="flex items-center gap-1 w-full px-2 py-1 rounded-md bg-muted">
           <Input
+            data-testid="thread-rename-input"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -137,6 +139,7 @@ function ThreadItemInner({
             autoFocus
           />
           <Button
+            data-testid="thread-rename-submit"
             size="icon"
             variant="ghost"
             className="h-7 w-7 shrink-0 text-primary hover:text-primary hover:bg-primary/10"
@@ -151,6 +154,7 @@ function ThreadItemInner({
       ) : (
         <>
           <Button
+            data-testid={`thread-item-button-${thread.id}`}
             variant="ghost"
             className={cn(
               'text-left items-start justify-start font-normal w-full pr-10',
@@ -169,10 +173,11 @@ function ThreadItemInner({
             />
           </Button>
 
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center">
+          <div data-testid={`thread-item-menu-${thread.id}`} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
+                  data-testid={`thread-item-menu-trigger-${thread.id}`}
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 hover:bg-background/80"
@@ -183,6 +188,7 @@ function ThreadItemInner({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
+                  data-testid={`thread-rename-button-${thread.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsRenaming(true);
@@ -192,6 +198,7 @@ function ThreadItemInner({
                   Rename
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  data-testid={`thread-auto-rename-button-${thread.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAutoRename();
@@ -202,6 +209,7 @@ function ThreadItemInner({
                   Auto-Rename
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  data-testid={`thread-delete-button-${thread.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsDeleting(true);
@@ -251,7 +259,7 @@ function ThreadList({
   onThreadClick: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-col w-full gap-1 items-start justify-start">
+    <div data-testid="thread-list-component" className="flex flex-col w-full gap-1 items-start justify-start">
       {threads.map((t) => (
         <ThreadItem
           key={t.id}
@@ -261,7 +269,7 @@ function ThreadList({
         />
       ))}
       {threads.length === 0 && (
-        <p className="text-muted-foreground text-sm p-4 text-center w-full">No chats yet</p>
+        <p data-testid="no-threads-message" className="text-muted-foreground text-sm p-4 text-center w-full">No chats yet</p>
       )}
     </div>
   );
@@ -281,7 +289,7 @@ const MemoizedThreadList = memo(ThreadList, areThreadsEqual);
 
 function ThreadHistoryLoading() {
   return (
-    <div className="flex flex-col w-full gap-2 px-2">
+    <div data-testid="thread-history-loading" className="flex flex-col w-full gap-2 px-2">
       {Array.from({ length: 8 }).map((_, i) => (
         <Skeleton key={i} className="w-full h-10 rounded-md" />
       ))}
@@ -323,6 +331,7 @@ export function ConversationHistory() {
   return (
     <>
       <motion.div
+        data-testid="conversation-history-sidebar"
         className={cn(
           'hidden lg:flex flex-col h-screen shrink-0 border-r bg-background relative',
           isOpen ? 'w-[300px]' : 'w-0 overflow-hidden'
@@ -333,33 +342,38 @@ export function ConversationHistory() {
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
-        <div className="flex items-center justify-between w-full p-4 h-16 border-b shrink-0">
+        <div data-testid="sidebar-header" className="flex items-center justify-between w-full p-4 h-16 border-b shrink-0">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+            <Button data-testid="sidebar-toggle-button" variant="ghost" size="icon" onClick={toggleSidebar}>
               <PanelRightOpen className="size-5" />
             </Button>
-            <h1 className="font-bold text-lg tracking-tight">History</h1>
+            <h1 data-testid="sidebar-title" className="font-bold text-lg tracking-tight">History</h1>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNewChat} disabled={isCreating}>
+          <Button data-testid="new-chat-button" variant="ghost" size="icon" onClick={handleNewChat} disabled={isCreating}>
             <Plus className={cn("size-5", isCreating && "animate-spin")} />
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div data-testid="thread-list-container" className="flex-1 overflow-y-auto overflow-x-hidden p-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent">
           {threadsLoading ? (
-            <ThreadHistoryLoading />
+            <div data-testid="thread-list-loading">
+              <ThreadHistoryLoading />
+            </div>
           ) : (
-            <MemoizedThreadList
-              threads={threads}
-              activeId={threadId || null}
-              onThreadClick={handleThreadClick}
-            />
+            <div data-testid="thread-list">
+              <MemoizedThreadList
+                threads={threads}
+                activeId={threadId || null}
+                onThreadClick={handleThreadClick}
+              />
+            </div>
           )}
         </div>
 
-        <div className="p-4 border-t space-y-4 shrink-0 bg-background/50 backdrop-blur-sm">
+        <div data-testid="sidebar-footer" className="p-4 border-t space-y-4 shrink-0 bg-background/50 backdrop-blur-sm">
           {state.user?.isAdmin && (
             <Link
+              data-testid="admin-dashboard-link"
               to="/admin"
               className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all group"
             >
@@ -367,11 +381,14 @@ export function ConversationHistory() {
               Admin Dashboard
             </Link>
           )}
-          <UserBadge />
+          <div data-testid="user-badge">
+            <UserBadge />
+          </div>
         </div>
       </motion.div>
 
       <motion.div
+        data-testid="mobile-sidebar"
         className={cn(
           'lg:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-[280px] bg-background border-r shadow-2xl shadow-black/20',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -382,15 +399,16 @@ export function ConversationHistory() {
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
-        <div className="flex items-center justify-between p-4 border-b">
+        <div data-testid="mobile-sidebar-header" className="flex items-center justify-between p-4 border-b">
           <h1 className="font-bold text-lg tracking-tight">History</h1>
           <Button variant="ghost" size="icon" onClick={() => setIsMobileOpen(false)}>
             <X className="size-5" />
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div data-testid="mobile-thread-list" className="flex-1 overflow-y-auto p-2">
           <Button
+            data-testid="mobile-new-chat-button"
             variant="outline"
             className="w-full mb-4 justify-start gap-2"
             onClick={() => {
@@ -404,26 +422,33 @@ export function ConversationHistory() {
           </Button>
 
           {threadsLoading ? (
-            <ThreadHistoryLoading />
+            <div data-testid="mobile-thread-list-loading">
+              <ThreadHistoryLoading />
+            </div>
           ) : (
-            <MemoizedThreadList
-              threads={threads}
-              activeId={threadId || null}
-              onThreadClick={(id) => {
-                handleThreadClick(id);
-                setIsMobileOpen(false);
-              }}
-            />
+            <div data-testid="mobile-thread-list-content">
+              <MemoizedThreadList
+                threads={threads}
+                activeId={threadId || null}
+                onThreadClick={(id) => {
+                  handleThreadClick(id);
+                  setIsMobileOpen(false);
+                }}
+              />
+            </div>
           )}
         </div>
 
-        <div className="p-4 border-t">
-          <UserBadge />
+        <div data-testid="mobile-sidebar-footer" className="p-4 border-t">
+          <div data-testid="mobile-user-badge">
+            <UserBadge />
+          </div>
         </div>
       </motion.div>
 
       <div className="lg:hidden fixed left-4 top-4 z-20">
         <Button
+          data-testid="mobile-sidebar-toggle"
           variant="secondary"
           size="icon"
           className="rounded-full shadow-lg h-10 w-10 border bg-background/80 backdrop-blur-sm hover:scale-105 transition-transform"
@@ -436,6 +461,7 @@ export function ConversationHistory() {
       {isMobileOpen && (
 
         <motion.div
+          data-testid="mobile-sidebar-overlay"
           className="lg:hidden fixed inset-0 bg-black/20 backdrop-blur-[2px] z-40"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
