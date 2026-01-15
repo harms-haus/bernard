@@ -36,9 +36,6 @@ function App() {
             <ThreadProvider>
               <Router basename="/bernard/">
                 <Routes>
-                  {/* Redirect /login to core auth login */}
-                  <Route path="/login" element={<Navigate to="/auth/login" replace />} />
-
                   {/* User routes with navigation */}
                   <Route
                     path="/"
@@ -77,6 +74,9 @@ function App() {
                     <Route path="users" element={<Users />} />
                     <Route path="automations" element={<Automations />} />
                   </Route>
+
+                  {/* Redirect unknown paths to home */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Router>
             </ThreadProvider>

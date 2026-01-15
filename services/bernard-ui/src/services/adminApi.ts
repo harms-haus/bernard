@@ -700,7 +700,7 @@ class AdminApiClient {
   }
 
   async logout(): Promise<void> {
-    return this.request<void>('/auth/logout', {
+    return this.request<void>('/api/auth/sign-out', {
       method: 'POST'
     });
   }

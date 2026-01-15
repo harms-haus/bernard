@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 interface ProtectedRouteProps {
@@ -9,7 +9,6 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
   const { state } = useAuth();
-  const location = useLocation();
 
   // If user is loading, show a loading state
   if (state.loading) {
@@ -25,7 +24,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
 
   // If user is not logged in, redirect to core auth login with the current location
   if (!state.user) {
-    const redirectTo = encodeURIComponent(location.pathname);
+    const redirectTo = encodeURIComponent(window.location.pathname);
     window.location.href = `/auth/login?redirect=${redirectTo}`;
     return (
       <div className="min-h-screen flex items-center justify-center">

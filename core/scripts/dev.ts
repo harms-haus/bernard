@@ -269,7 +269,7 @@ async function checkRedis(): Promise<boolean> {
 async function ensureRedisRunning(): Promise<void> {
   const { execSync } = await import('node:child_process')
 
-  log('Checking Redis status...', 'cyan')
+  log('Ensuring Redis is running...', 'cyan')
 
   try {
     execSync('docker inspect -f "{{.Name}}" bernard-redis 2>/dev/null', {
@@ -283,19 +283,11 @@ async function ensureRedisRunning(): Promise<void> {
     return
   }
 
+  // Always restart Redis to prevent stale connections
+  log('Restarting Redis...', 'yellow')
   try {
-    execSync('docker exec bernard-redis redis-cli ping', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    log('Redis is already running and healthy', 'green')
-    return
-  } catch {
-    log('Redis is not responding. Restarting...', 'yellow')
-  }
-
-  try {
-    execSync('docker restart bernard-redis', {
+    // Use stop+start instead of restart to avoid port binding race condition
+    execSync('docker stop bernard-redis && docker start bernard-redis', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })

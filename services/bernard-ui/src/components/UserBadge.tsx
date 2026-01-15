@@ -10,18 +10,18 @@ export function UserBadge() {
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/bernard/login');
     } catch (error) {
       // Error is handled in the hook
     }
   };
 
   const handleProfile = () => {
-    navigate('/profile');
+    navigate('/bernard/profile');
   };
 
   const handleKeys = () => {
-    navigate('/keys');
+    navigate('/bernard/keys');
   };
 
   if (!state.user) {

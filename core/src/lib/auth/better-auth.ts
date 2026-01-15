@@ -89,6 +89,10 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: "bernard",
     useSecureCookies: env.NODE_ENV === "production",
-    trustedOrigins: [env.BERNARD_UI_URL],
+    trustedOrigins: [
+      env.BERNARD_UI_URL,
+      "http://127.0.0.1:8810",
+      "http://localhost:8810",
+    ],
   },
 } as BetterAuthOptions);

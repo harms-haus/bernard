@@ -1,10 +1,9 @@
 import { createAuthClient } from "better-auth/client";
 import { adminClient } from "better-auth/client/plugins";
-import { useSyncExternalStore } from "react";
 
 /**
  * Type representing a BetterAuth session with admin support.
- * The admin plugin adds role field to the user object. isAdmin is computed from role.
+ * The admin plugin adds role field to the user object.
  */
 export interface AuthSession {
   user: {
@@ -35,25 +34,23 @@ export interface AuthSession {
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL ?? "http://localhost:3456",
   plugins: [
-    adminClient(), // Enable admin features on client side
+    adminClient(),
   ],
 });
 
 /**
- * Hook to get the current session in React components.
- * This hook subscribes to the BetterAuth session store.
+ * Get the current session by calling the API directly.
+ * Returns null if not authenticated.
  */
-export function useSession() {
-  return useSyncExternalStore(
-    (notify) => {
-      const unsubscribe = authClient.useSession.subscribe(notify);
-      return () => {
-        unsubscribe();
-      };
-    },
-    () => authClient.useSession.value,
-    () => authClient.useSession.value
-  );
+export async function getSession(): Promise<AuthSession | null> {
+  try {
+    const response = await authClient.$fetch("/get-session", {
+      method: "GET",
+    });
+    return response as unknown as AuthSession;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -63,14 +60,18 @@ export async function signInEmail(
   email: string,
   password: string
 ): Promise<{ error?: { message: string } }> {
-  const result = await authClient.signIn.email({
-    email,
-    password,
-  });
-  if (result.error) {
-    return { error: { message: result.error.message || "Sign in failed" } };
+  try {
+    const result = await authClient.signIn.email({
+      email,
+      password,
+    });
+    if (result.error) {
+      return { error: { message: result.error.message || "Sign in failed" } };
+    }
+    return {};
+  } catch (err) {
+    return { error: { message: err instanceof Error ? err.message : "Sign in failed" } };
   }
-  return {};
 }
 
 /**
@@ -81,15 +82,19 @@ export async function signUpEmail(
   password: string,
   name?: string
 ): Promise<{ error?: { message: string } }> {
-  const result = await authClient.signUp.email({
-    email,
-    password,
-    name: name ?? "",
-  });
-  if (result.error) {
-    return { error: { message: result.error.message || "Sign up failed" } };
+  try {
+    const result = await authClient.signUp.email({
+      email,
+      password,
+      name: name ?? "",
+    });
+    if (result.error) {
+      return { error: { message: result.error.message || "Sign up failed" } };
+    }
+    return {};
+  } catch (err) {
+    return { error: { message: err instanceof Error ? err.message : "Sign up failed" } };
   }
-  return {};
 }
 
 /**

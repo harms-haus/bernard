@@ -62,7 +62,7 @@ export function AdminLayout() {
                   Back to Home
                 </Link>
               </Button>
-              <Button variant="outline" onClick={() => window.location.href = '/profile'}>
+              <Button variant="outline" onClick={() => window.location.href = '/bernard/profile'}>
                 Profile
               </Button>
             </div>
@@ -123,7 +123,7 @@ export function AdminLayout() {
             <div className="border-t border-border p-4 space-y-3">
               {/* Main chat link moved to just above the user badge */}
               <Button variant="outline" className="w-full justify-start" onClick={() => {
-                navigate('/chat');
+                navigate('/bernard/chat');
                 setSidebarOpen(false);
               }}>
                 <Home className="mr-2 h-4 w-4" />

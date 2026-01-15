@@ -133,7 +133,7 @@ class APIClient {
     baseUrl?: string
   ): Promise<T> {
     // For auth endpoints, use the current host
-    if (endpoint.startsWith('/auth/') && !baseUrl) {
+    if ((endpoint.startsWith('/auth/') || endpoint.startsWith('/api/auth/')) && !baseUrl) {
       baseUrl = `${window.location.protocol}//${window.location.host}`;
     }
     const url = `${baseUrl || this.apiBaseUrl}${endpoint}`;
@@ -201,13 +201,13 @@ class APIClient {
   }
 
   async logout(): Promise<void> {
-    return this.request<void>('/auth/logout', {
+    return this.request<void>('/api/auth/sign-out', {
       method: 'POST'
     }, this.authBaseUrl);
   }
 
   async getCurrentUser(): Promise<User | null> {
-    // Deduplicate /auth/me to avoid runaway request storms.
+    // Deduplicate /api/auth/get-session to avoid runaway request storms.
     // This also smooths over StrictMode double-invokes in dev.
     const now = Date.now();
     const cacheTtlMs = 2000;
@@ -223,7 +223,7 @@ class APIClient {
       return this.currentUserInFlight;
     }
 
-    this.currentUserInFlight = this.request<{ user: User | null }>('/auth/me', undefined, this.authBaseUrl)
+    this.currentUserInFlight = this.request<{ user: User | null }>('/api/auth/get-session', undefined, this.authBaseUrl)
       .then((response) => {
         this.currentUserCache = { user: response.user, cachedAtMs: Date.now() };
         return response.user;

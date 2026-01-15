@@ -1,9 +1,23 @@
 import type { Redis } from "ioredis";
 import { UserRecord } from "./types";
+import { getRedis } from "@/lib/infra/redis";
 
 export type UserStatus = "active" | "disabled" | "deleted";
 
 const DEFAULT_NAMESPACE = "bernard:users";
+
+let userStoreInstance: UserStore | null = null;
+
+export function getUserStore(): UserStore {
+  if (!userStoreInstance) {
+    userStoreInstance = new UserStore(getRedis());
+  }
+  return userStoreInstance;
+}
+
+export function resetUserStore(): void {
+  userStoreInstance = null;
+}
 
 export class UserStore {
   private readonly namespace: string;

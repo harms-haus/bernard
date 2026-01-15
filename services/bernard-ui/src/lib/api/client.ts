@@ -15,7 +15,7 @@ class APIClient implements IAPIClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}, baseUrl?: string): Promise<T> {
-    if (endpoint.startsWith('/auth/') && !baseUrl) {
+    if ((endpoint.startsWith('/auth/') || endpoint.startsWith('/api/auth/')) && !baseUrl) {
       baseUrl = `${window.location.protocol}//${window.location.host}`;
     }
     const url = `${baseUrl || this.apiBaseUrl}${endpoint}`;
@@ -62,7 +62,7 @@ class APIClient implements IAPIClient {
   }
 
   async logout() {
-    const result = await this.request<void>('/auth/logout', { method: 'POST' }, this.authBaseUrl);
+    const result = await this.request<void>('/api/auth/sign-out', { method: 'POST' }, this.authBaseUrl);
     this.currentUserCache = null;
     localStorage.removeItem('authToken');
     return result;
@@ -78,7 +78,7 @@ class APIClient implements IAPIClient {
 
     if (this.currentUserInFlight) return this.currentUserInFlight;
 
-    this.currentUserInFlight = this.request<{ user: User | null }>('/auth/me', undefined, this.authBaseUrl)
+    this.currentUserInFlight = this.request<{ user: User | null }>('/api/auth/get-session', undefined, this.authBaseUrl)
       .then((response) => {
         this.currentUserCache = { user: response.user, cachedAtMs: Date.now() };
         return response.user;
