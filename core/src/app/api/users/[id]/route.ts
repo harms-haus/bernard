@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logging/logger';
-import { UserStore } from '@/lib/auth/userStore';
-import { getRedis } from '@/lib/infra/redis';
+import { getUserStore } from '@/lib/auth/userStore';
 
 type UserStatus = 'active' | 'disabled' | 'deleted';
-
-function getUserStore() {
-  return new UserStore(getRedis());
-}
 
 export async function GET(
   request: NextRequest,

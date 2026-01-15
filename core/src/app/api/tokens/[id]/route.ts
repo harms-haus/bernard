@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logging/logger';
-import { TokenStore } from '@/lib/auth/tokenStore';
-import { getRedis } from '@/lib/infra/redis';
-
-function getTokenStore() {
-  return new TokenStore(getRedis());
-}
+import { getTokenStore } from '@/lib/auth/tokenStore';
 
 export async function GET(
   request: NextRequest,

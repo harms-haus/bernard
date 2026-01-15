@@ -1,11 +1,10 @@
-import { beforeEach, afterEach, vi } from 'vitest'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import { resetSettingsManager } from '@/lib/config/appSettings'
-import { resetSettingsStore } from '@/lib/config/settingsStore'
-import { resetOAuth } from '@/lib/auth/oauth'
+import { beforeEach, afterEach, vi } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { resetSettingsManager } from "@/lib/config/appSettings";
+import { resetSettingsStore } from "@/lib/config/settingsStore";
 
-const TEST_DIR = path.join(process.cwd(), 'test-temp')
+const TEST_DIR = path.join(process.cwd(), "test-temp");
 const LOGS_DIR = path.join(TEST_DIR, 'logs')
 const PIDS_DIR = path.join(TEST_DIR, 'pids')
 
@@ -27,12 +26,11 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  vi.unstubAllEnvs()
+  vi.unstubAllEnvs();
   // Reset singleton instances after each test
-  resetSettingsManager()
-  resetSettingsStore()
-  resetOAuth()
-})
+  resetSettingsManager();
+  resetSettingsStore();
+});
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn().mockReturnValue({

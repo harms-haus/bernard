@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server'
-import { error, ok } from './response'
-import { clearSessionCookie } from '../auth/session'
+import { NextResponse } from "next/server";
+import { error, ok } from "./response";
+import { auth } from "@/lib/auth/better-auth";
 
 export async function handleLogout(): Promise<NextResponse> {
   try {
-    await clearSessionCookie()
-    return ok({ success: true })
+    await auth.api.signOut();
+    return ok({ success: true });
   } catch {
-    return error('Failed to logout', 500)
+    return error("Failed to logout", 500);
   }
 }

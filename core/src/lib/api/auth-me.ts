@@ -1,42 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { error, ok } from './response'
-import { getSessionFromHeader } from '../auth/session'
+import { NextRequest, NextResponse } from "next/server";
+import { error, ok } from "./response";
+import { auth } from "@/lib/auth/better-auth";
 
 export interface MeUser {
-  id: string
-  displayName: string
-  isAdmin: boolean
-  status: 'active' | 'disabled' | 'deleted'
-  createdAt: string
-  updatedAt: string
-  avatarUrl?: string
-  email?: string
+  id: string;
+  email: string;
+  name: string;
+  image?: string;
+  isAdmin?: boolean;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MeResponse {
-  user: MeUser
-  sessionId: string
+  user: MeUser;
+  sessionId: string;
 }
 
 export async function handleMe(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get('authorization')
-  const session = await getSessionFromHeader(authHeader)
+  try {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
 
-  if (!session) {
-    return error('Not authenticated', 401)
+    if (!session) {
+      return error("Not authenticated", 401);
+    }
+
+    return ok<MeResponse>({
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image ?? undefined,
+        isAdmin: (session.user as { isAdmin?: boolean }).isAdmin,
+        emailVerified: session.user.emailVerified,
+        createdAt: session.user.createdAt.toISOString(),
+        updatedAt: session.user.updatedAt.toISOString(),
+      },
+      sessionId: session.session.id,
+    });
+  } catch {
+    return error("Failed to get user", 500);
   }
-
-  return ok<MeResponse>({
-    user: {
-      id: session.user.id,
-      displayName: session.user.displayName,
-      isAdmin: session.user.isAdmin,
-      status: session.user.status,
-      createdAt: session.user.createdAt,
-      updatedAt: session.user.updatedAt,
-      avatarUrl: session.user.avatarUrl,
-      email: session.user.email,
-    },
-    sessionId: session.sessionId,
-  })
 }
