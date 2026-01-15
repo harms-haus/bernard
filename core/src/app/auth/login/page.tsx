@@ -24,11 +24,11 @@ function LoginForm() {
     }
   }, [session, isLoading, router, redirect]);
 
-  // Helper to safely get isAdmin from session
+  // Helper to safely check if user is admin
   const getIsAdmin = (): boolean => {
     if (!session) return false;
     const authSession = session as AuthSession;
-    return authSession.user.isAdmin ?? false;
+    return authSession.user.role === "admin";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

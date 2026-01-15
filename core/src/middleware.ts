@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionCookie } from "better-auth/cookies";
 import { auth } from "@/lib/auth/better-auth";
 
 const PUBLIC_PATHS = [
@@ -23,12 +22,16 @@ function isPublicPath(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  console.log(`[Middleware] Processing ${pathname}`);
 
   if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
-  const sessionCookie = getSessionCookie(request);
+  // Use Next.js native cookie handling
+  const sessionCookie = request.cookies.get("bernard.session_token")?.value;
+  console.log(`[Middleware] Session cookie:`, sessionCookie ? "found" : "null");
+
   if (!sessionCookie) {
     const loginUrl = new URL("/auth/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
@@ -38,6 +41,7 @@ export async function middleware(request: NextRequest) {
   const session = await auth.api.getSession({
     headers: request.headers,
   });
+  console.log(`[Middleware] Session:`, session?.user?.email);
 
   if (!session) {
     const loginUrl = new URL("/auth/login", request.url);

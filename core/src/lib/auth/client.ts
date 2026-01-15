@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 
 /**
  * Type representing a BetterAuth session with admin support.
- * The admin plugin adds isAdmin and role fields to the user object.
+ * The admin plugin adds role field to the user object. isAdmin is computed from role.
  */
 export interface AuthSession {
   user: {
@@ -12,7 +12,6 @@ export interface AuthSession {
     email: string;
     name: string;
     image?: string;
-    isAdmin?: boolean;
     role?: string;
     emailVerified: boolean;
     createdAt: Date;
@@ -45,25 +44,16 @@ export const authClient = createAuthClient({
  * This hook subscribes to the BetterAuth session store.
  */
 export function useSession() {
-  const sessionValue = authClient.useSession.value ?? { data: null, isPending: false, error: null };
-  const session = sessionValue.data;
-  
-  const data = useSyncExternalStore(
+  return useSyncExternalStore(
     (notify) => {
       const unsubscribe = authClient.useSession.subscribe(notify);
       return () => {
         unsubscribe();
       };
     },
-    () => session,
-    () => session
+    () => authClient.useSession.value,
+    () => authClient.useSession.value
   );
-
-  return {
-    data: data ?? null,
-    isLoading: sessionValue.isPending,
-    error: sessionValue.error,
-  };
 }
 
 /**

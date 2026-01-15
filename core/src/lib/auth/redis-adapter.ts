@@ -11,6 +11,27 @@ function makeKey(prefix: string, model: string, id: string): string {
   return `${prefix}${model}:${id}`;
 }
 
+/**
+ * Transform raw Redis hash data into Better Auth user object
+ */
+function transformUserData(data: Record<string, string>) {
+  if (!data || Object.keys(data).length === 0) {
+    return null;
+  }
+  return {
+    id: data.id,
+    email: data.email,
+    emailVerified: data.emailVerified === "true",
+    name: data.name,
+    image: data.image || null,
+    createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
+    updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
+    banned: data.banned === "true",
+    isAdmin: data.role === "admin",
+    role: data.role || "user",
+  };
+}
+
 export function redisAdapter(client: Redis, config: RedisAdapterConfig) {
   const keyPrefix = config.keyPrefix || "auth:";
 
@@ -52,9 +73,9 @@ export function redisAdapter(client: Redis, config: RedisAdapterConfig) {
 
       return {
         async create({ model, data }: { model: string; data: Record<string, unknown> }) {
-          const id = crypto.randomUUID();
+          const id = String(data.id || crypto.randomUUID());
           const key = makeKey(keyPrefix, model, id);
-          
+
           const stringData: Record<string, string> = {};
           for (const [k, v] of Object.entries(data)) {
             if (v !== null && v !== undefined) {
@@ -74,51 +95,62 @@ export function redisAdapter(client: Redis, config: RedisAdapterConfig) {
           if (where.length === 1 && where[0].field === "id") {
             const key = makeKey(keyPrefix, model, String(where[0].value));
             const data = await db.hgetall(key);
-            return Object.keys(data).length > 0 ? data : null;
+            if (Object.keys(data).length === 0) return null;
+
+            if (model === "user") {
+              return transformUserData(data);
+            }
+
+            return data;
           }
 
           if (where.length === 1 && where[0].field === "email" && model === "user") {
-            const id = await db.get(String(where[0].value));
+            const id = await db.get(`${keyPrefix}email:${String(where[0].value)}`);
             if (!id) return null;
             const key = makeKey(keyPrefix, model, id);
             const data = await db.hgetall(key);
-            return Object.keys(data).length > 0 ? data : null;
+            if (Object.keys(data).length === 0) return null;
+
+            return transformUserData(data);
           }
 
           const pattern = makeKey(keyPrefix, model, "*");
           const keys = await db.keys(pattern);
-          
+
           for (const key of keys) {
             const data = await db.hgetall(key);
             if (convertWhere(where, data)) {
+              if (model === "user") {
+                return transformUserData(data);
+              }
               return data;
             }
           }
-          
+
           return null;
         },
 
-        async findMany({ 
-          model, 
-          where, 
-          limit = 100, 
-          offset = 0 
-        }: { 
-          model: string; 
-          where?: Where[]; 
-          limit?: number; 
+        async findMany({
+          model,
+          where,
+          limit = 100,
+          offset = 0
+        }: {
+          model: string;
+          where?: Where[];
+          limit?: number;
           offset?: number;
         }) {
           const pattern = makeKey(keyPrefix, model, "*");
           const keys = await db.keys(pattern);
-          const results: Record<string, string>[] = [];
+          const results: any[] = [];
 
           for (const key of keys.slice(offset, offset + limit)) {
             const data = await db.hgetall(key);
             if (!where || where.length === 0) {
-              results.push(data);
+              results.push(model === "user" ? transformUserData(data) : data);
             } else if (convertWhere(where, data)) {
-              results.push(data);
+              results.push(model === "user" ? transformUserData(data) : data);
             }
           }
 

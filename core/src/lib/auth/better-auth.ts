@@ -19,35 +19,6 @@ function getAdminUserIds(): string[] {
 }
 
 /**
- * Custom hook to make the first registered user an admin automatically.
- * This ensures the first user to sign up becomes the system administrator.
- */
-function createFirstUserAdminHook() {
-  let initialized = false;
-
-  return {
-    /**
-     * Hook to run after a user signs up.
-     * If this is the first user in the system, make them an admin.
-     */
-    onSignUp: async ({ user }: { user: { id: string } }) => {
-      const redis = getRedis();
-      const keyPrefix = "auth:";
-
-      // Check if this is the first user
-      const userKeys = await redis.keys(`${keyPrefix}user:*`);
-
-      // If there are no other users (only the one just created), make them admin
-      if (userKeys.length <= 1) {
-        const userKey = `${keyPrefix}user:${user.id}`;
-        await redis.hset(userKey, { role: "admin" });
-        console.log(`[Auth] First user ${user.id} promoted to admin`);
-      }
-    },
-  };
-}
-
-/**
  * Create and configure the BetterAuth instance with Redis storage.
  * This is the core authentication configuration for Bernard AI Assistant.
  */
@@ -100,8 +71,19 @@ export const auth = betterAuth({
     bearer(),
   ],
 
-  hooks: {
-    ...createFirstUserAdminHook(),
+  events: {
+    onSignUp: async ({ user }: { user: { id: string } }) => {
+      const redis = getRedis();
+      const keyPrefix = "auth:";
+
+      const userKeys = await redis.keys(`${keyPrefix}user:*`);
+
+      if (userKeys.length <= 1) {
+        const userKey = `${keyPrefix}user:${user.id}`;
+        await redis.hset(userKey, { role: "admin", isAdmin: "true" });
+        console.log(`[Auth] First user ${user.id} promoted to admin`);
+      }
+    },
   },
 
   advanced: {
