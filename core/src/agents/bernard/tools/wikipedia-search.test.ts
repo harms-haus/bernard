@@ -137,11 +137,15 @@ describe('createWikipediaSearchTool', () => {
     const tool = createWikipediaSearchTool(mockDependencies);
     await tool.invoke({ query: 'test query', starting_index: 10 }, mockConfig);
 
+    // Formula: buildSearXNGUrl(apiUrl, query, n_results + starting_index, starting_index + 1, "site:wikipedia.org")
+    // With starting_index=10 and n_results=10 (default), this becomes:
+    // 3rd arg: 10 + 10 = 20
+    // 4th arg: 10 + 1 = 11
     expect(buildMock).toHaveBeenCalledWith(
       'https://search.example.com',
       'test query',
-      expect.any(Number),
-      10,
+      20,  // n_results (10) + starting_index (10)
+      11,  // starting_index (10) + 1
       'site:wikipedia.org'
     );
   });

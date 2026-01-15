@@ -54,9 +54,18 @@ export function createMockStreamContext(overrides: Partial<MockStreamContextType
 }
 
 export function createMockMessage(type: 'human' | 'ai' | 'tool', content: string, id?: string): Message {
+  if (type === 'tool') {
+    return {
+      id: id ?? `msg-${Date.now()}`,
+      type: 'tool' as const,
+      content,
+      tool_call_id: `tool-call-${Date.now()}`,
+    };
+  }
+  
   return {
     id: id ?? `msg-${Date.now()}`,
-    type,
+    type: type as 'human' | 'ai',
     content,
   };
 }

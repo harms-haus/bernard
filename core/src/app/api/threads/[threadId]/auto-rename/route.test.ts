@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as queue from '../../../../../lib/infra/queue'
-import { handleAutoRename } from './route'
+import { handleAutoRename } from '@/lib/api/thread-auto-rename'
 
 // Spy on the queue module
 const addUtilityJob = vi.spyOn(queue, 'addUtilityJob')

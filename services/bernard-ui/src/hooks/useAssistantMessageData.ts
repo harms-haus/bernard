@@ -1,23 +1,21 @@
-import type { Message, ToolMessage, Checkpoint } from '@langchain/langgraph-sdk';
+import type { Message } from '@langchain/langgraph-sdk';
+import { useStreamContext } from '@/providers/StreamProvider';
 
-export interface UseAssistantMessageDataDependencies {
-  useStreamContext: () => StreamContextType;
+interface ToolMessage {
+  type: 'tool';
+  content: string;
+  tool_call_id: string;
 }
 
-export interface StreamContextType {
-  getMessagesMetadata: (message: Message) => {
-    branch?: string;
-    branchOptions?: string[];
-    firstSeenState?: { parent_checkpoint?: Checkpoint };
-  };
-  setBranch: (branch: string) => void;
+export interface UseAssistantMessageDataDependencies {
+  useStreamContext: () => ReturnType<typeof import('@/providers/StreamProvider').useStreamContext>;
 }
 
 export interface AssistantMessageData {
   meta: {
     branch?: string;
     branchOptions?: string[];
-    parentCheckpoint?: Checkpoint | null | undefined;
+    parentCheckpoint?: unknown;
   };
   hasBranches: boolean;
   toolResults: ToolMessage[];
@@ -30,16 +28,9 @@ export interface AssistantMessageData {
 export function useAssistantMessageData(
   message: Message,
   nextMessages: Message[] = [],
-  deps: Partial<UseAssistantMessageDataDependencies> = {}
+  _deps: Partial<UseAssistantMessageDataDependencies> = {}
 ): AssistantMessageData {
-  const {
-    useStreamContext: useStreamContextImpl = () => {
-      const mod = require('@/providers/StreamProvider');
-      return mod.useStreamContext();
-    },
-  } = deps;
-
-  const thread = useStreamContextImpl();
+  const thread = useStreamContext();
   
   function getContentString(content: Message['content']): string {
     if (typeof content === 'string') return content;

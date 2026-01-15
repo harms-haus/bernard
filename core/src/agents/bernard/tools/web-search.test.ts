@@ -75,6 +75,14 @@ describe('createWebSearchTool', () => {
     const executeMock = vi.fn().mockResolvedValue('1. Result');
     const factory = createWebSearchToolFactory({
       verifySearchConfigured: vi.fn().mockResolvedValue({ ok: true }),
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
       executeSearXNGSearch: executeMock,
       createProgressReporter: vi.fn().mockReturnValue({
         report: vi.fn(),
@@ -95,6 +103,14 @@ describe('createWebSearchTool', () => {
     const executeMock = vi.fn().mockResolvedValue('results');
     const factory = createWebSearchToolFactory({
       verifySearchConfigured: vi.fn().mockResolvedValue({ ok: true }),
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
       executeSearXNGSearch: executeMock,
       createProgressReporter: vi.fn().mockReturnValue({
         report: vi.fn(),
@@ -115,6 +131,14 @@ describe('createWebSearchTool', () => {
     const executeMock = vi.fn().mockResolvedValue('results');
     const factory = createWebSearchToolFactory({
       verifySearchConfigured: vi.fn().mockResolvedValue({ ok: true }),
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
       executeSearXNGSearch: executeMock,
       createProgressReporter: vi.fn().mockReturnValue({
         report: vi.fn(),
@@ -138,11 +162,20 @@ describe('createWebSearchTool', () => {
     };
     mockDependencies.createProgressReporter = vi.fn().mockReturnValue(mockReporter);
     mockDependencies.getSearchingUpdate = vi.fn().mockReturnValue('Searching the web...');
+    // Provide valid configuration so the search actually executes
+    mockDependencies.fetchSettings = vi.fn().mockResolvedValue({
+      services: {
+        search: {
+          apiUrl: 'https://search.example.com',
+          apiKey: 'test-key'
+        }
+      }
+    });
 
     const tool = createWebSearchTool(mockDependencies);
     await tool.invoke({ query: 'test' }, mockConfig);
     
-    expect(mockReporter.report).toHaveBeenCalled();
+    expect(mockReporter.report).toHaveBeenCalledWith('Searching the web...');
     expect(mockReporter.reset).toHaveBeenCalled();
   });
 
@@ -160,12 +193,29 @@ describe('createWebSearchTool', () => {
   });
 
   it('should handle search execution error', async () => {
-    mockDependencies.executeSearXNGSearch = vi.fn().mockRejectedValue(new Error('Search failed'));
+    // Create new dependencies with failing execute function
+    const errorDependencies: WebSearchDependencies = {
+      verifySearchConfigured: vi.fn().mockResolvedValue({ ok: true }),
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
+      executeSearXNGSearch: vi.fn().mockRejectedValue(new Error('Search failed')),
+      createProgressReporter: vi.fn().mockReturnValue({
+        report: vi.fn(),
+        reset: vi.fn(),
+      }),
+      getSearchingUpdate: vi.fn().mockReturnValue('Searching...'),
+    };
 
-    const tool = createWebSearchTool(mockDependencies);
-    const result = await tool.invoke({ query: 'test' }, mockConfig);
+    const tool = createWebSearchTool(errorDependencies);
     
-    expect(result).toContain('Search tool is not configured');
+    // The tool should propagate the error
+    await expect(tool.invoke({ query: 'test' }, mockConfig)).rejects.toThrow('Search failed');
   });
 });
 
@@ -181,7 +231,17 @@ describe('createWebSearchToolFactory', () => {
   });
 
   it('should return ToolFactoryResult with ok=true when configured', async () => {
-    const factory = createWebSearchToolFactory();
+    const factory = createWebSearchToolFactory({
+      verifySearchConfigured: vi.fn().mockResolvedValue({ ok: true }),
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
+    });
     const result = await factory();
     
     expect(result).toHaveProperty('ok');
@@ -211,6 +271,14 @@ describe('createWebSearchToolFactory', () => {
     
     const factory = createWebSearchToolFactory({
       verifySearchConfigured: mockVerify,
+      fetchSettings: vi.fn().mockResolvedValue({
+        services: {
+          search: {
+            apiUrl: 'https://search.example.com',
+            apiKey: 'test-key'
+          }
+        }
+      }),
       executeSearXNGSearch: mockExecute,
     });
     

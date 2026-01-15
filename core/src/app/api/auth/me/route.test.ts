@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleMe } from './route'
+import { handleMe } from '@/lib/api/auth-me'
 
 // Mock session dependencies
 vi.mock('../../../../lib/auth/session', () => ({

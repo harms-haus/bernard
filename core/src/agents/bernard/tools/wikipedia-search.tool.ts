@@ -133,6 +133,10 @@ export function createWikipediaSearchToolFactory(
   const deps = { ...defaultDependencies, ...overrides };
 
   return async () => {
+    const config = await deps.resolveSearchConfig();
+    if (!config.ok) {
+      return { ok: false, name: "wikipedia_search", reason: config.reason ?? "" };
+    }
     const tool = createWikipediaSearchTool(deps);
     return { ok: true, tool, name: tool.name };
   };

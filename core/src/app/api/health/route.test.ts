@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleHealthCheck } from './route'
+import { handleHealthCheck } from '@/lib/api/health'
 
 // Mock the factory module - this needs to happen before importing the handler
 vi.mock('../../../lib/api/factory', () => ({

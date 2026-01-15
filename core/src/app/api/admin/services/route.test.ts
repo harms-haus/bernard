@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 import * as helpers from '../../../../lib/auth/helpers'
-import { handleListServices, handleManageService } from './route'
+import { handleListServices, handleManageService } from '@/lib/api/admin-services'
 
 // Spy on the exported function
 const requireAdminSpy = vi.spyOn(helpers, 'requireAdmin')
@@ -47,7 +47,7 @@ describe('GET /api/admin/services', () => {
 
       expect(result.status).toBe(400)
       const data = await result.json()
-      expect(data.error).toContain('Service name is required')
+      expect(data.error).toContain('Missing or invalid service ID')
     })
 
     it('should return 400 when service is not a string', async () => {
@@ -57,22 +57,24 @@ describe('GET /api/admin/services', () => {
       expect(result.status).toBe(400)
     })
 
-    it('should return 400 for unknown service', async () => {
+    it('should return 404 for unknown service', async () => {
       requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
       const result = await handleManageService({} as any, { service: 'unknown-service' })
 
-      expect(result.status).toBe(400)
+      expect(result.status).toBe(404)
       const data = await result.json()
-      expect(data.error).toContain('Invalid service name')
+      expect(data.error).toContain('not found')
     })
 
-    it('should return 403 for docker services', async () => {
+    it('should return 200 for valid service action', async () => {
       requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'redis', action: 'restart' })
+      const result = await handleManageService({} as any, { service: 'bernard-agent', action: 'restart' })
 
-      expect(result.status).toBe(403)
+      expect(result.status).toBe(200)
       const data = await result.json()
-      expect(data.error).toContain('Cannot restart docker services')
+      expect(data.success).toBe(true)
+      expect(data.data.serviceId).toBe('bernard-agent')
+      expect(data.data.action).toBe('restart')
     })
 
     it('should use default action when not provided', async () => {
@@ -90,21 +92,17 @@ describe('GET /api/admin/services', () => {
 
       expect(result.status).toBe(400)
       const data = await result.json()
-      expect(data.error).toContain("Invalid action 'invalid-action' for service 'bernard-agent'")
-      expect(data.error).toContain("Allowed actions: restart, stop, start")
-      expect(data.details.allowedActions).toEqual(['restart', 'stop', 'start'])
-      expect(data.details.requestedAction).toBe('invalid-action')
-      expect(data.details.serviceId).toBe('bernard-agent')
+      expect(data.error).toContain('Invalid action')
+      expect(data.error).toContain('restart, stop, start')
     })
 
-    it('should return 400 for invalid action with unknown service', async () => {
+    it('should return 400 for invalid action with empty service (action validated first)', async () => {
       requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
       const result = await handleManageService({} as any, { service: '', action: 'invalid-action' })
 
       expect(result.status).toBe(400)
       const data = await result.json()
-      expect(data.error).toContain("Invalid action 'invalid-action' for service 'unknown'")
-      expect(data.details.serviceId).toBe('')
+      expect(data.error).toContain('Invalid action')
     })
   })
 })

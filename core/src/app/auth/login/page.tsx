@@ -1,145 +1,259 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useSession, signInEmail, signUpEmail, signOutUser, type AuthSession } from '@/lib/auth/client';
 
 function LoginForm() {
-  const searchParams = useSearchParams()
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, isLoading } = useSession();
 
-  const redirect = searchParams.get('redirect') || '/bernard/chat'
-  const providerParam = searchParams.get('provider')
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleOAuthLogin = useCallback(async (provider: 'github' | 'google') => {
-    console.log('[Login] Starting OAuth login for provider:', provider, 'redirect:', redirect)
-    setIsLoading(true)
-    setError(null)
+  const redirect = searchParams.get('redirect') || '/bernard/chat';
+
+  useEffect(() => {
+    if (!isLoading && session) {
+      router.push(redirect);
+    }
+  }, [session, isLoading, router, redirect]);
+
+  // Helper to safely get isAdmin from session
+  const getIsAdmin = (): boolean => {
+    if (!session) return false;
+    const authSession = session as AuthSession;
+    return authSession.user.isAdmin ?? false;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsProcessing(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, returnTo: redirect })
-      })
-      console.log('[Login] Response status:', response.status, response.ok)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[Login] Error response:', errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
+      if (isSignUp) {
+        const result = await signUpEmail(email, password, name);
 
-      const responseText = await response.text()
-      console.log('[Login] Raw response:', responseText)
-      
-      let data
-      try {
-        data = JSON.parse(responseText)
-      } catch (e) {
-        console.error('[Login] Failed to parse JSON:', e)
-        throw new Error('Invalid JSON response from server')
-      }
-      
-      console.log('[Login] Parsed response:', data)
-      
-      if (!data.success) {
-        console.error('[Login] Server error:', data.error)
-        throw new Error(data.error || 'Failed to initiate login')
-      }
+        if (result.error) {
+          setError(result.error.message);
+        } else {
+          router.push(redirect);
+        }
+      } else {
+        const result = await signInEmail(email, password);
 
-      const { authUrl } = data.data
-      console.log('[Login] authUrl:', authUrl)
-      
-      if (!authUrl || typeof authUrl !== 'string') {
-        console.error('[Login] Invalid authUrl:', authUrl)
-        throw new Error('Invalid authUrl from server')
+        if (result.error) {
+          setError(result.error.message);
+        } else {
+          router.push(redirect);
+        }
       }
-      
-      console.log('[Login] Redirecting to:', authUrl)
-      window.location.href = authUrl
     } catch (err) {
-      console.error('[Login] Error:', err)
-      setError(err instanceof Error ? err.message : 'An error occurred')
-      setIsLoading(false)
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsProcessing(false);
     }
-  }, [redirect])
+  };
 
-  // Auto-trigger OAuth flow if provider is specified in URL
-  useEffect(() => {
-    if (providerParam === 'github' || providerParam === 'google') {
-      handleOAuthLogin(providerParam)
-    }
-  }, [providerParam, handleOAuthLogin])
+  const handleSignOut = async () => {
+    await signOutUser();
+    router.refresh();
+  };
 
-  return (
-    <>
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-md p-8 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl">
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  if (session) {
+    return (
       <div className="w-full max-w-md p-8 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome to Bernard</h1>
-          <p className="text-gray-400">Sign in to access admin dashboard</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Welcome back!</h1>
+          <p className="text-gray-400">You are already signed in</p>
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <p className="text-sm text-red-400">{error}</p>
+        <div className="bg-gray-900/50 rounded-lg p-4 mb-6 border border-gray-700">
+          <div className="flex items-center gap-3 mb-4">
+            {session.user.image && (
+              <img
+                src={session.user.image}
+                alt={session.user.name}
+                className="w-12 h-12 rounded-full"
+              />
+            )}
+            <div>
+              <p className="text-white font-medium">{session.user.name}</p>
+              <p className="text-gray-400 text-sm">{session.user.email}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-400">Admin:</span>
+            <span className={getIsAdmin() ? 'text-green-400' : 'text-gray-500'}>
+              {getIsAdmin() ? 'Yes' : 'No'}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-md p-8 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold text-white mb-2">
+          {isSignUp ? 'Create Account' : 'Welcome Back'}
+        </h1>
+        <p className="text-gray-400">
+          {isSignUp ? 'Sign up to access Bernard' : 'Sign in to access Bernard'}
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {isSignUp && (
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">
+              Name
+            </label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            />
           </div>
         )}
 
-        <div className="space-y-4">
-          <button
-            onClick={() => handleOAuthLogin('github')}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white font-medium hover:bg-gray-700 hover:border-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-            </svg>
-            Continue with GitHub
-          </button>
-
-          <button
-            onClick={() => handleOAuthLogin('google')}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium hover:bg-gray-50 hover:border-gray-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-            </svg>
-            Continue with Google
-          </button>
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+          />
         </div>
 
-        <div className="mt-8 pt-6 border-t border-gray-700">
-          <p className="text-center text-sm text-gray-500">
-            By signing in, you agree to our Terms of Service and Privacy Policy.
-          </p>
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            minLength={8}
+            className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+          />
         </div>
 
-        {isLoading && (
-          <div className="absolute inset-0 bg-gray-900/80 flex items-center justify-center rounded-xl">
-            <div className="flex items-center gap-3 text-white">
+        <button
+          type="submit"
+          disabled={isProcessing}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-colors"
+        >
+          {isProcessing ? (
+            <>
               <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span>Connecting...</span>
-            </div>
+              {isSignUp ? 'Creating account...' : 'Signing in...'}
+            </>
+          ) : (
+            isSignUp ? 'Create Account' : 'Sign In'
+          )}
+        </button>
+      </form>
+
+      <div className="mt-6">
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-700"></div>
           </div>
-        )}
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-gray-800 text-gray-400">Or</span>
+          </div>
+        </div>
       </div>
-    </>
-  )
+
+      <button
+        onClick={() => setIsSignUp(!isSignUp)}
+        className="mt-4 w-full text-center text-sm text-blue-400 hover:text-blue-300 transition-colors"
+      >
+        {isSignUp
+          ? 'Already have an account? Sign in'
+          : "Don't have an account? Create one"}
+      </button>
+
+      <div className="mt-8 pt-6 border-t border-gray-700">
+        <p className="text-center text-xs text-gray-500">
+          By signing in, you agree to our Terms of Service and Privacy Policy.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
-      {/* Cache-busting: v=2024-01-14-1 */}
+    <Suspense fallback={<LoadingFallback />}>
       <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="w-full max-w-md p-8 bg-gray-800 rounded-xl border border-gray-700 shadow-2xl">
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      </div>
     </div>
-  )
+  );
 }

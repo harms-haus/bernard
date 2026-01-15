@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import * as helpers from '../../../lib/auth/helpers'
 import * as factory from '../../../lib/api/factory'
-import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from './route'
+import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from '@/lib/api/tasks'
 
 // Spy on the helpers and factory modules
 const requireAuth = vi.spyOn(helpers, 'requireAuth')

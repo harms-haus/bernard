@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { handleReadyCheck } from './route'
+import { handleReadyCheck } from '@/lib/api/health-ready'
 
 describe('GET /api/health/ready', () => {
   describe('handleReadyCheck', () => {

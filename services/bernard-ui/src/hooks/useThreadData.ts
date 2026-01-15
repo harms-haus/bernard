@@ -4,34 +4,9 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
 import { getAPIClient } from '@/lib/api/client';
 import { ensureToolCallsHaveResponses } from '@/lib/ensure-tool-responses';
-
-// Type definitions for dependency injection
-export interface UseThreadDataDependencies {
-  useSearchParams: () => [URLSearchParams, (params: URLSearchParams) => void];
-  useStreamContext: () => StreamContextType;
-  useDarkMode: () => DarkModeContextType;
-  useThreads: () => ThreadContextType;
-}
-
-export interface StreamContextType {
-  messages: Message[];
-  submit: (values: { messages: Message[] }, options?: {
-    streamMode?: string[];
-    optimisticValues?: (prev: any) => any;
-    checkpoint?: Checkpoint;
-  }) => void;
-  isLoading: boolean;
-  latestProgress: ToolProgressEvent | null;
-}
-
-export interface DarkModeContextType {
-  isDarkMode: boolean;
-  toggleDarkMode: () => void;
-}
-
-export interface ThreadContextType {
-  getThreads: () => Promise<void>;
-}
+import { useStreamContext } from '@/providers/StreamProvider';
+import { useDarkMode } from '@/hooks/useDarkMode';
+import { useThreads } from '@/providers/ThreadProvider';
 
 export interface ToolProgressEvent {
   type: 'progress' | 'step' | 'complete' | 'error';
@@ -60,32 +35,14 @@ export interface ThreadData {
   toggleDarkMode: () => void;
 }
 
-export function useThreadData(
-  deps: Partial<UseThreadDataDependencies> = {}
-): ThreadData {
-  const {
-    useSearchParams: useSearchParamsImpl = () => useSearchParams(),
-    useStreamContext: useStreamContextImpl = () => {
-      const mod = require('@/providers/StreamProvider');
-      return mod.useStreamContext();
-    },
-    useDarkMode: useDarkModeImpl = () => {
-      const mod = require('@/hooks/useDarkMode');
-      return mod.useDarkMode();
-    },
-    useThreads: useThreadsImpl = () => {
-      const mod = require('@/providers/ThreadProvider');
-      return mod.useThreads();
-    },
-  } = deps;
-
-  const [searchParams, setSearchParams] = useSearchParamsImpl();
+export function useThreadData(): ThreadData {
+  const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
 
-  const stream = useStreamContextImpl();
+  const stream = useStreamContext();
   const { messages, submit, isLoading, latestProgress } = stream;
-  const { isDarkMode: darkModeValue, toggleDarkMode: toggleDarkModeFn } = useDarkModeImpl();
-  const { getThreads } = useThreadsImpl();
+  const { isDarkMode: darkModeValue, toggleDarkMode: toggleDarkModeFn } = useDarkMode();
+  const { getThreads } = useThreads();
 
   const [input, setInput] = useState('');
   const [isGhostMode, setIsGhostMode] = useState(false);
@@ -159,25 +116,30 @@ export function useThreadData(
     }));
     try {
       await navigator.clipboard.writeText(JSON.stringify(historyData, null, 2));
-    } catch (err) {
-      console.error('Failed to copy chat history:', err);
-      // Consider showing a user-facing error notification
+    } catch (error) {
+      console.error('Failed to copy chat history:', error);
     }
   }, [messages]);
 
   const handleDownloadChatHistory = useCallback(() => {
     const historyData = messages.map((msg: Message) => ({
       role: msg.type === 'human' ? 'user' : 'assistant',
-      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
     }));
     const blob = new Blob([JSON.stringify(historyData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bernard-chat-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `chat-history-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [messages]);
+
+  const toggleDarkMode = useCallback(() => {
+    toggleDarkModeFn();
+  }, [toggleDarkModeFn]);
 
   return {
     threadId,
@@ -195,6 +157,6 @@ export function useThreadData(
     handleRegenerate,
     handleCopyChatHistory,
     handleDownloadChatHistory,
-    toggleDarkMode: toggleDarkModeFn,
+    toggleDarkMode,
   };
 }

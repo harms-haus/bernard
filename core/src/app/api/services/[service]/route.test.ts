@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleGetService, handleServiceCommand } from './route'
+import { handleGetService, handleServiceCommand } from '@/lib/api/services-dynamic'
 
 // Mock dependencies
 vi.mock('../../../../lib/api/factory', () => ({

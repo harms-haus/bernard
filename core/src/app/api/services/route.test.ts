@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleGetServices } from './route'
+import { handleGetServices } from '@/lib/api/services'
 
 // Mock the factory module
 vi.mock('../../../lib/api/factory', () => ({

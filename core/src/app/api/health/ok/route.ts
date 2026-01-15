@@ -1,14 +1,4 @@
-import { NextResponse } from "next/server"
-import { ok } from "@/lib/api/response"
-
-function handleOkCheck() {
-  return ok({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    service: "bernard-core",
-    version: process.env.npm_package_version || "0.0.1",
-  })
-}
+import { handleOkCheck } from '@/lib/api/health-ok'
 
 export async function GET() {
   return handleOkCheck()

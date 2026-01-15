@@ -1,6 +1,9 @@
 import { beforeEach, afterEach, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { resetSettingsManager } from '@/lib/config/appSettings'
+import { resetSettingsStore } from '@/lib/config/settingsStore'
+import { resetOAuth } from '@/lib/auth/oauth'
 
 const TEST_DIR = path.join(process.cwd(), 'test-temp')
 const LOGS_DIR = path.join(TEST_DIR, 'logs')
@@ -19,10 +22,16 @@ beforeEach(() => {
 
   vi.stubEnv('LOG_DIR', LOGS_DIR)
   vi.stubEnv('TZ', 'America/Chicago')
+  // BetterAuth requires a secret, stub one for tests
+  vi.stubEnv('BETTER_AUTH_SECRET', 'Cz+yjqf9nUVK2xa5lMgQEAIkeuDbZwvrct9IKXyPaJw=')
 })
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  // Reset singleton instances after each test
+  resetSettingsManager()
+  resetSettingsStore()
+  resetOAuth()
 })
 
 vi.mock('node:child_process', () => ({

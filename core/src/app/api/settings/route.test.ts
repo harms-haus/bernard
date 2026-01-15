@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import * as helpers from '../../../lib/auth/helpers'
 import * as factory from '../../../lib/api/factory'
-import { handleGetSettings } from './route'
+import { handleGetSettings } from '@/lib/api/settings'
 
 // Spy on the helpers and factory modules
 const requireAdmin = vi.spyOn(helpers, 'requireAdmin')

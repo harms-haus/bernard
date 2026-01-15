@@ -6,24 +6,34 @@ vi.mock('@/lib/auth/helpers', async () => {
   }
 })
 
+// Mock the SettingsStoreCore class
 vi.mock('@/lib/config/settingsStore', async () => {
   const actual = await vi.importActual('@/lib/config/settingsStore')
 
-  const mockStore = {
-    getBackups: vi.fn().mockResolvedValue({
-      enabled: true,
-      schedule: '0 2 * * *',
-      retentionDays: 7,
-      debounceSeconds: 60,
-      directory: '/backups',
-      retentionCount: 20
-    }),
-    setBackups: vi.fn().mockResolvedValue(undefined),
+  // Create mock data (matching BackupSettingsSchema - no enabled or schedule fields)
+  const mockBackupsData = {
+    debounceSeconds: 60,
+    directory: '/backups',
+    retentionDays: 7,
+    retentionCount: 20
   }
+
+  // Create a mock instance - note: vi.fn() needs to be created inside the factory
+  const getBackupsMock = vi.fn().mockResolvedValue(mockBackupsData)
+  const setBackupsMock = vi.fn().mockResolvedValue(undefined)
+
+  const mockStoreInstance = {
+    getBackups: getBackupsMock,
+    setBackups: setBackupsMock,
+  }
+
+  // Mock class that returns our mock instance
+  const MockSettingsStoreCore = vi.fn().mockImplementation(() => mockStoreInstance)
 
   return {
     ...actual as object,
-    SettingsStore: vi.fn().mockReturnValue(mockStore),
+    SettingsStoreCore: MockSettingsStoreCore,
+    SettingsStore: MockSettingsStoreCore,
   }
 })
 
@@ -50,12 +60,11 @@ describe('GET /api/settings/backups', () => {
       user: { id: 'admin-123', displayName: 'Admin', isAdmin: true },
     })
 
+    // Configure mock return value for this test
     mockStore.getBackups.mockResolvedValue({
-      enabled: true,
-      schedule: '0 2 * * *',
-      retentionDays: 7,
       debounceSeconds: 60,
       directory: '/backups',
+      retentionDays: 7,
       retentionCount: 20
     })
 
@@ -64,9 +73,10 @@ describe('GET /api/settings/backups', () => {
 
     expect(response.status).toBe(200)
     const data = await response.json()
-    expect(data.enabled).toBe(true)
-    expect(data.schedule).toBe('0 2 * * *')
+    expect(data.debounceSeconds).toBe(60)
     expect(data.retentionDays).toBe(7)
+    expect(data.directory).toBe('/backups')
+    expect(data.retentionCount).toBe(20)
   })
 
   it('should return 401 when not admin', async () => {
@@ -83,6 +93,7 @@ describe('GET /api/settings/backups', () => {
       user: { id: 'admin-123', displayName: 'Admin', isAdmin: true },
     })
 
+    // Configure mock to return null
     mockStore.getBackups.mockResolvedValue(null)
 
     const request = createMockRequest()
@@ -111,19 +122,29 @@ describe('PUT /api/settings/backups', () => {
       user: { id: 'admin-123', displayName: 'Admin', isAdmin: true },
     })
 
-    const request = createMockRequest({
-      enabled: true,
-      schedule: '0 3 * * *',
+    // Configure the mock to return the updated values
+    mockStore.getBackups.mockResolvedValue({
+      debounceSeconds: 60,
       retentionDays: 14,
+      directory: '/backups',
+      retentionCount: 20
+    })
+
+    const request = createMockRequest({
+      debounceSeconds: 60,
+      retentionDays: 14,
+      directory: '/backups',
+      retentionCount: 20,
     })
 
     const response = await PUT(request)
 
     expect(response.status).toBe(200)
     const data = await response.json()
-    expect(data.enabled).toBe(true)
-    expect(data.schedule).toBe('0 3 * * *')
+    expect(data.debounceSeconds).toBe(60)
     expect(data.retentionDays).toBe(14)
+    expect(data.directory).toBe('/backups')
+    expect(data.retentionCount).toBe(20)
   })
 
   it('should return 401 when not admin', async () => {
@@ -135,21 +156,33 @@ describe('PUT /api/settings/backups', () => {
     expect(response.status).toBe(401)
   })
 
-  it('should disable backups', async () => {
+  it('should update backup settings with different values', async () => {
     requireAdmin.mockResolvedValue({
       user: { id: 'admin-123', displayName: 'Admin', isAdmin: true },
     })
 
+    // Configure the mock to return the updated values
+    mockStore.getBackups.mockResolvedValue({
+      debounceSeconds: 120,
+      retentionDays: 30,
+      directory: '/var/backups',
+      retentionCount: 10
+    })
+
     const request = createMockRequest({
-      enabled: false,
-      schedule: '',
-      retentionDays: 0,
+      debounceSeconds: 120,
+      retentionDays: 30,
+      directory: '/var/backups',
+      retentionCount: 10,
     })
 
     const response = await PUT(request)
 
     expect(response.status).toBe(200)
     const data = await response.json()
-    expect(data.enabled).toBe(false)
+    expect(data.debounceSeconds).toBe(120)
+    expect(data.retentionDays).toBe(30)
+    expect(data.directory).toBe('/var/backups')
+    expect(data.retentionCount).toBe(10)
   })
 })

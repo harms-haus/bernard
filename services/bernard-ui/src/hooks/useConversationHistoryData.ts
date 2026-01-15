@@ -1,26 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ThreadListItem } from '@/services/api';
-
-export interface UseConversationHistoryDataDependencies {
-  useSearchParams: () => [URLSearchParams, (params: URLSearchParams) => void];
-  useThreads: () => ThreadContextType;
-  useAuth: () => AuthContextType;
-  useSidebarState: () => readonly [boolean, (value: boolean) => void];
-}
-
-export interface ThreadContextType {
-  threads: ThreadListItem[];
-  threadsLoading: boolean;
-  getThreads: () => Promise<void>;
-  createNewThread: () => Promise<string>;
-}
-
-export interface AuthContextType {
-  state: {
-    user: { isAdmin?: boolean } | null;
-  };
-}
+import { useThreads } from '@/providers/ThreadProvider';
+import { useAuth } from '@/hooks/useAuth';
+import { useSidebarState } from '@/components/chat/ConversationHistory';
 
 export interface ConversationHistoryData {
   isOpen: boolean;
@@ -37,30 +20,12 @@ export interface ConversationHistoryData {
   toggleSidebar: () => void;
 }
 
-export function useConversationHistoryData(
-  deps: Partial<UseConversationHistoryDataDependencies> = {}
-): ConversationHistoryData {
-  const {
-    useSearchParams: useSearchParamsImpl = () => useSearchParams(),
-    useThreads: useThreadsImpl = () => {
-      const mod = require('@/providers/ThreadProvider');
-      return mod.useThreads();
-    },
-    useAuth: useAuthImpl = () => {
-      const mod = require('@/hooks/useAuth');
-      return mod.useAuth();
-    },
-    useSidebarState: useSidebarStateImpl = () => {
-      const mod = require('@/components/chat/ConversationHistory');
-      return mod.useSidebarState();
-    },
-  } = deps;
-
-  const [isOpen, setIsOpen] = useSidebarStateImpl();
-  const [searchParams, setSearchParams] = useSearchParamsImpl();
+export function useConversationHistoryData(): ConversationHistoryData {
+  const [isOpen, setIsOpen] = useSidebarState();
+  const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
-  const { threads, threadsLoading, getThreads, createNewThread } = useThreadsImpl();
-  const { state } = useAuthImpl();
+  const { threads, threadsLoading, getThreads, createNewThread } = useThreads();
+  const { state } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -85,7 +50,6 @@ export function useConversationHistoryData(
       handleThreadClick(newId);
     } catch (error) {
       console.error('Failed to create new thread:', error);
-      // Consider exposing an error state or using a toast notification
     } finally {
       setIsCreating(false);
     }

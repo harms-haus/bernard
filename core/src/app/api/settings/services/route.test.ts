@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import * as helpers from '../../../../lib/auth/helpers'
 import * as factory from '../../../../lib/api/factory'
 import { ServicesSettingsSchema } from '../../../../lib/config/settingsStore'
-import { handleGetServicesSettings, handlePutServicesSettings } from './route'
+import { handleGetServicesSettings, handlePutServicesSettings } from '@/lib/api/settings-services'
 
 // Spy on the modules
 const requireAdmin = vi.spyOn(helpers, 'requireAdmin')

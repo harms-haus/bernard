@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleLogout } from './route'
+import { handleLogout } from '@/lib/api/auth-logout'
 
 // Mock session dependencies
 vi.mock('../../../../lib/auth/session', () => ({

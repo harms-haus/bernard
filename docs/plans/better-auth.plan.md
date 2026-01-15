@@ -1,12 +1,16 @@
 # OAuth to BetterAuth Migration Plan
 
+https://www.better-auth.com/llms.txt
+
 **Generated:** January 14, 2026  
-**Status:** Planning Phase  
+**Status:** Planning Phase (Revised)  
 **Author:** Claude (AI Assistant)
 
 ## Executive Summary
 
-Replace Bernard's custom OAuth implementation (~2,500 lines) with BetterAuth. All authentication code—API routes, login pages, user profiles—lives in the `core` service. The first user to sign up becomes the admin.
+Replace Bernard's custom OAuth implementation (~2,500 lines) with BetterAuth using a **custom Redis adapter**. All authentication code—API routes, login pages, user profiles—lives in the `core` service. The first user to sign up becomes the admin.
+
+**Key Decision:** Use Redis as the primary database (not PostgreSQL) by implementing a custom BetterAuth adapter. This keeps the architecture simple and avoids adding new infrastructure.
 
 ## Table of Contents
 
@@ -15,7 +19,8 @@ Replace Bernard's custom OAuth implementation (~2,500 lines) with BetterAuth. Al
 3. [Migration Plan](#migration-plan)
 4. [Environment Variables](#environment-variables)
 5. [API Routes Reference](#api-routes-reference)
-6. [Database Schema](#database-schema)
+6. [Custom Redis Adapter](#custom-redis-adapter)
+7. [Database Schema (Redis)](#database-schema-redis)
 
 ---
 
@@ -84,7 +89,7 @@ ADMIN_API_KEY=...
 BetterAuth is a comprehensive authentication framework for TypeScript with:
 
 - **Email & Password**: Built-in with bcrypt hashing
-- **OAuth**: 15+ providers (GitHub, Google, Discord, etc.)
+- **OAuth**: 70+ providers (GitHub, Google, Discord, etc.)
 - **Two-Factor Authentication**: TOTP-based 2FA
 - **Passkeys**: WebAuthn passkey support
 - **Organizations**: Multi-tenant with roles
@@ -109,15 +114,23 @@ BetterAuth is a comprehensive authentication framework for TypeScript with:
 │  BetterAuth Server (in core)                                │
 │  ├── betterAuth() configuration                             │
 │  ├── Plugins (admin, bearer, rate-limit)                    │
-│  └── Database adapter                                       │
+│  └── Custom Redis adapter                                   │
 ├─────────────────────────────────────────────────────────────┤
-│  Database (PostgreSQL)                                      │
-│  ├── users                                                  │
-│  ├── sessions                                               │
-│  ├── accounts                                               │
-│  └── verification_tokens                                    │
+│  Redis (Primary Database - Existing)                        │
+│  ├── auth:user:<id>        (Hash - user data)              │
+│  ├── auth:email:<email>    (String - email→id mapping)     │
+│  ├── auth:session:<id>     (Hash - session data)           │
+│  ├── auth:account:<id>     (Hash - OAuth accounts)         │
+│  └── auth:verification:<id> (Hash - verification tokens)   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### 2.2 Why Redis?
+
+- **Already running**: Redis is part of the existing infrastructure
+- **No new dependencies**: No PostgreSQL setup required
+- **Performance**: In-memory storage is fast
+- **Familiar**: Team already understands Redis patterns
 
 ---
 
@@ -134,7 +147,7 @@ npm install bcrypt
 npm install @types/bcrypt
 ```
 
-**Environment variables:**
+**Environment variables (no changes to REDIS_URL needed):**
 
 ```bash
 # .env
@@ -143,73 +156,262 @@ npm install @types/bcrypt
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 BETTER_AUTH_URL=http://localhost:3456
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/bernard
+# Keep existing Redis (no DATABASE_URL needed)
+REDIS_URL=redis://127.0.0.1:6379
 
 # Remove these OAuth vars:
 # - OAUTH_GITHUB_*
 # - OAUTH_GOOGLE_*
 ```
 
-### Phase 2: Database Schema (Day 2)
+### Phase 2: Custom Redis Adapter (Day 2)
 
-Create the BetterAuth schema in `core/src/lib/auth/schema.ts`:
+**Create `core/src/lib/auth/redis-adapter.ts`:**
 
 ```typescript
-import { pgTable, text, timestamp, boolean, uuid, index } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { createAdapterFactory, Where } from "@better-auth/core/db/adapter";
+import { Redis } from "ioredis";
 
-export const users = pgTable("users", {
-  id: uuid("id").default(sql`gen_random_uuid()`).primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  image: text("image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
-  isAdmin: boolean("is_admin").default(false).notNull(),
-});
+interface RedisAdapterConfig {
+  client: Redis;
+  keyPrefix?: string;
+}
 
-export const sessions = pgTable("sessions", {
-  id: uuid("id").default(sql`gen_random_uuid()`).primaryKey(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: timestamp("expires_at").notNull(),
-  token: text("token").notNull().unique(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-}, (table) => [
-  index("sessions_user_id_idx").on(table.userId),
-]);
+/**
+ * Generate a Redis key for a given model and ID
+ */
+function makeKey(prefix: string, model: string, id: string): string {
+  return `${prefix}${model}:${id}`;
+}
 
-export const accounts = pgTable("accounts", {
-  id: uuid("id").default(sql`gen_random_uuid()`).primaryKey(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  accountId: text("account_id").notNull(),
-  providerId: text("provider_id").notNull(),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  idToken: text("id_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at"),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
-  scope: text("scope"),
-  password: text("password"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (table) => [
-  index("accounts_user_id_idx").on(table.userId),
-]);
+/**
+ * Create a custom Redis adapter for BetterAuth
+ * Uses Redis hashes for storage with secondary indexes for email lookups
+ */
+export function redisAdapter(client: Redis, config: RedisAdapterConfig) {
+  const keyPrefix = config.keyPrefix || "auth:";
 
-export const verificationTokens = pgTable("verification_tokens", {
-  id: uuid("id").default(sql`gen_random_uuid()`).primaryKey(),
-  identifier: text("identifier").notNull(),
-  value: text("value").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  index("verification_tokens_identifier_idx").on(table.identifier),
-]);
+  const createCustomAdapter = () => {
+    /**
+     * Convert BetterAuth where clauses to Redis data
+     */
+    function convertWhere(where: Where[], data: Record<string, unknown>): boolean {
+      return where.every((w) => {
+        const value = data[w.field];
+        switch (w.operator) {
+          case undefined:
+          case "eq":
+            return value === w.value;
+          case "ne":
+            return value !== w.value;
+          case "gt":
+            return (value as number) > (w.value as number);
+          case "gte":
+            return (value as number) >= (w.value as number);
+          case "lt":
+            return (value as number) < (w.value as number);
+          case "lte":
+            return (value as number) <= (w.value as number);
+          case "in":
+            return Array.isArray(w.value) && w.value.includes(value);
+          case "not_in":
+            return Array.isArray(w.value) && !w.value.includes(value);
+          case "contains":
+            return String(value).includes(String(w.value));
+          case "starts_with":
+            return String(value).startsWith(String(w.value));
+          case "ends_with":
+            return String(value).endsWith(String(w.value));
+          default:
+            return value === w.value;
+        }
+      });
+    }
+
+    return {
+      /**
+       * Create a new record
+       */
+      async create({ model, data }) {
+        const id = crypto.randomUUID();
+        const key = makeKey(keyPrefix, model, id);
+        
+        // Store all data as hash
+        await client.hset(key, data as Record<string, string>);
+        
+        // Create secondary index for email lookups
+        if (model === "user" && data.email) {
+          await client.set(`${keyPrefix}email:${data.email}`, id);
+        }
+        
+        return { id, ...data };
+      },
+
+      /**
+       * Find a single record by where clause
+       */
+      async findOne({ model, where }) {
+        // Handle ID lookup (most common case - fast path)
+        if (where.length === 1 && where[0].field === "id") {
+          const key = makeKey(keyPrefix, model, where[0].value);
+          const data = await client.hgetall(key);
+          return Object.keys(data).length > 0 ? data : null;
+        }
+
+        // Handle email lookup for users (uses secondary index)
+        if (where.length === 1 && where[0].field === "email" && model === "user") {
+          const id = await client.get(`${keyPrefix}email:${where[0].value}`);
+          if (!id) return null;
+          const key = makeKey(keyPrefix, model, id);
+          const data = await client.hgetall(key);
+          return Object.keys(data).length > 0 ? data : null;
+        }
+
+        // Fallback: scan all keys (inefficient - use sparingly)
+        // Note: For production, consider RediSearch for complex queries
+        const pattern = makeKey(keyPrefix, model, "*");
+        const keys = await client.keys(pattern);
+        
+        for (const key of keys) {
+          const data = await client.hgetall(key);
+          if (convertWhere(where, data)) {
+            return data;
+          }
+        }
+        
+        return null;
+      },
+
+      /**
+       * Find multiple records
+       */
+      async findMany({ model, where, limit = 100, offset = 0 }) {
+        const pattern = makeKey(keyPrefix, model, "*");
+        const keys = await client.keys(pattern);
+        const results: Record<string, unknown>[] = [];
+
+        for (const key of keys.slice(offset, offset + limit)) {
+          const data = await client.hgetall(key);
+          if (!where || where.length === 0) {
+            results.push(data);
+          } else if (convertWhere(where, data)) {
+            results.push(data);
+          }
+        }
+
+        return results;
+      },
+
+      /**
+       * Count records
+       */
+      async count({ model, where }) {
+        const pattern = makeKey(keyPrefix, model, "*");
+        const keys = await client.keys(pattern);
+        
+        if (!where || where.length === 0) {
+          return keys.length;
+        }
+
+        let count = 0;
+        for (const key of keys) {
+          const data = await client.hgetall(key);
+          if (convertWhere(where, data)) {
+            count++;
+          }
+        }
+        
+        return count;
+      },
+
+      /**
+       * Update a record
+       */
+      async update({ model, where, update: values }) {
+        const result = await this.findOne({ model, where });
+        if (!result) return null;
+
+        const key = makeKey(keyPrefix, model, result.id);
+        await client.hset(key, values as Record<string, string>);
+        
+        // Update email index if email changed
+        if (model === "user" && values.email && result.email !== values.email) {
+          await client.set(`${keyPrefix}email:${values.email}`, result.id);
+          await client.del(`${keyPrefix}email:${result.email}`);
+        }
+
+        return { ...result, ...values };
+      },
+
+      /**
+       * Update multiple records
+       */
+      async updateMany({ model, where, update: values }) {
+        const results = await this.findMany({ model, where });
+        let count = 0;
+
+        for (const result of results) {
+          const key = makeKey(keyPrefix, model, result.id);
+          await client.hset(key, values as Record<string, string>);
+          count++;
+        }
+
+        return count;
+      },
+
+      /**
+       * Delete a record
+       */
+      async delete({ model, where }) {
+        const result = await this.findOne({ model, where });
+        if (!result) return;
+
+        const key = makeKey(keyPrefix, model, result.id);
+        await client.del(key);
+
+        // Clean up secondary indexes
+        if (model === "user" && result.email) {
+          await client.del(`${keyPrefix}email:${result.email}`);
+        }
+      },
+
+      /**
+       * Delete multiple records
+       */
+      async deleteMany({ model, where }) {
+        const results = await this.findMany({ model, where });
+        let count = 0;
+
+        for (const result of results) {
+          await this.delete({ model, where: [{ field: "id", value: result.id }] });
+          count++;
+        }
+
+        return count;
+      },
+    };
+  };
+
+  const adapterOptions = {
+    config: {
+      adapterId: "redis",
+      adapterName: "Redis Adapter",
+      usePlural: false,
+      debugLogs: false,
+      supportsUUIDs: true,
+      supportsJSON: true,
+      supportsArrays: false,
+      transaction: false, // Redis doesn't support transactions like SQL
+    },
+    adapter: createCustomAdapter(),
+  };
+
+  const adapter = createAdapterFactory(adapterOptions);
+
+  return (options: { appName: string; advanced: { cookiePrefix: string } }) => {
+    return adapter(options);
+  };
+}
 ```
 
 ### Phase 3: Core Auth Configuration (Day 3)
@@ -218,10 +420,10 @@ export const verificationTokens = pgTable("verification_tokens", {
 
 ```typescript
 import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { redisAdapter } from "./redis-adapter";
 import { admin, bearer, rateLimit } from "better-auth/plugins";
 import bcrypt from "bcrypt";
-import { db } from "@/lib/db";
+import { redisClient } from "@/lib/infra/redis";
 import { env } from "@/lib/config/env";
 
 export const auth = betterAuth({
@@ -229,9 +431,8 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
-  database: drizzleAdapter(db, {
-    provider: "postgresql",
-    usePlural: false,
+  database: redisAdapter(redisClient, {
+    keyPrefix: "auth:",
   }),
 
   emailAndPassword: {
@@ -493,7 +694,7 @@ rm -f core/src/app/auth/google/callback/route.ts
 
 ## 4. Environment Variables
 
-### New Required Variables
+### Variables to Update
 
 ```bash
 # .env
@@ -502,8 +703,8 @@ rm -f core/src/app/auth/google/callback/route.ts
 BETTER_AUTH_SECRET=your-32-char-minimum-secret-key
 BETTER_AUTH_URL=http://localhost:3456
 
-# Database (NEW - For BetterAuth)
-DATABASE_URL=postgresql://user:password@localhost:5432/bernard
+# Keep Redis (existing - used for auth data)
+REDIS_URL=redis://127.0.0.1:6379
 ```
 
 ### Variables to Remove
@@ -521,7 +722,7 @@ OAUTH_GOOGLE_REDIRECT_URI
 ### Variables to Keep
 
 ```bash
-# Keep Redis for caching/queues (not auth)
+# Keep Redis for auth + caching/queues
 REDIS_URL=redis://127.0.0.1:6379
 
 # Keep service URLs
@@ -553,26 +754,39 @@ All auth routes handled by single handler in `core/src/app/api/auth/[...all]/rou
 
 ---
 
-## 6. Database Schema
+## 6. Custom Redis Adapter
 
-### PostgreSQL Schema
+### Key Design Decisions
 
-The BetterAuth schema (defined in Phase 2) creates these tables:
+1. **Redis Hashes**: All records stored as Redis hashes for efficient field access
+2. **Secondary Indexes**: Email → user ID mapping for fast lookups
+3. **Key Prefix**: All keys prefixed with `auth:` for easy identification
+4. **No Transactions**: Redis doesn't support ACID transactions like SQL
 
-| Table | Description |
-|-------|-------------|
-| `users` | User accounts (id, name, email, isAdmin, etc.) |
-| `sessions` | Active sessions (token, expiresAt, userAgent, etc.) |
-| `accounts` | OAuth account links (providerId, accessToken, etc.) |
-| `verification_tokens` | Email verification and password reset tokens |
+### Redis Key Structure
 
-### First User = Admin
+```
+auth:user:<uuid>           # Hash - user data (name, email, image, isAdmin, etc.)
+auth:email:<email>         # String - email to user ID mapping
+auth:session:<uuid>        # Hash - session data (token, expiresAt, userAgent, etc.)
+auth:account:<uuid>        # Hash - OAuth account data (providerId, accessToken, etc.)
+auth:verification:<uuid>   # Hash - verification tokens (identifier, value, expiresAt)
+```
 
-The first user to sign up is automatically granted admin privileges via the `admin()` plugin. Subsequent users are regular users.
+### Performance Considerations
+
+| Operation | Method | Complexity |
+|-----------|--------|------------|
+| Find by ID | Direct hash lookup | O(1) |
+| Find by email | Secondary index lookup | O(1) |
+| Find many | SCAN + filter | O(N) |
+| Count | SCAN + filter | O(N) |
+
+**Production Note:** For high-traffic deployments with complex queries, consider adding RediSearch module for efficient indexing and queries.
 
 ---
 
-## File Structure After Migration
+## 7. File Structure After Migration
 
 ```
 core/
@@ -581,9 +795,10 @@ core/
 │   │   ├── auth/
 │   │   │   ├── index.ts              # Barrel exports
 │   │   │   ├── better-auth.ts        # BetterAuth configuration
-│   │   │   ├── schema.ts             # Database schema
+│   │   │   ├── redis-adapter.ts      # Custom Redis adapter
 │   │   │   └── client.ts             # Frontend auth client
-│   │   └── db/                       # Database connection
+│   │   └── infra/
+│   │       └── redis.ts              # Redis client (existing)
 │   ├── app/
 │   │   ├── api/
 │   │   │   └── auth/[...all]/
@@ -598,5 +813,66 @@ core/
 
 ---
 
-**Document Version:** 1.0  
+## Appendix A: Redis Data Model
+
+### User Record
+```json
+{
+  "id": "uuid",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "emailVerified": "false",
+  "image": "https://...",
+  "isAdmin": "false",
+  "createdAt": "2026-01-14T...",
+  "updatedAt": "2026-01-14T..."
+}
+```
+
+### Session Record
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "token": "session-token",
+  "expiresAt": "2026-01-21T...",
+  "ipAddress": "127.0.0.1",
+  "userAgent": "Mozilla/5.0...",
+  "createdAt": "2026-01-14T...",
+  "updatedAt": "2026-01-14T..."
+}
+```
+
+### Account Record
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "accountId": "github-12345",
+  "providerId": "github",
+  "accessToken": "ghp_...",
+  "refreshToken": "...",
+  "idToken": "...",
+  "accessTokenExpiresAt": "...",
+  "refreshTokenExpiresAt": "...",
+  "scope": "read:user user:email",
+  "createdAt": "2026-01-14T...",
+  "updatedAt": "2026-01-14T..."
+}
+```
+
+### Verification Token Record
+```json
+{
+  "id": "uuid",
+  "identifier": "john@example.com",
+  "value": "token-value",
+  "expiresAt": "2026-01-15T...",
+  "createdAt": "2026-01-14T..."
+}
+```
+
+---
+
+**Document Version:** 2.0 (Revised for Redis)  
 **Last Updated:** January 14, 2026

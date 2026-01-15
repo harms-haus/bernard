@@ -23,6 +23,14 @@ describe('Integration: Log Streaming', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    // Clean up log files to prevent test pollution
+    if (fs.existsSync(LOGS_DIR)) {
+      for (const file of fs.readdirSync(LOGS_DIR)) {
+        if (file.endsWith('.log')) {
+          fs.unlinkSync(path.join(LOGS_DIR, file))
+        }
+      }
+    }
   })
 
   describe('Log File Management', () => {

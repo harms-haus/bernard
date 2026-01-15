@@ -4,3 +4,6 @@ export * from "./sessionStore";
 export * from "./tokenStore";
 export * from "./authCore";
 export * from "./oauthCore";
+export * from "./client";
+export * from "./better-auth";
+export * from "./redis-adapter";

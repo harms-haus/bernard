@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleLogin, validateLoginBody, validateReturnTo } from './route'
+import { handleLogin, validateLoginBody, validateReturnTo } from '@/lib/api/auth-login'
 
 // Mock OAuth dependencies
 vi.mock('../../../../lib/auth/oauth', () => ({
