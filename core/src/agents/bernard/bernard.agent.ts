@@ -11,6 +11,7 @@ import { validateAndGetTools } from "./tools";
 import { startUtilityWorker } from "@/lib/infra/queue";
 import { startHealthMonitor } from "@/lib/services/HealthMonitor";
 import { initializeSettingsStore } from "@/lib/config/settingsStore";
+import { getRedis } from "@/lib/infra/redis";
 
 // ============================================================================
 // Initialization State
@@ -24,8 +25,7 @@ let initialized = false;
  */
 export function initializeAgentServices(): void {
   if (!initialized) {
-    // Initialize settings store (required for agent creation)
-    initializeSettingsStore().catch(err => {
+    initializeSettingsStore(undefined, getRedis()).catch(err => {
       console.error('[Bernard] Failed to initialize settings store:', err);
     });
     startUtilityWorker();

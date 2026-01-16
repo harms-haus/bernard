@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/server-helpers'
 import { BackupSettingsSchema, getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore'
+import { getRedis } from '@/lib/infra/redis'
 
 let initialized = false;
 
 async function getStore() {
   if (!initialized) {
-    await initializeSettingsStore();
+    await initializeSettingsStore(undefined, getRedis());
     initialized = true;
   }
   return getSettingsStore();

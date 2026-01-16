@@ -19,6 +19,13 @@ export async function POST(request: NextRequest) {
       stream?: boolean;
     };
 
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json(
+        { error: 'messages is required and must be a non-empty array' },
+        { status: 400 }
+      );
+    }
+
     let threadId = thread_id;
 
     if (!threadId) {
@@ -56,6 +63,7 @@ export async function POST(request: NextRequest) {
 
     const responseStream = new ReadableStream({
       async start(controller) {
+        let doneSent = false;
         try {
           for await (const chunk of runStream) {
             const chunkAny = chunk as Record<string, unknown>;
@@ -104,8 +112,23 @@ export async function POST(request: NextRequest) {
               });
               controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              doneSent = true;
               break;
             }
+          }
+
+          // Ensure [DONE] marker is sent if not already sent
+          if (!doneSent) {
+            const sseData = JSON.stringify({
+              id: `chatcmpl-${Date.now()}`,
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: model || 'bernard_agent',
+              choices: [{ index: 0, delta: {}, finish_reason: messageCount > 0 ? 'stop' : 'length' }],
+            });
+            controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            doneSent = true;
           }
         } catch (error) {
           console.error('Stream error:', error);
@@ -119,6 +142,7 @@ export async function POST(request: NextRequest) {
           });
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          doneSent = true;
         } finally {
           controller.close();
         }
@@ -136,7 +160,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Chat completions error:', error);
     return NextResponse.json(
-      { error: (error as Error).message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

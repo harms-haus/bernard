@@ -95,32 +95,32 @@ const GeocodingServiceSchema = z.object({
 })
 
 const HomeAssistantServiceSchema = z.object({
-  baseUrl: z.string().url(),
+  baseUrl: z.string().optional(),
   accessToken: z.string().optional()
 })
 
 const PlexServiceSchema = z.object({
-  baseUrl: z.string().url(),
-  token: z.string().min(1)
+  baseUrl: z.string().optional(),
+  token: z.string().optional()
 })
 
 const KokoroServiceSchema = z.object({
-  baseUrl: z.string().url().default("http://localhost:8880")
+  baseUrl: z.string().optional()
 })
 
 const TtsServiceSchema = z.object({
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.string().optional(),
   apiKey: z.string().optional()
 })
 
 const SttServiceSchema = z.object({
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.string().optional(),
   apiKey: z.string().optional()
 })
 
 export const OverseerrServiceSchema = z.object({
-  baseUrl: z.string().url(),
-  apiKey: z.string().min(1)
+  baseUrl: z.string().optional(),
+  apiKey: z.string().optional()
 })
 
 const InfrastructureServiceSchema = z.object({
@@ -240,7 +240,7 @@ export type GeocodingServiceSettings = {
 };
 
 export type HomeAssistantServiceSettings = {
-  baseUrl: string;
+  baseUrl?: string | undefined;
   accessToken?: string | undefined;
 };
 
@@ -258,8 +258,8 @@ export type InfrastructureServiceSettings = {
 };
 
 export type PlexServiceSettings = {
-  baseUrl: string;
-  token: string;
+  baseUrl?: string | undefined;
+  token?: string | undefined;
 };
 
 export type KokoroServiceSettings = {
@@ -277,8 +277,8 @@ export type SttServiceSettings = {
 };
 
 export type OverseerrServiceSettings = {
-  baseUrl: string;
-  apiKey: string;
+  baseUrl?: string | undefined;
+  apiKey?: string | undefined;
 };
 
 export type ServicesSettings = {
@@ -349,6 +349,7 @@ export const SETTINGS_NAMESPACE = "bernard:settings";
 export interface RedisClient {
   get(key: string): Promise<string | null>
   set(key: string, value: string): Promise<string>
+  save?(): Promise<void>; // Optional method for synchronous persistence
 }
 
 export class SettingsManagerCore {
@@ -465,6 +466,9 @@ export class SettingsManagerCore {
 
   async setSection<T>(section: Section, data: T): Promise<void> {
     await this.redis.set(`${SETTINGS_NAMESPACE}:${section}`, JSON.stringify(data))
+    if (this.redis.save) {
+      await this.redis.save();
+    }
   }
 
   async setBackups(data: BackupSettings): Promise<void> {

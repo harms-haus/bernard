@@ -21,15 +21,15 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  // Use OpenAI-compatible /api/v1/chat/completions endpoint
-  const apiUrl = '/api/v1/chat/completions';
+  // Use LangGraph native streaming endpoints (proxied through :3456)
+  const apiUrl = '/api/threads'; // Base URL for LangGraph API
   const assistantId = 'bernard_agent';
 
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
 
   return (
     <ThreadProvider>
-      <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
+      <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId} useLangGraphStream={true}>
         <Thread />
       </StreamProvider>
     </ThreadProvider>

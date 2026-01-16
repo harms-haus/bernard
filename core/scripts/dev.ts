@@ -5,8 +5,9 @@
  * This script:
  * 1. Starts Redis (required for queue)
  * 2. Starts Next.js development server
- * 3. Other services are started via queue when requested through API
- * 4. Handles graceful shutdown
+ * 3. Automatically starts bernard-agent via service queue
+ * 4. Other services are started via queue when requested through API
+ * 5. Handles graceful shutdown
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -118,12 +119,24 @@ async function startNextDev(): Promise<ChildProcess> {
   })
 
   const rl = readline.createInterface({ input: nextProcess.stdout! })
-  rl.on('line', (line) => {
+  let coreStarted = false
+
+  rl.on('line', async (line) => {
     logService('next', line, 'blue')
-    if (line.includes('Ready in') || line.includes('compiled')) {
+    if (!coreStarted && (line.includes('Ready in') || line.includes('compiled'))) {
+      coreStarted = true
       log('\n=== Bernard Core is Ready! ===\n', 'green')
       log('Access dashboard to manage services: http://localhost:3456', 'green')
-      log('Services are queued for background execution', 'cyan')
+
+      // Automatically enqueue bernard-agent start after core is ready
+      log('Enqueueing bernard-agent start command...', 'cyan')
+      try {
+        const { addServiceJob } = await import('../src/lib/infra/service-queue')
+        await addServiceJob('bernard-agent', 'start', { initiatedBy: 'dev-script' })
+        log('Bernard Agent start command enqueued successfully', 'green')
+      } catch (error) {
+        log(`Failed to enqueue bernard-agent start: ${error}`, 'red')
+      }
     }
   })
 

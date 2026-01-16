@@ -157,43 +157,66 @@ export interface ServiceConfig {
 }
 
 export interface ServicesSettings {
-  search: {
-    apiKey: string;
-    apiUrl: string;
+  memory?: {
+    embeddingModel?: string;
+    embeddingBaseUrl?: string;
+    embeddingApiKey?: string;
+    indexName?: string;
+    keyPrefix?: string;
+    namespace?: string;
+  };
+  search?: {
+    apiKey?: string;
+    apiUrl?: string;
   };
   weather: {
     provider: "open-meteo" | "openweathermap" | "weatherapi";
-    apiKey?: string; // Only for openweathermap and weatherapi
-    apiUrl?: string; // Only for openweathermap and weatherapi
-    forecastUrl?: string; // Only for open-meteo
-    historicalUrl?: string; // Only for open-meteo
+    apiKey?: string;
+    apiUrl?: string;
+    forecastUrl?: string;
+    historicalUrl?: string;
     timeoutMs?: number;
   };
-  geocoding: {
-    url: string;
-    userAgent: string;
-    email: string;
-    referer: string;
+  geocoding?: {
+    url?: string;
+    userAgent?: string;
+    email?: string;
+    referer?: string;
   };
   homeAssistant?: {
-    baseUrl: string;
+    baseUrl?: string;
     accessToken?: string;
   };
   plex?: {
-    baseUrl: string;
-    token: string;
+    baseUrl?: string;
+    token?: string;
+  };
+  kokoro?: {
+    baseUrl?: string;
   };
   tts?: {
-    baseUrl: string;
+    baseUrl?: string;
     apiKey?: string;
   };
   stt?: {
-    baseUrl: string;
+    baseUrl?: string;
     apiKey?: string;
   };
   overseerr?: {
-    baseUrl: string;
-    apiKey: string;
+    baseUrl?: string;
+    apiKey?: string;
+  };
+  infrastructure?: {
+    redisUrl?: string;
+    queuePrefix?: string;
+    taskQueueName?: string;
+    taskWorkerConcurrency?: number;
+    taskMaxRuntimeMs?: number;
+    taskAttempts?: number;
+    taskBackoffMs?: number;
+    taskKeepCompleted?: number;
+    taskKeepFailed?: number;
+    taskArchiveAfterDays?: number;
   };
 }
 
@@ -539,17 +562,28 @@ class AdminApiClient {
   }
 
   async getServicesSettings(): Promise<ServicesSettings> {
-    return this.request<ServicesSettings>('/admin/services');
+    const response = await this.request<{ success: boolean; data: ServicesSettings }>('/admin/services');
+    if (response && typeof response === 'object' && 'data' in response) {
+      return (response as { data: ServicesSettings }).data;
+    }
+    return response as ServicesSettings;
   }
 
   async updateServicesSettings(body: ServicesSettings): Promise<ServicesSettings> {
-    return this.request<ServicesSettings>('/admin/services', {
+    const response = await this.request<{ success: boolean; data: ServicesSettings }>('/admin/services', {
       method: 'PUT',
       body: JSON.stringify(body)
     });
+    if (response && typeof response === 'object' && 'data' in response) {
+      return (response as { data: ServicesSettings }).data;
+    }
+    return response as ServicesSettings;
   }
 
-  async testHomeAssistantConnection(): Promise<{
+  async testHomeAssistantConnection(settings: {
+    baseUrl: string;
+    accessToken?: string;
+  }): Promise<{
     status: 'success' | 'failed';
     error?: string;
     errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
@@ -558,11 +592,14 @@ class AdminApiClient {
   }> {
     return this.request('/admin/services/test/home-assistant', {
       method: 'POST',
-      body: JSON.stringify({})
+      body: JSON.stringify(settings)
     });
   }
 
-  async testPlexConnection(): Promise<{
+  async testPlexConnection(settings: {
+    baseUrl: string;
+    token: string;
+  }): Promise<{
     status: 'success' | 'failed';
     error?: string;
     errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
@@ -572,11 +609,14 @@ class AdminApiClient {
   }> {
     return this.request('/admin/services/test/plex', {
       method: 'POST',
-      body: JSON.stringify({})
+      body: JSON.stringify(settings)
     });
   }
 
-  async testTtsConnection(): Promise<{
+  async testTtsConnection(settings: {
+    baseUrl: string;
+    apiKey?: string;
+  }): Promise<{
     status: 'success' | 'failed';
     error?: string;
     errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
@@ -585,11 +625,14 @@ class AdminApiClient {
   }> {
     return this.request('/admin/services/test/tts', {
       method: 'POST',
-      body: JSON.stringify({})
+      body: JSON.stringify(settings)
     });
   }
 
-  async testSttConnection(): Promise<{
+  async testSttConnection(settings: {
+    baseUrl: string;
+    apiKey?: string;
+  }): Promise<{
     status: 'success' | 'failed';
     error?: string;
     errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
@@ -598,11 +641,14 @@ class AdminApiClient {
   }> {
     return this.request('/admin/services/test/stt', {
       method: 'POST',
-      body: JSON.stringify({})
+      body: JSON.stringify(settings)
     });
   }
 
-  async testOverseerrConnection(): Promise<{
+  async testOverseerrConnection(settings: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<{
     status: 'success' | 'failed';
     error?: string;
     errorType?: 'configuration' | 'unauthorized' | 'connection' | 'server_error' | 'unknown';
@@ -611,7 +657,7 @@ class AdminApiClient {
   }> {
     return this.request('/admin/services/test/overseerr', {
       method: 'POST',
-      body: JSON.stringify({})
+      body: JSON.stringify(settings)
     });
   }
 

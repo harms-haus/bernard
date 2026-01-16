@@ -12,6 +12,7 @@ import { useToast } from '@/components/ToastManager';
 import { ServiceTestButton, type ServiceTestStatus } from '@/components/ui/service-test-button';
 import { AdminLayout } from '@/components/AdminLayout';
 
+// Deep merge helper to preserve nested objects during updates
 function ServicesContent() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,7 +73,21 @@ function ServicesContent() {
   };
 
   const updateSettings = (updates: Partial<ServicesSettings>) => {
-    setSettings(prev => prev ? { ...prev, ...updates } : null);
+    setSettings(prev => {
+      if (!prev) return null;
+      const merged = { ...prev } as unknown as Record<string, unknown>;
+      for (const key of Object.keys(updates)) {
+        const sourceValue = updates[key as keyof Partial<ServicesSettings>];
+        const targetValue = prev[key as keyof ServicesSettings];
+        if (sourceValue !== null && typeof sourceValue === 'object' && !Array.isArray(sourceValue) &&
+            targetValue !== null && typeof targetValue === 'object' && !Array.isArray(targetValue)) {
+          merged[key] = { ...targetValue, ...sourceValue };
+        } else if (sourceValue !== undefined) {
+          merged[key] = sourceValue;
+        }
+      }
+      return merged as unknown as ServicesSettings;
+    });
   };
 
   const updateWeatherSettings = (weatherUpdates: Partial<ServicesSettings['weather']>) => {
@@ -138,12 +153,23 @@ function ServicesContent() {
   };
 
   const runHomeAssistantTest = useCallback(async (showNotification = false) => {
+    if (!settings?.homeAssistant?.baseUrl) {
+      if (showNotification) toast.error('Please enter a Home Assistant URL first');
+      setHaTestStatus('failed');
+      setHaTestError('Please enter a Home Assistant URL first');
+      setHaTestErrorType('configuration');
+      return;
+    }
+
     setHaTestStatus('loading');
     setHaTestError('');
     setHaTestErrorType('');
 
     try {
-      const result = await adminApiClient.testHomeAssistantConnection();
+      const result = await adminApiClient.testHomeAssistantConnection({
+        baseUrl: settings.homeAssistant.baseUrl,
+        accessToken: settings.homeAssistant.accessToken
+      });
 
       if (result.status === 'success') {
         setHaTestStatus('success');
@@ -162,15 +188,26 @@ function ServicesContent() {
       console.error('Failed to test Home Assistant connection:', error);
       if (showNotification) toast.error(`Home Assistant: ${errorMessage}`);
     }
-  }, [toast]);
+  }, [settings, toast]);
 
   const runPlexTest = useCallback(async (showNotification = false) => {
+    if (!settings?.plex?.baseUrl || !settings?.plex?.token) {
+      if (showNotification) toast.error('Please enter Plex URL and token first');
+      setPlexTestStatus('failed');
+      setPlexTestError('Please enter Plex URL and token first');
+      setPlexTestErrorType('configuration');
+      return;
+    }
+
     setPlexTestStatus('loading');
     setPlexTestError('');
     setPlexTestErrorType('');
 
     try {
-      const result = await adminApiClient.testPlexConnection();
+      const result = await adminApiClient.testPlexConnection({
+        baseUrl: settings.plex.baseUrl,
+        token: settings.plex.token
+      });
 
       if (result.status === 'success') {
         setPlexTestStatus('success');
@@ -188,15 +225,26 @@ function ServicesContent() {
       setPlexTestErrorType('unknown');
       console.error('Failed to test Plex connection:', error);
     }
-  }, [toast]);
+  }, [settings, toast]);
 
   const runTtsTest = useCallback(async (showNotification = false) => {
+    if (!settings?.tts?.baseUrl) {
+      if (showNotification) toast.error('Please enter a TTS URL first');
+      setTtsTestStatus('failed');
+      setTtsTestError('Please enter a TTS URL first');
+      setTtsTestErrorType('configuration');
+      return;
+    }
+
     setTtsTestStatus('loading');
     setTtsTestError('');
     setTtsTestErrorType('');
 
     try {
-      const result = await adminApiClient.testTtsConnection();
+      const result = await adminApiClient.testTtsConnection({
+        baseUrl: settings.tts.baseUrl,
+        apiKey: settings.tts.apiKey
+      });
 
       if (result.status === 'success') {
         setTtsTestStatus('success');
@@ -214,15 +262,26 @@ function ServicesContent() {
       setTtsTestErrorType('unknown');
       console.error('Failed to test TTS connection:', error);
     }
-  }, [toast]);
+  }, [settings, toast]);
 
   const runSttTest = useCallback(async (showNotification = false) => {
+    if (!settings?.stt?.baseUrl) {
+      if (showNotification) toast.error('Please enter an STT URL first');
+      setSttTestStatus('failed');
+      setSttTestError('Please enter an STT URL first');
+      setSttTestErrorType('configuration');
+      return;
+    }
+
     setSttTestStatus('loading');
     setSttTestError('');
     setSttTestErrorType('');
 
     try {
-      const result = await adminApiClient.testSttConnection();
+      const result = await adminApiClient.testSttConnection({
+        baseUrl: settings.stt.baseUrl,
+        apiKey: settings.stt.apiKey
+      });
 
       if (result.status === 'success') {
         setSttTestStatus('success');
@@ -240,15 +299,26 @@ function ServicesContent() {
       setSttTestErrorType('unknown');
       console.error('Failed to test STT connection:', error);
     }
-  }, [toast]);
+  }, [settings, toast]);
 
   const runOverseerrTest = useCallback(async (showNotification = false) => {
+    if (!settings?.overseerr?.baseUrl || !settings?.overseerr?.apiKey) {
+      if (showNotification) toast.error('Please enter Overseerr URL and API key first');
+      setOverseerrTestStatus('failed');
+      setOverseerrTestError('Please enter Overseerr URL and API key first');
+      setOverseerrTestErrorType('configuration');
+      return;
+    }
+
     setOverseerrTestStatus('loading');
     setOverseerrTestError('');
     setOverseerrTestErrorType('');
 
     try {
-      const result = await adminApiClient.testOverseerrConnection();
+      const result = await adminApiClient.testOverseerrConnection({
+        baseUrl: settings.overseerr.baseUrl,
+        apiKey: settings.overseerr.apiKey
+      });
 
       if (result.status === 'success') {
         setOverseerrTestStatus('success');
@@ -266,7 +336,7 @@ function ServicesContent() {
       setOverseerrTestErrorType('unknown');
       console.error('Failed to test Overseerr connection:', error);
     }
-  }, [toast]);
+  }, [settings, toast]);
 
   useEffect(() => {
     if (!settings) return;

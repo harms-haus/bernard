@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore';
+import { getRedis } from '@/lib/infra/redis';
 
 interface OpenAIModelsResponse {
   data?: Array<{ id: string; object: string; created: number; owned_by: string }>;
@@ -11,7 +12,7 @@ let initialized = false;
 
 async function getStore() {
   if (!initialized) {
-    await initializeSettingsStore();
+    await initializeSettingsStore(undefined, getRedis());
     initialized = true;
   }
   return getSettingsStore();

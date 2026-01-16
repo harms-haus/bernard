@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/auth/server-helpers'
 import { getSettingsStore, ServicesSettingsSchema, initializeSettingsStore } from '@/lib/config/settingsStore'
+import { getRedis } from '@/lib/infra/redis'
 import { error, ok, badRequest } from '@/lib/api/response'
 
 let initialized = false;
 
 async function getStore() {
   if (!initialized) {
-    await initializeSettingsStore();
+    await initializeSettingsStore(undefined, getRedis());
     initialized = true;
   }
   return getSettingsStore();
@@ -37,7 +38,8 @@ export async function PUT(request: NextRequest) {
     const store = await getStore()
     const saved = await store.setServices(parsed.data)
     return ok(saved)
-  } catch {
+  } catch (e) {
+    console.error('PUT services error:', e);
     return error('Failed to save services settings', 500)
   }
 }
