@@ -5,11 +5,6 @@ export const SERVICES = {
     url: process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024',
     healthPath: '/health',
   },
-  bernardUi: {
-    name: 'BERNARD_UI',
-    url: process.env.BERNARD_UI_URL || 'http://127.0.0.1:8810',
-    healthPath: '/health',
-  },
   whisper: {
     name: 'WHISPER',
     url: process.env.WHISPER_URL || 'http://127.0.0.1:8870',
@@ -46,7 +41,6 @@ export const VALID_LOG_SERVICES = [
   'redis',
   'shared',
   'bernard-agent',
-  'bernard-ui',
   'whisper',
   'kokoro',
   'core',

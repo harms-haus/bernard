@@ -58,19 +58,6 @@ export const SERVICES: Record<string, ServiceConfig> = {
     startupTimeout: 20,
     color: "#1dd1a1",
   },
-  "bernard-ui": {
-    id: "bernard-ui",
-    name: "BERNARD-UI",
-    displayName: "Bernard UI",
-    port: 8810,
-    type: "node",
-    directory: "services/bernard-ui",
-    script: "cd ../.. && ./node_modules/.bin/tsx scripts/restart-vite.ts",
-    healthPath: "/",
-    dependencies: ["redis"],
-    startupTimeout: 20,
-    color: "#5f27cd",
-  },
   whisper: {
     id: "whisper",
     name: "WHISPER",
@@ -103,7 +90,6 @@ export const SERVICE_START_ORDER = [
   "redis",
   "core",
   "bernard-agent",
-  "bernard-ui",
   "whisper",
   "kokoro",
 ] as const
