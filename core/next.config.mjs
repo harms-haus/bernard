@@ -46,8 +46,16 @@ const nextConfig = {
         destination: 'http://127.0.0.1:2024/assistants/:path*',
       },
       {
-        source: '/crons/:path*',
-        destination: 'http://127.0.0.1:2024/crons/:path*',
+        source: '/v1/chat/completions',
+        destination: 'http://127.0.0.1:2024/v1/chat/completions',
+      },
+      {
+        source: '/v1/audio/transcriptions',
+        destination: 'http://127.0.0.1:8870/inference',
+      },
+      {
+        source: '/v1/audio/speech',
+        destination: 'http://127.0.0.1:8880/v1/audio/speech',
       },
       {
         source: '/store/:path*',
@@ -58,7 +66,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/api/v1/:path*',
+        source: '/v1/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },

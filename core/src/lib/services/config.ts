@@ -17,25 +17,6 @@ export const SERVICES = {
   },
 } as const;
 
-// V1 API route mappings
-export const V1_UPSTREAMS = {
-  'chat/completions': {
-    url: SERVICES.bernardAgent.url,
-    path: '/v1/chat/completions',
-    streaming: true,
-  },
-  'audio/transcriptions': {
-    url: SERVICES.whisper.url,
-    path: '/inference',
-    streaming: false,
-  },
-  'audio/speech': {
-    url: SERVICES.kokoro.url,
-    path: '/v1/audio/speech',
-    streaming: false,
-  },
-} as const;
-
 // Valid services for log streaming
 export const VALID_LOG_SERVICES = [
   'redis',

@@ -23,8 +23,8 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  // Connect through proxy route that bypasses Next.js rewrites (port 3456)
-  const apiUrl = 'http://127.0.0.1:3456/api/proxy-stream';
+  // Use OpenAI-compatible /v1/chat/completions endpoint
+  const apiUrl = '/v1/chat/completions';
   const assistantId = 'bernard_agent';
 
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
