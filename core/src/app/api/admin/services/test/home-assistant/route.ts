@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/server-helpers'
-import { getSettingsStore } from '@/lib/config/settingsStore'
+import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore'
+
+let initialized = false;
+
+async function getStore() {
+  if (!initialized) {
+    await initializeSettingsStore();
+    initialized = true;
+  }
+  return getSettingsStore();
+}
 
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin()
   if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
-  const store = getSettingsStore()
+  const store = await getStore()
   const services = await store.getServices()
   const haConfig = services.homeAssistant
 

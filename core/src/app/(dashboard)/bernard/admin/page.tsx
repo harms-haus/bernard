@@ -1,21 +1,16 @@
 "use client";
 
 import { StatusDashboard } from '@/components/StatusDashboard';
-import { AuthProvider } from '@/hooks/useAuth';
-import { DarkModeProvider } from '@/hooks/useDarkMode';
-import { ToastManagerProvider } from '@/components/ToastManager';
-import { redirectIfNotAdmin } from '@/lib/auth/client-helpers';
+import { AdminLayout } from '@/components/AdminLayout';
 
-export default function Dashboard() {
-  redirectIfNotAdmin();
+function DashboardContent() {
+  return <StatusDashboard showRestartButtons={true} showLogs={true} />;
+}
 
+export default function DashboardPage() {
   return (
-    <AuthProvider>
-      <DarkModeProvider>
-        <ToastManagerProvider>
-          <StatusDashboard showRestartButtons={true} showLogs={true} />
-        </ToastManagerProvider>
-      </DarkModeProvider>
-    </AuthProvider>
+    <AdminLayout>
+      <DashboardContent />
+    </AdminLayout>
   );
 }

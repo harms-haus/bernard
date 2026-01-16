@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
-import { SettingsStore } from '@/lib/config/settingsStore';
+import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore';
 
 interface OpenAIModelsResponse {
   data?: Array<{ id: string; object: string; created: number; owned_by: string }>;
 }
 
-function getSettingsStore() {
-  return new SettingsStore();
+let initialized = false;
+
+async function getStore() {
+  if (!initialized) {
+    await initializeSettingsStore();
+    initialized = true;
+  }
+  return getSettingsStore();
 }
 
 export async function GET(
@@ -21,7 +27,7 @@ export async function GET(
 
     const resolvedParams = await params;
     const { id } = resolvedParams;
-    const store = getSettingsStore();
+    const store = await getStore();
     const providers = await store.getProviders();
     const provider = providers.find((p: { id: string }) => p.id === id);
 

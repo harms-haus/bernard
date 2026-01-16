@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
-import { SettingsStore } from '@/lib/config/settingsStore';
+import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore';
 
-function getSettingsStore() {
-  return new SettingsStore();
+let initialized = false;
+
+async function getStore() {
+  if (!initialized) {
+    await initializeSettingsStore();
+    initialized = true;
+  }
+  return getSettingsStore();
 }
 
 export async function POST(
@@ -16,7 +22,7 @@ export async function POST(
     if (!session) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     const { id } = await params;
-    const store = getSettingsStore();
+    const store = await getStore();
     const providers = await store.getProviders();
     const provider = providers.find((p: { id: string }) => p.id === id);
 

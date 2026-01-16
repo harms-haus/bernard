@@ -6,6 +6,9 @@ import Redis from "ioredis";
 // Redis Instance (Ensure Redis is running locally or provide a connection string)
 const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 
+// Check if signups are allowed via environment variable
+const allowSignups = process.env.ALLOW_SIGNUPS !== "false";
+
 export const auth = betterAuth({
     // To use Redis:
     database: redisAdapter(redis),
@@ -23,6 +26,11 @@ export const auth = betterAuth({
         user: {
             create: {
                 before: async (user) => {
+                    // Block new user registrations if signups are disabled
+                    if (!allowSignups) {
+                        throw new Error("User registrations are disabled");
+                    }
+
                     // Check if any admin exists in Redis
                     // Using the helper keys we defined in the adapter
                     const userIds = await redis.smembers("ba:s:user:ids");

@@ -60,14 +60,12 @@ const SERVICE_ICONS: Record<string, any> = {
   Kokoro: Volume2,
   Whisper: Mic,
   Bernard: Server,
-  'Bernard-UI': Monitor,
   Server: Globe,
   System: Activity
 };
 
 const SERVICE_ORDER = [
   'Bernard',
-  'Bernard-UI',
   'Redis',
   'Server',
   'Whisper',
@@ -76,8 +74,6 @@ const SERVICE_ORDER = [
 
 const SERVICE_NAME_TO_ID: Record<string, string> = {
   'Bernard Agent': 'bernard-agent',
-  'Bernard UI': 'bernard-ui',
-  'Bernard-UI': 'bernard-ui',
   'Redis': 'redis',
   'Whisper': 'whisper',
   'Kokoro': 'kokoro',
@@ -256,14 +252,18 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
     );
   }
 
-  const sortedServices = status?.services?.sort((a, b) => {
-    const indexA = SERVICE_ORDER.indexOf(a.name);
-    const indexB = SERVICE_ORDER.indexOf(b.name);
-    if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name);
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
-    return indexA - indexB;
-  });
+  const HIDDEN_SERVICES = ['vllm', 'coreapi', 'core api', 'bernard-ui', 'bernard ui'];
+
+  const sortedServices = status?.services
+    ?.filter(service => !HIDDEN_SERVICES.includes(service.name.toLowerCase()))
+    .sort((a, b) => {
+      const indexA = SERVICE_ORDER.indexOf(a.name);
+      const indexB = SERVICE_ORDER.indexOf(b.name);
+      if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name);
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
 
   return (
     <div className="space-y-4">

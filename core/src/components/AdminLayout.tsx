@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useDarkMode } from '@/hooks/useDarkMode';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   LayoutDashboard,
   Settings,
@@ -17,19 +17,21 @@ import {
   Home,
   Zap
 } from 'lucide-react';
-import { DarkModeToggle } from './DarkModeToggle';
-import { UserBadge } from './UserBadge';
+import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { UserBadge } from '@/components/UserBadge';
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
+import { ToastManagerProvider } from '@/components/ToastManager';
+import { DialogManagerProvider } from '@/components/DialogManager';
 
 const navigation = [
   { name: 'Status', href: '/bernard/admin', icon: LayoutDashboard },
   { name: 'Models', href: '/bernard/admin/models', icon: Settings },
   { name: 'Services', href: '/bernard/admin/services', icon: Server },
-  { name: 'Automations', href: '/bernard/admin/automations', icon: Zap },
-  { name: 'History', href: '/bernard/admin/history', icon: MessagesSquare },
   { name: 'Users', href: '/bernard/admin/users', icon: UsersIcon },
 ];
 
-export function AdminLayout({ children }: { children: React.ReactNode }) {
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAdmin, isAdminLoading } = useAdminAuth();
@@ -56,7 +58,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              You don't have admin privileges to access this area.
+              You don&apos;t have admin privileges to access this area.
             </p>
             <div className="flex gap-2">
               <Button>
@@ -126,7 +128,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 setSidebarOpen(false);
               }}>
                 <Home className="mr-2 h-4 w-4" />
-                Main Chat
+                Chat
               </Button>
               <UserBadge />
             </div>
@@ -140,5 +142,19 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <DialogManagerProvider>
+          <ToastManagerProvider>
+            <AdminLayoutContent>{children}</AdminLayoutContent>
+          </ToastManagerProvider>
+        </DialogManagerProvider>
+      </DarkModeProvider>
+    </AuthProvider>
   );
 }

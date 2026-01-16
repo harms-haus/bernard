@@ -228,7 +228,7 @@ export interface BackupSettings {
 export interface LimitsSettings {
   currentRequestMaxTokens: number;
   responseMaxTokens: number;
-  allowUserCreation: boolean;
+  allowSignups: boolean;
 }
 
 export interface AutomationInfo {
@@ -328,11 +328,10 @@ class AdminApiClient {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      const error: APIError = new Error(
-        errorText || `HTTP ${response.status}`
-      );
-      error.status = response.status;
-      error.details = errorText;
+      const error = Object.assign(new Error(errorText || `HTTP ${response.status}`), {
+        status: response.status,
+        details: errorText,
+      }) as APIError;
       throw error;
     }
 
@@ -462,11 +461,18 @@ class AdminApiClient {
 
   // Settings management
   async getSettings(): Promise<AdminSettings> {
-    return this.request<AdminSettings>('/settings');
+    const [models, services, oauth, backups, limits] = await Promise.all([
+      this.getModelsSettings(),
+      this.getServicesSettings(),
+      this.getOAuthSettings(),
+      this.getBackupSettings(),
+      this.getLimitsSettings(),
+    ]);
+    return { models, services, oauth, backups };
   }
 
   async getModelsSettings(): Promise<ModelsSettings> {
-    return this.request<ModelsSettings>('/settings/models');
+    return this.request<ModelsSettings>('/admin/models');
   }
 
   // Automation management
@@ -482,36 +488,36 @@ class AdminApiClient {
   }
 
   async updateModelsSettings(body: ModelsSettings): Promise<ModelsSettings> {
-    return this.request<ModelsSettings>('/settings/models', {
+    return this.request<ModelsSettings>('/admin/models', {
       method: 'PUT',
       body: JSON.stringify(body)
     });
   }
 
   async listProviders(): Promise<ProviderType[]> {
-    return this.request<ProviderType[]>('/providers');
+    return this.request<ProviderType[]>('/admin/providers');
   }
 
   async createProvider(body: Omit<ProviderType, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProviderType> {
-    return this.request<ProviderType>('/providers', {
+    return this.request<ProviderType>('/admin/providers', {
       method: 'POST',
       body: JSON.stringify(body)
     });
   }
 
   async getProvider(id: string): Promise<ProviderType> {
-    return this.request<ProviderType>(`/providers/${id}`);
+    return this.request<ProviderType>(`/admin/providers/${id}`);
   }
 
   async updateProvider(id: string, body: Partial<Omit<ProviderType, 'id' | 'createdAt'>>): Promise<ProviderType> {
-    return this.request<ProviderType>(`/providers/${id}`, {
+    return this.request<ProviderType>(`/admin/providers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body)
     });
   }
 
   async deleteProvider(id: string): Promise<void> {
-    return this.request<void>(`/providers/${id}`, {
+    return this.request<void>(`/admin/providers/${id}`, {
       method: 'DELETE'
     });
   }
@@ -522,22 +528,22 @@ class AdminApiClient {
     modelCount?: number;
     testedAt: string;
   }> {
-    return this.request(`/providers/${id}/test`, {
+    return this.request(`/admin/providers/${id}/test`, {
       method: 'POST',
       body: JSON.stringify({})
     });
   }
 
   async getProviderModels(id: string): Promise<ModelInfo[]> {
-    return this.request<ModelInfo[]>(`/providers/${id}/models`);
+    return this.request<ModelInfo[]>(`/admin/providers/${id}/models`);
   }
 
   async getServicesSettings(): Promise<ServicesSettings> {
-    return this.request<ServicesSettings>('/settings/services');
+    return this.request<ServicesSettings>('/admin/services');
   }
 
   async updateServicesSettings(body: ServicesSettings): Promise<ServicesSettings> {
-    return this.request<ServicesSettings>('/settings/services', {
+    return this.request<ServicesSettings>('/admin/services', {
       method: 'PUT',
       body: JSON.stringify(body)
     });
@@ -550,7 +556,7 @@ class AdminApiClient {
     message?: string;
     testedAt: string;
   }> {
-    return this.request('/settings/services/test/home-assistant', {
+    return this.request('/admin/services/test/home-assistant', {
       method: 'POST',
       body: JSON.stringify({})
     });
@@ -564,7 +570,7 @@ class AdminApiClient {
     machineIdentifier?: string;
     testedAt: string;
   }> {
-    return this.request('/settings/services/test/plex', {
+    return this.request('/admin/services/test/plex', {
       method: 'POST',
       body: JSON.stringify({})
     });
@@ -577,7 +583,7 @@ class AdminApiClient {
     message?: string;
     testedAt: string;
   }> {
-    return this.request('/settings/services/test/tts', {
+    return this.request('/admin/services/test/tts', {
       method: 'POST',
       body: JSON.stringify({})
     });
@@ -590,7 +596,7 @@ class AdminApiClient {
     message?: string;
     testedAt: string;
   }> {
-    return this.request('/settings/services/test/stt', {
+    return this.request('/admin/services/test/stt', {
       method: 'POST',
       body: JSON.stringify({})
     });
@@ -603,40 +609,40 @@ class AdminApiClient {
     message?: string;
     testedAt: string;
   }> {
-    return this.request('/settings/services/test/overseerr', {
+    return this.request('/admin/services/test/overseerr', {
       method: 'POST',
       body: JSON.stringify({})
     });
   }
 
   async getOAuthSettings(): Promise<OAuthSettings> {
-    return this.request<OAuthSettings>('/settings/oauth');
+    return this.request<OAuthSettings>('/admin/oauth');
   }
 
   async updateOAuthSettings(body: OAuthSettings): Promise<OAuthSettings> {
-    return this.request<OAuthSettings>('/settings/oauth', {
+    return this.request<OAuthSettings>('/admin/oauth', {
       method: 'PUT',
       body: JSON.stringify(body)
     });
   }
 
   async getBackupSettings(): Promise<BackupSettings> {
-    return this.request<BackupSettings>('/settings/backups');
+    return this.request<BackupSettings>('/admin/backups');
   }
 
   async updateBackupSettings(body: BackupSettings): Promise<BackupSettings> {
-    return this.request<BackupSettings>('/settings/backups', {
+    return this.request<BackupSettings>('/admin/backups', {
       method: 'PUT',
       body: JSON.stringify(body)
     });
   }
 
   async getLimitsSettings(): Promise<LimitsSettings> {
-    return this.request<LimitsSettings>('/settings/limits');
+    return this.request<LimitsSettings>('/admin/limits');
   }
 
   async updateLimitsSettings(body: LimitsSettings): Promise<LimitsSettings> {
-    return this.request<LimitsSettings>('/settings/limits', {
+    return this.request<LimitsSettings>('/admin/limits', {
       method: 'PUT',
       body: JSON.stringify(body)
     });

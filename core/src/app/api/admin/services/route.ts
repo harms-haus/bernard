@@ -1,13 +1,23 @@
 import { NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/auth/server-helpers'
-import { getSettingsStore, ServicesSettingsSchema } from '@/lib/config/settingsStore'
+import { getSettingsStore, ServicesSettingsSchema, initializeSettingsStore } from '@/lib/config/settingsStore'
 import { error, ok, badRequest } from '@/lib/api/response'
+
+let initialized = false;
+
+async function getStore() {
+  if (!initialized) {
+    await initializeSettingsStore();
+    initialized = true;
+  }
+  return getSettingsStore();
+}
 
 export async function GET(_request: NextRequest) {
   const admin = await requireAdmin()
   if (!admin) return error("Admin required", 403)
 
-  const store = getSettingsStore()
+  const store = await getStore()
   const services = await store.getServices()
   return ok(services)
 }
@@ -24,7 +34,7 @@ export async function PUT(request: NextRequest) {
       return badRequest(parsed.error.issues.map(i => i.message).join(', '))
     }
 
-    const store = getSettingsStore()
+    const store = await getStore()
     const saved = await store.setServices(parsed.data)
     return ok(saved)
   } catch {

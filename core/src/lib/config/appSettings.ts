@@ -176,7 +176,7 @@ export const BackupSettingsSchema = z.object({
 export const LimitsSettingsSchema = z.object({
   currentRequestMaxTokens: z.coerce.number().int().positive(),
   responseMaxTokens: z.coerce.number().int().positive(),
-  allowUserCreation: z.boolean().default(true)
+  allowSignups: z.boolean().default(true)
 })
 
 export type Provider = {
@@ -321,7 +321,7 @@ export type BackupSettings = {
 export type LimitsSettings = {
   currentRequestMaxTokens: number;
   responseMaxTokens: number;
-  allowUserCreation: boolean;
+  allowSignups: boolean;
 };
 
 export type AutomationSettings = {
@@ -759,7 +759,7 @@ export class SettingsManagerCore {
     return {
       currentRequestMaxTokens: Number(this.getFromEnv("CURRENT_REQUEST_MAX_TOKENS")) || 8000,
       responseMaxTokens: Number(this.getFromEnv("RESPONSE_MAX_TOKENS")) || 8000,
-      allowUserCreation: this.getFromEnv("ALLOW_USER_CREATION") !== "false"
+      allowSignups: this.getFromEnv("ALLOW_SIGNUPS") !== "false"
     } as LimitsSettings
   }
 }
