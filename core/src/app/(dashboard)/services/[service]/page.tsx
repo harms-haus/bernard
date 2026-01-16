@@ -1,10 +1,13 @@
-import { redirectIfNotAuthenticated } from '@/lib/auth/client-helpers'
 import { ServicePageClient } from '@/components/dashboard/ServicePageClient'
-import type { Session } from '@/lib/auth/client-helpers'
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
 
-export default async function ServicePage() {
-    const session = await redirectIfNotAuthenticated()
-
-    // Type assertion safe because redirectIfNotAuthenticated redirects if session is null
-    return <ServicePageClient session={session as Session} />
+export default function ServicePage() {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <ServicePageClient session={null} />
+      </DarkModeProvider>
+    </AuthProvider>
+  );
 }

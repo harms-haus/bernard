@@ -6,10 +6,10 @@ import {
   CardContent,
   CardDescription,
 } from '@/components/ui/card'
-import { redirectIfNotAuthenticated } from '@/lib/auth/client-helpers';
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
 
-export default async function Home() {
-  const _ = await redirectIfNotAuthenticated();
+function HomeContent() {
   const [count, setCount] = useState(0)
 
   return (
@@ -43,4 +43,14 @@ export default async function Home() {
       </div>
     </div>
   )
+}
+
+export default function Home() {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <HomeContent />
+      </DarkModeProvider>
+    </AuthProvider>
+  );
 }

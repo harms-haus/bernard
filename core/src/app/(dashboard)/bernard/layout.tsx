@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AuthProvider } from "@/hooks/useAuth";
+import { DarkModeProvider } from "@/hooks/useDarkMode";
+import { ToastManagerProvider } from "@/components/ToastManager";
+import { DialogManagerProvider } from "@/components/DialogManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,7 +27,15 @@ export default function BernardLayout({
 }>) {
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      {children}
+      <AuthProvider>
+        <DarkModeProvider>
+          <DialogManagerProvider>
+            <ToastManagerProvider>
+              {children}
+            </ToastManagerProvider>
+          </DialogManagerProvider>
+        </DarkModeProvider>
+      </AuthProvider>
     </div>
   );
 }

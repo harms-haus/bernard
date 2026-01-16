@@ -29,7 +29,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useConfirmDialog } from '@/components/DialogManager';
-import { redirectIfNotAuthenticated } from '@/lib/auth/client-helpers';
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
 
 interface Task {
   id: string;
@@ -54,8 +55,7 @@ interface TasksResponse {
   hasMore: boolean;
 }
 
-export default async function Tasks() {
-  const _ = await redirectIfNotAuthenticated();
+function TasksContent() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -366,5 +366,15 @@ export default async function Tasks() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function Tasks() {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <TasksContent />
+      </DarkModeProvider>
+    </AuthProvider>
   );
 }

@@ -7,7 +7,7 @@ import { LogViewer } from '@/components/dashboard/LogViewer'
 import type { Session } from '@/lib/auth/client-helpers'
 
 interface ServicePageClientProps {
-    session: Session
+    session?: Session | null
 }
 
 export function ServicePageClient({ session }: ServicePageClientProps) {

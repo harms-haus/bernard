@@ -123,8 +123,14 @@ function ModelsContent() {
 
     try {
       if (editingProvider) {
-        // Update existing provider
-        const updatedProvider = await adminApiClient.updateProvider(editingProvider.id, providerForm);
+        const updates: Partial<ProviderType> = {
+          name: providerForm.name,
+          baseUrl: providerForm.baseUrl,
+        };
+        if (providerForm.apiKey && !providerForm.apiKey.startsWith('**********')) {
+          updates.apiKey = providerForm.apiKey;
+        }
+        const updatedProvider = await adminApiClient.updateProvider(editingProvider.id, updates);
         setProviders(Array.isArray(providers) ? providers.map(p => p.id === updatedProvider.id ? updatedProvider : p) : [updatedProvider]);
         // Also update the provider in settings
         setSettings(prev => prev ? {
@@ -251,10 +257,11 @@ function ModelsContent() {
   const handleEditProvider = async (provider: ProviderType) => {
     try {
       const fullProvider = await adminApiClient.getProvider(provider.id);
+      const maskedKey = fullProvider.apiKey ? `**********${fullProvider.apiKey.slice(-3)}` : '';
       setProviderForm({
         name: fullProvider.name,
         baseUrl: fullProvider.baseUrl,
-        apiKey: fullProvider.apiKey
+        apiKey: maskedKey
       });
       setEditingProvider(fullProvider);
       setDialogOpen(true);
@@ -782,12 +789,12 @@ function ModelsContent() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
+              <div className="space-y-2">
               <Label htmlFor="apiKey">API Key</Label>
               <Input
                 id="apiKey"
                 type="password"
-                value={providerForm.apiKey}
+                value={providerForm.apiKey || ''}
                 onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
                 placeholder="sk-..."
               />

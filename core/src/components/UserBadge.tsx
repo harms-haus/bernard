@@ -1,3 +1,5 @@
+"use client";
+
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { User as UserIcon, ChevronDown } from 'lucide-react';

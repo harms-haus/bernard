@@ -6,8 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Thread } from '@/components/chat/Thread';
 import { StreamProvider } from '@/providers/StreamProvider';
 import { ThreadProvider } from '@/providers/ThreadProvider';
-import { DarkModeProvider } from '@/hooks/useDarkMode';
-import { AuthProvider } from '@/hooks/useAuth';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -30,14 +28,10 @@ export default function Chat() {
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
 
   return (
-    <AuthProvider>
-      <DarkModeProvider>
-        <ThreadProvider>
-          <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
-            <Thread />
-          </StreamProvider>
-        </ThreadProvider>
-      </DarkModeProvider>
-    </AuthProvider>
+    <ThreadProvider>
+      <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
+        <Thread />
+      </StreamProvider>
+    </ThreadProvider>
   );
 }

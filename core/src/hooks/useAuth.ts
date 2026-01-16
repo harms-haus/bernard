@@ -1,3 +1,5 @@
+"use client";
+
 import React, { createContext, useCallback, useContext, useMemo, useState, useEffect, useRef, ReactNode } from 'react';
 import { authClient } from '@/lib/auth/auth-client';
 import { User } from '@/types/auth';

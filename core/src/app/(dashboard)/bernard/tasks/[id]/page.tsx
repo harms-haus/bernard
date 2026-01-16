@@ -23,7 +23,8 @@ import {
   MessageSquare,
   Check
 } from 'lucide-react';
-import { redirectIfNotAuthenticated } from '@/lib/auth/client-helpers';
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
 
 interface Task {
   id: string;
@@ -128,8 +129,7 @@ const TaskCompletedBlock = ({ event, formatDate }: { event: TaskEvent; formatDat
   </div>
 );
 
-export default async function TaskDetail() {
-  const _ = await redirectIfNotAuthenticated();
+function TaskDetailContent() {
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(false);
   const [task, setTask] = useState<Task | null>(null);
@@ -488,5 +488,15 @@ export default async function TaskDetail() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TaskDetail() {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <TaskDetailContent />
+      </DarkModeProvider>
+    </AuthProvider>
   );
 }

@@ -1,7 +1,17 @@
 import { StatusDashboard } from '@/components/StatusDashboard';
-import { redirectIfNotAuthenticated } from '@/lib/auth/client-helpers';
+import { AuthProvider } from '@/hooks/useAuth';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
 
-export default async function StatusPage() {
-  const _ = await redirectIfNotAuthenticated();
+function StatusContent() {
   return <StatusDashboard showRestartButtons={false} showLogs={false} />;
+}
+
+export default function StatusPage() {
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <StatusContent />
+      </DarkModeProvider>
+    </AuthProvider>
+  );
 }
