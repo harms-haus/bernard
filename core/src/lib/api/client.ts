@@ -105,7 +105,7 @@ class APIClient implements IAPIClient {
   }
 
   async listThreads(limit: number = 50) {
-    const response = await fetch(`/threads/search`, {
+    const response = await fetch(`/api/threads/search`, {
       credentials: 'same-origin',
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
@@ -135,7 +135,7 @@ class APIClient implements IAPIClient {
   }
 
   async getThread(threadId: string) {
-    const response = await fetch(`/threads/${threadId}`, {
+    const response = await fetch(`/api/threads/${threadId}`, {
       credentials: 'same-origin',
       headers: this.getAuthHeaders()
     });
@@ -144,7 +144,7 @@ class APIClient implements IAPIClient {
   }
 
   async createThread() {
-    const response = await fetch(`/threads`, {
+    const response = await fetch(`/api/threads`, {
       credentials: 'same-origin',
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
@@ -155,7 +155,7 @@ class APIClient implements IAPIClient {
   }
 
   async updateThread(threadId: string, name: string) {
-    const response = await fetch(`/threads/${threadId}`, {
+    const response = await fetch(`/api/threads/${threadId}`, {
       credentials: 'same-origin',
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
@@ -166,7 +166,7 @@ class APIClient implements IAPIClient {
   }
 
   async deleteThread(threadId: string) {
-    const response = await fetch(`/threads/${threadId}`, {
+    const response = await fetch(`/api/threads/${threadId}`, {
       credentials: 'same-origin',
       method: 'DELETE',
       headers: this.getAuthHeaders()

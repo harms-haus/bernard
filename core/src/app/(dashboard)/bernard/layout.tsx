@@ -12,8 +12,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Better Auth Demo",
-  description: "A demo of Next.js with Better Auth and SQLite",
+  title: "Bernard",
+  description: "Agent, Services, and backbone for the Bernard AI system",
 };
 
 export default function BernardLayout({

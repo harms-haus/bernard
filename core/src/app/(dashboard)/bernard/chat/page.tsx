@@ -23,8 +23,8 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  // Use OpenAI-compatible /v1/chat/completions endpoint
-  const apiUrl = '/v1/chat/completions';
+  // Use OpenAI-compatible /api/v1/chat/completions endpoint
+  const apiUrl = '/api/v1/chat/completions';
   const assistantId = 'bernard_agent';
 
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;

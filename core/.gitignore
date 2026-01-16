@@ -43,3 +43,5 @@ next-env.d.ts
 # database
 auth.db
 auth.db-journal
+
+.langgraph_api

@@ -320,7 +320,7 @@ class APIClient {
   }
 
   async chat(messages: ConversationMessage[], chatId?: string): Promise<ChatResponse> {
-    const response = await fetch(`/v1/chat/completions`, {
+    const response = await fetch(`/api/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
       headers: {
@@ -328,7 +328,7 @@ class APIClient {
         ...this.getAuthHeaders()
       },
       body: JSON.stringify({
-        model: 'bernard-v1',
+        model: 'bernard_agent',
         messages: messages.map(msg => ({
           role: msg.role,
           content: msg.content
@@ -345,7 +345,7 @@ class APIClient {
   }
 
   async chatStream(messages: ConversationMessage[], ghost?: boolean, signal?: AbortSignal, chatId?: string): Promise<ReadableStream> {
-    const response = await fetch(`/v1/chat/completions`, {
+    const response = await fetch(`/api/v1/chat/completions`, {
       credentials: 'same-origin',
       method: 'POST',
       headers: {
@@ -353,7 +353,7 @@ class APIClient {
         ...this.getAuthHeaders()
       },
       body: JSON.stringify({
-        model: 'bernard-v1',
+        model: 'bernard_agent',
         messages: messages.map(msg => ({
           role: msg.role,
           content: msg.content

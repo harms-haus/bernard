@@ -179,7 +179,7 @@ export function StreamProvider({ children, apiUrl, threadId }: StreamProviderPro
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'bernard-v1',
+          model: 'bernard_agent',
           messages: openAIMessages,
           stream: true,
           thread_id: threadId,

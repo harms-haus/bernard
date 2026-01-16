@@ -32,33 +32,29 @@ const nextConfig = {
         source: '/api/settings/:path*',
         destination: '/api/settings/:path*',
       },
-      // LangGraph SDK routes (proxy to Bernard Agent)
+      // LangGraph SDK routes (proxy to Bernard Agent via /api/*)
       {
-        source: '/threads/:path*',
+        source: '/api/threads/:path*',
         destination: 'http://127.0.0.1:2024/threads/:path*',
       },
       {
-        source: '/runs/:path*',
+        source: '/api/runs/:path*',
         destination: 'http://127.0.0.1:2024/runs/:path*',
       },
       {
-        source: '/assistants/:path*',
+        source: '/api/assistants/:path*',
         destination: 'http://127.0.0.1:2024/assistants/:path*',
       },
       {
-        source: '/v1/chat/completions',
-        destination: 'http://127.0.0.1:2024/v1/chat/completions',
-      },
-      {
-        source: '/v1/audio/transcriptions',
+        source: '/api/v1/audio/transcriptions',
         destination: 'http://127.0.0.1:8870/inference',
       },
       {
-        source: '/v1/audio/speech',
+        source: '/api/v1/audio/speech',
         destination: 'http://127.0.0.1:8880/v1/audio/speech',
       },
       {
-        source: '/store/:path*',
+        source: '/api/store/:path*',
         destination: 'http://127.0.0.1:2024/store/:path*',
       },
     ]
@@ -66,8 +62,11 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/v1/:path*',
+        source: '/api/v1/:path*',
         headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, PATCH, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, x-api-key' },
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },
           { key: 'Expires', value: '0' },
@@ -94,7 +93,7 @@ const nextConfig = {
       },
       // LangGraph SDK routes that use streaming
       {
-        source: '/threads/:path*',
+        source: '/api/threads/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },
@@ -103,7 +102,7 @@ const nextConfig = {
         ],
       },
       {
-        source: '/runs/:path*',
+        source: '/api/runs/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },
