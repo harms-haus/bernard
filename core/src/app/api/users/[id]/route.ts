@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/helpers';
+import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getUserStore } from '@/lib/auth/userStore';
 
@@ -10,8 +10,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const admin = await requireAdmin()
+    if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const { id } = await params;
     const store = getUserStore();
@@ -34,8 +34,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const admin = await requireAdmin()
+    if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const { id } = await params;
     const body = await request.json() as { displayName?: string; isAdmin?: boolean; status?: UserStatus };
@@ -72,8 +72,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const admin = await requireAdmin()
+    if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const { id } = await params;
     const store = getUserStore();

@@ -1,4 +1,4 @@
-import { getSettings } from '../../lib/config/settingsCache'
+import { getSettings } from '@/lib/config/settingsCache'
 
 const DEFAULT_GEOCODE_API_URL = "https://nominatim.openstreetmap.org/search";
 const MISSING_USER_AGENT_REASON =
@@ -173,7 +173,7 @@ export function formatPrecip(value: number | null, units: UnitChoice): string {
 
 export function formatWeatherCode(code?: number): string | null {
   if (typeof code !== "number") return null;
-                if (code >= 95) return "thunderstorm";
+  if (code >= 95) return "thunderstorm";
   if (code >= 80) return "rain showers";
   if (code >= 70) return "snow";
   if (code >= 60) return "rain";
@@ -535,7 +535,7 @@ function parseGeocodePlaces(data: unknown): NominatimPlace[] {
 function extractGeocodeJsonError(data: unknown): string | null {
   if (data && typeof data === "object" && "error" in (data as Record<string, unknown>)) {
     const payload = data as { error?: unknown; detail?: unknown };
-      const detail = payload.detail ? " (" + JSON.stringify(payload.detail) + ")" : "";
+    const detail = payload.detail ? " (" + JSON.stringify(payload.detail) + ")" : "";
     return `${String(payload.error)}${detail}`;
   }
   return null;

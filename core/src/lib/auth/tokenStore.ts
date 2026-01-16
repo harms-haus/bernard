@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Redis } from "ioredis";
 import { ApiTokenRecord } from "./types";
+import { getRedis } from "../infra";
 
 const DEFAULT_NAMESPACE = "bernard:tokens";
 const TOKEN_PREFIX = "brnd-";
@@ -83,7 +84,7 @@ export class TokenStore {
     if (updates.name && updates.name !== current.name) {
       const existingId = await this.redis.get(this.nameKey(updates.name));
       if (existingId) throw new Error(`Token name "${updates.name}" already exists`);
-      
+
       multi.del(this.nameKey(current.name));
       multi.set(this.nameKey(updates.name), id);
       data["name"] = updates.name;
@@ -150,3 +151,4 @@ export class TokenStore {
   }
 }
 
+export const getTokenStore = () => new TokenStore(getRedis());

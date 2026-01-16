@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { HealthMonitor, getHealthMonitor, stopHealthMonitor } from './HealthMonitor'
-import { HealthChecker, HealthStatus } from './HealthChecker'
+import { HealthStatus } from './HealthChecker'
 
 // Mock dependencies
 vi.mock('./HealthChecker', () => ({
@@ -198,8 +198,8 @@ describe('HealthMonitor', () => {
         new Map([['testService', downStatus]])
       )
 
-      // Trigger next check
-      ;(healthMonitor as any).checkAll()
+        // Trigger next check
+        ; (healthMonitor as any).checkAll()
       await Promise.resolve()
 
       // Get the second call's update

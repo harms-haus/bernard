@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/helpers';
+import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getTokenStore } from '@/lib/auth/tokenStore';
+import { ok, error } from '@/lib/api/response';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const admin = await requireAdmin();
+    if (!admin) return error("Admin required", 403)
 
     const store = getTokenStore();
     const tokens = await store.list();
@@ -17,17 +18,17 @@ export async function GET(request: NextRequest) {
     });
 
     logger.info({ action: 'tokens.read', adminId: admin.user.id, count: tokens.length });
-    return NextResponse.json({ tokens: sanitizedTokens });
-  } catch (error) {
-    logger.error({ error }, 'Failed to list tokens');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return ok(sanitizedTokens)
+  } catch (e) {
+    logger.error({ error: e }, 'Failed to list tokens');
+    return error("Failed to list tokens", 500)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const admin = await requireAdmin();
+    if (!admin) return error("Admin required", 403)
 
     const body = await request.json() as { name: string };
     const { name } = body;

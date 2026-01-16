@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServiceJobStatus } from "@/lib/infra/service-queue"
+import { requireAuth } from "@/lib/auth/server-helpers"
 
 export async function GET(
   request: NextRequest,
@@ -8,6 +9,8 @@ export async function GET(
   const { jobId } = await params;
 
   try {
+    const session = await requireAuth()
+    if (!session) return NextResponse.json({ error: 'Session required' }, { status: 401 })
     const jobInfo = await getServiceJobStatus(jobId);
 
     if (!jobInfo) {

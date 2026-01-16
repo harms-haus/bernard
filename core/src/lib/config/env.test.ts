@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { createEnv, type Env } from './env'
+import { describe, it, expect } from 'vitest'
+import { createEnv } from './env'
 
 describe('env', () => {
   describe('createEnv', () => {

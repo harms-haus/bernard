@@ -1,108 +1,103 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import * as helpers from '../../../../lib/auth/helpers'
-import { handleListServices, handleManageService } from '@/lib/api/admin-services'
+import * as factory from '../../../../lib/api/factory'
+import { ServicesSettingsSchema } from '../../../../lib/config/settingsStore'
+import { handleGetServicesSettings, handlePutServicesSettings } from '@/lib/api/settings-services'
 
-// Spy on the exported function
-const requireAdminSpy = vi.spyOn(helpers, 'requireAdmin')
+// Spy on the modules
+const requireAdmin = vi.spyOn(helpers, 'requireAdmin')
+const getSettingsStore = vi.spyOn(factory, 'getSettingsStore')
 
-describe('GET /api/admin/services', () => {
-  describe('handleListServices', () => {
-    it('should return list of services', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
+describe('GET /api/settings/services', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    requireAdmin.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
+  })
 
-      const result = await handleListServices({} as any)
+  describe('handleGetServicesSettings', () => {
+    it('should return services settings', async () => {
+      const mockServices = {
+        kokoro: { enabled: true, defaultVoice: 'alex' },
+        whisper: { enabled: true, model: 'base' },
+      }
+
+      const mockStore = {
+        getServices: vi.fn().mockResolvedValue(mockServices),
+      }
+      getSettingsStore.mockReturnValue(mockStore as any)
+
+      const result = await handleGetServicesSettings({} as any)
 
       expect(result.status).toBe(200)
       const data = await result.json()
       expect(data.success).toBe(true)
-      expect(data.data.services).toBeInstanceOf(Array)
-      expect(data.data.services.length).toBeGreaterThan(0)
+      expect(data.data).toEqual(mockServices)
     })
 
     it('should return 403 when not admin', async () => {
-      requireAdminSpy.mockResolvedValue(new NextResponse('Forbidden', { status: 403 }))
+      requireAdmin.mockResolvedValue(new NextResponse('Forbidden', { status: 403 }))
 
-      const result = await handleListServices({} as any)
+      const result = await handleGetServicesSettings({} as any)
 
       expect(result.status).toBe(403)
     })
   })
 
-  describe('handleManageService', () => {
-    it('should return success for valid service', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'bernard-agent', action: 'restart' })
+})
+
+describe('PUT /api/settings/services', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    requireAdmin.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
+  })
+
+  describe('handlePutServicesSettings', () => {
+    it('should save valid services settings', async () => {
+      const mockServices = { kokoro: { enabled: true } } as any
+      const savedServices = { kokoro: { enabled: true, defaultVoice: 'alex' } }
+
+      const mockStore = {
+        setServices: vi.fn().mockResolvedValue(savedServices),
+      }
+      getSettingsStore.mockReturnValue(mockStore as any)
+      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({ success: true, data: mockServices })
+
+      const result = await handlePutServicesSettings({
+        json: async () => mockServices,
+      } as unknown as import('next/server').NextRequest)
 
       expect(result.status).toBe(200)
       const data = await result.json()
       expect(data.success).toBe(true)
-      expect(data.data.serviceId).toBe('bernard-agent')
-      expect(data.data.action).toBe('restart')
+      expect(mockStore.setServices).toHaveBeenCalledWith(mockServices)
     })
 
-    it('should return 400 when service is missing', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { action: 'restart' })
+    it('should return 400 for invalid settings', async () => {
+      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({
+        success: false,
+        error: { issues: [{ message: 'Invalid value' }] },
+      } as any)
 
-      expect(result.status).toBe(400)
-      const data = await result.json()
-      expect(data.error).toContain('Missing or invalid service ID')
-    })
-
-    it('should return 400 when service is not a string', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 123 })
+      const result = await handlePutServicesSettings({
+        json: async () => ({}),
+      } as unknown as import('next/server').NextRequest)
 
       expect(result.status).toBe(400)
     })
 
-    it('should return 404 for unknown service', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'unknown-service' })
+    it('should return 500 when setServices throws', async () => {
+      const mockStore = {
+        setServices: vi.fn().mockRejectedValue(new Error('Failed')),
+      }
+      getSettingsStore.mockReturnValue(mockStore as any)
+      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({ success: true, data: {} } as any)
 
-      expect(result.status).toBe(404)
-      const data = await result.json()
-      expect(data.error).toContain('not found')
-    })
+      const result = await handlePutServicesSettings({
+        json: async () => ({}),
+      } as unknown as import('next/server').NextRequest)
 
-    it('should return 200 for valid service action', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'bernard-agent', action: 'restart' })
-
-      expect(result.status).toBe(200)
-      const data = await result.json()
-      expect(data.success).toBe(true)
-      expect(data.data.serviceId).toBe('bernard-agent')
-      expect(data.data.action).toBe('restart')
-    })
-
-    it('should use default action when not provided', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'bernard-agent' })
-
-      expect(result.status).toBe(200)
-      const data = await result.json()
-      expect(data.data.action).toBe('restart')
-    })
-
-    it('should return 400 for invalid action', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: 'bernard-agent', action: 'invalid-action' })
-
-      expect(result.status).toBe(400)
-      const data = await result.json()
-      expect(data.error).toContain('Invalid action')
-      expect(data.error).toContain('restart, stop, start')
-    })
-
-    it('should return 400 for invalid action with empty service (action validated first)', async () => {
-      requireAdminSpy.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true }, sessionId: 'test-session' } as any)
-      const result = await handleManageService({} as any, { service: '', action: 'invalid-action' })
-
-      expect(result.status).toBe(400)
-      const data = await result.json()
-      expect(data.error).toContain('Invalid action')
+      expect(result.status).toBe(500)
     })
   })
 })

@@ -5,7 +5,6 @@
  * data structures used by RedisSaver.
  */
 
-import type { Checkpoint, CheckpointTuple, BaseCheckpointSaver, CheckpointMetadata } from "@langchain/langgraph-checkpoint";
 import type { RedisClientType } from "redis";
 
 /**

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '../auth/helpers'
+import { requireAuth } from '@/lib/auth/server-helpers'
 import { getTaskKeeper } from './factory'
 import { error, ok, badRequest } from './response'
 
@@ -10,8 +10,8 @@ interface TaskActionBody {
 
 export async function handleGetTasks(request: NextRequest): Promise<NextResponse> {
   try {
-    const authUser = await requireAuth(request)
-    if (authUser instanceof NextResponse) return authUser
+    const authUser = await requireAuth()
+    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const userId = authUser.user.id
     const searchParams = request.nextUrl.searchParams
@@ -40,8 +40,8 @@ export async function handlePostTaskAction(
   body: TaskActionBody
 ): Promise<NextResponse> {
   try {
-    const authUser = await requireAuth(request)
-    if (authUser instanceof NextResponse) return authUser
+    const authUser = await requireAuth()
+    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const userId = authUser.user.id
     const { action, taskId } = body
@@ -80,8 +80,8 @@ export async function handleDeleteTask(
   searchParams: URLSearchParams
 ): Promise<NextResponse> {
   try {
-    const authUser = await requireAuth(request)
-    if (authUser instanceof NextResponse) return authUser
+    const authUser = await requireAuth()
+    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const userId = authUser.user.id
     const taskId = searchParams.get('taskId')

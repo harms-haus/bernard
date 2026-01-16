@@ -1,5 +1,8 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from '@/lib/api/tasks'
+import { requireAuth } from '@/lib/auth/server-helpers'
+import { badRequest, error, ok } from '@/lib/api/response'
+import { getTaskKeeper } from '@/lib/api/factory'
 
 export async function GET(request: NextRequest) {
   return handleGetTasks(request)
@@ -11,5 +14,35 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  return handleDeleteTask(request, request.nextUrl.searchParams)
+  try {
+    const authUser = await requireAuth()
+    if (!authUser) return NextResponse.json({ error: 'Session required' }, { status: 403 })
+
+    const userId = authUser.user.id
+    const taskId = request.nextUrl.searchParams.get('taskId')
+
+    if (!taskId) {
+      return badRequest('taskId is required')
+    }
+
+    const keeper = getTaskKeeper()
+    const task = await keeper.getTask(taskId)
+
+    if (!task) {
+      return error('Task not found', 404)
+    }
+    if (task.userId !== userId) {
+      return error('Forbidden', 403)
+    }
+
+    const success = await keeper.deleteTask(taskId)
+    if (!success) {
+      return error('Cannot delete task', 400)
+    }
+
+    return ok({ success: true })
+  } catch (err) {
+    console.error('Failed to delete task:', err)
+    return error('Internal server error', 500)
+  }
 }

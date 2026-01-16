@@ -54,11 +54,7 @@ services/*venv/
 *.venv/
 
 # AI/ML Models and Weights
-models/
-models/
-!models/llama-server/bernard-v1-tools-268M-F16.gguf
-!models/llama-server/gemma-3-4b-it-Q4_K_M.gguf
-!models/llama-server/nomic-embed-text-v1.5.gguf
+/models/
 
 # HuggingFace Cache (can contain sensitive auth tokens)
 .huggingface/

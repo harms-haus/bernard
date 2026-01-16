@@ -21,7 +21,9 @@ export default function StatusPage() {
   const [selectedAllAction, setSelectedAllAction] = useState<'start' | 'stop' | 'restart' | 'check' | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
 
-  const services = serviceList
+  const services = serviceList.filter((s: HealthStreamUpdate) =>
+    s.service !== 'bernard-ui' && s.service !== 'core'
+  )
   const healthyCount = services.filter((s: HealthStreamUpdate) =>
     s.status === 'up'
   ).length

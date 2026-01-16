@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/helpers';
+import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getTokenStore } from '@/lib/auth/tokenStore';
 
@@ -8,8 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     const { id } = await params;
     const store = getTokenStore();
@@ -21,7 +21,7 @@ export async function GET(
 
     const { token: _secret, ...result } = token;
     void _secret;
-    logger.info({ action: 'tokens.read_one', adminId: admin.user.id, tokenId: id });
+    logger.info({ action: 'tokens.read_one', adminId: session.user.id, tokenId: id });
     return NextResponse.json({ token: { ...result, status: result.status === 'revoked' ? 'disabled' : result.status } });
   } catch (error) {
     logger.error({ error }, 'Failed to get token');
@@ -34,8 +34,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     const { id } = await params;
     const body = await request.json() as { name?: string; status?: 'active' | 'disabled' };
@@ -57,7 +57,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Token not found' }, { status: 404 });
     }
 
-    logger.info({ action: 'tokens.update', adminId: admin.user.id, tokenId: id, updates });
+    logger.info({ action: 'tokens.update', adminId: session.user.id, tokenId: id, updates });
     const { token: _secret, ...result } = updated;
     void _secret;
     return NextResponse.json({ token: { ...result, status: result.status === 'revoked' ? 'disabled' : result.status } });
@@ -73,8 +73,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin(request);
-    if (admin instanceof NextResponse) return admin;
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
     const { id } = await params;
     const store = getTokenStore();
@@ -84,7 +84,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Token not found' }, { status: 404 });
     }
 
-    logger.info({ action: 'tokens.delete', adminId: admin.user.id, tokenId: id });
+    logger.info({ action: 'tokens.delete', adminId: session.user.id, tokenId: id });
     return NextResponse.json({}, { status: 204 });
   } catch (error) {
     logger.error({ error }, 'Failed to delete token');

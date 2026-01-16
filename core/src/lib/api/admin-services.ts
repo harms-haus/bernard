@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '../auth/helpers'
+import { requireAdmin } from '../auth/server-helpers'
 import { SERVICES } from '../services/ServiceConfig'
 import { ok } from './response'
 
@@ -13,8 +13,8 @@ interface ServiceInfo {
 }
 
 export async function handleListServices(request: NextRequest): Promise<NextResponse> {
-  const admin = await requireAdmin(request)
-  if (admin instanceof NextResponse) return admin
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const services: ServiceInfo[] = Object.entries(SERVICES).map(([id, config]) => ({
     id,
@@ -37,8 +37,8 @@ export async function handleManageService(
   request: NextRequest,
   body: ServiceManageBody
 ): Promise<NextResponse> {
-  const admin = await requireAdmin(request)
-  if (admin instanceof NextResponse) return admin
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { service: serviceId, action = 'restart' } = body
 

@@ -1,4 +1,4 @@
-import { getSettings } from '../config/settingsCache'
+import { getSettings } from '@/lib/config/settingsCache'
 
 /**
  * Verify Home Assistant configuration is valid

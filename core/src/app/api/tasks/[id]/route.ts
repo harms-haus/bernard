@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth/helpers';
+import { requireAuth } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { TaskRecordKeeper } from '@/lib/infra';
 import { getRedis } from '@/lib/infra';
@@ -13,8 +13,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = await requireAuth(request);
-    if (authUser instanceof NextResponse) return authUser;
+    const authUser = await requireAuth();
+    if (!authUser) return NextResponse.json({ error: 'Session required' }, { status: 403 })
 
     const { id } = await params;
     const keeper = getTaskKeeper();

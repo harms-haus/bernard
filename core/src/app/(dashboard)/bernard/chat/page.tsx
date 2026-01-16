@@ -1,0 +1,43 @@
+"use client";
+
+import { useEffect, use } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { Thread } from '@/components/chat/Thread';
+import { StreamProvider } from '@/providers/StreamProvider';
+import { ThreadProvider } from '@/providers/ThreadProvider';
+import { DarkModeProvider } from '@/hooks/useDarkMode';
+import { AuthProvider } from '@/hooks/useAuth';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export default function Chat() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const threadId = searchParams.get('threadId');
+
+  useEffect(() => {
+    if (threadId && !UUID_REGEX.test(threadId)) {
+      console.warn(`Invalid thread ID found: ${threadId}. Clearing from URL.`);
+      router.replace('/bernard/chat');
+    }
+  }, [threadId, router]);
+
+  // Connect through proxy route that bypasses Next.js rewrites (port 3456)
+  const apiUrl = 'http://127.0.0.1:3456/api/proxy-stream';
+  const assistantId = 'bernard_agent';
+
+  const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
+
+  return (
+    <AuthProvider>
+      <DarkModeProvider>
+        <ThreadProvider>
+          <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
+            <Thread />
+          </StreamProvider>
+        </ThreadProvider>
+      </DarkModeProvider>
+    </AuthProvider>
+  );
+}
