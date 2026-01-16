@@ -84,7 +84,7 @@ export function UserLayout({ children }: { children: React.ReactNode }) {
                 {/* Admin button for admins only */}
                 {state.user?.isAdmin && (
                   <Link
-                    href="/admin"
+                    href="/bernard/admin"
                     className="flex items-center px-2 py-2 text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
                     onClick={() => setSidebarOpen(false)}
                   >

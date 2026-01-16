@@ -21,12 +21,12 @@ import { DarkModeToggle } from './DarkModeToggle';
 import { UserBadge } from './UserBadge';
 
 const navigation = [
-  { name: 'Status', href: '/admin', icon: LayoutDashboard },
-  { name: 'Models', href: '/admin/models', icon: Settings },
-  { name: 'Services', href: '/admin/services', icon: Server },
-  { name: 'Automations', href: '/admin/automations', icon: Zap },
-  { name: 'History', href: '/admin/history', icon: MessagesSquare },
-  { name: 'Users', href: '/admin/users', icon: UsersIcon },
+  { name: 'Status', href: '/bernard/admin', icon: LayoutDashboard },
+  { name: 'Models', href: '/bernard/admin/models', icon: Settings },
+  { name: 'Services', href: '/bernard/admin/services', icon: Server },
+  { name: 'Automations', href: '/bernard/admin/automations', icon: Zap },
+  { name: 'History', href: '/bernard/admin/history', icon: MessagesSquare },
+  { name: 'Users', href: '/bernard/admin/users', icon: UsersIcon },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {

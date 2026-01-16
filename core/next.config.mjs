@@ -32,16 +32,6 @@ const nextConfig = {
         source: '/api/settings/:path*',
         destination: '/api/settings/:path*',
       },
-      // Bernard UI proxy - forwards /bernard/* to bernard-ui:8810/bernard/*
-      {
-        source: '/bernard/:path*',
-        destination: 'http://127.0.0.1:8810/bernard/:path*',
-      },
-      // Redirect /bernard/login to /auth/login (consolidate to single login flow)
-      {
-        source: '/bernard/login',
-        destination: '/auth/login',
-      },
       // LangGraph SDK routes (proxy to Bernard Agent)
       {
         source: '/threads/:path*',
