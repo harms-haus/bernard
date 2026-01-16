@@ -42,7 +42,6 @@ export default async function Profile() {
     try {
       await updateProfile({
         displayName: displayName.trim(),
-        email: email.trim()
       });
       setSuccessMessage('Profile updated successfully!');
     } catch (error) {

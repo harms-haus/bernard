@@ -12,40 +12,41 @@ type DarkModeProviderProps = {
 };
 
 export function DarkModeProvider({ children }: DarkModeProviderProps) {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    // Check localStorage for saved preference
-    if (typeof window !== 'undefined') {
-      try {
-        const savedPreference = localStorage.getItem('darkMode');
-        if (savedPreference !== null) {
-          return savedPreference === 'true';
-        }
-      } catch (error) {
-        // localStorage access failed, fall through to system preference
-      }
-      // Default to system preference if no saved preference
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return false;
-  });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
+  // On client mount, read from localStorage or system preference
   useEffect(() => {
-    // Apply dark mode class to document (client-only)
-    if (typeof window !== 'undefined') {
-      if (isDarkMode) {
-        document.documentElement.classList.add('dark');
+    try {
+      const savedPreference = localStorage.getItem('darkMode');
+      if (savedPreference !== null) {
+        setIsDarkMode(savedPreference === 'true');
       } else {
-        document.documentElement.classList.remove('dark');
+        // Default to system preference only after hydration
+        setIsDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
       }
-
-      // Save preference to localStorage
-      try {
-        localStorage.setItem('darkMode', isDarkMode.toString());
-      } catch (error) {
-        console.warn('Failed to save dark mode preference to localStorage:', error);
-      }
+    } catch {
+      setIsDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
-  }, [isDarkMode]);
+    setIsHydrated(true);
+  }, []);
+
+  // Apply dark mode class and save preference
+  useEffect(() => {
+    if (!isHydrated) return;
+    
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
+    try {
+      localStorage.setItem('darkMode', isDarkMode.toString());
+    } catch (error) {
+      console.warn('Failed to save dark mode preference to localStorage:', error);
+    }
+  }, [isDarkMode, isHydrated]);
 
   const toggleDarkMode = () => {
     setIsDarkMode(prev => !prev);

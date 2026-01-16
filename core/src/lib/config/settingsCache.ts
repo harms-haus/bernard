@@ -1,4 +1,4 @@
-import { SettingsStore, type BernardSettings } from "./settingsStore";
+import { getSettingsStore, type BernardSettings } from "./settingsStore";
 
 const CACHE_TTL_MS = 5_000;
 
@@ -9,7 +9,7 @@ export async function getSettings(forceRefresh = false): Promise<BernardSettings
   if (!forceRefresh && cached && now < cached.expiresAt) {
     return cached.value;
   }
-  const store = new SettingsStore();
+  const store = getSettingsStore();
   const value = await store.getAll();
   cached = { value, expiresAt: now + CACHE_TTL_MS };
   return value;

@@ -7,10 +7,7 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.join(path.dirname(__filename), '..')
 
-// Check if this is a restart
-const isRestart = process.argv.includes('restart')
-
-if (isRestart) {
+async function killExistingProcess(): Promise<void> {
   // Kill any existing process on port 2024
   try {
     const { execSync } = await import('node:child_process')
@@ -25,21 +22,32 @@ if (isRestart) {
   }
 }
 
-// Load langgraph.json
-const langgraphConfig = JSON.parse(
-  readFileSync(path.join(__dirname, '..', 'langgraph.json'), 'utf-8')
-)
+// Check if this is a restart
+const isRestart = process.argv.includes('restart')
 
-// Start LangGraph server
-startServer({
-  port: 2024,
-  nWorkers: 1,
-  host: '0.0.0.0',
-  cwd: process.cwd(),
-  graphs: langgraphConfig.graphs
-}).then(() => {
-  console.log('✅ Bernard Agent server started on port 2024')
-}).catch((error: Error) => {
-  console.error('❌ Failed to start agent server:', error)
-  process.exit(1)
-})
+async function main() {
+  if (isRestart) {
+    await killExistingProcess()
+  }
+
+  // Load langgraph.json
+  const langgraphConfig = JSON.parse(
+    readFileSync(path.join(__dirname, 'langgraph.json'), 'utf-8')
+  )
+
+  // Start LangGraph server
+  startServer({
+    port: 2024,
+    nWorkers: 1,
+    host: '0.0.0.0',
+    cwd: process.cwd(),
+    graphs: langgraphConfig.graphs
+  }).then(() => {
+    console.log('✅ Bernard Agent server started on port 2024')
+  }).catch((error: Error) => {
+    console.error('❌ Failed to start agent server:', error)
+    process.exit(1)
+  })
+}
+
+main()
