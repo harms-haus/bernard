@@ -1,6 +1,23 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ServiceManager } from './ServiceManager'
 import { SERVICES, SERVICE_START_ORDER } from './ServiceConfig'
+
+// Mock node:child_process
+vi.mock('node:child_process', async () => {
+  const actual = await vi.importActual('node:child_process')
+  return {
+    ...actual,
+    spawn: vi.fn().mockReturnValue({
+      pid: 12345,
+      on: vi.fn((event, callback) => {
+        if (event === 'spawn') {
+          callback()
+        }
+      }),
+    }),
+    execSync: vi.fn(),
+  }
+})
 
 describe('ServiceManager', () => {
   let serviceManager: ServiceManager

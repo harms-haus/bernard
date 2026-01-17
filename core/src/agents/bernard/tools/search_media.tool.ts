@@ -455,8 +455,9 @@ export const searchMediaToolFactory: ToolFactory = async () => {
     return { ok: false, name: TOOL_NAME, reason: overseerrResult.reason };
   }
 
+  // Cast to PlexConfig after checking required fields exist
   const tool = createSearchMediaTool(
-    plexConfig
+    plexConfig?.baseUrl && plexConfig?.token
       ? {
           baseUrl: plexConfig.baseUrl,
           token: plexConfig.token,

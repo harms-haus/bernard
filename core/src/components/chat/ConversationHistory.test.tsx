@@ -1,31 +1,10 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Suspense } from 'react';
 import type { ThreadListItem } from '@/services/api';
 
 // ============================================
-// LOCALSTORAGE MOCK (must be hoisted)
-// ============================================
-const localStorageMock = vi.hoisted(() => ({
-  getItem: vi.fn((key: string): string | null => {
-    if (key === 'bernard-chat-sidebar-open') {
-      return '"true"';
-    }
-    return null;
-  }),
-  setItem: vi.fn((): void => { }),
-  removeItem: vi.fn((): void => { }),
-  clear: vi.fn((): void => { }),
-  get length() { return 0; },
-  key: vi.fn((): null => null),
-}));
-
-Object.defineProperty(global, 'localStorage', {
-  value: localStorageMock,
-  writable: true,
-});
-
-// ============================================
-// HOISTED MOCK CONTEXTS (must be hoisted)
+// HOISTED MOCK CONTEXTS (must be hoisted for vi.mock)
 // ============================================
 const mockThreadContext = vi.hoisted(() => ({
   threads: [] as ThreadListItem[],
@@ -45,6 +24,33 @@ const mockAuthContext = vi.hoisted(() => ({
 }));
 
 // ============================================
+// NEXT.JS NAVIGATION MOCK (must be hoisted)
+// ============================================
+const mockSearchParams = vi.hoisted(() => new URLSearchParams());
+const mockRouterReplace = vi.hoisted(() => vi.fn());
+const mockRouterPush = vi.hoisted(() => vi.fn());
+const mockRouterBack = vi.hoisted(() => vi.fn());
+const mockRouterForward = vi.hoisted(() => vi.fn());
+const mockRouterRefresh = vi.hoisted(() => vi.fn());
+const mockRouter = vi.hoisted(() => ({
+  replace: mockRouterReplace,
+  push: mockRouterPush,
+  back: mockRouterBack,
+  forward: mockRouterForward,
+  refresh: mockRouterRefresh,
+}));
+const mockUseRouter = vi.hoisted(() => () => mockRouter);
+
+vi.mock('next/navigation', async () => {
+  const actual = await vi.importActual('next/navigation');
+  return {
+    ...actual,
+    useSearchParams: () => mockSearchParams,
+    useRouter: mockUseRouter,
+  };
+});
+
+// ============================================
 // MOCKS (must be hoisted)
 // ============================================
 vi.mock('../../providers/ThreadProvider', async () => {
@@ -60,20 +66,6 @@ vi.mock('../../hooks/useAuth', async () => {
   return {
     ...actual,
     useAuth: () => mockAuthContext,
-  };
-});
-
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return {
-    ...actual,
-    useSearchParams: () => {
-      const params = new URLSearchParams();
-      const setParams = vi.fn();
-      return [params, setParams] as const;
-    },
-    useNavigate: () => vi.fn(),
-    Link: ({ children, to, ...props }: any) => <a href={to} {...props}>{children}</a>,
   };
 });
 
@@ -146,6 +138,15 @@ function createMockThread(overrides: Partial<ThreadListItem> = {}): ThreadListIt
   };
 }
 
+// Helper to render with Suspense for useSearchParams
+function renderWithSuspense(ui: React.ReactElement) {
+  return render(
+    <Suspense fallback={<div data-testid="loading">Loading...</div>}>
+      {ui}
+    </Suspense>
+  );
+}
+
 // ============================================
 // TEST SUITE
 // ============================================
@@ -155,35 +156,49 @@ describe('ConversationHistory', () => {
     mockThreadContext.threads = [];
     mockThreadContext.threadsLoading = false;
     mockAuthContext.state = { user: null, loading: false, error: null };
-    localStorageMock.getItem.mockReturnValue('"true"');
-    localStorageMock.setItem.mockClear();
+    mockRouterReplace.mockClear();
+    mockRouterPush.mockClear();
   });
 
   afterEach(() => {
     vi.resetAllMocks();
+    cleanup();
   });
 
   describe('Sidebar Toggle', () => {
+    afterEach(() => {
+      cleanup();
+    });
+
     it('renders sidebar in default open state', () => {
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       expect(screen.getByTestId('conversation-history-sidebar')).toBeInTheDocument();
     });
 
     it('toggles sidebar when toggle button is clicked', async () => {
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
+      const sidebar = screen.getByTestId('conversation-history-sidebar');
       const toggleButton = screen.getByTestId('sidebar-toggle-button');
+      
+      // Initially sidebar should be open
+      expect(within(sidebar).getByTestId('thread-list-component')).toBeInTheDocument();
+      
       fireEvent.click(toggleButton);
 
-      expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        SIDEBAR_STORAGE_KEY,
-        JSON.stringify(false)
-      );
+      // Verify sidebar was toggled closed by checking for hidden classes
+      await waitFor(() => {
+        expect(sidebar).toHaveClass('w-0', 'overflow-hidden');
+      });
     });
   });
 
   describe('Thread List', () => {
+    afterEach(() => {
+      cleanup();
+    });
+
     it('renders thread list when threads are loaded', () => {
       mockThreadContext.threads = [
         createMockThread({ id: 'thread-1', name: 'Test Thread 1' }),
@@ -191,7 +206,7 @@ describe('ConversationHistory', () => {
       ];
       mockThreadContext.threadsLoading = false;
 
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       const sidebar = screen.getByTestId('conversation-history-sidebar');
       const threadList = within(sidebar).getByTestId('thread-list-component');
@@ -203,7 +218,7 @@ describe('ConversationHistory', () => {
     it('shows loading skeleton when threads are loading', () => {
       mockThreadContext.threadsLoading = true;
 
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       const sidebar = screen.getByTestId('conversation-history-sidebar');
       expect(within(sidebar).getByTestId('thread-history-loading')).toBeInTheDocument();
@@ -213,7 +228,7 @@ describe('ConversationHistory', () => {
       mockThreadContext.threads = [];
       mockThreadContext.threadsLoading = false;
 
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       const sidebar = screen.getByTestId('conversation-history-sidebar');
       expect(within(sidebar).getByTestId('no-threads-message')).toBeInTheDocument();
@@ -222,12 +237,16 @@ describe('ConversationHistory', () => {
   });
 
   describe('New Chat Button', () => {
+    afterEach(() => {
+      cleanup();
+    });
+
     it('creates new thread when new chat button is clicked', async () => {
       mockThreadContext.createNewThread = vi.fn().mockResolvedValue('new-thread-id');
       mockThreadContext.threads = [];
       mockThreadContext.threadsLoading = false;
 
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       const newChatButton = screen.getByTestId('new-chat-button');
       fireEvent.click(newChatButton);
@@ -239,14 +258,18 @@ describe('ConversationHistory', () => {
   });
 
   describe('Mobile Sidebar', () => {
+    afterEach(() => {
+      cleanup();
+    });
+
     it('renders mobile toggle button', () => {
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       expect(screen.getByTestId('mobile-sidebar-toggle')).toBeInTheDocument();
     });
 
     it('opens mobile sidebar when toggle is clicked', () => {
-      render(<ConversationHistory />);
+      renderWithSuspense(<ConversationHistory />);
 
       const toggleButton = screen.getByTestId('mobile-sidebar-toggle');
       fireEvent.click(toggleButton);
@@ -257,27 +280,39 @@ describe('ConversationHistory', () => {
 });
 
 describe('useSidebarState', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorageMock.getItem.mockReturnValue(null);
-    localStorageMock.setItem.mockClear();
+  afterEach(() => {
+    cleanup();
   });
 
   it('initializes with default open state', () => {
-    render(<ConversationHistory />);
+    renderWithSuspense(<ConversationHistory />);
 
-    expect(screen.getByTestId('conversation-history-sidebar')).toBeInTheDocument();
+    const sidebar = screen.getByTestId('conversation-history-sidebar');
+    expect(sidebar).toBeInTheDocument();
+    // Thread list should be visible initially in the desktop sidebar
+    expect(within(sidebar).getByTestId('thread-list-component')).toBeInTheDocument();
   });
 
-  it('persists sidebar state to localStorage', () => {
-    render(<ConversationHistory />);
+  it('toggles sidebar state', async () => {
+    renderWithSuspense(<ConversationHistory />);
 
     const toggleButton = screen.getByTestId('sidebar-toggle-button');
+    const sidebar = screen.getByTestId('conversation-history-sidebar');
+
+    // Initially, sidebar should be open (default state is true)
+    expect(sidebar).toHaveClass('w-[300px]');
+    expect(sidebar).not.toHaveClass('w-0', 'overflow-hidden');
+
+    // Click the toggle button to close sidebar
     fireEvent.click(toggleButton);
 
-    expect(localStorageMock.setItem).toHaveBeenCalledWith(
-      SIDEBAR_STORAGE_KEY,
-      JSON.stringify(false)
-    );
+    // Verify sidebar is now closed
+    await waitFor(() => {
+      expect(sidebar).toHaveClass('w-0', 'overflow-hidden');
+      expect(sidebar).not.toHaveClass('w-[300px]');
+    });
+
+    // Verify toggle button is still accessible
+    expect(toggleButton).toBeInTheDocument();
   });
 });

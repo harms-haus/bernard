@@ -2,13 +2,21 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HumanMessage } from './human';
 import { createMockHumanMessage } from '../../../test/providers/StreamProvider';
-import { updateMockContext, mockStreamContextContainer } from '../../../test/setup';
+import { streamContextContainer, createDefaultStreamContext, type MockStreamContextType } from '../../../test/context/streamContextContainer';
+
+// Helper to update mock context
+function updateMockContext(overrides: Partial<MockStreamContextType>): void {
+  streamContextContainer.current = {
+    ...createDefaultStreamContext(),
+    ...overrides,
+  };
+}
 
 vi.mock('../../../providers/StreamProvider', async () => {
   const actual = await vi.importActual('../../../providers/StreamProvider');
   return {
     ...actual,
-    useStreamContext: vi.fn(() => mockStreamContextContainer.current),
+    useStreamContext: vi.fn(() => streamContextContainer.current),
   };
 });
 

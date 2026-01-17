@@ -62,10 +62,10 @@ function ProfileContent() {
                 <CardContent className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </CardContent>
-              </Card>
-            </div>
+            </Card>
           </div>
         </div>
+      </div>
       </ThreadProvider>
     );
   }
@@ -201,6 +201,7 @@ function ProfileContent() {
             </Card>
           </div>
         </div>
+      </div>
       </div>
     </ThreadProvider>
   );

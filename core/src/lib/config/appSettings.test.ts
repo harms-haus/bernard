@@ -153,16 +153,16 @@ describe('SettingsManagerCore', () => {
 
       expect(limits.currentRequestMaxTokens).toBe(8000)
       expect(limits.responseMaxTokens).toBe(8000)
-      expect(limits.allowUserCreation).toBe(true)
+      expect(limits.allowSignups).toBe(true)
     })
 
-    it('should respect ALLOW_USER_CREATION environment variable', () => {
+    it('should respect ALLOW_SIGNUPS environment variable', () => {
       const managerNoUsers = new SettingsManagerCore(mockRedis, {
-        ALLOW_USER_CREATION: 'false',
+        ALLOW_SIGNUPS: 'false',
       })
       const limits = managerNoUsers.getDefaultLimits()
 
-      expect(limits.allowUserCreation).toBe(false)
+      expect(limits.allowSignups).toBe(false)
     })
   })
 

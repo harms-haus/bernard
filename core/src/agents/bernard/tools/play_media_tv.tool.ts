@@ -444,7 +444,8 @@ export const playMediaTvToolFactory: ToolFactory = async () => {
     return { ok: false, name: TOOL_NAME, reason: "Plex service is not configured" };
   }
 
-  const haRestConfig: HARestConfig | undefined = haConfig ? {
+  // Cast to HARestConfig after checking baseUrl exists
+  const haRestConfig: HARestConfig | undefined = haConfig?.baseUrl ? {
     baseUrl: haConfig.baseUrl,
     accessToken: haConfig.accessToken
   } : undefined;

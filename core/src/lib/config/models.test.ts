@@ -129,7 +129,7 @@ describe('models', () => {
             github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           },
           backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-          limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+          limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
           automations: {},
         }
       })
@@ -154,7 +154,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 
@@ -176,7 +176,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 
@@ -198,7 +198,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 
@@ -220,7 +220,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 
@@ -244,7 +244,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 
@@ -270,7 +270,7 @@ describe('models', () => {
           google: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' },
           github: { authUrl: '', tokenUrl: '', userInfoUrl: '', redirectUri: '', scope: '', clientId: '' } },
         backups: { debounceSeconds: 60, directory: '/tmp', retentionDays: 14, retentionCount: 20 },
-        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowUserCreation: true },
+        limits: { currentRequestMaxTokens: 8000, responseMaxTokens: 8000, allowSignups: true },
         automations: {},
       }))
 

@@ -35,7 +35,8 @@ describe('GET /api/settings', () => {
     })
 
     it('should return 403 when not admin', async () => {
-      requireAdmin.mockResolvedValue(new NextResponse('Forbidden', { status: 403 }))
+      // Return null to simulate non-admin user
+      requireAdmin.mockResolvedValue(null)
 
       const result = await handleGetSettings({} as any)
 

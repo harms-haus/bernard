@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Thread } from './Thread';
@@ -5,7 +6,7 @@ import type { Message } from '@langchain/langgraph-sdk';
 
 // ============================================
 // HOISTED REFERENCES (for proper hoisting)
-// ============================================
+// ====================================
 const mockStreamContext = vi.hoisted(() => ({
   current: {
     messages: [] as Message[],
@@ -33,22 +34,25 @@ const mockThreadContext = vi.hoisted(() => ({
 }));
 
 // ============================================
-// ROUTER MOCK
+// NEXT.JS NAVIGATION MOCK
 // ============================================
 const mockSetSearchParams = vi.fn();
 const mockSearchParams = new URLSearchParams();
 
 const getSearchParamsMock = vi.hoisted(() => {
-  return () => [mockSearchParams, mockSetSearchParams] as const;
+  return () => mockSearchParams;
 });
 
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+const mockUseRouter = vi.hoisted(() => {
+  return vi.fn();
+});
+
+vi.mock('next/navigation', async () => {
+  const actual = await vi.importActual('next/navigation');
   return {
     ...actual,
     useSearchParams: getSearchParamsMock,
-    Link: ({ children, to, ...props }: any) => <a href={to} {...props}>{children}</a>,
-    useNavigate: () => vi.fn(), // Mock useNavigate to prevent Router error
+    useRouter: mockUseRouter,
   };
 });
 

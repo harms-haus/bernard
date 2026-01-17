@@ -137,7 +137,7 @@ export function createMockSettings(overrides: Partial<BernardSettings> = {}): Be
     limits: {
       currentRequestMaxTokens: 8192,
       responseMaxTokens: 4096,
-      allowUserCreation: true,
+      allowSignups: true,
       ...overrides.limits,
     },
     automations: {},

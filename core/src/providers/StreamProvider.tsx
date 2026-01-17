@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode, useRef, useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useThreads } from './ThreadProvider';
-import type { Message } from '@langchain/langgraph-sdk';
+import type { Checkpoint, Message } from '@langchain/langgraph-sdk';
 
 // Re-export types from SDK for convenience
 export type { Message, AIMessage, ToolMessage, HumanMessage } from '@langchain/langgraph-sdk';
@@ -19,9 +19,18 @@ export interface ToolProgressEvent {
   timestamp: number;
 }
 
+interface MessageMetadata {
+  branch?: string;
+  branchOptions?: string[];
+  firstSeenState?: {
+    parent_checkpoint?: Checkpoint | null | undefined;
+    values?: StateType;
+  };
+}
+
 interface StreamContextType {
   messages: Message[];
-  submit: (input: { messages: Message[] }, options?: {
+  submit: (input?: { messages: Message[] }, options?: {
     streamMode?: string[];
     optimisticValues?: (prev: StateType) => StateType;
     checkpoint?: unknown;
@@ -31,6 +40,8 @@ interface StreamContextType {
   error: Error | null;
   latestProgress: ToolProgressEvent | null;
   resetProgress: () => void;
+  getMessagesMetadata: (message: Message) => MessageMetadata | undefined;
+  setBranch: (branch: string) => void;
 }
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
@@ -636,6 +647,19 @@ export function StreamProvider({ children, apiUrl, threadId, useLangGraphStream 
     }
   }, [threadId]);
 
+  // Get metadata for a specific message
+  const getMessagesMetadata = useCallback((_message: Message): MessageMetadata | undefined => {
+    // TODO: Implement actual metadata retrieval from checkpoint/branch state
+    // For now, return undefined as placeholder
+    return undefined;
+  }, []);
+
+  // Set the current branch for the conversation
+  const setBranch = useCallback((_branch: string) => {
+    // TODO: Implement actual branch switching logic
+    // This would involve updating the checkpoint/branch state
+  }, []);
+
   const contextValue: StreamContextType = {
     messages,
     submit,
@@ -644,6 +668,8 @@ export function StreamProvider({ children, apiUrl, threadId, useLangGraphStream 
     error,
     latestProgress,
     resetProgress,
+    getMessagesMetadata,
+    setBranch,
   };
 
   return (

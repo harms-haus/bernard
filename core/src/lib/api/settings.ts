@@ -5,6 +5,10 @@ import { error, ok } from './response'
 
 export async function handleGetSettings(_request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin()
+  // Check if requireAdmin returned an error response
+  if (admin instanceof NextResponse) {
+    return admin
+  }
   if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
   try {

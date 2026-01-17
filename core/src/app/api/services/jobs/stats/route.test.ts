@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GET } from './route'
+import * as helpers from '@/lib/auth/server-helpers'
 
 vi.mock('@/lib/infra/service-queue', async () => {
   const actual = await vi.importActual('@/lib/infra/service-queue')
@@ -10,10 +11,12 @@ vi.mock('@/lib/infra/service-queue', async () => {
 })
 
 const { getQueueStats }: any = await import('@/lib/infra/service-queue')
+const requireAuth = vi.spyOn(helpers, 'requireAuth')
 
 describe('GET /api/services/jobs/stats', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    requireAuth.mockResolvedValue({ user: { id: 'user-123' } } as any)
   })
 
   it('should return job stats', async () => {

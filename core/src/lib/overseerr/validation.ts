@@ -13,7 +13,8 @@ export function isValidOverseerrConfig(
 ): config is OverseerrServiceSettings {
   if (!config) return false;
   try {
-    new URL(config.baseUrl);
+    // Type assertion needed as config.baseUrl is optional but URL requires defined value
+    new URL(config.baseUrl as string);
     if (!config.apiKey || typeof config.apiKey !== 'string') return false;
     return true;
   } catch {
@@ -35,7 +36,8 @@ export function getOverseerrClient(
     return { ok: false, reason: 'Invalid Overseerr configuration' };
   }
 
-  const client = createOverseerrClient(settings);
+  // Cast to the expected type after validation confirms baseUrl exists
+  const client = createOverseerrClient(settings as { baseUrl: string; apiKey: string });
   if (!client) {
     return { ok: false, reason: 'Failed to create Overseerr client' };
   }

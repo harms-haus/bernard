@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
-import * as helpers from '../../../lib/auth/helpers'
-import * as factory from '../../../lib/api/factory'
+import * as helpers from '@/lib/auth/server-helpers'
+import * as factory from '@/lib/api/factory'
 import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from '@/lib/api/tasks'
 
 // Spy on the helpers and factory modules
@@ -44,8 +44,9 @@ describe('GET /api/tasks', () => {
       expect(data.data.total).toBe(1)
     })
 
-    it('should return 401 when not authenticated', async () => {
-      requireAuth.mockResolvedValue(new NextResponse('Unauthorized', { status: 401 }))
+    it('should return 403 when not authenticated', async () => {
+      // Return null to simulate unauthenticated request
+      requireAuth.mockResolvedValue(null)
 
       const request = {
         nextUrl: { searchParams: new URLSearchParams() },
@@ -53,7 +54,7 @@ describe('GET /api/tasks', () => {
 
       const result = await handleGetTasks(request)
 
-      expect(result.status).toBe(401)
+      expect(result.status).toBe(403)
     })
 
     it('should parse pagination params', async () => {

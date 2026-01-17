@@ -1,103 +1,136 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextResponse } from 'next/server'
-import * as helpers from '../../../../lib/auth/helpers'
-import * as factory from '../../../../lib/api/factory'
-import { ServicesSettingsSchema } from '../../../../lib/config/settingsStore'
-import { handleGetServicesSettings, handlePutServicesSettings } from '@/lib/api/settings-services'
+import { GET, PUT } from './route'
+import * as helpers from '@/lib/auth/server-helpers'
+import { getSettingsStore } from '@/lib/config/settingsStore'
 
-// Spy on the modules
-const requireAdmin = vi.spyOn(helpers, 'requireAdmin')
-const getSettingsStore = vi.spyOn(factory, 'getSettingsStore')
+// Shared mock store reference
+const mockStore = {
+  getServices: vi.fn(),
+  setServices: vi.fn(),
+}
+
+// Create a mock function for safeParse - must use vi.hoisted for references used in vi.mock
+const mockSafeParse = vi.hoisted(() => vi.fn().mockReturnValue({ success: true, data: {} }));
+
+// Mock Redis client
+const mockRedis = vi.hoisted(() => ({}));
+
+// Mock settingsStore module - must be hoisted before imports
+vi.mock('@/lib/config/settingsStore', () => ({
+  initializeSettingsStore: vi.fn().mockResolvedValue({}),
+  getSettingsStore: vi.fn().mockImplementation(() => mockStore),
+  ServicesSettingsSchema: {
+    parse: (val: any) => val,
+    safeParse: mockSafeParse,
+  },
+}))
+
+// Mock Redis
+vi.mock('@/lib/infra/redis', () => ({
+  getRedis: vi.fn().mockReturnValue(mockRedis),
+}))
+
+// Reset mock functions before each test
+beforeEach(() => {
+  mockStore.getServices.mockClear()
+  mockStore.setServices.mockClear()
+  mockSafeParse.mockReturnValue({ success: true, data: {} })
+})
 
 describe('GET /api/settings/services', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    requireAdmin.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
+    // Mock requireAdmin
+    vi.spyOn(helpers, 'requireAdmin').mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
   })
 
-  describe('handleGetServicesSettings', () => {
-    it('should return services settings', async () => {
-      const mockServices = {
-        kokoro: { enabled: true, defaultVoice: 'alex' },
-        whisper: { enabled: true, model: 'base' },
-      }
-
-      const mockStore = {
-        getServices: vi.fn().mockResolvedValue(mockServices),
-      }
-      getSettingsStore.mockReturnValue(mockStore as any)
-
-      const result = await handleGetServicesSettings({} as any)
-
-      expect(result.status).toBe(200)
-      const data = await result.json()
-      expect(data.success).toBe(true)
-      expect(data.data).toEqual(mockServices)
-    })
-
-    it('should return 403 when not admin', async () => {
-      requireAdmin.mockResolvedValue(new NextResponse('Forbidden', { status: 403 }))
-
-      const result = await handleGetServicesSettings({} as any)
-
-      expect(result.status).toBe(403)
-    })
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
+  it('should return services settings', async () => {
+    const mockServices = {
+      kokoro: { enabled: true, baseUrl: 'http://localhost:8880' },
+      whisper: { enabled: true, baseUrl: 'http://localhost:8870' },
+    }
+
+    mockStore.getServices.mockResolvedValue(mockServices)
+
+    const request = {} as unknown as import('next/server').NextRequest
+    const response = await GET(request)
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+    expect(data.data).toEqual(mockServices)
+  })
+
+  it('should return 403 when not admin', async () => {
+    vi.spyOn(helpers, 'requireAdmin').mockResolvedValue(null)
+
+    const request = {} as unknown as import('next/server').NextRequest
+    const response = await GET(request)
+
+    expect(response.status).toBe(403)
+  })
 })
 
 describe('PUT /api/settings/services', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    requireAdmin.mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
+    vi.spyOn(helpers, 'requireAdmin').mockResolvedValue({ user: { id: 'admin-123', isAdmin: true } } as any)
+    // Ensure the store mock is properly set up for each test
+    vi.mocked(getSettingsStore).mockReturnValue(mockStore as any)
   })
 
-  describe('handlePutServicesSettings', () => {
-    it('should save valid services settings', async () => {
-      const mockServices = { kokoro: { enabled: true } } as any
-      const savedServices = { kokoro: { enabled: true, defaultVoice: 'alex' } }
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-      const mockStore = {
-        setServices: vi.fn().mockResolvedValue(savedServices),
-      }
-      getSettingsStore.mockReturnValue(mockStore as any)
-      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({ success: true, data: mockServices })
+  it('should save valid services settings', async () => {
+    const mockServices = { kokoro: { enabled: true, baseUrl: 'http://localhost:8880' } }
+    const savedServices = { kokoro: { enabled: true, baseUrl: 'http://localhost:8880' } }
 
-      const result = await handlePutServicesSettings({
-        json: async () => mockServices,
-      } as unknown as import('next/server').NextRequest)
+    // Mock the schema validation to return success with the parsed data
+    mockSafeParse.mockReturnValue({ success: true, data: mockServices })
+    mockStore.setServices.mockResolvedValue(savedServices)
 
-      expect(result.status).toBe(200)
-      const data = await result.json()
-      expect(data.success).toBe(true)
-      expect(mockStore.setServices).toHaveBeenCalledWith(mockServices)
+    const request = {
+      json: async () => mockServices,
+    } as unknown as import('next/server').NextRequest
+    const response = await PUT(request)
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+    expect(data.data).toEqual(savedServices)
+    expect(mockStore.setServices).toHaveBeenCalledWith(mockServices)
+  })
+
+  it('should return 400 for invalid settings', async () => {
+    // Set up the mock to return a failed parse result
+    mockSafeParse.mockReturnValue({
+      success: false,
+      error: { issues: [{ message: 'Invalid value' }] },
     })
 
-    it('should return 400 for invalid settings', async () => {
-      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({
-        success: false,
-        error: { issues: [{ message: 'Invalid value' }] },
-      } as any)
+    const request = {
+      json: async () => ({}),
+    } as unknown as import('next/server').NextRequest
+    const response = await PUT(request)
 
-      const result = await handlePutServicesSettings({
-        json: async () => ({}),
-      } as unknown as import('next/server').NextRequest)
+    expect(response.status).toBe(400)
+  })
 
-      expect(result.status).toBe(400)
-    })
+  it('should return 500 when setServices throws', async () => {
+    mockStore.setServices.mockRejectedValue(new Error('Failed'))
 
-    it('should return 500 when setServices throws', async () => {
-      const mockStore = {
-        setServices: vi.fn().mockRejectedValue(new Error('Failed')),
-      }
-      getSettingsStore.mockReturnValue(mockStore as any)
-      vi.spyOn(ServicesSettingsSchema, 'safeParse').mockReturnValue({ success: true, data: {} } as any)
+    const request = {
+      json: async () => ({}),
+    } as unknown as import('next/server').NextRequest
+    const response = await PUT(request)
 
-      const result = await handlePutServicesSettings({
-        json: async () => ({}),
-      } as unknown as import('next/server').NextRequest)
-
-      expect(result.status).toBe(500)
-    })
+    expect(response.status).toBe(500)
   })
 })

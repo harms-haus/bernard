@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { Message } from '@langchain/langgraph-sdk';
-import { getAPIClient } from '@admin-services/lib/api/client';
+import { getAPIClient } from '@/lib/api/client';
 import type { IAPIClient } from '@/lib/api/types';
 
 interface UseAutoRenameOptions {

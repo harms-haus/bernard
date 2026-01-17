@@ -4,6 +4,29 @@ import * as path from 'node:path'
 import { ProcessManager } from './ProcessManager'
 import { SERVICES } from './ServiceConfig'
 
+// Mock node:child_process
+vi.mock('node:child_process', async () => {
+  const actual = await vi.importActual('node:child_process')
+  return {
+    ...actual,
+    spawn: vi.fn().mockReturnValue({
+      pid: 12345,
+      on: vi.fn((event, callback) => {
+        if (event === 'spawn') {
+          callback()
+        }
+        if (event === 'error') {
+          // Don't call error callback
+        }
+        if (event === 'exit') {
+          // Don't call exit callback immediately
+        }
+      }),
+    }),
+    execSync: vi.fn(),
+  }
+})
+
 describe('ProcessManager', () => {
   let processManager: ProcessManager
   const TEST_DIR = path.join(process.cwd(), 'test-temp')

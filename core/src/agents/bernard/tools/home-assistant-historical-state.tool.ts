@@ -200,6 +200,7 @@ export const getHistoricalStateToolFactory: ToolFactory = async () => {
   }
   const settings = await getSettings();
   const haConfig = settings.services?.homeAssistant;
-  const tool = createGetHistoricalStateTool(haConfig);
+  // Cast to HARestConfig after verification confirms baseUrl exists
+  const tool = createGetHistoricalStateTool(haConfig as HARestConfig | undefined);
   return { ok: true, tool: tool, name: tool.name };
 };

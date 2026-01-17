@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest'
 import { getSettings, clearSettingsCache } from './settingsCache'
-import { SettingsStore } from './settingsStore'
 import type { BernardSettings } from './appSettings'
 
-// Mock the SettingsStore class
+// Mock the getSettingsStore function
 const mockGetAll = vi.fn()
 const mockSettingsStore = {
   getAll: mockGetAll
 }
 
 vi.mock('./settingsStore', () => ({
-  SettingsStore: vi.fn().mockImplementation(() => mockSettingsStore)
+  getSettingsStore: vi.fn().mockImplementation(() => mockSettingsStore)
 }))
 
 describe('settingsCache', () => {
@@ -108,7 +107,7 @@ describe('settingsCache', () => {
       limits: {
         currentRequestMaxTokens: 8000,
         responseMaxTokens: 8000,
-        allowUserCreation: true,
+        allowSignups: true,
       },
       automations: {},
     }

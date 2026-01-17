@@ -209,7 +209,8 @@ export const listHAEntitiesToolFactory: ToolFactory = async () => {
   }
   const settings = await getSettings();
   const haConfig = settings.services?.homeAssistant;
-  const tool = createListHAEntitiesTool(haConfig);
+  // Cast to HARestConfig after verification confirms baseUrl exists
+  const tool = createListHAEntitiesTool(haConfig as HARestConfig | undefined);
   return { ok: true, tool: tool, name: tool.name };
 };
 
