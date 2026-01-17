@@ -206,7 +206,7 @@ function UsersContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground"></div>
       </div>
     );
   }
@@ -215,8 +215,8 @@ function UsersContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Users Management</h1>
-          <p className="text-gray-600 dark:text-gray-300">Create, manage, and control user access</p>
+          <h1 className="text-3xl font-bold text-foreground">Users Management</h1>
+          <p className="text-muted-foreground">Create, manage, and control user access</p>
         </div>
         <Button onClick={() => {
           setEditingUser(null);
@@ -241,8 +241,8 @@ function UsersContent() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label htmlFor="allowUserCreation" className="text-base">Allow User Creation</Label>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                When enabled, administrators can create new users through the "Add User" button.
+               <p className="text-sm text-muted-foreground">
+                When enabled, administrators can create new users through the &quot;Add User&quot; button.
                 Existing users can still log in via OAuth regardless of this setting.
               </p>
             </div>
@@ -265,19 +265,19 @@ function UsersContent() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">User</TableHead>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Email/ID</TableHead>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Role</TableHead>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</TableHead>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Created</TableHead>
-                  <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Last Login</TableHead>
-                  <TableHead className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
-                </TableRow>
+                  <TableRow>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">User</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Email/ID</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Role</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Created</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Last Login</TableHead>
+                    <TableHead className="text-center py-3 px-4 font-semibold text-muted-foreground"></TableHead>
+                  </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
-                  <TableRow key={user.id} className="border-b border-gray-100 dark:border-gray-800">
+                  <TableRow key={user.id} className="border-b border-border">
                     <TableCell className="py-3 px-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
@@ -286,14 +286,14 @@ function UsersContent() {
                           </span>
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{user.displayName}</p>
+                          <p className="font-medium text-foreground">{user.displayName}</p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300 font-mono">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground font-mono">
                           {user.id}
                         </span>
                       </div>
@@ -311,26 +311,26 @@ function UsersContent() {
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       <div className="flex flex-col">
-                        <span className="text-sm text-gray-600 dark:text-gray-300">
-                          {new Date(user.createdAt).toLocaleDateString()}
-                        </span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
-                          {new Date(user.createdAt).toLocaleTimeString()}
-                        </span>
-                      </div>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(user.createdAt).toLocaleDateString()}
+                          </span>
+                          <span className="text-xs text-muted-foreground/70">
+                            {new Date(user.createdAt).toLocaleTimeString()}
+                          </span>
+                        </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       {user.lastLoginAt ? (
                         <div className="flex flex-col">
-                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                          <span className="text-sm text-muted-foreground">
                             {new Date(user.lastLoginAt).toLocaleDateString()}
                           </span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                          <span className="text-xs text-muted-foreground/70">
                             {new Date(user.lastLoginAt).toLocaleTimeString()}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-600 dark:text-gray-300">Never</span>
+                        <span className="text-sm text-muted-foreground">Never</span>
                       )}
                     </TableCell>
                     <TableCell className="py-3 px-4 text-center">
@@ -367,7 +367,7 @@ function UsersContent() {
                           <DropdownMenuItem
                             onClick={() => handleDeleteUser(user.id)}
                             disabled={deletingId === user.id}
-                            className="text-red-600 focus:text-red-600"
+                            className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             {deletingId === user.id ? 'Deleting...' : 'Delete'}
@@ -380,7 +380,7 @@ function UsersContent() {
                 
                 {users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                    <TableCell colSpan={7} className="py-8 px-4 text-center text-muted-foreground">
                       No users found.
                     </TableCell>
                   </TableRow>
@@ -412,7 +412,7 @@ function UsersContent() {
                     placeholder="user@example.com"
                     disabled={!!editingUser}
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                   <p className="text-xs text-muted-foreground">
                     This will be used as the user&apos;s login identifier
                   </p>
                 </div>
@@ -429,13 +429,13 @@ function UsersContent() {
               </div>
               
               <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="isAdmin"
-                  checked={userForm.isAdmin}
-                  onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })}
-                  className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                />
+                  <input
+                    type="checkbox"
+                    id="isAdmin"
+                    checked={userForm.isAdmin}
+                    onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })}
+                    className="h-4 w-4 rounded border-border bg-input text-primary ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
                 <Label htmlFor="isAdmin" className="flex items-center space-x-2">
                   <Shield className="h-4 w-4" />
                   <span>Grant Administrator Privileges</span>

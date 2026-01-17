@@ -365,7 +365,7 @@ function ModelsContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground"></div>
       </div>
     );
   }
@@ -389,7 +389,7 @@ function ModelsContent() {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:ring-2 focus:ring-ring focus:outline-none"
       >
         <option value="">{placeholder}</option>
         {providers.map(provider => (
@@ -534,9 +534,9 @@ function ModelsContent() {
           className="pr-8"
         />
         {isOpen && (
-          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
+          <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
             {filteredModels.length === 0 ? (
-              <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
+              <div className="p-3 text-sm text-muted-foreground">
                 No models found
               </div>
             ) : (
@@ -546,8 +546,8 @@ function ModelsContent() {
                   type="button"
                   className={`w-full text-left px-3 py-2 cursor-pointer ${
                     index === selectedIndex
-                      ? 'bg-blue-100 dark:bg-blue-900'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                      ? 'bg-primary/10'
+                      : 'hover:bg-muted'
                   }`}
                   onMouseDown={(e) => {
                     e.preventDefault(); // Prevent input blur
@@ -568,8 +568,8 @@ function ModelsContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Models Configuration</h1>
-          <p className="text-gray-600 dark:text-gray-300">Configure AI providers and assign models</p>
+          <h1 className="text-3xl font-bold text-foreground">Models Configuration</h1>
+          <p className="text-muted-foreground">Configure AI providers and assign models</p>
         </div>
         <Button onClick={() => { handleSave(); }} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
@@ -599,12 +599,12 @@ function ModelsContent() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API URL</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">API Key</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Number of Models</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300"></th>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Name</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">API URL</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">API Key</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Number of Models</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground"></th>
                 </tr>
               </thead>
               <tbody>
@@ -612,7 +612,7 @@ function ModelsContent() {
                   const models = getModelsForProvider(provider.id);
                   
                   return (
-                    <tr key={provider.id} className="border-b border-gray-200 dark:border-gray-700">
+                    <tr key={provider.id} className="border-b border-border">
                       <td className="py-4 px-4">
                         <div className="font-semibold">{provider.name}</div>
                       </td>
@@ -620,7 +620,7 @@ function ModelsContent() {
                         <div className="text-sm">{provider.baseUrl}</div>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="text-sm text-gray-500 dark:text-gray-400">••••••••</div>
+                        <div className="text-sm text-muted-foreground">••••••••</div>
                       </td>
                       <td className="py-4 px-4">
                         <Badge variant={models.length > 0 ? "default" : "secondary"}>
@@ -647,7 +647,7 @@ function ModelsContent() {
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteProvider(provider.id)} className="text-red-600 dark:text-red-400">
+                            <DropdownMenuItem onClick={() => handleDeleteProvider(provider.id)} className="text-destructive">
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
@@ -660,7 +660,7 @@ function ModelsContent() {
                 
                 {providers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={5} className="py-8 px-4 text-center text-muted-foreground">
                       No providers configured. Add your first provider to get started.
                     </td>
                   </tr>
@@ -681,11 +681,11 @@ function ModelsContent() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {categories.map(category => (
-                <div key={category.key} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div key={category.key} className="border border-border rounded-lg p-4">
                   <div className="space-y-3">
                     <div>
                       <h3 className="font-semibold text-lg">{category.label}</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{category.description}</p>
+                      <p className="text-sm text-muted-foreground">{category.description}</p>
                     </div>
                     <div className="space-y-3">
                       <div>
@@ -722,13 +722,13 @@ function ModelsContent() {
                             className={embeddingDimensionChanged ? "border-orange-500 focus:border-orange-500" : ""}
                           />
                           {embeddingDimensionChanged && (
-                            <div className="flex items-start space-x-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md">
-                              <div className="text-orange-500 dark:text-orange-400 mt-0.5">⚠️</div>
+                            <div className="flex items-start space-x-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                              <div className="text-yellow-500 mt-0.5">⚠️</div>
                               <div className="flex-1 space-y-1">
-                                <div className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                                <div className="text-sm font-medium text-yellow-500">
                                   Dimension Change Warning
                                 </div>
-                                <p className="text-sm text-orange-700 dark:text-orange-300">
+                                <p className="text-sm text-yellow-500/80">
                                   Changing the embedding dimension will clear the existing index and queue all historical conversations to be re-indexed.
                                   This may take some time and temporarily affect search functionality.
                                 </p>
@@ -736,7 +736,7 @@ function ModelsContent() {
                               <button
                                 type="button"
                                 onClick={dismissDimensionWarning}
-                                className="text-orange-600 hover:text-orange-800 dark:text-orange-300 dark:hover:text-orange-100 text-sm font-medium"
+                                className="text-yellow-500 hover:text-yellow-400 text-sm font-medium"
                               >
                                 Dismiss
                               </button>

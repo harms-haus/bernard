@@ -107,7 +107,7 @@ function ProfileContent() {
                   )}
 
                   {successMessage && (
-                    <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+                    <div className="bg-green-500/10 border border-green-500/20 text-green-500 px-4 py-3 rounded">
                       {successMessage}
                     </div>
                   )}
@@ -149,7 +149,7 @@ function ProfileContent() {
                       <Lock className="h-4 w-4" />
                       <span>Account Status</span>
                     </Label>
-                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${state.user.status === 'active'
                         ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'

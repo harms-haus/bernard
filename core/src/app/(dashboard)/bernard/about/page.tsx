@@ -11,8 +11,8 @@ export default function About() {
     <div className="px-4 py-6 sm:px-0">
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">About Bernard</h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">About Bernard</h1>
+          <p className="text-muted-foreground mt-1">
             Technology stack and project information
           </p>
         </div>

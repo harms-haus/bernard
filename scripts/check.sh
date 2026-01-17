@@ -20,9 +20,6 @@ run_check() {
 run_check "Core Type Check" "core" "type-check"
 run_check "Core Lint" "core" "lint"
 run_check "Core Test" "core" "test"
-run_check "Bernard-UI Type Check" "services/bernard-ui" "type-check"
-run_check "Bernard-UI Lint" "services/bernard-ui" "lint"
-run_check "Bernard-UI Test" "services/bernard-ui" "tests"
 
 if [ $FAILED -eq 1 ]; then
   echo "❌ One or more checks failed"

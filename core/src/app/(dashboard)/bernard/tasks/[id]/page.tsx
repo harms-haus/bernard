@@ -225,10 +225,10 @@ function TaskDetailContent() {
       <div className="px-4 py-6 sm:px-0">
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-48"></div>
+            <div className="h-8 bg-muted rounded w-48"></div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 h-96 bg-gray-200 rounded"></div>
-              <div className="h-96 bg-gray-200 rounded"></div>
+              <div className="lg:col-span-2 h-96 bg-muted rounded"></div>
+              <div className="h-96 bg-muted rounded"></div>
             </div>
           </div>
         </div>
@@ -242,7 +242,7 @@ function TaskDetailContent() {
         <div className="max-w-6xl mx-auto">
           <Card>
             <CardContent className="p-6">
-              <div className="text-center text-red-600">
+              <div className="text-center text-destructive">
                 {error || 'Task not found'}
               </div>
               <div className="text-center mt-4">
@@ -277,7 +277,7 @@ function TaskDetailContent() {
                 {getStatusIcon(task.status)}
                 <span>{task.name}</span>
               </h1>
-              <p className="text-gray-600">Task ID: {task.id}</p>
+              <p className="text-muted-foreground">Task ID: {task.id}</p>
             </div>
           </div>
           <Button onClick={loadTask} variant="outline" size="sm">
@@ -298,7 +298,7 @@ function TaskDetailContent() {
               </CardHeader>
               <CardContent>
                 {events.length === 0 && messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-8">
+                  <div className="text-center text-muted-foreground py-8">
                     No execution data available yet.
                   </div>
                 ) : (
@@ -318,16 +318,16 @@ function TaskDetailContent() {
 
                       // Default event rendering for other event types
                       return (
-                        <div key={index} className="border-l-2 border-gray-200 dark:border-gray-700 pl-4">
+                        <div key={index} className="border-l-2 border-border pl-4">
                           <div className="flex items-center space-x-2 mb-1">
                             <Badge variant="outline" className="text-xs">
                               {event.type}
                             </Badge>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                            <span className="text-xs text-muted-foreground">
                               {formatDate(event.timestamp)}
                             </span>
                           </div>
-                          <pre className="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+                          <pre className="text-sm bg-muted p-2 rounded overflow-x-auto">
                             {JSON.stringify(event.data, null, 2)}
                           </pre>
                         </div>
@@ -350,14 +350,14 @@ function TaskDetailContent() {
                             {formatDate(message.createdAt)}
                           </span>
                         </div>
-                        <div className="text-sm text-gray-900 dark:text-gray-100">
+                        <div className="text-sm text-foreground">
                           {typeof message.content === 'string'
                             ? message.content
                             : JSON.stringify(message.content, null, 2)
                           }
                         </div>
                         {message.tool_calls && message.tool_calls.length > 0 && (
-                          <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="mt-2 text-xs text-muted-foreground">
                             <div>Tool calls:</div>
                             {message.tool_calls.map((call, i) => (
                               <div key={i} className="ml-2">
@@ -382,7 +382,7 @@ function TaskDetailContent() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <label className="text-sm font-medium">Status</label>
                   <div className="flex items-center space-x-2 mt-1">
                     {getStatusIcon(task.status)}
                     <Badge variant={getStatusBadgeVariant(task.status)}>
@@ -392,23 +392,23 @@ function TaskDetailContent() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Tool</label>
+                  <label className="text-sm font-medium">Tool</label>
                   <div className="mt-1">
                     <Badge variant="outline">{task.toolName}</Badge>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Created</label>
-                  <div className="mt-1 text-sm text-gray-600">
+                  <label className="text-sm font-medium">Created</label>
+                  <div className="mt-1 text-sm text-muted-foreground">
                     {formatDate(task.createdAt)}
                   </div>
                 </div>
 
                 {task.startedAt && (
                   <div>
-                    <label className="text-sm font-medium text-gray-700">Started</label>
-                    <div className="mt-1 text-sm text-gray-600">
+                    <label className="text-sm font-medium">Started</label>
+                    <div className="mt-1 text-sm text-muted-foreground">
                       {formatDate(task.startedAt)}
                     </div>
                   </div>
@@ -416,25 +416,25 @@ function TaskDetailContent() {
 
                 {task.completedAt && (
                   <div>
-                    <label className="text-sm font-medium text-gray-700">Completed</label>
-                    <div className="mt-1 text-sm text-gray-600">
+                    <label className="text-sm font-medium">Completed</label>
+                    <div className="mt-1 text-sm text-muted-foreground">
                       {formatDate(task.completedAt)}
                     </div>
                   </div>
                 )}
 
                 {task.runtimeMs && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Runtime</label>
-                    <div className="mt-1 text-sm text-gray-600">
+                <div>
+                  <label className="text-sm font-medium">Runtime</label>
+                  <div className="mt-1 text-sm text-muted-foreground">
                       {formatDuration(task.runtimeMs)}
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Statistics</label>
-                  <div className="mt-1 space-y-1 text-sm text-gray-600">
+                  <label className="text-sm font-medium">Statistics</label>
+                  <div className="mt-1 space-y-1 text-sm text-muted-foreground">
                     <div>{task.toolCallCount} tool calls</div>
                     <div>{task.messageCount} messages</div>
                     <div>{task.tokensIn} input tokens</div>
@@ -443,9 +443,9 @@ function TaskDetailContent() {
                 </div>
 
                 {task.errorMessage && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Error</label>
-                    <div className="mt-1 text-sm text-red-600 bg-red-50 p-2 rounded">
+                <div>
+                  <label className="text-sm font-medium">Error</label>
+                  <div className="mt-1 text-sm text-destructive bg-destructive/10 p-2 rounded">
                       {task.errorMessage}
                     </div>
                   </div>
@@ -471,10 +471,10 @@ function TaskDetailContent() {
                       <div key={key}>
                         <div className="font-medium text-sm">{section.name}</div>
                         {section.description && (
-                          <div className="text-xs text-gray-600">{section.description}</div>
+                          <div className="text-xs text-muted-foreground">{section.description}</div>
                         )}
                         {section.content && (
-                          <div className="text-sm mt-1 bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                          <div className="text-sm mt-1 bg-muted p-2 rounded">
                             {section.content}
                           </div>
                         )}

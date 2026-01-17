@@ -360,7 +360,7 @@ function ServicesContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground"></div>
       </div>
     );
   }
@@ -369,8 +369,8 @@ function ServicesContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Services Configuration</h1>
-          <p className="text-gray-600 dark:text-gray-300">Configure external service integrations</p>
+          <h1 className="text-3xl font-bold text-foreground">Services Configuration</h1>
+          <p className="text-muted-foreground">Configure external service integrations</p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
@@ -465,14 +465,14 @@ function ServicesContent() {
               />
             </div>
           </div>
-          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-4 text-sm text-muted-foreground">
             <p>
               Get your Plex token from{' '}
               <a
                 href="https://www.plex.tv/claim"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-primary hover:underline"
               >
                 Plex.tv
               </a>
@@ -524,7 +524,7 @@ function ServicesContent() {
               />
             </div>
           </div>
-          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-4 text-sm text-muted-foreground">
             <p>
               Configure a TTS endpoint. Supports Kokoro running locally or OpenAI-compatible API endpoints with access tokens.
             </p>
@@ -574,7 +574,7 @@ function ServicesContent() {
               />
             </div>
           </div>
-          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-4 text-sm text-muted-foreground">
             <p>
               Configure an STT endpoint. Supports Whisper running locally or OpenAI-compatible API endpoints with access tokens.
             </p>
@@ -625,7 +625,7 @@ function ServicesContent() {
               />
             </div>
           </div>
-          <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-4 text-sm text-muted-foreground">
             <p>
               Get your Overseerr API key from your Overseerr settings page under &quot;API Access&quot;.
               Settings configured here will override .env values.
@@ -648,7 +648,7 @@ function ServicesContent() {
                 id="weather-provider"
                 value={settings?.weather?.provider || 'open-meteo'}
                 onChange={(e) => updateWeatherSettings({ provider: e.target.value as any })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:ring-2 focus:ring-ring focus:outline-none"
               >
                 <option value="open-meteo">Open-Meteo (Free, no API key)</option>
                 <option value="openweathermap">OpenWeatherMap</option>

@@ -144,7 +144,7 @@ export default function KeysPage() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h1 className="text-2xl font-bold">Access Tokens</h1>
-                  <p className="text-gray-500">Manage your API tokens for accessing Bernard</p>
+                  <p className="text-muted-foreground">Manage your API tokens for accessing Bernard</p>
                 </div>
                 <Button onClick={() => setShowCreateDialog(true)}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -153,7 +153,7 @@ export default function KeysPage() {
               </div>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded mb-6">
                   {error}
                 </div>
               )}
@@ -166,10 +166,10 @@ export default function KeysPage() {
                 <CardContent>
                   {loading ? (
                     <div className="flex items-center justify-center py-8">
-                      <RefreshCw className="h-8 w-8 animate-spin text-gray-500" />
+                      <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
                   ) : tokens.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-muted-foreground">
                       No tokens yet. Create your first token to get started.
                     </div>
                   ) : (
@@ -177,43 +177,33 @@ export default function KeysPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Name</TableHead>
-                            <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Created</TableHead>
-                            <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Last Used</TableHead>
-                            <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Status</TableHead>
-                            <TableHead className="text-center py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</TableHead>
+                            <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Name</TableHead>
+                            <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Created</TableHead>
+                            <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Last Used</TableHead>
+                            <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</TableHead>
+                            <TableHead className="text-center py-3 px-4 font-semibold text-muted-foreground">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {tokens.map((token) => (
-                            <TableRow key={token.id} className="border-b border-gray-100 dark:border-gray-800">
+                            <TableRow key={token.id} className="border-b border-border">
                               <TableCell className="font-medium py-3 px-4">
                                 <div>
                                   <div>{token.name || 'Unnamed Token'}</div>
                                 </div>
                               </TableCell>
                               <TableCell className="py-3 px-4">
-                                <div className="flex flex-col">
-                                  <span className="text-sm text-gray-600 dark:text-gray-300">
-                                    {token.createdAt ? formatDate(token.createdAt).date : 'Invalid Date'}
-                                  </span>
-                                  <span className="text-xs text-gray-400 dark:text-gray-500">
-                                    {token.createdAt ? formatDate(token.createdAt).time : ''}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-3 px-4">
                                 {token.lastUsedAt ? (
                                   <div className="flex flex-col">
-                                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                                    <span className="text-sm text-muted-foreground">
                                       {formatDate(token.lastUsedAt).date}
                                     </span>
-                                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                                    <span className="text-xs text-muted-foreground/70">
                                       {formatDate(token.lastUsedAt).time}
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="text-sm text-gray-600 dark:text-gray-300">Never</span>
+                                  <span className="text-sm text-muted-foreground">Never</span>
                                 )}
                               </TableCell>
                               <TableCell className="py-3 px-4">
@@ -238,7 +228,7 @@ export default function KeysPage() {
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       onClick={() => handleDeleteToken(token)}
-                                      className="text-red-600 focus:text-red-600"
+                                      className="text-destructive focus:text-destructive"
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
                                       Delete
@@ -251,7 +241,7 @@ export default function KeysPage() {
 
                           {tokens.length === 0 && (
                             <TableRow key="no-tokens">
-                              <TableCell colSpan={5} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                              <TableCell colSpan={5} className="py-8 px-4 text-center text-muted-foreground">
                                 No tokens found.
                               </TableCell>
                             </TableRow>
@@ -321,20 +311,20 @@ export default function KeysPage() {
                   </DialogHeader>
                   {latestSecret && (
                     <div className="space-y-4">
-                      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Token Name</div>
-                        <div className="font-mono text-sm dark:text-gray-300">{latestSecret.name}</div>
+                      <div className="bg-muted border rounded-lg p-3">
+                        <div className="text-xs text-muted-foreground mb-1">Token Name</div>
+                        <div className="font-mono text-sm text-foreground">{latestSecret.name}</div>
                       </div>
-                      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                      <div className="bg-muted border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <div className="text-xs text-gray-500 dark:text-gray-400">API Key</div>
+                          <div className="text-xs text-muted-foreground">API Key</div>
                           <div className="flex items-center space-x-2">
                             {latestSecret.token !== 'TOKEN_NOT_RETURNED' && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => copyToClipboard(latestSecret.token)}
-                                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                                className="text-muted-foreground hover:text-foreground"
                               >
                                 <Copy className="h-4 w-4" />
                               </Button>
@@ -344,22 +334,22 @@ export default function KeysPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setShowActualToken(!showActualToken)}
-                                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                                className="text-muted-foreground hover:text-foreground"
                               >
                                 {showActualToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </Button>
                             )}
                           </div>
                         </div>
-                        <div className="font-mono text-sm break-all bg-gray-100 dark:bg-gray-700 rounded p-2">
+                        <div className="font-mono text-sm break-all bg-muted/50 rounded p-2">
                           {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
-                            <span className="text-red-600 dark:text-red-400">Error: Token not returned from server</span>
+                            <span className="text-destructive">Error: Token not returned from server</span>
                           ) : showActualToken ? latestSecret.token : latestSecret.token.replace(/./g, '*')}
                         </div>
                       </div>
-                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
-                        <div className="text-xs font-medium text-yellow-800 dark:text-yellow-300">IMPORTANT WARNING</div>
-                        <div className="text-sm text-yellow-700 dark:text-yellow-200 mt-1">
+                      <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                        <div className="text-xs font-medium text-yellow-500">IMPORTANT WARNING</div>
+                        <div className="text-sm text-yellow-500/80 mt-1">
                           {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
                             'There was an issue retrieving your API key. Please try creating the token again.'
                           ) : (

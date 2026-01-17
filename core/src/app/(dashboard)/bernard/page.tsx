@@ -11,8 +11,8 @@ export default function Home() {
     <div className="px-4 py-6 sm:px-0">
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome to Bernard</h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Welcome to Bernard</h1>
+          <p className="text-muted-foreground mt-1">
             Your AI agent platform for home automation and intelligent assistance
           </p>
         </div>
