@@ -3,8 +3,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { DarkModeProvider } from "@/hooks/useDarkMode";
 import { ToastManagerProvider } from "@/components/ToastManager";
 import { DialogManagerProvider } from "@/components/DialogManager";
-import { HeaderProvider } from "@/components/chat/HeaderService";
-import { SidebarProvider } from "@/components/chat/SidebarProvider";
+import { DynamicHeaderProvider } from "@/components/dynamic-header";
+import { DynamicSidebarProvider } from "@/components/dynamic-sidebar";
 import { BernardLayoutContent } from "@/components/chat/BernardLayoutContent";
 import { ThreadProvider } from "@/providers/ThreadProvider";
 
@@ -25,11 +25,11 @@ export default function BernardLayout({
           <DialogManagerProvider>
             <ToastManagerProvider>
               <ThreadProvider>
-                <SidebarProvider>
-                  <HeaderProvider>
+                <DynamicSidebarProvider>
+                  <DynamicHeaderProvider>
                     <BernardLayoutContent>{children}</BernardLayoutContent>
-                  </HeaderProvider>
-                </SidebarProvider>
+                  </DynamicHeaderProvider>
+                </DynamicSidebarProvider>
               </ThreadProvider>
             </ToastManagerProvider>
           </DialogManagerProvider>

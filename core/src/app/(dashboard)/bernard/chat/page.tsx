@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Thread } from '@/components/chat/Thread';
 import { StreamProvider } from '@/providers/StreamProvider';
 import { ThreadProvider } from '@/providers/ThreadProvider';
-import { useHeaderService } from '@/components/chat/HeaderService';
+import { useDynamicHeader } from '@/components/dynamic-header';
 import { useThreads } from '@/providers/ThreadProvider';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -15,25 +15,25 @@ function ChatHeaderController() {
   const searchParams = useSearchParams();
   const threadId = searchParams.get('threadId');
   const { threads } = useThreads();
-  const { setTitle, setSubtitle, reset } = useHeaderService();
+  const { setTitle, setSubtitle, reset } = useDynamicHeader();
 
   useEffect(() => {
     if (threadId && UUID_REGEX.test(threadId)) {
       const thread = threads.find(t => t.id === threadId);
-      if (thread && thread.name) {
-        setTitle(thread.name);
-        setSubtitle('Chat');
-      } else {
-        setTitle('Bernard');
-        setSubtitle('Chat');
-      }
+      setTitle('Chat');
+      setSubtitle(thread?.name || 'New Chat');
     } else {
-      reset();
+      setTitle('Chat');
+      setSubtitle('New Chat');
     }
-  }, [threadId, threads, setTitle, setSubtitle, reset]);
+    // We don't call reset() here because it would clear actions set by useChatHeaderConfig
+  }, [threadId, threads, setTitle, setSubtitle]);
 
   return null;
 }
+
+import { ChatSidebarConfig } from '@/components/dynamic-sidebar/configs';
+import { ChatHeaderConfig } from '@/components/dynamic-header/configs';
 
 export default function Chat() {
   const searchParams = useSearchParams();
@@ -54,11 +54,13 @@ export default function Chat() {
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
 
   return (
-    <ThreadProvider>
-      <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId} useLangGraphStream={true}>
-        <ChatHeaderController />
-        <Thread />
-      </StreamProvider>
-    </ThreadProvider>
+    <ChatSidebarConfig>
+      <ChatHeaderConfig>
+        <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId} useLangGraphStream={true}>
+          <ChatHeaderController />
+          <Thread />
+        </StreamProvider>
+      </ChatHeaderConfig>
+    </ChatSidebarConfig>
   );
 }

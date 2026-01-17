@@ -3,9 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, ChevronDown } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { useDynamicSidebar } from './dynamic-sidebar/DynamicSidebarContext';
+import { cn } from '@/lib/utils';
 
 export function UserBadge() {
   const router = useRouter();
+  const { isOpen } = useDynamicSidebar();
 
   const handleLogout = () => {
     router.push('/auth/logout');
@@ -27,16 +30,23 @@ export function UserBadge() {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button className="w-full text-left">
-          <div className="flex items-center px-2 py-2 text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200">
-            <UserIcon className="mr-3 h-5 w-5" />
-            <div className="flex-1">
-              <div className="text-sm font-medium text-foreground">
-                {userName}
-              </div>
-            </div>
-            <div className="flex items-center space-x-1">
-              <ChevronDown className="h-4 w-4 text-foreground rotate-180" />
-            </div>
+          <div className={cn(
+            "flex items-center text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200",
+            isOpen ? "px-2 py-2" : "p-2 justify-center"
+          )}>
+            <UserIcon className={cn("h-5 w-5", isOpen && "mr-3")} />
+            {isOpen && (
+              <>
+                <div className="flex-1 truncate">
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {userName}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1 ml-1">
+                  <ChevronDown className="h-4 w-4 text-foreground rotate-180" />
+                </div>
+              </>
+            )}
           </div>
         </button>
       </DropdownMenu.Trigger>

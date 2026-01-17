@@ -42,6 +42,7 @@ interface ProviderForm {
   baseUrl: string;
   apiKey: string;
 }
+import { PageHeaderConfig } from '@/components/dynamic-header/configs';
 
 function ModelsContent() {
   const [loading, setLoading] = useState(false);
@@ -239,7 +240,7 @@ function ModelsContent() {
       setProviderModels(updatedModels);
       // Save to localStorage
       localStorage.setItem('providerModels', JSON.stringify(updatedModels));
-      
+
       if (models.length === 0) {
         toast.warning('No models found', 'The provider may not have any models available or the request failed.');
       } else {
@@ -471,7 +472,7 @@ function ModelsContent() {
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       const filteredModelsCount = filteredModels.length;
-      
+
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -544,11 +545,10 @@ function ModelsContent() {
                 <button
                   key={model.id}
                   type="button"
-                  className={`w-full text-left px-3 py-2 cursor-pointer ${
-                    index === selectedIndex
-                      ? 'bg-primary/10'
-                      : 'hover:bg-muted'
-                  }`}
+                  className={`w-full text-left px-3 py-2 cursor-pointer ${index === selectedIndex
+                    ? 'bg-primary/10'
+                    : 'hover:bg-muted'
+                    }`}
                   onMouseDown={(e) => {
                     e.preventDefault(); // Prevent input blur
                     handleSelect(model.id);
@@ -566,11 +566,8 @@ function ModelsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Models Configuration</h1>
-          <p className="text-muted-foreground">Configure AI providers and assign models</p>
-        </div>
+      <PageHeaderConfig title="Admin Panel" subtitle="Models Configuration" />
+      <div className="flex items-center justify-end">
         <Button onClick={() => { handleSave(); }} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
           {saving ? 'Saving...' : 'Save Configuration'}
@@ -610,7 +607,7 @@ function ModelsContent() {
               <tbody>
                 {Array.isArray(providers) && providers.map(provider => {
                   const models = getModelsForProvider(provider.id);
-                  
+
                   return (
                     <tr key={provider.id} className="border-b border-border">
                       <td className="py-4 px-4">
@@ -657,7 +654,7 @@ function ModelsContent() {
                     </tr>
                   );
                 })}
-                
+
                 {providers.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-8 px-4 text-center text-muted-foreground">
@@ -698,7 +695,7 @@ function ModelsContent() {
                           placeholder="Select a provider..."
                         />
                       </div>
-                      
+
                       <div>
                         <Label htmlFor={`${category.key}-model`}>Model</Label>
                         <ModelSelector
@@ -789,7 +786,7 @@ function ModelsContent() {
                 />
               </div>
             </div>
-              <div className="space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="apiKey">API Key</Label>
               <Input
                 id="apiKey"

@@ -38,6 +38,7 @@ interface UserForm {
   displayName: string;
   isAdmin: boolean;
 }
+import { PageHeaderConfig } from '@/components/dynamic-header/configs';
 
 function UsersContent() {
   const [loading, setLoading] = useState(false);
@@ -52,7 +53,7 @@ function UsersContent() {
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState(true);
-  
+
   // Hook calls - must be at the top level of the component function
   const toast = useToast();
   const confirmDialog = useConfirmDialog();
@@ -102,7 +103,7 @@ function UsersContent() {
 
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const trimmedName = userForm.displayName.trim();
     if (!trimmedName) {
       toast.warning('Display name is required');
@@ -127,7 +128,7 @@ function UsersContent() {
         setUsers([...users, newUser]);
         toast.success('User created successfully!');
       }
-      
+
       setShowUserForm(false);
       setEditingUser(null);
       setUserForm({ id: '', displayName: '', isAdmin: false });
@@ -213,11 +214,11 @@ function UsersContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Users Management</h1>
-          <p className="text-muted-foreground">Create, manage, and control user access</p>
-        </div>
+      <PageHeaderConfig
+        title="Admin Panel"
+        subtitle="Users Management"
+      />
+      <div className="flex items-center justify-end">
         <Button onClick={() => {
           setEditingUser(null);
           setUserForm({ id: '', displayName: '', isAdmin: false });
@@ -241,7 +242,7 @@ function UsersContent() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label htmlFor="allowUserCreation" className="text-base">Allow User Creation</Label>
-               <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 When enabled, administrators can create new users through the &quot;Add User&quot; button.
                 Existing users can still log in via OAuth regardless of this setting.
               </p>
@@ -265,15 +266,15 @@ function UsersContent() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">User</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Email/ID</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Role</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Created</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Last Login</TableHead>
-                    <TableHead className="text-center py-3 px-4 font-semibold text-muted-foreground"></TableHead>
-                  </TableRow>
+                <TableRow>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">User</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Email/ID</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Role</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Created</TableHead>
+                  <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Last Login</TableHead>
+                  <TableHead className="text-center py-3 px-4 font-semibold text-muted-foreground"></TableHead>
+                </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
@@ -306,18 +307,18 @@ function UsersContent() {
                     <TableCell className="py-3 px-4">
                       <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
                         {user.status === 'active' ? 'Active' :
-                         user.status === 'disabled' ? 'Disabled' : 'Deleted'}
+                          user.status === 'disabled' ? 'Disabled' : 'Deleted'}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       <div className="flex flex-col">
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(user.createdAt).toLocaleDateString()}
-                          </span>
-                          <span className="text-xs text-muted-foreground/70">
-                            {new Date(user.createdAt).toLocaleTimeString()}
-                          </span>
-                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className="text-xs text-muted-foreground/70">
+                          {new Date(user.createdAt).toLocaleTimeString()}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
                       {user.lastLoginAt ? (
@@ -377,7 +378,7 @@ function UsersContent() {
                     </TableCell>
                   </TableRow>
                 ))}
-                
+
                 {users.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="py-8 px-4 text-center text-muted-foreground">
@@ -412,12 +413,12 @@ function UsersContent() {
                     placeholder="user@example.com"
                     disabled={!!editingUser}
                   />
-                   <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     This will be used as the user&apos;s login identifier
                   </p>
                 </div>
               )}
-              
+
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display Name</Label>
                 <Input
@@ -427,21 +428,21 @@ function UsersContent() {
                   placeholder="John Doe"
                 />
               </div>
-              
+
               <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="isAdmin"
-                    checked={userForm.isAdmin}
-                    onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })}
-                    className="h-4 w-4 rounded border-border bg-input text-primary ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
+                <input
+                  type="checkbox"
+                  id="isAdmin"
+                  checked={userForm.isAdmin}
+                  onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })}
+                  className="h-4 w-4 rounded border-border bg-input text-primary ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
                 <Label htmlFor="isAdmin" className="flex items-center space-x-2">
                   <Shield className="h-4 w-4" />
                   <span>Grant Administrator Privileges</span>
                 </Label>
               </div>
-              
+
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => {
                   setShowUserForm(false);

@@ -31,6 +31,7 @@ import {
 import { useConfirmDialog } from '@/components/DialogManager';
 import { AuthProvider } from '@/hooks/useAuth';
 import { DarkModeProvider } from '@/hooks/useDarkMode';
+import { UserSidebarConfig } from '@/components/dynamic-sidebar/configs';
 
 interface Task {
   id: string;
@@ -368,7 +369,9 @@ export default function Tasks() {
   return (
     <AuthProvider>
       <DarkModeProvider>
-        <TasksContent />
+        <UserSidebarConfig>
+          <TasksContent />
+        </UserSidebarConfig>
       </DarkModeProvider>
     </AuthProvider>
   );

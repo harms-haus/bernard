@@ -13,6 +13,8 @@ import { ServiceTestButton, type ServiceTestStatus } from '@/components/ui/servi
 import { AdminLayout } from '@/components/AdminLayout';
 
 // Deep merge helper to preserve nested objects during updates
+import { PageHeaderConfig } from '@/components/dynamic-header/configs';
+
 function ServicesContent() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -80,7 +82,7 @@ function ServicesContent() {
         const sourceValue = updates[key as keyof Partial<ServicesSettings>];
         const targetValue = prev[key as keyof ServicesSettings];
         if (sourceValue !== null && typeof sourceValue === 'object' && !Array.isArray(sourceValue) &&
-            targetValue !== null && typeof targetValue === 'object' && !Array.isArray(targetValue)) {
+          targetValue !== null && typeof targetValue === 'object' && !Array.isArray(targetValue)) {
           merged[key] = { ...targetValue, ...sourceValue };
         } else if (sourceValue !== undefined) {
           merged[key] = sourceValue;
@@ -367,11 +369,8 @@ function ServicesContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Services Configuration</h1>
-          <p className="text-muted-foreground">Configure external service integrations</p>
-        </div>
+      <PageHeaderConfig title="Admin Panel" subtitle="Services Configuration" />
+      <div className="flex items-center justify-end">
         <Button onClick={handleSave} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
           {saving ? 'Saving...' : 'Save Configuration'}

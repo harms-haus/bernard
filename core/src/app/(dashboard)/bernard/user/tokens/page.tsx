@@ -12,14 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Copy, Plus, RefreshCw, Trash2, Key, MoreVertical, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { useHeaderService } from '@/components/chat/HeaderService';
+import { useDynamicHeader } from '@/components/dynamic-header';
 
 interface TokenWithSecret extends Token {
   token?: string;
 }
 
 export default function KeysPage() {
-  const { setTitle, setSubtitle } = useHeaderService();
+  const { setTitle, setSubtitle } = useDynamicHeader();
   const [tokens, setTokens] = React.useState<TokenWithSecret[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -31,8 +31,8 @@ export default function KeysPage() {
   const [showActualToken, setShowActualToken] = React.useState(false);
 
   React.useEffect(() => {
-    setTitle('Access Tokens');
-    setSubtitle('Manage your API tokens for accessing Bernard');
+    setTitle('User Settings');
+    setSubtitle('Access Tokens');
     loadTokens();
   }, [setTitle, setSubtitle]);
 
@@ -335,11 +335,11 @@ export default function KeysPage() {
                       )}
                     </div>
                   </div>
-                    <div className="font-mono text-sm break-all bg-muted/50 rounded p-2">
-                      {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
-                        <span className="text-destructive">Error: Token not returned from server</span>
-                      ) : showActualToken ? latestSecret.token : latestSecret.token.split('').map(() => '*').join('')}
-                    </div>
+                  <div className="font-mono text-sm break-all bg-muted/50 rounded p-2">
+                    {latestSecret.token === 'TOKEN_NOT_RETURNED' ? (
+                      <span className="text-destructive">Error: Token not returned from server</span>
+                    ) : showActualToken ? latestSecret.token : latestSecret.token.split('').map(() => '*').join('')}
+                  </div>
                 </div>
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
                   <div className="text-xs font-medium text-yellow-500">IMPORTANT WARNING</div>
