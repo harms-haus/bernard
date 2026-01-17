@@ -3,6 +3,7 @@ export type UserStatus = 'active' | 'disabled' | 'deleted';
 export interface User {
   id: string;
   displayName: string;
+  email: string;
   isAdmin: boolean;
   status: UserStatus;
   createdAt: string;

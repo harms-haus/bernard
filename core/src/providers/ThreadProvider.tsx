@@ -1,3 +1,5 @@
+'use client';
+
 import { createContext, useContext, ReactNode, useCallback, useState } from 'react';
 import { getAPIClient } from '@/lib/api/client';
 import type { ThreadListItem } from '@/services/api';

@@ -3,6 +3,10 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { DarkModeProvider } from "@/hooks/useDarkMode";
 import { ToastManagerProvider } from "@/components/ToastManager";
 import { DialogManagerProvider } from "@/components/DialogManager";
+import { HeaderProvider } from "@/components/chat/HeaderService";
+import { SidebarProvider } from "@/components/chat/SidebarProvider";
+import { BernardLayoutContent } from "@/components/chat/BernardLayoutContent";
+import { ThreadProvider } from "@/providers/ThreadProvider";
 
 export const metadata: Metadata = {
   title: "Bernard",
@@ -20,7 +24,13 @@ export default function BernardLayout({
         <DarkModeProvider>
           <DialogManagerProvider>
             <ToastManagerProvider>
-              {children}
+              <ThreadProvider>
+                <SidebarProvider>
+                  <HeaderProvider>
+                    <BernardLayoutContent>{children}</BernardLayoutContent>
+                  </HeaderProvider>
+                </SidebarProvider>
+              </ThreadProvider>
             </ToastManagerProvider>
           </DialogManagerProvider>
         </DarkModeProvider>

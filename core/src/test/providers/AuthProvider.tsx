@@ -32,6 +32,7 @@ const mockAuthContextContainer: { current: MockAuthContextType } = {
     updateProfile: vi.fn().mockResolvedValue({
       id: 'test-user-id',
       displayName: 'Test User',
+      email: 'test@example.com',
       isAdmin: false,
       status: 'active',
       createdAt: new Date().toISOString(),
@@ -47,6 +48,7 @@ export function createMockAuthContext(overrides: Partial<MockAuthContextType> = 
   const defaultUser: User = {
     id: 'test-user-id',
     displayName: 'Test User',
+    email: 'test@example.com',
     isAdmin: false,
     status: 'active',
     createdAt: new Date().toISOString(),
@@ -99,8 +101,9 @@ export function createMockUser(overrides: Partial<User> = {}): User {
   return {
     id: 'test-user-id',
     displayName: 'Test User',
+    email: 'test@example.com',
     isAdmin: false,
-    status: 'active',
+    status: 'active' as const,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,

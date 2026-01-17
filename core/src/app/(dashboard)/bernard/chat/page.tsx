@@ -6,8 +6,34 @@ import { useRouter } from 'next/navigation';
 import { Thread } from '@/components/chat/Thread';
 import { StreamProvider } from '@/providers/StreamProvider';
 import { ThreadProvider } from '@/providers/ThreadProvider';
+import { useHeaderService } from '@/components/chat/HeaderService';
+import { useThreads } from '@/providers/ThreadProvider';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function ChatHeaderController() {
+  const searchParams = useSearchParams();
+  const threadId = searchParams.get('threadId');
+  const { threads } = useThreads();
+  const { setTitle, setSubtitle, reset } = useHeaderService();
+
+  useEffect(() => {
+    if (threadId && UUID_REGEX.test(threadId)) {
+      const thread = threads.find(t => t.id === threadId);
+      if (thread && thread.name) {
+        setTitle(thread.name);
+        setSubtitle('Chat');
+      } else {
+        setTitle('Bernard');
+        setSubtitle('Chat');
+      }
+    } else {
+      reset();
+    }
+  }, [threadId, threads, setTitle, setSubtitle, reset]);
+
+  return null;
+}
 
 export default function Chat() {
   const searchParams = useSearchParams();
@@ -30,6 +56,7 @@ export default function Chat() {
   return (
     <ThreadProvider>
       <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId} useLangGraphStream={true}>
+        <ChatHeaderController />
         <Thread />
       </StreamProvider>
     </ThreadProvider>

@@ -3,7 +3,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import type { ThreadListItem } from '@/services/api';
 import { useThreads } from '@/providers/ThreadProvider';
 import { useAuth } from '@/hooks/useAuth';
-import { useSidebarState } from '@/components/chat/ConversationHistory';
+import { useSidebarState } from '@/components/chat/SidebarProvider';
 
 export interface ConversationHistoryData {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export interface ConversationHistoryData {
 }
 
 export function useConversationHistoryData(): ConversationHistoryData {
-  const [isOpen, setIsOpen] = useSidebarState();
+  const [isOpen, setIsOpen, toggleSidebar] = useSidebarState();
   const searchParams = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get('threadId');
@@ -53,10 +53,6 @@ export function useConversationHistoryData(): ConversationHistoryData {
       setIsCreating(false);
     }
   }, [createNewThread, handleThreadClick]);
-
-  const toggleSidebar = useCallback(() => {
-    setIsOpen((prev: boolean) => !prev);
-  }, [setIsOpen]);
 
   return {
     isOpen,

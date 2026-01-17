@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState, memo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -33,24 +35,7 @@ import {
 import { AlertDialog } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
-
-export const SIDEBAR_STORAGE_KEY = 'bernard-chat-sidebar-open';
-
-export function useSidebarState() {
-  const [isOpen, setIsOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-      return saved !== null ? JSON.parse(saved) : true;
-    }
-    return true;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(isOpen));
-  }, [isOpen]);
-
-  return [isOpen, setIsOpen] as const;
-}
+import { useSidebarState } from './SidebarProvider';
 
 function ThreadItemInner({
   thread,
@@ -300,7 +285,7 @@ function ThreadHistoryLoading() {
 }
 
 export function ConversationHistory() {
-  const [isOpen, setIsOpen] = useSidebarState();
+  const [isOpen, setIsOpen, toggleSidebar] = useSidebarState();
   const searchParams = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get('threadId');
@@ -329,8 +314,6 @@ export function ConversationHistory() {
     }
   };
 
-  const toggleSidebar = () => setIsOpen((prev: boolean) => !prev);
-
   return (
     <>
       <motion.div
@@ -345,12 +328,9 @@ export function ConversationHistory() {
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
-        <div data-testid="sidebar-header" className="flex items-center justify-between w-full p-4 h-16 border-b shrink-0">
+        <div data-testid="sidebar-header" className="flex items-center justify-between w-full p-4 h-14 border-b shrink-0">
           <div className="flex items-center gap-2">
-            <Button data-testid="sidebar-toggle-button" variant="ghost" size="icon" onClick={toggleSidebar}>
-              <PanelRightOpen className="size-5" />
-            </Button>
-            <h1 data-testid="sidebar-title" className="font-bold text-lg tracking-tight">History</h1>
+            <h1 data-testid="sidebar-title" className="font-bold text-lg tracking-tight">Chats</h1>
           </div>
           <Button data-testid="new-chat-button" variant="ghost" size="icon" onClick={handleNewChat} disabled={isCreating}>
             <Plus className={cn("size-5", isCreating && "animate-spin")} />

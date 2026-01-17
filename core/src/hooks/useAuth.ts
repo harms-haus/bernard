@@ -11,7 +11,7 @@ type AuthContextType = {
   githubLogin: () => Promise<void>;
   googleLogin: () => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName?: string }) => Promise<User>;
+  updateProfile: (data: { displayName?: string; email?: string }) => Promise<User>;
   clearError: () => void;
 };
 
@@ -38,6 +38,7 @@ function mapBetterAuthUser(betterAuthUser: {
   return {
     id: betterAuthUser.id,
     displayName: betterAuthUser.name || betterAuthUser.email?.split('@')[0] || 'User',
+    email: betterAuthUser.email ?? '',
     isAdmin: betterAuthUser.role === 'admin',
     status: 'active',
     createdAt: betterAuthUser.createdAt?.toISOString() || new Date().toISOString(),
@@ -141,15 +142,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await authClient.signOut();
   }, []);
 
-  const updateProfile = useCallback(async (data: { displayName?: string }) => {
-    // Better Auth's updateUser API requires user ID
-    // For now, we'll skip the update and return the current user
-    // The session will be refreshed automatically after a page refresh
+  const updateProfile = useCallback(async (data: { displayName?: string; email?: string }) => {
     const currentUser = session?.user;
     if (!currentUser) {
       throw new Error('No user logged in');
     }
-    
+
+    type UpdateUserResponse = { data?: unknown; error?: { message: string } } | { status: boolean };
+    const response = await authClient.updateUser({
+      name: data.displayName,
+    }) as UpdateUserResponse;
+
+    if ('error' in response && response.error) {
+      throw new Error(response.error.message || 'Failed to update profile');
+    }
+
     return mapBetterAuthUser(currentUser)!;
   }, [session]);
 

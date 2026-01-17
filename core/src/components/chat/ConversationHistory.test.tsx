@@ -121,7 +121,8 @@ vi.mock('./TypedText', () => ({
 // ============================================
 // IMPORTS AFTER MOCKS
 // ============================================
-import { ConversationHistory, SIDEBAR_STORAGE_KEY } from './ConversationHistory';
+import { ConversationHistory } from './ConversationHistory';
+import { SIDEBAR_STORAGE_KEY } from './SidebarProvider';
 
 // ============================================
 // HELPERS
