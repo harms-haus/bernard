@@ -1,21 +1,14 @@
 "use client";
 
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
 import { User as UserIcon, ChevronDown } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 
 export function UserBadge() {
-  const { state, logout } = useAuth();
   const router = useRouter();
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      router.push('/bernard/login');
-    } catch (error) {
-      // Error is handled in the hook
-    }
+  const handleLogout = () => {
+    router.push('/auth/logout');
   };
 
   const handleProfile = () => {
@@ -26,9 +19,9 @@ export function UserBadge() {
     router.push('/bernard/keys');
   };
 
-  if (!state.user) {
-    return null;
-  }
+  const userName = typeof window !== 'undefined'
+    ? localStorage.getItem('bernard_user_displayName') || 'User'
+    : 'User';
 
   return (
     <DropdownMenu.Root>
@@ -38,7 +31,7 @@ export function UserBadge() {
             <UserIcon className="mr-3 h-5 w-5" />
             <div className="flex-1">
               <div className="text-sm font-medium text-foreground">
-                {state.user.displayName || 'User'}
+                {userName}
               </div>
             </div>
             <div className="flex items-center space-x-1">

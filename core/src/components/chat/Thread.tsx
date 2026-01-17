@@ -230,7 +230,7 @@ export function Thread() {
                 <Avatar className="h-12 w-12">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xl">B</AvatarFallback>
                 </Avatar>
-                <h1 className="text-3xl font-bold tracking-tight text-center">
+                <h1 className="text-3xl font-bold tracking-tight text-center text-foreground">
                   How can I help you today?
                 </h1>
               </div>

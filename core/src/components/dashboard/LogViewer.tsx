@@ -55,8 +55,8 @@ export function LogViewer({
   });
 
   return (
-    <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+    <div className="rounded-lg border border-border bg-slate-950 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-900/50 border-b border-border">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-200">{service}</span>
           <div className="flex items-center gap-1">

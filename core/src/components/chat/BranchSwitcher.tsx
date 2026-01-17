@@ -23,7 +23,7 @@ export function BranchSwitcher({
     <div className={className}>
       <div className="flex items-center justify-center w-full mt-2 mb-1 group">
         <div className="flex items-center justify-center w-full gap-6">
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-foreground/20 to-foreground/20 transition-all duration-300" />
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-foreground/40 to-foreground/40 transition-all duration-300" />
 
           <div className="flex items-center gap-2">
             <Button
@@ -37,10 +37,10 @@ export function BranchSwitcher({
               }}
               disabled={isLoading || index === 0}
             >
-              <ChevronLeft className="h-4 w-4 text-foreground/60 group-hover:text-foreground transition-colors duration-300" />
+              <ChevronLeft className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors duration-300" />
             </Button>
 
-            <span className="text-sm min-w-[3.5rem] text-center text-foreground/60 group-hover:text-foreground transition-colors duration-300 font-medium">
+            <span className="text-sm min-w-[3.5rem] text-center text-foreground/70 group-hover:text-foreground transition-colors duration-300 font-medium">
               {index + 1} / {branchOptions.length}
             </span>
 
@@ -55,11 +55,11 @@ export function BranchSwitcher({
               }}
               disabled={isLoading || index === branchOptions.length - 1}
             >
-              <ChevronRight className="h-4 w-4 text-foreground/60 group-hover:text-foreground transition-colors duration-300" />
+              <ChevronRight className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors duration-300" />
             </Button>
           </div>
 
-          <div className="h-px flex-1 bg-gradient-to-r from-foreground/20 via-foreground/20 to-transparent transition-all duration-300" />
+          <div className="h-px flex-1 bg-gradient-to-r from-foreground/40 via-foreground/40 to-transparent transition-all duration-300" />
         </div>
       </div>
     </div>

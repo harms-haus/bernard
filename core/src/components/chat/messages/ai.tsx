@@ -24,7 +24,7 @@ function ContentCopyable({ content, disabled, side = 'top' }: { content: string;
       <AnimatePresence mode="wait" initial={false}>
         {copied ? (
           <motion.div key="check" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
-            <Check className="w-4 h-4 text-green-500" />
+            <Check className="w-4 h-4 text-green-500 dark:text-green-400" />
           </motion.div>
         ) : (
           <motion.div key="copy" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>

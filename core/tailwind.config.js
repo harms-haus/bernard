@@ -24,10 +24,24 @@ module.exports = {
         accent: 'var(--accent)',
         'accent-foreground': 'var(--accent-foreground)',
         destructive: 'var(--destructive)',
-        'destructive-foreground': 'var(--destructive-foreground)',
         border: 'var(--border)',
         input: 'var(--input)',
         ring: 'var(--ring)',
+        // Chart colors
+        'chart-1': 'var(--chart-1)',
+        'chart-2': 'var(--chart-2)',
+        'chart-3': 'var(--chart-3)',
+        'chart-4': 'var(--chart-4)',
+        'chart-5': 'var(--chart-5)',
+        // Sidebar colors
+        sidebar: 'var(--sidebar)',
+        'sidebar-foreground': 'var(--sidebar-foreground)',
+        'sidebar-primary': 'var(--sidebar-primary)',
+        'sidebar-primary-foreground': 'var(--sidebar-primary-foreground)',
+        'sidebar-accent': 'var(--sidebar-accent)',
+        'sidebar-accent-foreground': 'var(--sidebar-accent-foreground)',
+        'sidebar-border': 'var(--sidebar-border)',
+        'sidebar-ring': 'var(--sidebar-ring)',
         // Status colors
         status: {
           online: {
@@ -45,10 +59,10 @@ module.exports = {
         },
         // Surface colors - adapts to dark/light mode via CSS variables
         surface: {
-          DEFAULT: '#1e293b',   // slate-800 (dark mode default)
+          DEFAULT: '#40444aff',   // slate-800 (dark mode default)
           light: '#ffffff',     // white (light mode default)
           hover: {
-            DEFAULT: '#334155', // slate-700 (dark mode)
+            DEFAULT: '#5d6269ff', // slate-700 (dark mode)
             light: '#f1f5f9',   // slate-100 (light mode)
           },
         },

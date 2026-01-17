@@ -268,14 +268,14 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">System Status</h1>
-        <p className="text-gray-600 dark:text-gray-300">Live monitor of Bernard microservices</p>
+        <h1 className="text-3xl font-bold text-foreground">System Status</h1>
+        <p className="text-muted-foreground">Live monitor of Bernard microservices</p>
       </div>
 
       <div className="flex flex-col gap-2">
         {/* System Overview Row */}
         {status && (
-          <div className="flex flex-col border rounded-lg bg-card text-card-foreground shadow-sm overflow-hidden">
+          <div className="flex flex-col border border-border rounded-lg bg-card text-card-foreground shadow-sm overflow-hidden">
             <div className="flex items-center p-4 gap-4">
               <div className="flex-shrink-0">
                 <Activity className="w-6 h-6 text-primary" />
@@ -304,7 +304,7 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
           const isExpanded = expandedLogs.has(service.name);
 
           return (
-            <div key={service.name} className="flex flex-col border rounded-lg bg-card text-card-foreground shadow-sm overflow-hidden">
+            <div key={service.name} className="flex flex-col border border-border rounded-lg bg-card text-card-foreground shadow-sm overflow-hidden">
               <div className="flex items-center p-4 gap-4">
                 <div className="flex-shrink-0">
                   <Icon className="w-6 h-6 text-muted-foreground" />
@@ -320,7 +320,7 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
                   <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[service.status]}`} />
                   <span className="text-xs font-medium capitalize">{service.status}</span>
                 </div>
-                
+
                 <div className="w-8 flex-shrink-0">
                   {isAdmin && (
                     <DropdownMenu>
@@ -330,14 +330,14 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => service.status === 'online' ? restartService(service.name) : startService(service.name)}
                           disabled={restartingService === service.name}
                         >
                           <Play className="mr-2 h-4 w-4" />
                           {service.status === 'online' ? 'Restart Service' : 'Start Service'}
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => stopService(service.name)}
                           disabled={restartingService === service.name || service.status === 'offline'}
                         >
@@ -395,7 +395,7 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
             </CardContent>
           </Card>
         )}
-        
+
         {!isAdmin && (
           <div className="p-4 text-center text-sm text-muted-foreground italic">
             Service details and actions are only available to administrators.
