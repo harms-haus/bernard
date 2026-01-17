@@ -1,56 +1,49 @@
-import { useState } from 'react'
 import {
   Card,
   CardHeader,
   CardTitle,
-  CardContent,
   CardDescription,
-} from '@/components/ui/card'
-import { AuthProvider } from '@/hooks/useAuth';
-import { DarkModeProvider } from '@/hooks/useDarkMode';
+  CardContent,
+} from '@/components/ui/card';
 
-function HomeContent() {
-  const [count, setCount] = useState(0)
-
+export default function Home() {
   return (
     <div className="px-4 py-6 sm:px-0">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome to Bernard</h1>
+          <p className="text-gray-600 dark:text-gray-300 mt-1">
+            Your AI agent platform for home automation and intelligent assistance
+          </p>
+        </div>
+
         <Card>
           <CardHeader>
-            <CardTitle>Welcome to Bernard UI</CardTitle>
+            <CardTitle>Bernard AI Platform</CardTitle>
             <CardDescription>
-              A React + Vite + Radix-UI project with Tailwind CSS
+              A production-grade AI agent platform that combines LangGraph-powered reasoning with integrated speech services
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-gray-600 dark:text-gray-300">
-              This is a basic setup with routing and styling. You can now build
-              your application on top of this foundation.
-            </p>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setCount(count + 1)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Count: {count}
-              </button>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                Click the button to see state management in action
-              </span>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-secondary/50 rounded-lg p-4">
+                <h3 className="font-semibold text-foreground mb-2">Quick Actions</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Start a conversation</li>
+                  <li>• View task history</li>
+                  <li>• Check system status</li>
+                </ul>
+              </div>
+              <div className="bg-secondary/50 rounded-lg p-4">
+                <h3 className="font-semibold text-foreground mb-2">Recent Activity</h3>
+                <p className="text-sm text-muted-foreground">
+                  No recent conversations. Start chatting to see activity here.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
-  )
-}
-
-export default function Home() {
-  return (
-    <AuthProvider>
-      <DarkModeProvider>
-        <HomeContent />
-      </DarkModeProvider>
-    </AuthProvider>
   );
 }

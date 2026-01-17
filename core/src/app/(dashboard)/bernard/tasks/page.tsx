@@ -61,7 +61,6 @@ function TasksContent() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hook calls - must be at the top level of the component function
   const confirmDialog = useConfirmDialog();
 
   const fetchTasks = async () => {
@@ -102,7 +101,6 @@ function TasksContent() {
     return `${minutes}m ${seconds % 60}s`;
   };
 
-
   const handleCancelTask = async (taskId: string) => {
     confirmDialog({
       title: 'Cancel this task?',
@@ -125,7 +123,6 @@ function TasksContent() {
             throw new Error('Failed to cancel task');
           }
 
-          // Refresh the tasks list
           await fetchTasks();
         } catch (error) {
           console.error('Error cancelling task:', error);
@@ -153,7 +150,6 @@ function TasksContent() {
             throw new Error('Failed to delete task');
           }
 
-          // Refresh the tasks list
           await fetchTasks();
         } catch (error) {
           console.error('Error deleting task:', error);
@@ -163,7 +159,6 @@ function TasksContent() {
     });
   };
 
-  // Animated status icon component
   const AnimatedStatusIcon = ({ status }: { status: Task['status'] }) => {
     switch (status) {
       case 'queued':
@@ -187,7 +182,7 @@ function TasksContent() {
       case 'cancelled':
         return <AlertCircle className="w-4 h-4 text-yellow-500" aria-label="Cancelled" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-500" aria-label="Unknown status" />;
+        return <Clock className="w-4 h-4 text-muted-foreground" aria-label="Unknown" />;
     }
   };
 
@@ -196,10 +191,10 @@ function TasksContent() {
       <div className="px-4 py-6 sm:px-0">
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-48"></div>
+            <div className="h-8 bg-muted rounded w-48"></div>
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-24 bg-gray-200 rounded"></div>
+                <div key={i} className="h-24 bg-muted rounded"></div>
               ))}
             </div>
           </div>
@@ -214,7 +209,7 @@ function TasksContent() {
         <div className="max-w-6xl mx-auto">
           <Card>
             <CardContent className="p-6">
-              <div className="text-center text-red-600">
+              <div className="text-center text-destructive">
                 Error loading tasks: {error}
               </div>
               <div className="text-center mt-4">
@@ -229,11 +224,11 @@ function TasksContent() {
 
   return (
     <div className="px-4 py-6 sm:px-0">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Tasks</h1>
-            <p className="text-gray-600 dark:text-gray-300">Monitor background task execution and status</p>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tasks</h1>
+            <p className="text-gray-600 dark:text-gray-300 mt-1">Monitor background task execution and status</p>
           </div>
           <div className="flex items-center space-x-4">
             <Button
@@ -262,19 +257,19 @@ function TasksContent() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12 py-3 px-0 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
-                    <TableHead className="text-left py-3 px-0 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Task</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Tool</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Created</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Runtime</TableHead>
-                    <TableHead className="text-left py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Stats</TableHead>
-                    <TableHead className="text-center py-3 px-0 font-semibold text-gray-600 dark:text-gray-300"></TableHead>
+                    <TableHead className="w-12 py-3 px-0"></TableHead>
+                    <TableHead className="text-left py-3 px-0"></TableHead>
+                    <TableHead className="text-left py-3 px-4">Task</TableHead>
+                    <TableHead className="text-left py-3 px-4">Tool</TableHead>
+                    <TableHead className="text-left py-3 px-4">Created</TableHead>
+                    <TableHead className="text-left py-3 px-4">Runtime</TableHead>
+                    <TableHead className="text-left py-3 px-4">Stats</TableHead>
+                    <TableHead className="text-center py-3 px-0"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {tasks.map((task) => (
-                    <TableRow key={task.id} className="border-b border-gray-100 dark:border-gray-800">
+                    <TableRow key={task.id} className="border-b border-border transition-colors hover:bg-muted/50">
                       <TableCell className="py-3 px-0">
                         <Link href={`/bernard/tasks/${task.id}`}>
                           <Button variant="ghost" size="sm">
@@ -289,37 +284,37 @@ function TasksContent() {
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-col">
-                          <span className="font-medium text-gray-900 dark:text-white">{task.name}</span>
+                          <span className="font-medium text-foreground">{task.name}</span>
                           {task.archived && (
                             <Badge variant="outline" className="w-fit mt-1">Archived</Badge>
                           )}
                           {task.errorMessage && (
-                            <span className="text-sm text-red-600 mt-1 truncate max-w-xs">
+                            <span className="text-sm text-destructive mt-1 truncate max-w-xs">
                               Error: {task.errorMessage}
                             </span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{task.toolName}</span>
+                        <span className="text-sm text-muted-foreground">{task.toolName}</span>
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-col">
-                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                          <span className="text-sm text-muted-foreground">
                             {new Date(task.createdAt).toLocaleDateString()}
                           </span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                          <span className="text-xs text-muted-foreground/70">
                             {new Date(task.createdAt).toLocaleTimeString()}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <span className="text-sm text-gray-600 dark:text-gray-300">
+                        <span className="text-sm text-muted-foreground">
                           {formatDuration(task.runtimeMs)}
                         </span>
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <div className="flex flex-col text-xs text-gray-500 dark:text-gray-400">
+                        <div className="flex flex-col text-xs text-muted-foreground/70">
                           <span>{task.toolCallCount} calls</span>
                           <span>{task.messageCount} msgs</span>
                           <span>{task.tokensIn + task.tokensOut} tokens</span>
@@ -341,7 +336,7 @@ function TasksContent() {
                             {(task.status === 'completed' || task.status === 'errored' || task.status === 'uncompleted' || task.status === 'cancelled' || task.archived) && (
                               <DropdownMenuItem
                                 onClick={() => handleDeleteTask(task.id)}
-                                className="text-red-600 focus:text-red-600"
+                                className="text-destructive focus:text-destructive"
                               >
                                 Delete
                               </DropdownMenuItem>
@@ -354,7 +349,7 @@ function TasksContent() {
 
                   {tasks.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                      <TableCell colSpan={8} className="py-8 px-4 text-center text-muted-foreground">
                         No tasks found. Tasks will appear here when you use tools that create background operations.
                       </TableCell>
                     </TableRow>
