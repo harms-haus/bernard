@@ -12,11 +12,11 @@ export function UserBadge() {
   };
 
   const handleProfile = () => {
-    router.push('/bernard/profile');
+    router.push('/bernard/user/profile');
   };
 
-  const handleKeys = () => {
-    router.push('/bernard/keys');
+  const handleTokens = () => {
+    router.push('/bernard/user/tokens');
   };
 
   const userName = typeof window !== 'undefined'
@@ -54,10 +54,10 @@ export function UserBadge() {
             Profile
           </DropdownMenu.Item>
           <DropdownMenu.Item
-            onSelect={handleKeys}
+            onSelect={handleTokens}
             className="px-4 py-2 text-sm text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer outline-none"
           >
-            Keys
+            Tokens
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 border-t border-border" />
           <DropdownMenu.Item
