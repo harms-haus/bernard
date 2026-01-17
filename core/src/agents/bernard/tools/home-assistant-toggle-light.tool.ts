@@ -14,10 +14,81 @@ import {
   getExampleColorNames,
   verifyHomeAssistantConfigured
 } from "@/lib/home-assistant";
-import { ToolFactory } from "./types";
+import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "toggle_home_assistant_light";
+
+/**
+ * Create a mock toggle light tool for guests.
+ * Returns simulated success responses instead of actual HA calls.
+ */
+function createMockToggleLightTool() {
+  return tool(
+    async ({ entity, on, brightness_pct, color }: {
+      entity: string;
+      on?: boolean | null;
+      brightness_pct?: number | null;
+      color?: string | number | { r: number; g: number; b: number } | null;
+    }) => {
+      if (!entity || typeof entity !== 'string') {
+        return "Error: entity parameter is required and must be a string";
+      }
+
+      const entityParts = entity.split('.');
+      if (entityParts.length !== 2) {
+        return `Error: Invalid entity_id format: ${entity}. Entity IDs must be in format 'domain.entity_name'`;
+      }
+
+      const [domain] = entityParts;
+      if (domain !== 'light') {
+        return `Error: Entity ${entity} is not a light. Only light entities are supported by this tool.`;
+      }
+
+      // Build mock response
+      let action = 'toggled';
+      if (on === true) action = 'turned on';
+      else if (on === false) action = 'turned off';
+
+      let response = `[Demo] Light ${entity} ${action}`;
+      
+      if (brightness_pct !== undefined && brightness_pct !== null) {
+        response += ` to ${brightness_pct}% brightness`;
+      }
+      
+      if (color !== undefined && color !== null) {
+        response += ` with color: ${JSON.stringify(color)}`;
+      }
+
+      return response + " (demo mode for guests - no actual device control)";
+    },
+    {
+      name: TOOL_NAME,
+      description: "Control Home Assistant lights (demo mode for guests - no actual device control)",
+      schema: z.object({
+        entity: z.string().describe("The light entity_id to control"),
+        on: z.union([z.boolean(), z.string()]).nullable().optional().transform((val): boolean | null => {
+          if (val === null || val === undefined) return null;
+          if (typeof val === 'boolean') return val;
+          const normalized = val.toLowerCase();
+          if (normalized === 'true' || normalized === 'on') return true;
+          if (normalized === 'false' || normalized === 'off') return false;
+          throw new Error(`Invalid boolean value: ${val}`);
+        }).describe("true/on=turn on, false/off=turn off, null=toggle"),
+        brightness_pct: z.number().nullable().optional().describe("Set brightness as percentage (0-100)"),
+        color: z.union([
+          z.string().describe("Color name"),
+          z.number().describe("Color temperature in Kelvin"),
+          z.object({
+            r: z.number().min(0).max(255),
+            g: z.number().min(0).max(255),
+            b: z.number().min(0).max(255)
+          }).describe("RGB color values"),
+        ]).nullable().optional().describe("Color to set")
+      })
+    }
+  );
+}
 
 /**
  * Dependencies for the toggle light tool
@@ -273,7 +344,13 @@ async function executeServiceCall(
 /**
  * The toggle light tool instance factory
  */
-export const toggleLightToolFactory: ToolFactory = async () => {
+export const toggleLightToolFactory: ToolFactory = async (context?: ToolContext) => {
+  // Return mock tool for guests
+  if (context?.userRole === 'guest') {
+    const mockTool = createMockToggleLightTool();
+    return { ok: true, tool: mockTool };
+  }
+
   const isValid = await verifyHomeAssistantConfigured();
   if (!isValid.ok) {
     return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };

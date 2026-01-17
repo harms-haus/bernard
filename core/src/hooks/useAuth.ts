@@ -39,7 +39,7 @@ function mapBetterAuthUser(betterAuthUser: {
     id: betterAuthUser.id,
     displayName: betterAuthUser.name || betterAuthUser.email?.split('@')[0] || 'User',
     email: betterAuthUser.email ?? '',
-    isAdmin: betterAuthUser.role === 'admin',
+    role: (betterAuthUser.role as User['role']) || 'user',
     status: 'active',
     createdAt: betterAuthUser.createdAt?.toISOString() || new Date().toISOString(),
     updatedAt: betterAuthUser.updatedAt?.toISOString() || new Date().toISOString(),

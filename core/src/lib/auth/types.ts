@@ -1,7 +1,9 @@
+export type UserRole = "guest" | "user" | "admin";
+
 export type UserRecord = {
   id: string;
   displayName: string;
-  isAdmin: boolean;
+  role: UserRole;
   status: "active" | "disabled" | "deleted";
   createdAt: string;
   updatedAt: string;

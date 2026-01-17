@@ -327,7 +327,7 @@ export function useChatSidebarConfig() {
 
         // Footer
         const footerItems: React.ReactNode[] = [];
-        if (state.user?.isAdmin) {
+        if (state.user?.role === 'admin') {
             footerItems.push(
                 <Link
                     key="admin-link"
@@ -353,7 +353,7 @@ export function useChatSidebarConfig() {
         threadId,
         handleNewChat,
         isCreating,
-        state.user?.isAdmin,
+        state.user?.role,
         handleThreadClick
     ]);
 }

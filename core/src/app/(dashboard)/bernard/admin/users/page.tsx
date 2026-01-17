@@ -28,7 +28,7 @@ import {
   Users as UsersIcon
 } from 'lucide-react';
 import { adminApiClient } from '@/services/adminApi';
-import type { User, UserStatus } from '@/types/auth';
+import type { User, UserStatus, UserRole } from '@/types/auth';
 import { useToast } from '@/components/ToastManager';
 import { useConfirmDialog } from '@/components/DialogManager';
 import { AdminLayout } from '@/components/AdminLayout';
@@ -36,7 +36,7 @@ import { AdminLayout } from '@/components/AdminLayout';
 interface UserForm {
   id: string;
   displayName: string;
-  isAdmin: boolean;
+  role: UserRole;
 }
 import { PageHeaderConfig } from '@/components/dynamic-header/configs';
 
@@ -49,7 +49,7 @@ function UsersContent() {
   const [userForm, setUserForm] = useState<UserForm>({
     id: '',
     displayName: '',
-    isAdmin: false
+    role: 'user'
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [allowSignups, setAllowSignups] = useState(true);
@@ -115,7 +115,7 @@ function UsersContent() {
       if (editingUser) {
         const updatedUser = await adminApiClient.updateUser(editingUser.id, {
           displayName: trimmedName,
-          isAdmin: userForm.isAdmin
+          role: userForm.role
         });
         setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
         toast.success('User updated successfully!');
@@ -123,7 +123,7 @@ function UsersContent() {
         const newUser = await adminApiClient.createUser({
           id: userForm.id.trim(),
           displayName: trimmedName,
-          isAdmin: userForm.isAdmin
+          role: userForm.role
         });
         setUsers([...users, newUser]);
         toast.success('User created successfully!');
@@ -131,7 +131,7 @@ function UsersContent() {
 
       setShowUserForm(false);
       setEditingUser(null);
-      setUserForm({ id: '', displayName: '', isAdmin: false });
+      setUserForm({ id: '', displayName: '', role: 'user' });
     } catch (error: any) {
       console.error('Failed to save user:', error);
       const errorMessage = error?.details || error?.message || 'Failed to save user';
@@ -146,7 +146,7 @@ function UsersContent() {
     setUserForm({
       id: user.id,
       displayName: user.displayName,
-      isAdmin: user.isAdmin
+      role: user.role
     });
     setShowUserForm(true);
   };
@@ -161,8 +161,8 @@ function UsersContent() {
       onConfirm: async () => {
         setDeletingId(userId);
         try {
-          const updatedUser = await adminApiClient.deleteUser(userId);
-          setUsers(users.map(u => u.id === userId ? updatedUser : u));
+          await adminApiClient.deleteUser(userId);
+          setUsers(users.filter(u => u.id !== userId));
           toast.success('User deleted successfully!');
         } catch (error) {
           console.error('Failed to delete user:', error);
@@ -221,7 +221,7 @@ function UsersContent() {
       <div className="flex items-center justify-end">
         <Button onClick={() => {
           setEditingUser(null);
-          setUserForm({ id: '', displayName: '', isAdmin: false });
+          setUserForm({ id: '', displayName: '', role: 'user' });
           setShowUserForm(true);
         }}>
           <Plus className="mr-2 h-4 w-4" />
@@ -300,8 +300,9 @@ function UsersContent() {
                       </div>
                     </TableCell>
                     <TableCell className="py-3 px-4">
-                      <Badge variant={user.isAdmin ? "secondary" : "outline"}>
-                        {user.isAdmin ? 'Administrator' : 'User'}
+                      <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                        {user.role === "admin" ? "Administrator" :
+                         user.role === "guest" ? "Guest" : "User"}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3 px-4">
@@ -429,25 +430,28 @@ function UsersContent() {
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="isAdmin"
-                  checked={userForm.isAdmin}
-                  onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })}
-                  className="h-4 w-4 rounded border-border bg-input text-primary ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-                <Label htmlFor="isAdmin" className="flex items-center space-x-2">
-                  <Shield className="h-4 w-4" />
-                  <span>Grant Administrator Privileges</span>
-                </Label>
+              <div className="space-y-2">
+                <Label htmlFor="role">Role</Label>
+                <select
+                  id="role"
+                  value={userForm.role}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value as UserRole })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="guest">Guest</option>
+                  <option value="user">User</option>
+                  <option value="admin">Administrator</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Guests have limited access to tools and features
+                </p>
               </div>
 
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => {
                   setShowUserForm(false);
                   setEditingUser(null);
-                  setUserForm({ id: '', displayName: '', isAdmin: false });
+                  setUserForm({ id: '', displayName: '', role: 'user' });
                 }}>
                   Cancel
                 </Button>

@@ -1,4 +1,4 @@
-import { User, UserStatus } from '@/types/auth';
+import { User, UserStatus, UserRole } from '@/types/auth';
 
 export interface ProviderType {
   id: string;
@@ -302,12 +302,12 @@ export interface Token {
 export interface CreateUserRequest {
   id: string;
   displayName: string;
-  isAdmin: boolean;
+  role: UserRole;
 }
 
 export interface UpdateUserRequest {
   displayName?: string;
-  isAdmin?: boolean;
+  role?: UserRole;
   status?: UserStatus;
 }
 

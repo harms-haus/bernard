@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getRedis } from '@/lib/infra/redis';
-import type { UserRecord } from '@/lib/auth/types';
+import type { UserRecord, UserRole } from '@/lib/auth/types';
 
 // BetterAuth stores users at:
 // - ba:s:user:ids (set of user IDs)
@@ -29,7 +29,7 @@ async function getBetterAuthUsers(): Promise<UserRecord[]> {
       const user: UserRecord = {
         id: data.id || id,
         displayName: data.name || data.email || id,
-        isAdmin: data.role === 'admin',
+        role: (data.role as UserRole) || 'user',
         status: data.emailVerified ? 'active' : 'disabled',
         createdAt: data.createdAt || new Date().toISOString(),
         updatedAt: data.updatedAt || data.createdAt || new Date().toISOString(),
@@ -68,11 +68,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const body = await request.json() as { id: string; displayName: string; isAdmin: boolean };
-    const { id, displayName, isAdmin } = body;
+    const body = await request.json() as { id: string; displayName: string; role: UserRole };
+    const { id, displayName, role } = body;
 
-    if (!id || !displayName || typeof isAdmin !== 'boolean') {
-      return NextResponse.json({ error: 'id, displayName, and isAdmin are required' }, { status: 400 });
+    if (!id || !displayName || !role) {
+      return NextResponse.json({ error: 'id, displayName, and role are required' }, { status: 400 });
     }
 
     const redis = getRedis();
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       id,
       name: displayName,
       email: id,
-      role: isAdmin ? 'admin' : 'user',
+      role: role,
       emailVerified: '',
       createdAt: now,
       updatedAt: now,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     const user: UserRecord = {
       id,
       displayName,
-      isAdmin,
+      role,
       status: 'active',
       createdAt: now,
       updatedAt: now,

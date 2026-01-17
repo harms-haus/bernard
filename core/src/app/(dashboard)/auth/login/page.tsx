@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/lib/auth/auth-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -10,10 +10,14 @@ export default function LoginPage() {
     const [isSignUp, setIsSignUp] = useState(false);
     const [error, setError] = useState("");
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
+
+        // Get redirectTo from search params, default to /bernard/chat
+        const redirectTo = searchParams.get("redirectTo") || "/bernard/chat";
 
         if (isSignUp) {
             const { error } = await authClient.signUp.email({
@@ -24,7 +28,7 @@ export default function LoginPage() {
             if (error) {
                 setError(error.message || "Failed to sign up");
             } else {
-                router.push("/bernard/user");
+                router.push(redirectTo);
             }
         } else {
             const { error } = await authClient.signIn.email({
@@ -34,7 +38,7 @@ export default function LoginPage() {
             if (error) {
                 setError(error.message || "Failed to sign in");
             } else {
-                router.push("/bernard/user");
+                router.push(redirectTo);
             }
         }
     };

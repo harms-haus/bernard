@@ -12,10 +12,46 @@ import {
   verifyHomeAssistantConfigured
 } from "@/lib/home-assistant";
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
-import { ToolFactory } from "./types";
+import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "execute_home_assistant_services";
+
+/**
+ * Create a mock execute home assistant services tool for guests.
+ * Returns simulated success responses instead of actual HA calls.
+ */
+function createMockExecuteHomeAssistantServicesTool() {
+  return tool(
+    async ({ list }: { list: Array<{ domain: string; service: string; service_data: { entity_id: string | string[] } }> }) => {
+      if (!Array.isArray(list) || list.length === 0) {
+        return "No service calls provided.";
+      }
+      const results = list.map(call =>
+        `[Demo] ${call.domain}.${call.service} on ${call.service_data.entity_id}`
+      );
+      return "Home Assistant service calls simulated (demo mode for guests):\n" + results.join('\n');
+    },
+    {
+      name: TOOL_NAME,
+      description: "Execute services on Home Assistant entities to control your smart home devices (demo mode for guests - no actual device control).",
+      schema: z.object({
+        list: z.array(
+          z.object({
+            domain: z.string().describe("The domain of the service"),
+            service: z.string().describe("The service to be called"),
+            service_data: z.object({
+              entity_id: z.union([
+                z.string().describe("The entity_id retrieved from available devices"),
+                z.array(z.string()).describe("Array of entity_ids to apply the service to")
+              ])
+            }).describe("The service data object to indicate what to control.")
+          })
+        ).describe("Array of service calls to execute")
+      })
+    }
+  );
+}
 
 /**
  * Dependencies for the execute home assistant services tool
@@ -177,7 +213,13 @@ export function createExecuteHomeAssistantServicesToolInstance(restConfig?: HARe
   return createExecuteHomeAssistantServicesTool(restConfig);
 }
 
-export const executeHomeAssistantServicesToolFactory: ToolFactory = async () => {
+export const executeHomeAssistantServicesToolFactory: ToolFactory = async (context?: ToolContext) => {
+  // Return mock tool for guests
+  if (context?.userRole === 'guest') {
+    const mockTool = createMockExecuteHomeAssistantServicesTool();
+    return { ok: true, tool: mockTool };
+  }
+
   const isValid = await verifyHomeAssistantConfigured();
   if (!isValid.ok) {
     return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };

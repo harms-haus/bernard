@@ -20,7 +20,7 @@ describe('auth types', () => {
       const user: UserRecord = {
         id: 'user-123',
         displayName: 'Test User',
-        isAdmin: false,
+        role: 'user',
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -33,7 +33,7 @@ describe('auth types', () => {
       const user: UserRecord = {
         id: 'user-123',
         displayName: 'Test User',
-        isAdmin: false,
+        role: 'user',
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -48,7 +48,7 @@ describe('auth types', () => {
       const activeUser: UserRecord = {
         id: '1',
         displayName: 'Active',
-        isAdmin: false,
+        role: 'user',
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -58,7 +58,7 @@ describe('auth types', () => {
       const disabledUser: UserRecord = {
         id: '2',
         displayName: 'Disabled',
-        isAdmin: false,
+        role: 'user',
         status: 'disabled',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -68,7 +68,7 @@ describe('auth types', () => {
       const deletedUser: UserRecord = {
         id: '3',
         displayName: 'Deleted',
-        isAdmin: false,
+        role: 'user',
         status: 'deleted',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -205,7 +205,7 @@ describe('auth types', () => {
         user: {
           id: 'user-123',
           displayName: 'Test User',
-          isAdmin: false,
+          role: 'user',
           status: 'active',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -221,7 +221,7 @@ describe('auth types', () => {
         user: {
           id: 'user-123',
           displayName: 'Test User',
-          isAdmin: true,
+          role: 'admin',
           status: 'active',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -229,7 +229,7 @@ describe('auth types', () => {
         sessionId: null,
       }
       expect(authUser.sessionId).toBeNull()
-      expect(authUser.user.isAdmin).toBe(true)
+      expect(authUser.user.role).toBe('admin')
     })
   })
 
@@ -241,7 +241,7 @@ describe('auth types', () => {
         user: {
           id: 'user-456',
           displayName: 'Test User',
-          isAdmin: false,
+          role: 'user',
           status: 'active',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

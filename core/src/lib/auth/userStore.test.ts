@@ -38,12 +38,12 @@ describe('UserStore', () => {
       const user = await store.create({
         id: 'user-123',
         displayName: 'Test User',
-        isAdmin: false,
+        role: 'user',
       })
 
       expect(user.id).toBe('user-123')
       expect(user.displayName).toBe('Test User')
-      expect(user.isAdmin).toBe(false)
+      expect(user.role).toBe('user')
       expect(user.status).toBe('active')
     })
 
@@ -51,7 +51,7 @@ describe('UserStore', () => {
       await store.create({
         id: 'user-123',
         displayName: 'Test User',
-        isAdmin: false,
+        role: 'user',
       })
 
       expect(mockRedis.multi).toHaveBeenCalled()
@@ -70,7 +70,7 @@ describe('UserStore', () => {
       mockRedis.hgetall.mockResolvedValueOnce({
         id: 'user-123',
         displayName: 'Test User',
-        isAdmin: 'false',
+        role: 'user',
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -105,12 +105,28 @@ describe('UserStore', () => {
   })
 
   describe('delete', () => {
-    it('should return null for non-existent user', async () => {
+    it('should return false for non-existent user', async () => {
       mockRedis.hgetall.mockResolvedValueOnce({})
 
       const result = await store.delete('non-existent')
 
-      expect(result).toBeNull()
+      expect(result).toBe(false)
+    })
+
+    it('should return true and delete user for existing user', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({
+        id: 'user-123',
+        displayName: 'Test User',
+        role: 'user',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      const result = await store.delete('user-123')
+
+      expect(result).toBe(true)
+      expect(mockRedis.multi).toHaveBeenCalled()
     })
   })
 

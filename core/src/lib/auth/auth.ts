@@ -2,12 +2,22 @@ import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { redisAdapter } from "./redis-adapter";
 import Redis from "ioredis";
+import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore';
+import { getRedis } from '@/lib/infra/redis';
 
 // Redis Instance (Ensure Redis is running locally or provide a connection string)
 const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 
-// Check if signups are allowed via environment variable
-const allowSignups = process.env.ALLOW_SIGNUPS !== "false";
+// Lazy initialization for settings store (respects Redis → .env priority)
+let settingsInitialized = false;
+
+async function getSettings() {
+  if (!settingsInitialized) {
+    await initializeSettingsStore(undefined, getRedis());
+    settingsInitialized = true;
+  }
+  return getSettingsStore();
+}
 
 export const auth = betterAuth({
     // To use Redis:
@@ -27,7 +37,9 @@ export const auth = betterAuth({
             create: {
                 before: async (user) => {
                     // Block new user registrations if signups are disabled
-                    if (!allowSignups) {
+                    const settings = await getSettings();
+                    const limits = await settings.getLimits();
+                    if (!limits.allowSignups) {
                         throw new Error("User registrations are disabled");
                     }
 
@@ -52,6 +64,14 @@ export const auth = betterAuth({
                             }
                         };
                     }
+
+                    // New users get "guest" role by default
+                    return {
+                        data: {
+                            ...user,
+                            role: "guest"
+                        }
+                    };
                 }
             }
         }

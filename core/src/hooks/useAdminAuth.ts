@@ -11,7 +11,7 @@ export function useAdminAuth() {
     // so we can derive admin status from the existing user state
     const isLoading = state.loading;
     const hasUser = !!state.user;
-    const userIsAdmin = !!state.user?.isAdmin;
+    const userIsAdmin = state.user?.role === 'admin';
 
     setIsAdminLoading(isLoading || (!hasUser && !state.error));
     setIsAdmin(userIsAdmin);

@@ -38,7 +38,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
   }
 
   // If admin access is required but user is not admin, redirect to home
-  if (requireAdmin && !state.user.isAdmin) {
+  if (requireAdmin && state.user.role !== 'admin') {
     router.replace('/');
     return null;
   }

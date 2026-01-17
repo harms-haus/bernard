@@ -1,5 +1,5 @@
 import type { Redis } from "ioredis";
-import { UserRecord } from "./types";
+import { UserRecord, UserRole } from "./types";
 import { getRedis } from "@/lib/infra/redis";
 
 export type UserStatus = "active" | "disabled" | "deleted";
@@ -41,12 +41,12 @@ export class UserStore {
     if (!id || !displayName || !createdAt) return null;
     const updatedAt = record["updatedAt"] ?? createdAt;
     const status = (record["status"] as UserRecord["status"]) ?? "active";
-    const isAdmin = record["isAdmin"] === "true";
+    const role = (record["role"] as UserRole) ?? "user";
     
     const user: UserRecord = {
       id,
       displayName,
-      isAdmin,
+      role,
       status,
       createdAt,
       updatedAt
@@ -92,10 +92,11 @@ export class UserStore {
     }
 
     const isFirstUserAdmin = (await this.userCount()) === 0;
+    const role: UserRole = isFirstUserAdmin ? "admin" : "guest";
     const record: UserRecord = {
       id,
       displayName,
-      isAdmin: isFirstUserAdmin,
+      role,
       status: "active",
       createdAt: now,
       updatedAt: now,
@@ -108,7 +109,7 @@ export class UserStore {
       .hset(key, {
         id: record.id,
         displayName: record.displayName,
-        isAdmin: String(record.isAdmin),
+        role: record.role,
         status: record.status,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -121,7 +122,7 @@ export class UserStore {
     return record;
   }
 
-  async create(user: { id: string; displayName: string; isAdmin: boolean }): Promise<UserRecord> {
+  async create(user: { id: string; displayName: string; role: UserRole }): Promise<UserRecord> {
     const key = this.userKey(user.id);
     const existing = await this.redis.hgetall(key);
     if (existing && existing["id"]) {
@@ -131,7 +132,7 @@ export class UserStore {
     const record: UserRecord = {
       id: user.id,
       displayName: user.displayName,
-      isAdmin: user.isAdmin,
+      role: user.role,
       status: "active",
       createdAt: now,
       updatedAt: now
@@ -142,7 +143,7 @@ export class UserStore {
       .hset(key, {
         id: record.id,
         displayName: record.displayName,
-        isAdmin: String(record.isAdmin),
+        role: record.role,
         status: record.status,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt
@@ -165,14 +166,14 @@ export class UserStore {
     return users.filter((u: UserRecord | null): u is UserRecord => u !== null);
   }
 
-  async update(id: string, updates: { displayName?: string; isAdmin?: boolean; status?: UserStatus }): Promise<UserRecord | null> {
+  async update(id: string, updates: { displayName?: string; role?: UserRole; status?: UserStatus }): Promise<UserRecord | null> {
     const existing = await this.redis.hgetall(this.userKey(id));
     if (!existing || !existing["id"]) return null;
     if (existing["status"] === "deleted") return null;
     
     const next: Record<string, string> = { updatedAt: new Date().toISOString() };
     if (updates.displayName) next["displayName"] = updates.displayName;
-    if (typeof updates.isAdmin === "boolean") next["isAdmin"] = String(updates.isAdmin);
+    if (updates.role) next["role"] = updates.role;
     if (updates.status) next["status"] = updates.status;
     
     await this.redis.hset(this.userKey(id), next);
@@ -180,24 +181,37 @@ export class UserStore {
     return this.sanitize(saved);
   }
 
-  async delete(id: string): Promise<UserRecord | null> {
-    const existing = await this.redis.hgetall(this.userKey(id));
-    if (!existing || !existing["id"]) return null;
+  async delete(id: string): Promise<boolean> {
+    const key = this.userKey(id);
+    const existing = await this.redis.hgetall(key);
+    if (!existing || !existing["id"]) return false;
 
-    const redactedName = existing["displayName"] ? `deleted-${existing["displayName"]}` : "deleted user";
-    const now = new Date().toISOString();
-    await this.redis.hset(this.userKey(id), {
-      displayName: redactedName,
-      isAdmin: "false",
-      status: "deleted",
-      updatedAt: now
-    });
-    const saved = await this.redis.hgetall(this.userKey(id));
-    return this.sanitize(saved);
+    // Actually delete the user from Redis
+    await this.redis
+      .multi()
+      .del(key)
+      .srem(this.idsSet(), id)
+      .exec();
+
+    return true;
   }
 
   async exportAll(): Promise<UserRecord[]> {
     return this.list();
+  }
+
+  /**
+   * Check if a user is a guest
+   */
+  isGuest(user: UserRecord): boolean {
+    return user.role === "guest";
+  }
+
+  /**
+   * Get the role of a user
+   */
+  getRole(user: UserRecord): UserRole {
+    return user.role;
   }
 }
 

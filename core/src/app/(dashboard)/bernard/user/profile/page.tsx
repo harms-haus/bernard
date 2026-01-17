@@ -92,7 +92,7 @@ function ProfileContent() {
               <div>
                 <div className="font-semibold text-lg flex items-center gap-2">
                   {state.user.displayName}
-                  {state.user.isAdmin && (
+                  {state.user.role === 'admin' && (
                     <Badge variant="secondary" className="text-xs">Admin</Badge>
                   )}
                 </div>

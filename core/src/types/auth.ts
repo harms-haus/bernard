@@ -1,10 +1,11 @@
+export type UserRole = 'guest' | 'user' | 'admin';
 export type UserStatus = 'active' | 'disabled' | 'deleted';
 
 export interface User {
   id: string;
   displayName: string;
   email: string;
-  isAdmin: boolean;
+  role: UserRole;
   status: UserStatus;
   createdAt: string;
   updatedAt: string;

@@ -1,4 +1,4 @@
-import { User, UserStatus } from '@/types/auth';
+import { User, UserStatus, UserRole } from '@/types/auth';
 
 export interface LoginCredentials {
   email: string;
@@ -257,7 +257,7 @@ class APIClient {
   async createUser(userData: {
     id: string;
     displayName: string;
-    isAdmin: boolean;
+    role: UserRole;
   }): Promise<User> {
     const response = await this.request<{ user: User }>('/users', {
       method: 'POST',
@@ -268,7 +268,7 @@ class APIClient {
 
   async updateUser(
     id: string,
-    data: Partial<Pick<User, 'displayName' | 'isAdmin'>> & {
+    data: Partial<Pick<User, 'displayName' | 'role'>> & {
       status?: Extract<UserStatus, 'active' | 'disabled'>;
     }
   ): Promise<User> {

@@ -3,10 +3,34 @@ import { z } from "zod";
 
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
-import { ToolFactory } from "./types";
+import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "get_home_assistant_historical_state";
+
+/**
+ * Create a mock historical state tool for guests.
+ */
+function createMockHistoricalStateTool() {
+  return tool(
+    async ({ entity_ids, start_time, end_time }: {
+      entity_ids: string[];
+      start_time: string;
+      end_time: string;
+    }) => {
+      return `[Demo] Home Assistant historical state (demo mode for guests)\n\nNo actual historical data is shown in demo mode.\nTo see real historical data, please upgrade to a non-guest account.`;
+    },
+    {
+      name: TOOL_NAME,
+      description: "Retrieve historical state data for Home Assistant entities (demo mode for guests)",
+      schema: z.object({
+        entity_ids: z.array(z.string()).describe("Array of entity IDs to retrieve historical data for"),
+        start_time: z.string().describe("Start time in ISO 8601 format"),
+        end_time: z.string().describe("End time in ISO 8601 format")
+      })
+    }
+  );
+}
 
 /**
  * Home Assistant historical state data
@@ -193,7 +217,13 @@ function formatHistoricalStateResponse(history: HistoryResponse): string {
   return lines.join('\n').trim();
 }
 
-export const getHistoricalStateToolFactory: ToolFactory = async () => {
+export const getHistoricalStateToolFactory: ToolFactory = async (context?: ToolContext) => {
+  // Return mock tool for guests
+  if (context?.userRole === 'guest') {
+    const mockTool = createMockHistoricalStateTool();
+    return { ok: true, tool: mockTool };
+  }
+
   const isValid = await verifyHomeAssistantConfigured();
   if (!isValid.ok) {
     return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import { getRedis } from '@/lib/infra/redis';
-import type { UserRecord } from '@/lib/auth/types';
+import type { UserRecord, UserRole } from '@/lib/auth/types';
 
 type UserStatus = 'active' | 'disabled' | 'deleted';
 
@@ -18,7 +18,7 @@ async function getBetterAuthUser(id: string): Promise<UserRecord | null> {
   const user: UserRecord = {
     id: data.id || id,
     displayName: data.name || data.email || id,
-    isAdmin: data.role === 'admin',
+    role: (data.role as UserRole) || 'user',
     status: data.emailVerified ? 'active' : 'disabled',
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || data.createdAt || new Date().toISOString(),
@@ -61,10 +61,10 @@ export async function PATCH(
     if (!admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
     const { id } = await params;
-    const body = await request.json() as { displayName?: string; isAdmin?: boolean; status?: UserStatus };
-    const { displayName, isAdmin, status } = body;
+    const body = await request.json() as { displayName?: string; role?: UserRole; status?: UserStatus };
+    const { displayName, role, status } = body;
 
-    if (!displayName && isAdmin === undefined && !status) {
+    if (!displayName && role === undefined && !status) {
       return NextResponse.json({ error: 'At least one field is required' }, { status: 400 });
     }
 
@@ -77,7 +77,7 @@ export async function PATCH(
 
     const updates: Record<string, string> = { updatedAt: new Date().toISOString() };
     if (displayName) updates['name'] = displayName;
-    if (isAdmin !== undefined) updates['role'] = isAdmin ? 'admin' : 'user';
+    if (role !== undefined) updates['role'] = role;
     if (status) {
       // For status, we update emailVerified field
       updates['emailVerified'] = status === 'active' ? 'true' : '';
@@ -116,27 +116,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const redactedName = existing['name'] ? `deleted-${existing['name']}` : 'deleted user';
-    const now = new Date().toISOString();
-    await redis.hset(key, {
-      name: redactedName,
-      role: 'user',
-      emailVerified: '',
-      updatedAt: now,
-    });
-
-    const deleted: UserRecord = {
-      id,
-      displayName: redactedName,
-      isAdmin: false,
-      status: 'deleted',
-      createdAt: existing['createdAt'] || now,
-      updatedAt: now,
-      email: existing['email'] || id,
-    };
+    // Actually delete the user from Redis
+    await redis.del(key);
 
     logger.info({ action: 'users.delete', adminId: admin, userId: id });
-    return NextResponse.json({ user: deleted });
+    return NextResponse.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Failed to delete user');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

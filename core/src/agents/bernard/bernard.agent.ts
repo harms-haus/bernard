@@ -8,6 +8,7 @@ import { resolveModel } from "@/lib/config/models";
 
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
 import { validateAndGetTools } from "./tools";
+import { ToolContext } from "./tools/types";
 import { startUtilityWorker } from "@/lib/infra/queue";
 import { startHealthMonitor } from "@/lib/services/HealthMonitor";
 import { initializeSettingsStore } from "@/lib/config/settingsStore";
@@ -61,7 +62,8 @@ const defaultDependencies: AgentDependencies = {
 // ============================================================================
 
 export async function createBernardAgent(
-  overrides?: Partial<AgentDependencies>
+  overrides?: Partial<AgentDependencies>,
+  toolContext?: ToolContext
 ) {
   const deps = { ...defaultDependencies, ...overrides };
 
@@ -85,7 +87,7 @@ export async function createBernardAgent(
   const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
   const checkpointer = await deps.RedisSaver.fromUrl(redisUrl);
 
-  const { validTools, disabledTools } = await deps.validateAndGetTools();
+  const { validTools, disabledTools } = await deps.validateAndGetTools(toolContext);
 
   return createAgent({
     model: await createModel(),

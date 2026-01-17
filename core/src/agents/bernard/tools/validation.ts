@@ -5,11 +5,20 @@ import { listHAEntitiesToolFactory } from "./home-assistant-list-entities.tool";
 import { toggleLightToolFactory } from "./home-assistant-toggle-light.tool";
 import { playMediaTvToolFactory } from "./play_media_tv.tool";
 import { searchMediaToolFactory } from "./search_media.tool";
-import { DisabledTool, ToolFactory } from "./types";
+import { DisabledTool, ToolFactory, ToolContext } from "./types";
 import { webSearchToolFactory } from "./web-search.tool";
 import { getWebsiteContentToolFactory } from "./website-content.tool";
 import { wikipediaEntryToolFactory } from "./wikipedia-entry.tool";
 import { wikipediaSearchToolFactory } from "./wikipedia-search.tool";
+
+/**
+ * Tools that should be completely hidden from guest users.
+ * These tools are not shown in the disabled list - they're filtered out entirely.
+ */
+const GUEST_HIDDEN_TOOLS = [
+  'play_media_tv',
+  'search_media',
+];
 
 /**
  * Represents a tool definition that can be validated.
@@ -42,8 +51,8 @@ export type ToolsValidationResult = {
  * Get all tool definitions from the registry.
  * This function can be overridden in tests to provide mock factories.
  */
-export function getToolDefinitions(): ToolDefinition[] {
-  return [
+export function getToolDefinitions(context?: ToolContext): ToolDefinition[] {
+  const allTools: ToolDefinition[] = [
     { name: 'web_search', factory: webSearchToolFactory },
     { name: 'website_content', factory: getWebsiteContentToolFactory },
     { name: 'wikipedia_search', factory: wikipediaSearchToolFactory },
@@ -56,13 +65,21 @@ export function getToolDefinitions(): ToolDefinition[] {
     { name: 'play_media_tv', factory: playMediaTvToolFactory },
     { name: 'search_media', factory: searchMediaToolFactory },
   ];
+
+  // Filter out hidden tools for guests
+  if (context?.userRole === 'guest') {
+    return allTools.filter(t => !GUEST_HIDDEN_TOOLS.includes(t.name));
+  }
+
+  return allTools;
 }
 
 /**
  * Validate a single tool factory.
  */
 export async function validateToolFactory(
-  definition: ToolDefinition
+  definition: ToolDefinition,
+  _context?: ToolContext
 ): Promise<ToolValidationResult> {
   try {
     const result = await definition.factory();
@@ -91,16 +108,18 @@ export async function validateToolFactory(
  * Validate tool factories and separate valid from disabled tools.
  * 
  * @param definitions - Optional tool definitions to validate. Defaults to getToolDefinitions().
+ * @param context - Optional context for role-based tool filtering.
  */
 export async function validateTools(
-  definitions?: ToolDefinition[]
+  definitions?: ToolDefinition[],
+  context?: ToolContext
 ): Promise<ToolsValidationResult> {
-  const toolDefinitions = definitions ?? getToolDefinitions();
+  const toolDefinitions = definitions ?? getToolDefinitions(context);
   const disabledTools: DisabledTool[] = [];
   const validTools: any[] = [];
 
   for (const definition of toolDefinitions) {
-    const result = await validateToolFactory(definition);
+    const result = await validateToolFactory(definition, context);
 
     if (result.ok) {
       validTools.push(result.tool);
@@ -116,9 +135,9 @@ export async function validateTools(
  * Original function for backward compatibility.
  * Validates all registered tool factories.
  */
-export async function validateAndGetTools(): Promise<{
+export async function validateAndGetTools(context?: ToolContext): Promise<{
   validTools: any[];
   disabledTools: DisabledTool[];
 }> {
-  return validateTools();
+  return validateTools(undefined, context);
 }

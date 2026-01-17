@@ -33,7 +33,7 @@ const mockAuthContextContainer: { current: MockAuthContextType } = {
       id: 'test-user-id',
       displayName: 'Test User',
       email: 'test@example.com',
-      isAdmin: false,
+      role: 'user',
       status: 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -49,7 +49,7 @@ export function createMockAuthContext(overrides: Partial<MockAuthContextType> = 
     id: 'test-user-id',
     displayName: 'Test User',
     email: 'test@example.com',
-    isAdmin: false,
+    role: 'user',
     status: 'active',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -102,7 +102,7 @@ export function createMockUser(overrides: Partial<User> = {}): User {
     id: 'test-user-id',
     displayName: 'Test User',
     email: 'test@example.com',
-    isAdmin: false,
+    role: 'user',
     status: 'active' as const,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -113,7 +113,7 @@ export function createMockUser(overrides: Partial<User> = {}): User {
 // Helper to create an admin user for testing
 export function createMockAdminUser(overrides: Partial<User> = {}): User {
   return {
-    ...createMockUser({ isAdmin: true }),
+    ...createMockUser({ role: 'admin' }),
     ...overrides,
   };
 }

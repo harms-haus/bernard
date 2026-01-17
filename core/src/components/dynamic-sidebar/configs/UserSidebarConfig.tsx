@@ -45,7 +45,7 @@ export function useUserSidebarConfig() {
 
         const footerItems: React.ReactNode[] = [];
 
-        if (state.user?.isAdmin) {
+        if (state.user?.role === 'admin') {
             footerItems.push(
                 <Link
                     key="admin-link"
@@ -61,7 +61,7 @@ export function useUserSidebarConfig() {
         setFooterItems(footerItems);
 
         return () => reset();
-    }, [setHeader, setMenuItems, setFooterItems, reset, isOpen, state.user?.isAdmin]);
+    }, [setHeader, setMenuItems, setFooterItems, reset, isOpen, state.user?.role]);
 }
 
 export function UserSidebarConfig({ children }: { children: React.ReactNode }) {

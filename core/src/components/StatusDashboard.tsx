@@ -91,7 +91,7 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
   const [restartingService, setRestartingService] = useState<string | null>(null);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const { state: authState } = useAuth();
-  const isAdmin = authState.user?.isAdmin || false;
+  const isAdmin = authState.user?.role === 'admin';
 
   const toast = useToast();
 

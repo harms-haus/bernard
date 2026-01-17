@@ -5,10 +5,30 @@ import { getStates } from "home-assistant-js-websocket";
 
 import type { HomeAssistantEntity } from "@/lib/home-assistant";
 import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
-import { ToolFactory } from "./types";
+import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
 
 const TOOL_NAME = "list_home_assistant_entities";
+
+/**
+ * Create a mock list HA entities tool for guests.
+ * Returns empty list with demo message instead of actual HA calls.
+ */
+function createMockListHAEntitiesTool() {
+  return tool(
+    async ({ domain, regex }: { domain?: string; regex?: string }) => {
+      return `[Demo] Home Assistant entities list (demo mode for guests)\n\nNo actual entities are shown in demo mode.\nTo see real entities, please upgrade to a non-guest account.`;
+    },
+    {
+      name: TOOL_NAME,
+      description: "List Home Assistant entities with optional filtering by domain and regex pattern (demo mode for guests)",
+      schema: z.object({
+        domain: z.string().optional().describe("Filter entities by domain (e.g., 'light', 'sensor', 'climate')"),
+        regex: z.string().optional().describe("Filter entities using regex pattern")
+      })
+    }
+  );
+}
 
 /**
  * Home Assistant API configuration (supports both WebSocket and REST)
@@ -202,7 +222,13 @@ export function getEntitiesFromContext(messages: BaseMessage[]): HomeAssistantEn
   return context?.entities || [];
 }
 
-export const listHAEntitiesToolFactory: ToolFactory = async () => {
+export const listHAEntitiesToolFactory: ToolFactory = async (context?: ToolContext) => {
+  // Return mock tool for guests
+  if (context?.userRole === 'guest') {
+    const mockTool = createMockListHAEntitiesTool();
+    return { ok: true, tool: mockTool };
+  }
+
   const isValid = await verifyHomeAssistantConfigured();
   if (!isValid.ok) {
     return { ok: false, name: TOOL_NAME, reason: isValid.reason ?? "" };

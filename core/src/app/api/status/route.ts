@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyGuest } from '@/lib/auth/server-helpers';
 import { logger } from '@/lib/logging/logger';
 import Redis from 'ioredis';
 
@@ -24,6 +25,12 @@ interface StatusData {
 
 export async function GET(request: NextRequest) {
   try {
+    // Deny guest users - they can view status but not service details
+    const session = await denyGuest();
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const includeServices = searchParams.get('services') === 'true';
     const includeLogs = searchParams.get('logs') === 'true';
