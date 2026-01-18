@@ -5,9 +5,28 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 type DarkModeContextType = {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+  setDarkMode: (value: boolean) => void;
 };
 
 const DarkModeContext = createContext<DarkModeContextType | undefined>(undefined);
+
+// Export DarkModeContext for testing purposes
+export { DarkModeContext };
+
+// ============================================================================
+// Test Dark Mode Context (for testing only)
+// ============================================================================
+
+export type TestDarkModeContextType = {
+  isDarkMode: boolean;
+  toggleDarkMode: () => void;
+  setDarkMode: (value: boolean) => void;
+};
+
+const TestDarkModeContext = createContext<TestDarkModeContextType | undefined>(undefined);
+
+// Export TestDarkModeContext for test providers
+export { TestDarkModeContext };
 
 type DarkModeProviderProps = {
   children: ReactNode;
@@ -54,15 +73,26 @@ export function DarkModeProvider({ children }: DarkModeProviderProps) {
     setIsDarkMode(prev => !prev);
   };
 
+  const setDarkMode = (value: boolean) => {
+    setIsDarkMode(value);
+  };
+
   const value = {
     isDarkMode,
-    toggleDarkMode
+    toggleDarkMode,
+    setDarkMode,
   };
 
   return React.createElement(DarkModeContext.Provider, { value }, children);
 }
 
 export function useDarkMode() {
+  // Check for test context first (used in test environment)
+  const testContext = useContext(TestDarkModeContext);
+  if (testContext !== undefined) {
+    return testContext;
+  }
+
   const context = useContext(DarkModeContext);
   if (context === undefined) {
     throw new Error('useDarkMode must be used within a DarkModeProvider');

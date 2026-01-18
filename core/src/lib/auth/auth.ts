@@ -36,10 +36,10 @@ export const auth = betterAuth({
         user: {
             create: {
                 before: async (user) => {
-                    // Block new user registrations if signups are disabled
+                    // Block new user registrations if signups are explicitly disabled
                     const settings = await getSettings();
                     const limits = await settings.getLimits();
-                    if (!limits.allowSignups) {
+                    if (limits && limits.allowSignups === false) {
                         throw new Error("User registrations are disabled");
                     }
 

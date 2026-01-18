@@ -238,7 +238,7 @@ describe('getStatusList', () => {
 
     // Add services in non-alphabetical order
     mockEventSourceInstance.onmessage!({
-      data: JSON.stringify({ service: 'z 'Zebra',ebra', name: status: 'up', timestamp: '', isChange: false }),
+      data: JSON.stringify({ service: 'zebra', name: 'Zebra', status: 'up', timestamp: '', isChange: false }),
     } as MessageEvent);
 
     mockEventSourceInstance.onmessage!({
@@ -418,7 +418,7 @@ describe('Max Entries', () => {
       } as MessageEvent);
     }
 
-    // Should only have 3 entries (FIFO - first 3 dropped, last 2 kept)
+    // Should only have 3 entries (FIFO - first 2 dropped, last 3 kept)
     expect(result.current.logs).toHaveLength(3);
     expect(result.current.logs[0].message).toBe('Message 2');
     expect(result.current.logs[2].message).toBe('Message 4');

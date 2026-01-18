@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, createContext, useContext, ReactNode } from 'react';
 
 export type HealthStreamStatus = 'up' | 'down' | 'starting' | 'degraded';
 
@@ -19,7 +19,63 @@ interface UseHealthStreamOptions {
   enabled?: boolean;
 }
 
+// ============================================================================
+// Test Health Stream Context (for testing only)
+// ============================================================================
+
+export type TestHealthStreamContextType = {
+  services: Record<string, HealthStreamUpdate>;
+  serviceList: HealthStreamUpdate[];
+  getService: (serviceId: string) => HealthStreamUpdate | null;
+  isConnected: boolean;
+  error: string | null;
+  refresh: () => void;
+};
+
+const TestHealthStreamContext = createContext<TestHealthStreamContextType | undefined>(undefined);
+
+// Export TestHealthStreamContext for test providers
+export { TestHealthStreamContext };
+
+interface HealthStreamTestProviderProps {
+  children: ReactNode;
+  isConnected?: boolean;
+  error?: string | null;
+  value?: Partial<TestHealthStreamContextType>;
+}
+
+export function HealthStreamTestProvider({
+  children,
+  isConnected = true,
+  error = null,
+  value,
+}: HealthStreamTestProviderProps) {
+  const contextValue: TestHealthStreamContextType = {
+    services: {},
+    serviceList: [],
+    getService: () => null,
+    isConnected,
+    error,
+    refresh: () => { },
+    ...value,
+  };
+
+  return (
+    TestHealthStreamContext.Provider({ value: contextValue, children })
+  );
+}
+
+export function useTestHealthStream() {
+  const context = useContext(TestHealthStreamContext);
+  if (context === undefined) {
+    throw new Error('useTestHealthStream must be used within a HealthStreamTestProvider');
+  }
+  return context;
+}
+
 export function useHealthStream({ enabled = true }: UseHealthStreamOptions = {}) {
+  const testContext = useContext(TestHealthStreamContext);
+
   const [services, setServices] = useState<Record<string, HealthStreamUpdate>>({});
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +141,7 @@ export function useHealthStream({ enabled = true }: UseHealthStreamOptions = {})
     return services[serviceId] || null;
   }, [services]);
 
-  return {
+  const realContext = {
     services,
     serviceList: getStatusList(),
     getService,
@@ -93,4 +149,6 @@ export function useHealthStream({ enabled = true }: UseHealthStreamOptions = {})
     error,
     refresh: connect,
   };
+
+  return testContext ?? realContext;
 }

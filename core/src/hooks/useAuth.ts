@@ -17,6 +17,32 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Export AuthContext for testing purposes to enable wrapping with AuthContext.Provider
+export { AuthContext };
+
+// ============================================================================
+// Test Auth Context (for testing only - defined here to avoid test/prod coupling)
+// ============================================================================
+
+export type TestAuthContextType = {
+  state: {
+    user: User | null;
+    loading: boolean;
+    error: string | null;
+  };
+  login?: () => Promise<void>;
+  githubLogin?: () => Promise<void>;
+  googleLogin?: () => Promise<void>;
+  logout?: () => Promise<void>;
+  updateProfile?: () => Promise<unknown>;
+  clearError?: () => void;
+};
+
+const TestAuthContext = createContext<TestAuthContextType | undefined>(undefined);
+
+// Export TestAuthContext for test providers
+export { TestAuthContext };
+
 type AuthProviderProps = {
   children: ReactNode;
 };
@@ -34,7 +60,7 @@ function mapBetterAuthUser(betterAuthUser: {
   updatedAt?: Date;
 } | null): User | null {
   if (!betterAuthUser) return null;
-  
+
   return {
     id: betterAuthUser.id,
     displayName: betterAuthUser.name || betterAuthUser.email?.split('@')[0] || 'User',
@@ -48,7 +74,7 @@ function mapBetterAuthUser(betterAuthUser: {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const { data: session, isPending, error } = authClient.useSession();
-  
+
   // Fallback session detection - try to fetch session directly if hook doesn't work
   const [fallbackSession, setFallbackSession] = useState<{ data: unknown } | null>(null);
   const [fallbackError, setFallbackError] = useState<string | null>(null);
@@ -63,7 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             method: 'GET',
             credentials: 'include',
           });
-          
+
           if (response.ok) {
             const data = await response.json();
             if (data.session) {
@@ -85,7 +111,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const activeLoading = isPending && !fallbackSession;
 
   const userData = ((activeSession as { session?: { user?: unknown } })?.session?.user) ||
-                   ((activeSession as { user?: unknown })?.user);
+    ((activeSession as { user?: unknown })?.user);
   const computedUser = userData ? mapBetterAuthUser(userData as Parameters<typeof mapBetterAuthUser>[0]) : null;
 
   const [state, setState] = useState<AuthState>(() => ({
@@ -112,7 +138,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       email: credentials.email,
       password: credentials.password,
     });
-    
+
     if (error) {
       throw new Error(error.message || 'Login failed');
     }
@@ -122,7 +148,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const { error } = await authClient.signIn.social({
       provider: 'github',
     });
-    
+
     if (error) {
       throw new Error(error.message || 'GitHub login failed');
     }
@@ -132,7 +158,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const { error } = await authClient.signIn.social({
       provider: 'google',
     });
-    
+
     if (error) {
       throw new Error(error.message || 'Google login failed');
     }
@@ -181,6 +207,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
 }
 
 export function useAuth() {
+  // Check for test context first (used in test environment)
+  const testContext = useContext(TestAuthContext);
+  if (testContext !== undefined) {
+    // Adapt test context to AuthContextType
+    return {
+      state: {
+        user: testContext.state.user as User | null,
+        loading: testContext.state.loading,
+        error: testContext.state.error,
+      },
+      login: testContext.login || (() => Promise.resolve()),
+      githubLogin: testContext.githubLogin || (() => Promise.resolve()),
+      googleLogin: testContext.googleLogin || (() => Promise.resolve()),
+      logout: testContext.logout || (() => Promise.resolve()),
+      updateProfile: testContext.updateProfile || (() => Promise.resolve({} as User)),
+      clearError: testContext.clearError || (() => { }),
+    };
+  }
+
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

@@ -9,10 +9,16 @@ export async function GET(request: NextRequest) {
   const userId = session?.user?.id
 
   const { searchParams } = new URL(request.url)
-  const query = searchParams.toString()
 
-  // Add user_id filter if user is authenticated
-  const path = `/threads${query ? `?${query}${userId ? `&user_id=${userId}` : ''}` : userId ? `?user_id=${userId}` : ''}`
+  // Remove any existing user_id from searchParams to prevent authorization bypass
+  // and duplicate entries - only use the trusted authenticated user_id
+  const sanitizedParams = new URLSearchParams(searchParams)
+  sanitizedParams.delete("user_id")
+
+  const query = sanitizedParams.toString()
+
+  // Add user_id filter with the trusted authenticated userId
+  const path = `/threads${query ? `?${query}&user_id=${userId}` : `?user_id=${userId}`}`
   return proxyToLangGraph(request, path)
 }
 

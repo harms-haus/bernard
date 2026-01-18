@@ -2,9 +2,20 @@
 import { ReactNode } from 'react';
 import { vi, type Mock } from 'vitest';
 
+// Import test providers (created in Part B)
+import {
+  AuthTestProvider,
+  DarkModeTestProvider,
+  StreamTestProvider,
+  HealthStreamTestProvider,
+  RouterTestProvider,
+  SearchParamsTestProvider,
+} from '@/test/providers';
+
 // Import from mocks (created in Part A)
 import type { MockAuthState } from '@/test/mocks/auth';
 import type { MockStreamContextValue } from '@/test/mocks/providers';
+
 
 // ============================================================================
 // Auth Wrapper
@@ -22,11 +33,18 @@ export const AuthWrapper = ({ children, authState }: AuthWrapperProps) => {
     error: null,
   };
 
-  vi.doMock('@/hooks/useAuth', () => ({
-    useAuth: () => mockState,
-  }));
-
-  return <>{children}</>;
+  // Use AuthTestProvider instead of vi.doMock (which is ineffective during render)
+  return (
+    <AuthTestProvider
+      value={{
+        state: mockState,
+        login: vi.fn().mockResolvedValue(undefined),
+        logout: vi.fn().mockResolvedValue(undefined),
+      }}
+    >
+      {children}
+    </AuthTestProvider>
+  );
 };
 
 // ============================================================================
@@ -39,25 +57,26 @@ interface AdminWrapperProps {
 }
 
 export const AdminWrapper = ({ children, isAdmin = false }: AdminWrapperProps) => {
-  const mockState = {
-    user: isAdmin
-      ? { id: 'admin', role: 'admin' }
-      : { id: 'user', role: 'user' },
-    loading: false,
-    error: null,
-  };
+  const mockUser = isAdmin
+    ? { id: 'admin', role: 'admin' }
+    : { id: 'user', role: 'user' };
 
-  vi.doMock('@/hooks/useAdminAuth', () => ({
-    useAdminAuth: () => ({
-      isAdmin,
-      isAdminLoading: false,
-      user: mockState.user,
-      loading: false,
-      error: null,
-    }),
-  }));
-
-  return <>{children}</>;
+  // AdminWrapper reuses AuthTestProvider since useAdminAuth depends on useAuth
+  return (
+    <AuthTestProvider
+      value={{
+        state: {
+          user: mockUser,
+          loading: false,
+          error: null,
+        },
+        login: vi.fn().mockResolvedValue(undefined),
+        logout: vi.fn().mockResolvedValue(undefined),
+      }}
+    >
+      {children}
+    </AuthTestProvider>
+  );
 };
 
 // ============================================================================
@@ -77,15 +96,24 @@ export const StreamWrapper = ({ children, contextValue }: StreamWrapperProps) =>
     stop: vi.fn(),
   };
 
-  vi.doMock('@/providers/StreamProvider', async () => {
-    const actual = await vi.importActual('@/providers/StreamProvider');
-    return {
-      ...actual,
-      useStreamContext: () => mockContext,
-    };
-  });
-
-  return <>{children}</>;
+  // Use StreamTestProvider instead of vi.doMock
+  return (
+    <StreamTestProvider
+      value={{
+        messages: mockContext.messages as import('@langchain/langgraph-sdk').Message[],
+        isLoading: mockContext.isLoading,
+        submit: mockContext.submit,
+        stop: mockContext.stop,
+        error: null,
+        latestProgress: null,
+        resetProgress: vi.fn(),
+        getMessagesMetadata: vi.fn().mockReturnValue(undefined),
+        setBranch: vi.fn(),
+      }}
+    >
+      {children}
+    </StreamTestProvider>
+  );
 };
 
 // ============================================================================
@@ -98,15 +126,12 @@ interface DarkModeWrapperProps {
 }
 
 export const DarkModeWrapper = ({ children, isDarkMode = false }: DarkModeWrapperProps) => {
-  vi.doMock('@/hooks/useDarkMode', () => ({
-    useDarkMode: () => ({
-      isDarkMode,
-      toggleDarkMode: vi.fn(),
-      setDarkMode: vi.fn(),
-    }),
-  }));
-
-  return <>{children}</>;
+  // Use DarkModeTestProvider instead of vi.doMock
+  return (
+    <DarkModeTestProvider isDarkMode={isDarkMode}>
+      {children}
+    </DarkModeTestProvider>
+  );
 };
 
 // ============================================================================
@@ -124,17 +149,12 @@ export const HealthStreamWrapper = ({
   isConnected = true,
   error = null,
 }: HealthStreamWrapperProps) => {
-  vi.doMock('@/hooks/useHealthStream', () => ({
-    useHealthStream: () => ({
-      services: {},
-      serviceList: [],
-      isConnected,
-      error,
-      refresh: vi.fn(),
-    }),
-  }));
-
-  return <>{children}</>;
+  // Use HealthStreamTestProvider instead of vi.doMock
+  return (
+    <HealthStreamTestProvider isConnected={isConnected} error={error}>
+      {children}
+    </HealthStreamTestProvider>
+  );
 };
 
 // ============================================================================
@@ -151,19 +171,18 @@ interface RouterWrapperProps {
 }
 
 export const RouterWrapper = ({ children, router = {} }: RouterWrapperProps) => {
-  vi.doMock('next/navigation', () => ({
-    useRouter: () => ({
-      push: router.push || vi.fn(),
-      replace: router.replace || vi.fn(),
-      back: router.back || vi.fn(),
-      forward: vi.fn(),
-      refresh: vi.fn(),
-    }),
-    useSearchParams: () => mockUseSearchParams(),
-  }));
-
-  return <>{children}</>;
+  // Use RouterTestProvider and SearchParamsTestProvider instead of vi.doMock
+  return (
+    <RouterTestProvider
+      router={{
+        push: router.push || vi.fn(),
+        replace: router.replace || vi.fn(),
+        back: router.back || vi.fn(),
+      }}
+    >
+      <SearchParamsTestProvider params={{}}>
+        {children}
+      </SearchParamsTestProvider>
+    </RouterTestProvider>
+  );
 };
-
-// Helper
-import { mockUseSearchParams } from '@/test/mocks/hooks';

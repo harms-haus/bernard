@@ -4,6 +4,11 @@ import { logger } from '@/lib/logging/logger';
 import { getRedis } from '@/lib/infra/redis';
 import type { UserRecord, UserRole } from '@/lib/auth/types';
 
+const VALID_USER_ROLES: readonly UserRole[] = ["guest", "user", "admin"];
+function isValidUserRole(role: unknown): role is UserRole {
+  return typeof role === 'string' && (VALID_USER_ROLES as readonly string[]).includes(role);
+}
+
 // BetterAuth stores users at:
 // - ba:s:user:ids (set of user IDs)
 // - ba:m:user:{id} (hash of user data)
@@ -68,11 +73,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const body = await request.json() as { id: string; displayName: string; role: UserRole };
+    const body = await request.json() as { id: string; displayName: string; role: unknown };
     const { id, displayName, role } = body;
 
-    if (!id || !displayName || !role) {
-      return NextResponse.json({ error: 'id, displayName, and role are required' }, { status: 400 });
+    if (!id || !displayName) {
+      return NextResponse.json({ error: 'id and displayName are required' }, { status: 400 });
+    }
+    if (!isValidUserRole(role)) {
+      return NextResponse.json({ error: `Invalid role: ${role}. Must be one of: guest, user, admin` }, { status: 400 });
     }
 
     const redis = getRedis();

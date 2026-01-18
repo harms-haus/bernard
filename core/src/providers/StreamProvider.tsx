@@ -46,7 +46,37 @@ interface StreamContextType {
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
+// Export StreamContext for testing purposes
+export { StreamContext };
+
+// ============================================================================
+// Test Stream Context (for testing only)
+// ============================================================================
+
+export type TestStreamContextType = {
+  messages: Message[];
+  isLoading: boolean;
+  submit: (input?: { messages: Message[] }) => void;
+  stop: () => void;
+  error: Error | null;
+  latestProgress: ToolProgressEvent | null;
+  resetProgress: () => void;
+  getMessagesMetadata: (message: Message) => MessageMetadata | undefined;
+  setBranch: (branch: string) => void;
+};
+
+const TestStreamContext = createContext<TestStreamContextType | undefined>(undefined);
+
+// Export TestStreamContext for test providers
+export { TestStreamContext };
+
 export function useStreamContext() {
+  // Check for test context first (used in test environment)
+  const testContext = useContext(TestStreamContext);
+  if (testContext !== undefined) {
+    return testContext;
+  }
+
   const context = useContext(StreamContext);
   if (context === undefined) {
     throw new Error('useStreamContext must be used within a StreamProvider');

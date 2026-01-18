@@ -34,7 +34,7 @@ export function mockRejectedValue(error: Error): () => Promise<never> {
 export function createSpy<T extends (...args: unknown[]) => unknown>(
   implementation?: (...args: Parameters<T>) => ReturnType<T>
 ) {
-  const obj: Record<string, () => unknown> = { mockFn: () => {} };
+  const obj: Record<string, () => unknown> = { mockFn: () => { } };
   return vi.spyOn(obj, 'mockFn').mockImplementation(
     implementation as (...args: unknown[]) => unknown
   );
@@ -54,10 +54,12 @@ export function createMockFn<T extends (...args: unknown[]) => unknown>(): Retur
 
 export function mockOnce<T>(value: T): () => Promise<T> {
   let called = false;
-  return async () => {
-    if (called) return value;
+  return () => {
+    if (called) {
+      return Promise.reject(new Error('mockOnce: already called'));
+    }
     called = true;
-    return value;
+    return Promise.resolve(value);
   };
 }
 

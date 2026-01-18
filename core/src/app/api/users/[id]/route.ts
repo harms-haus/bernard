@@ -6,6 +6,11 @@ import type { UserRecord, UserRole } from '@/lib/auth/types';
 
 type UserStatus = 'active' | 'disabled' | 'deleted';
 
+const VALID_USER_ROLES: readonly UserRole[] = ["guest", "user", "admin"];
+function isValidUserRole(role: unknown): role is UserRole {
+  return typeof role === 'string' && (VALID_USER_ROLES as readonly string[]).includes(role);
+}
+
 function betterAuthUserKey(id: string) {
   return `ba:m:user:${id}`;
 }
@@ -18,7 +23,7 @@ async function getBetterAuthUser(id: string): Promise<UserRecord | null> {
   const user: UserRecord = {
     id: data.id || id,
     displayName: data.name || data.email || id,
-    role: (data.role as UserRole) || 'user',
+    role: isValidUserRole(data.role) ? data.role : 'user',
     status: data.emailVerified ? 'active' : 'disabled',
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || data.createdAt || new Date().toISOString(),
@@ -64,34 +69,48 @@ export async function PATCH(
     const body = await request.json() as { displayName?: string; role?: UserRole; status?: UserStatus };
     const { displayName, role, status } = body;
 
-    if (!displayName && role === undefined && !status) {
-      return NextResponse.json({ error: 'At least one field is required' }, { status: 400 });
+    if (displayName !== undefined && typeof displayName !== 'string') {
+      return NextResponse.json({ error: 'displayName must be a string' }, { status: 400 });
     }
 
-    const redis = getRedis();
-    const key = betterAuthUserKey(id);
-    const existing = await redis.hgetall(key);
-    if (!existing || !existing['id']) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (role !== undefined && !Object.values(["guest", "user", "admin"] satisfies UserRole[]).includes(role)) {
+
+      if (role !== undefined && !Object.values(["guest", "user", "admin"] satisfies UserRole[]).includes(role)) {
+        return NextResponse.json({ error: `Invalid role: ${role}. Must be one of: guest, user, admin` }, { status: 400 });
+      }
+      if (status !== undefined && !['active', 'disabled', 'deleted'].includes(status)) {
+        return NextResponse.json({ error: `Invalid status: ${status}. Must be one of: active, disabled, deleted` }, { status: 400 });
+      }
+
+      if (!displayName && role === undefined && !status) {
+        return NextResponse.json({ error: 'At least one field is required' }, { status: 400 });
+      }
+
+      const redis = getRedis();
+      const key = betterAuthUserKey(id);
+      const existing = await redis.hgetall(key);
+      if (!existing || !existing['id']) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      const updates: Record<string, string> = { updatedAt: new Date().toISOString() };
+      if (displayName) updates['name'] = displayName;
+      if (role !== undefined) updates['role'] = role;
+      if (status) {
+        // For status, we update emailVerified field
+        updates['emailVerified'] = status === 'active' ? 'true' : '';
+      }
+
+      await redis.hset(key, updates);
+
+      const updated = await getBetterAuthUser(id);
+      if (!updated) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      logger.info({ action: 'users.update', adminId: admin, userId: id, updates });
+      return NextResponse.json({ user: updated });
     }
-
-    const updates: Record<string, string> = { updatedAt: new Date().toISOString() };
-    if (displayName) updates['name'] = displayName;
-    if (role !== undefined) updates['role'] = role;
-    if (status) {
-      // For status, we update emailVerified field
-      updates['emailVerified'] = status === 'active' ? 'true' : '';
-    }
-
-    await redis.hset(key, updates);
-
-    const updated = await getBetterAuthUser(id);
-    if (!updated) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    logger.info({ action: 'users.update', adminId: admin, userId: id, updates });
-    return NextResponse.json({ user: updated });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update user';
     logger.error({ error }, 'Failed to update user');

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/lib/auth/auth-client";
+import { getSafeRedirect } from "@/lib/auth/client-helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
@@ -16,8 +17,8 @@ export default function LoginPage() {
         e.preventDefault();
         setError("");
 
-        // Get redirectTo from search params, default to /bernard/chat
-        const redirectTo = searchParams.get("redirectTo") || "/bernard/chat";
+        // Get safe redirect URL from search params
+        const redirectTo = getSafeRedirect(searchParams);
 
         if (isSignUp) {
             const { error } = await authClient.signUp.email({

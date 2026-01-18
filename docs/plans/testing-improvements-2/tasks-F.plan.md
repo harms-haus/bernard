@@ -899,7 +899,12 @@ describe('Login Page', () => {
   });
 
   it('should redirect to /bernard on successful login', async () => {
-    // Mock successful auth
+    // Mock successful auth API call
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, user: { id: 'test', email: 'test@example.com' } }),
+    });
+
     render(<LoginPage />);
 
     fireEvent.change(screen.getByLabelText(/Email/i), {

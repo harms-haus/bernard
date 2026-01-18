@@ -221,7 +221,7 @@ export const getHistoricalStateToolFactory: ToolFactory = async (context?: ToolC
   // Return mock tool for guests
   if (context?.userRole === 'guest') {
     const mockTool = createMockHistoricalStateTool();
-    return { ok: true, tool: mockTool };
+    return { ok: true, tool: mockTool, name: mockTool.name };
   }
 
   const isValid = await verifyHomeAssistantConfigured();

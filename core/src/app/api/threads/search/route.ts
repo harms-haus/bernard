@@ -7,12 +7,17 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   const session = await getSession()
   const userId = session?.user?.id
+  if (!userId) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({}))
 
   // Fetch all threads from LangGraph
   const response = await fetch(getLangGraphUrl('/threads/search'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ limit: 100, order: 'desc' })
+    body: JSON.stringify({ ...body, limit: 100, order: 'desc' })
   })
 
   if (!response.ok) {
@@ -25,9 +30,9 @@ export async function POST(request: NextRequest) {
   let threads = await response.json()
 
   // Server-side filter by user_id in metadata
-  if (userId && Array.isArray(threads)) {
-    threads = threads.filter((thread: any) => 
-      thread.metadata?.user_id === userId
+  if (Array.isArray(threads)) {
+    threads = threads.filter((thread: any) =>
+      userId && thread.metadata?.user_id === userId
     )
   }
 

@@ -25,15 +25,18 @@ interface StatusData {
 
 export async function GET(request: NextRequest) {
   try {
-    // Deny guest users - they can view status but not service details
-    const session = await denyGuest();
-    if (!session) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
+    // Deny guest users when requesting service details
+    // Guests can view basic status without authentication
     const searchParams = request.nextUrl.searchParams;
     const includeServices = searchParams.get('services') === 'true';
     const includeLogs = searchParams.get('logs') === 'true';
+
+    if (includeServices) {
+      const session = await denyGuest();
+      if (!session) {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      }
+    }
 
     const BERNARD_AGENT_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
     const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';

@@ -153,8 +153,8 @@ export const mockRouter = {
 export const mockUseRouter = () => mockRouter;
 
 export const mockUseSearchParams = (params: Record<string, string> = {}) => {
-  const get = (key: string) => params[key] || null;
-  const getAll = (key: string) => params[key] ? [params[key]] : [];
+  const get = (key: string) => key in params ? params[key] : null;
+  const getAll = (key: string) => key in params ? [params[key]] : [];
   const has = (key: string) => key in params;
   const entries = () => Object.entries(params);
   const keys = () => Object.keys(params);
