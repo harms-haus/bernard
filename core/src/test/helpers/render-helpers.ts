@@ -7,7 +7,6 @@ import { vi } from 'vitest';
 import React, { createElement } from 'react';
 import { TestAuthContext } from '@/hooks/useAuth';
 import { mockUseAuth, mockUseAuthAsAdmin } from '@/test/mocks/auth';
-import { mockUseSearchParams, mockUseHealthStream } from '@/test/mocks/hooks';
 
 // ============================================================================
 // Module-scoped mocks (must be at module scope for vi.mock to take effect)
@@ -86,24 +85,16 @@ const defaultUseSearchParamsReturn = {
   toString: () => '',
 };
 
-// Module-scoped holder for the current auth context value
-// This allows renderWithAuth/renderWithAdmin to update the value that
-// the mocked useAuth hook will return to components
 let currentTestAuthContextValue: typeof mockUseAuth extends () => infer R ? R : never = defaultUseAuthReturn as never;
 
-// Update function for tests to modify the auth context value
 export const setTestAuthContextValue = (value: typeof currentTestAuthContextValue): void => {
   currentTestAuthContextValue = value;
 };
 
-// Reset to default auth context value
 export const resetTestAuthContextValue = (): void => {
   currentTestAuthContextValue = defaultUseAuthReturn as never;
 };
 
-// Mock useAuth at module scope so components get the mock on import
-// The mock returns the module-scoped context value, which is updated
-// by renderWithAuth/renderWithAdmin via TestAuthContext.Provider
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => currentTestAuthContextValue,
   AuthContext: {
@@ -146,15 +137,12 @@ export function renderWithAuth(
     error: string | null;
   }
 ): RenderResult {
-  // Use mockUseAuth to create a complete auth context value, overriding state with provided authState
   const authContextValue = mockUseAuth({
     state: authState ?? { user: null, loading: false, error: null },
   });
 
-  // Update the module-scoped value so the mocked useAuth hook returns it
   currentTestAuthContextValue = authContextValue as never;
 
-  // Wrap ui with TestAuthContext.Provider so useAuth (which checks TestAuthContext first) reads the value
   const wrappedUi = createElement(TestAuthContext.Provider, { value: authContextValue }, ui);
 
   return render(wrappedUi);
@@ -165,11 +153,10 @@ export function renderWithAuth(
 // ============================================================================
 
 export function renderWithAdmin(ui: React.ReactElement): RenderResult {
-  // Use pre-built admin mock helper to create complete auth context value
   const authContextValue = mockUseAuthAsAdmin();
 
-  // Re-apply mock with admin state using vi.doMock for useAdminAuth
-  // This ensures useAdminAuth returns admin values at module level
+  currentTestAuthContextValue = authContextValue as never;
+
   vi.doMock('@/hooks/useAdminAuth', () => ({
     useAdminAuth: () => ({
       ...defaultUseAdminAuthReturn,
@@ -181,8 +168,7 @@ export function renderWithAdmin(ui: React.ReactElement): RenderResult {
     }),
   }));
 
-  // Wrap ui with AuthContext.Provider (for useAuth)
-  const wrappedUi = createElement(AuthContext.Provider, { value: authContextValue }, ui);
+  const wrappedUi = createElement(TestAuthContext.Provider, { value: authContextValue }, ui);
 
   return render(wrappedUi);
 }
