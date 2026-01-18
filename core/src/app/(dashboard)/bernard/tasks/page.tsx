@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Card,
@@ -64,7 +64,7 @@ function TasksContent() {
 
   const confirmDialog = useConfirmDialog();
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -88,11 +88,11 @@ function TasksContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [includeArchived]);
 
   useEffect(() => {
     fetchTasks();
-  }, [includeArchived]);
+  }, [fetchTasks]);
 
   const formatDuration = (ms?: number) => {
     if (!ms) return 'N/A';

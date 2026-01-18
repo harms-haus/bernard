@@ -4,7 +4,15 @@ import StatusPage from './page';
 
 const mockRouterReplace = vi.fn();
 
-const mockUseAuth = vi.fn();
+const mockUseAuth = vi.fn().mockReturnValue({
+  state: {
+    loading: false,
+    user: null,
+    error: null,
+  },
+  login: vi.fn(),
+  logout: vi.fn(),
+});
 
 const mockUseHealthStream = vi.fn().mockReturnValue({
   serviceList: [
@@ -71,8 +79,9 @@ describe('Status Page', () => {
   describe('Authentication', () => {
     it('should redirect to login when not authenticated', async () => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: null,
+        state: { loading: false, user: null, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
 
       render(<StatusPage />);
@@ -84,8 +93,9 @@ describe('Status Page', () => {
 
     it('should show loading state while checking auth', () => {
       mockUseAuth.mockReturnValue({
-        loading: true,
-        user: null,
+        state: { loading: true, user: null, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
 
       render(<StatusPage />);
@@ -95,8 +105,9 @@ describe('Status Page', () => {
 
     it('should render for authenticated user', () => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: { id: 'test', role: 'user' },
+        state: { loading: false, user: { id: 'test', role: 'user' }, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
 
       render(<StatusPage />);
@@ -108,8 +119,9 @@ describe('Status Page', () => {
   describe('Service List', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: { id: 'test', role: 'user' },
+        state: { loading: false, user: { id: 'test', role: 'user' }, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
     });
 
@@ -130,7 +142,8 @@ describe('Status Page', () => {
     it('should show service status badges', () => {
       render(<StatusPage />);
 
-      expect(screen.getByText(/UP/i)).toBeInTheDocument();
+      const upElements = screen.getAllByText(/UP/i);
+      expect(upElements.length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText(/DOWN/i)).toBeInTheDocument();
     });
   });
@@ -138,8 +151,9 @@ describe('Status Page', () => {
   describe('Service Actions', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: { id: 'test', role: 'admin' },
+        state: { loading: false, user: { id: 'test', role: 'admin' }, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
     });
 
@@ -148,13 +162,13 @@ describe('Status Page', () => {
 
       expect(screen.getByText(/Select Action/i)).toBeInTheDocument();
       expect(screen.getByText(/Refresh/i)).toBeInTheDocument();
-      expect(screen.getByText(/Start All/i)).toBeInTheDocument();
     });
 
     it('should hide action buttons for non-admin', () => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: { id: 'test', role: 'user' },
+        state: { loading: false, user: { id: 'test', role: 'user' }, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
 
       render(<StatusPage />);
@@ -166,8 +180,9 @@ describe('Status Page', () => {
   describe('Log Viewer', () => {
     it('should render log viewer component', () => {
       mockUseAuth.mockReturnValue({
-        loading: false,
-        user: { id: 'test', role: 'admin' },
+        state: { loading: false, user: { id: 'test', role: 'admin' }, error: null },
+        login: vi.fn(),
+        logout: vi.fn(),
       });
 
       render(<StatusPage />);

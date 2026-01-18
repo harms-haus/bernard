@@ -12,7 +12,8 @@
     "build": "cd core && npm run build",
     "start": "cd core && npm run start",
     "check": "bash scripts/check.sh",
-    "type-check": "cd core && npm run type-check"
+    "type-check": "cd core && npm run type-check",
+    "test": "cd core && npm run test"
   },
   "repository": {
     "type": "git",

@@ -275,7 +275,7 @@ function StatusPageContent() {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-white mb-4">Live Logs</h2>
           <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-            <LogViewer service="all" height="300px" />
+            <LogViewer height="300px" />
           </div>
         </div>
       </div>

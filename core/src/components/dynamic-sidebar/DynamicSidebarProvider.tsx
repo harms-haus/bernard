@@ -77,7 +77,8 @@ export function DynamicSidebarProvider({ children }: { children: ReactNode }) {
         setHeader(null);
         setMenuItems([]);
         setFooterItems([]);
-    }, []);
+        setSidebarOpen(true);
+    }, [setSidebarOpen]);
 
     const value: DynamicSidebarContextValue = {
         header,

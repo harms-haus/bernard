@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { GET } from './route'
 import * as helpers from '@/lib/auth/server-helpers'
+import { getSettingsStore } from '@/lib/config/settingsStore'
 
-// Shared mock store reference
-const mockStore = {
-  getProviders: vi.fn(),
-}
-
-// Mock settingsStore - must be before importing route
+// Mock settingsStore - use vi.fn() directly in factory
 vi.mock('@/lib/config/settingsStore', () => ({
   initializeSettingsStore: vi.fn().mockResolvedValue({}),
-  getSettingsStore: vi.fn().mockReturnValue(mockStore),
+  getSettingsStore: vi.fn().mockReturnValue({
+    getProviders: vi.fn(),
+  }),
   resetSettingsStore: vi.fn(),
 }))
 
@@ -33,7 +31,9 @@ describe('GET /api/admin/providers/[id]/models', () => {
   })
 
   it('should return 404 if provider not found', async () => {
-    mockStore.getProviders.mockResolvedValue([])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([]),
+    })
 
     const params = Promise.resolve({ id: 'non-existent' })
     const request = {} as import('next/server').NextRequest
@@ -52,7 +52,9 @@ describe('GET /api/admin/providers/[id]/models', () => {
 
   it('should proxy request to provider baseUrl', async () => {
     const mockProvider = { id: '1', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-123' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+    })
 
     const mockModels = { data: [{ id: 'gpt-4' }, { id: 'gpt-3.5-turbo' }] }
     ;(global.fetch as any).mockResolvedValue({
@@ -79,7 +81,9 @@ describe('GET /api/admin/providers/[id]/models', () => {
 
   it('should handle /v1 suffix in baseUrl', async () => {
     const mockProvider = { id: '1', baseUrl: 'https://api.openai.com', apiKey: 'sk-123' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+    })
 
     ;(global.fetch as any).mockResolvedValue({
       ok: true,
@@ -98,7 +102,9 @@ describe('GET /api/admin/providers/[id]/models', () => {
 
   it('should return 502 on provider API error', async () => {
     const mockProvider = { id: '1', baseUrl: 'https://api.openai.com', apiKey: 'sk-123' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+    })
 
     ;(global.fetch as any).mockResolvedValue({
       ok: false,
@@ -115,7 +121,9 @@ describe('GET /api/admin/providers/[id]/models', () => {
 
   it('should return 502 on connection error', async () => {
     const mockProvider = { id: '1', baseUrl: 'https://api.openai.com', apiKey: 'sk-123' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+    })
 
     ;(global.fetch as any).mockRejectedValue(new Error('Connection refused'))
 

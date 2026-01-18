@@ -32,7 +32,7 @@ describe('useHealthStream', () => {
         responseTime: 5,
       };
 
-      let messageHandler: ((event: MessageEvent) => void) | null = null;
+      let messageHandler: ((event: MessageEvent) => void) | undefined;
       (global.EventSource as any).mockImplementation(() => {
         const mockEventSource = {
           onopen: null,

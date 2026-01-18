@@ -181,7 +181,7 @@ export function ServicePageClient({ session }: ServicePageClientProps) {
 
                 <div>
                     <h3 className="text-white font-semibold mb-4">Live Logs</h3>
-                    <LogViewer service={serviceId} height="400px" />
+                    <LogViewer initialService={serviceId} height="400px" />
                 </div>
             </div>
         </div>

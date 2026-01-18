@@ -257,7 +257,7 @@ export function ServiceStatusPanel({
       {showLogs && (
         <div>
           <h2 className="text-xl font-semibold mb-4">Live Logs</h2>
-          <LogViewer service="all" height="300px" />
+          <LogViewer height="300px" />
         </div>
       )}
     </div>

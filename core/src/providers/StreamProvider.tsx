@@ -669,7 +669,7 @@ export function StreamProvider({ children, apiUrl, threadId, useLangGraphStream 
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [apiUrl, threadId, useLangGraphStream, searchParams, router, createThread, stop]);
+  }, [apiUrl, threadId, useLangGraphStream, searchParams, router, createThread, stop, messages]);
 
   // Fetch initial state if threadId is provided
   useEffect(() => {

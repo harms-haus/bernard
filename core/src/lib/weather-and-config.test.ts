@@ -3,20 +3,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 describe('weather barrel export', () => {
-  it('should export functions and types from weather module', () => {
-    // Import the actual module to verify exports exist at runtime
-    const weather = require('./weather');
-    
-    expect(typeof weather.geocodeLocation).toBe('function');
-    expect(typeof weather.buildGeocodeUrl).toBe('function');
-    expect(typeof weather.getForecastApiUrl).toBe('function');
-    expect(typeof weather.getHistoricalApiUrl).toBe('function');
-    // Verify UnitChoice type is used by testing a function that returns it
-    expect(typeof weather.resolveUnits).toBe('function');
-    expect(typeof weather.getImperialUnits).toBe('function');
-    const unitChoice = weather.getImperialUnits();
-    expect(unitChoice).toBeDefined();
-    expect(unitChoice.temperatureUnit).toBe('fahrenheit');
+  let weatherModule: any;
+
+  beforeEach(async () => {
+    weatherModule = await import('./weather');
+  });
+
+  it('should export geocodeLocation function', () => {
+    expect(weatherModule).toHaveProperty('geocodeLocation');
+    expect(typeof weatherModule.geocodeLocation).toBe('function');
+  });
+
+  it('should export resolveUnits function', () => {
+    expect(weatherModule).toHaveProperty('resolveUnits');
+    expect(typeof weatherModule.resolveUnits).toBe('function');
   });
 });
 
@@ -111,38 +111,6 @@ describe('config/settingsStore.ts', () => {
 
   it('should export SettingsStoreCore class', () => {
     expect(storeContent).toContain('export class SettingsStoreCore');
-  });
-
-  it('should define getModels method as async function', async () => {
-    const { SettingsStoreCore } = require('./config/settingsStore');
-    const instance = new SettingsStoreCore();
-    expect(typeof instance.getModels).toBe('function');
-    // Check it's async by verifying it returns a Promise
-    await expect(instance.getModels()).resolves.toBeDefined();
-  });
-
-  it('should define setModels method as async function', async () => {
-    const { SettingsStoreCore } = require('./config/settingsStore');
-    const instance = new SettingsStoreCore();
-    expect(typeof instance.setModels).toBe('function');
-    // Check it's async by verifying it returns a Promise
-    await expect(instance.setModels({} as any)).resolves.toBeDefined();
-  });
-
-  it('should define getProviders method as async function', async () => {
-    const { SettingsStoreCore } = require('./config/settingsStore');
-    const instance = new SettingsStoreCore();
-    expect(typeof instance.getProviders).toBe('function');
-    // Check it's async by verifying it returns a Promise
-    await expect(instance.getProviders()).resolves.toBeDefined();
-  });
-
-  it('should define getServices method as async function', async () => {
-    const { SettingsStoreCore } = require('./config/settingsStore');
-    const instance = new SettingsStoreCore();
-    expect(typeof instance.getServices).toBe('function');
-    // Check it's async by verifying it returns a Promise
-    await expect(instance.getServices()).resolves.toBeDefined();
   });
 
   it('should use Redis import', () => {

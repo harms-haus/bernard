@@ -430,7 +430,7 @@ function ModelsContent() {
         setInputValue(value);
         lastEmittedValueRef.current = value;
       }
-    }, [value]);
+    }, [value, isOpen, inputValue]);
 
     // Close dropdown when clicking outside
     useEffect(() => {

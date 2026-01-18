@@ -38,11 +38,7 @@ function ServicesContent() {
 
   const toast = useToast();
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
       const settingsData = await adminApiClient.getServicesSettings();
@@ -53,7 +49,11 @@ function ServicesContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSave = async () => {
     if (!settings) {
@@ -357,7 +357,7 @@ function ServicesContent() {
     if (settings.overseerr?.baseUrl && settings.overseerr?.apiKey && overseerrTestStatus === 'idle') {
       runOverseerrTest(false);
     }
-  }, [settings]);
+  }, [settings, haTestStatus, plexTestStatus, ttsTestStatus, sttTestStatus, overseerrTestStatus, runHomeAssistantTest, runPlexTest, runTtsTest, runSttTest, runOverseerrTest]);
 
   if (loading) {
     return (

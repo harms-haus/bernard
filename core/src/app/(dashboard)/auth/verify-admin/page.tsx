@@ -50,7 +50,7 @@ export default async function VerifyAdminPage({
     const origin = `${protocol}://${host}`;
     const loginUrl = new URL("/auth/login", origin);
     loginUrl.searchParams.set("redirectTo", safeRedirectTo);
-    return Response.redirect(loginUrl);
+    redirect(loginUrl.toString());
   }
 
   // Admin verified - redirect to original destination

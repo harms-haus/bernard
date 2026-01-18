@@ -5,7 +5,6 @@ import { DarkModeProvider } from '@/hooks/useDarkMode';
 import { ToastManagerProvider } from '@/components/ToastManager';
 import { DialogManagerProvider } from '@/components/DialogManager';
 import { AdminSidebarConfig } from '@/components/dynamic-sidebar/configs';
-
 import { PageHeaderConfig } from '@/components/dynamic-header/configs';
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {

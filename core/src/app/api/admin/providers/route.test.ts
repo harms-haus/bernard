@@ -12,18 +12,15 @@ const mockStore = {
   addProvider: vi.fn(),
 }
 
-// Mock Redis client
-const mockRedis = {}
-
 // Mock settingsStore module
 vi.mock('@/lib/config/settingsStore', () => ({
   initializeSettingsStore: vi.fn().mockResolvedValue({}),
   getSettingsStore: vi.fn().mockImplementation(() => mockStore),
 }))
 
-// Mock Redis
+// Mock Redis - define inline to avoid hoisting issues
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn().mockReturnValue(mockRedis),
+  getRedis: vi.fn().mockReturnValue({}),
 }))
 
 describe('GET /api/admin/providers', () => {

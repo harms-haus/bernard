@@ -3,21 +3,17 @@ import { POST } from './route'
 import * as helpers from '@/lib/auth/server-helpers'
 import { getRedis } from '@/lib/infra/redis'
 
-// Mock Redis - use null to avoid vi.fn() hoisting issues
-const mockRedis = {
-  hgetall: null as any,
-}
-
+// Mock Redis - use vi.fn() directly in factory
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn().mockReturnValue(mockRedis),
+  getRedis: vi.fn().mockReturnValue({
+    hgetall: vi.fn(),
+  }),
 }))
 
 describe('POST /api/users/[id]/reset', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(helpers, 'requireAdmin').mockResolvedValue({ user: { id: 'admin-123' } } as any)
-    // Setup mock functions in beforeEach to avoid hoisting issues
-    mockRedis.hgetall = vi.fn()
   })
 
   afterEach(() => {
@@ -25,7 +21,9 @@ describe('POST /api/users/[id]/reset', () => {
   })
 
   it('should reset user', async () => {
-    mockRedis.hgetall.mockResolvedValue({ id: 'user-123' })
+    vi.mocked(getRedis).mockReturnValue({
+      hgetall: vi.fn().mockResolvedValue({ id: 'user-123' }),
+    })
 
     const params = Promise.resolve({ id: 'user-123' })
     const request = {} as import('next/server').NextRequest
@@ -38,7 +36,9 @@ describe('POST /api/users/[id]/reset', () => {
   })
 
   it('should return 404 for unknown user', async () => {
-    mockRedis.hgetall.mockResolvedValue({})
+    vi.mocked(getRedis).mockReturnValue({
+      hgetall: vi.fn().mockResolvedValue({}),
+    })
 
     const params = Promise.resolve({ id: 'unknown' })
     const request = {} as import('next/server').NextRequest

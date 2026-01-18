@@ -232,13 +232,14 @@ describe('useDarkMode', () => {
   });
 
   it('should save preference to localStorage on change', async () => {
+    // Mock localStorage BEFORE rendering the hook to capture all calls
+    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+
     const { result } = renderHook(() => useDarkMode(), {
       wrapper: DarkModeProvider,
     });
 
     await waitFor(() => expect(result.current.isDarkMode).not.toBeUndefined());
-
-    vi.spyOn(localStorage, 'setItem');
 
     act(() => {
       result.current.setDarkMode(true);

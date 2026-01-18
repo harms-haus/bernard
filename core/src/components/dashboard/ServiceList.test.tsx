@@ -248,7 +248,7 @@ describe('ServiceList', () => {
   });
 
   describe('Refresh', () => {
-    it('shows refresh button', () => {
+    it('shows refresh button', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue([]),
@@ -256,7 +256,10 @@ describe('ServiceList', () => {
 
       render(<TestServiceList />);
 
-      expect(screen.getByText('Refresh')).toBeInTheDocument();
+      // Wait for loading to complete before checking for Refresh button
+      await waitFor(() => {
+        expect(screen.getByText('Refresh')).toBeInTheDocument();
+      });
     });
 
     it('refreshes on button click', async () => {
@@ -270,6 +273,11 @@ describe('ServiceList', () => {
       });
 
       render(<TestServiceList />);
+
+      // Wait for initial load
+      await waitFor(() => {
+        expect(callCount).toBeGreaterThanOrEqual(1);
+      });
 
       const refreshButton = screen.getByText('Refresh');
       fireEvent.click(refreshButton);

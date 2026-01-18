@@ -1,17 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { POST } from './route'
 import * as helpers from '@/lib/auth/server-helpers'
+import { getSettingsStore } from '@/lib/config/settingsStore'
 
-// Shared mock store reference
-const mockStore = {
-  getProviders: vi.fn(),
-  testProviderConnection: vi.fn(),
-}
-
-// Mock settingsStore - must be before importing route
+// Mock settingsStore - use vi.fn() directly in factory
 vi.mock('@/lib/config/settingsStore', () => ({
   initializeSettingsStore: vi.fn().mockResolvedValue({}),
-  getSettingsStore: vi.fn().mockReturnValue(mockStore),
+  getSettingsStore: vi.fn().mockReturnValue({
+    getProviders: vi.fn(),
+    testProviderConnection: vi.fn(),
+  }),
   resetSettingsStore: vi.fn(),
 }))
 
@@ -31,7 +29,10 @@ describe('POST /api/admin/providers/[id]/test', () => {
   })
 
   it('should return 404 if provider not found', async () => {
-    mockStore.getProviders.mockResolvedValue([])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([]),
+      testProviderConnection: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: 'non-existent' })
     const request = {} as import('next/server').NextRequest
@@ -50,9 +51,11 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should return working status on successful connection', async () => {
     const mockProvider = { id: '1', name: 'OpenAI', baseUrl: 'https://api.openai.com', apiKey: 'sk-123' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'working',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'working',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -67,11 +70,13 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should detect configuration errors', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'failed',
-      error: 'Invalid baseUrl',
-      errorType: 'configuration',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'Invalid baseUrl',
+        errorType: 'configuration',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -86,11 +91,13 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should detect authorization errors', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'failed',
-      error: 'Invalid API key',
-      errorType: 'unauthorized',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'Invalid API key',
+        errorType: 'unauthorized',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -103,11 +110,13 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should detect server errors', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'failed',
-      error: 'Internal server error',
-      errorType: 'server_error',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'Internal server error',
+        errorType: 'server_error',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -120,11 +129,13 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should detect connection errors', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'failed',
-      error: 'Connection refused',
-      errorType: 'connection',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'Connection refused',
+        errorType: 'connection',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -137,9 +148,11 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should include testedAt timestamp', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockResolvedValue({
-      status: 'working',
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockResolvedValue({
+        status: 'working',
+      }),
     })
 
     const params = Promise.resolve({ id: '1' })
@@ -152,8 +165,10 @@ describe('POST /api/admin/providers/[id]/test', () => {
 
   it('should return 500 on test error', async () => {
     const mockProvider = { id: '1', name: 'OpenAI' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
-    mockStore.testProviderConnection.mockRejectedValue(new Error('Test failed'))
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      testProviderConnection: vi.fn().mockRejectedValue(new Error('Test failed')),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {} as import('next/server').NextRequest

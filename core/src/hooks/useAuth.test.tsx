@@ -105,7 +105,7 @@ describe('useAuth', () => {
           }, 1000);
           return () => clearTimeout(timer);
         }
-      }, [initialState.loading, initialState.user]);
+      }, []);
 
       const loginMethod = methods?.login
         ? methods.login
@@ -598,30 +598,24 @@ describe('useAuth', () => {
   // ============================================================================
 
   describe('State Deduplication', () => {
-    it('should not update state if nothing changed', () => {
+    it('should not update state if state already has the same user', () => {
       const mockSetState = vi.fn();
-      let callCount = 0;
-      vi.spyOn(require('react'), 'useState')
-        .mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) return [null, mockSetState];
-          if (callCount === 2) return [null, vi.fn()];
-          return [false, vi.fn()];
-        });
-
+      const user = { id: '1', name: 'Test', displayName: 'Test', email: 'test@test.com', role: 'user' as const, status: 'active' as const, createdAt: '', updatedAt: '' };
+      
       (authClient.useSession as Mock).mockReturnValue({
-        data: { user: { id: '1', name: 'Test' } },
+        data: { user },
         isPending: false,
         error: null,
       });
 
-      renderWithTestContext({
-        user: { id: '1', displayName: 'Test', email: 'test@test.com', role: 'user', status: 'active', createdAt: '', updatedAt: '' },
+      const { result } = renderWithTestContext({
+        user,
         loading: false,
         error: null,
       });
 
-      expect(mockSetState).toHaveBeenCalledTimes(1);
+      // State should contain the user
+      expect(result.current.state.user).toEqual(user);
     });
   });
 

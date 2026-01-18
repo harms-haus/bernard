@@ -3,15 +3,12 @@ import { GET, OPTIONS } from './route'
 import * as langgraph from '@langchain/langgraph-sdk'
 import * as fs from 'fs'
 
-// Create a mock for readFileSync
-const mockReadFileSync = vi.fn()
-
-// Mock fs module - must be hoisted
+// Mock fs module - use vi.fn() directly in factory
 vi.mock('fs', () => ({
-  readFileSync: mockReadFileSync,
+  readFileSync: vi.fn(),
 }))
 
-// Mock @langchain/langgraph-sdk - must be hoisted
+// Mock @langchain/langgraph-sdk - use vi.fn() directly in factory
 vi.mock('@langchain/langgraph-sdk', () => ({
   Client: vi.fn(),
 }))
@@ -70,7 +67,7 @@ describe('GET /api/v1/models', () => {
       ;(Client as any).mockImplementation(() => mockClientInstance)
 
       // Set up the fs mock
-      mockReadFileSync.mockReturnValue(
+      ;(fs.readFileSync as any).mockReturnValue(
         JSON.stringify({
           graphs: {
             'agent_1': {},
@@ -96,7 +93,7 @@ describe('GET /api/v1/models', () => {
       }
       ;(Client as any).mockImplementation(() => mockClientInstance)
 
-      mockReadFileSync.mockReturnValue(JSON.stringify({ graphs: {} }))
+      ;(fs.readFileSync as any).mockReturnValue(JSON.stringify({ graphs: {} }))
 
       const request = {} as import('next/server').NextRequest
       const response = await GET(request)
@@ -115,7 +112,7 @@ describe('GET /api/v1/models', () => {
       }
       ;(Client as any).mockImplementation(() => mockClientInstance)
 
-      mockReadFileSync.mockImplementation(() => {
+      ;(fs.readFileSync as any).mockImplementation(() => {
         throw new Error('File not found')
       })
 
@@ -159,7 +156,7 @@ describe('GET /api/v1/models', () => {
       }
       ;(Client as any).mockImplementation(() => mockClientInstance)
 
-      mockReadFileSync.mockReturnValue(JSON.stringify({ graphs: {} }))
+      ;(fs.readFileSync as any).mockReturnValue(JSON.stringify({ graphs: {} }))
 
       const request = {} as import('next/server').NextRequest
       const response = await GET(request)

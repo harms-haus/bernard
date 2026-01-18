@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { GET, PUT, DELETE } from './route'
 import * as helpers from '@/lib/auth/server-helpers'
+import { getSettingsStore } from '@/lib/config/settingsStore'
 
-// Shared mock store reference
-const mockStore = {
-  getProviders: vi.fn(),
-  updateProvider: vi.fn(),
-  deleteProvider: vi.fn(),
-}
-
-// Mock settingsStore - must be before importing route
+// Mock settingsStore - use vi.fn() directly in factory
 vi.mock('@/lib/config/settingsStore', () => ({
   initializeSettingsStore: vi.fn().mockResolvedValue({}),
-  getSettingsStore: vi.fn().mockReturnValue(mockStore),
+  getSettingsStore: vi.fn().mockReturnValue({
+    getProviders: vi.fn(),
+    updateProvider: vi.fn(),
+    deleteProvider: vi.fn(),
+  }),
   resetSettingsStore: vi.fn(),
 }))
 
@@ -32,7 +30,11 @@ describe('GET /api/admin/providers/[id]', () => {
   })
 
   it('should return 404 for non-existent provider', async () => {
-    mockStore.getProviders.mockResolvedValue([])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([]),
+      updateProvider: vi.fn(),
+      deleteProvider: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: 'non-existent' })
     const request = {} as import('next/server').NextRequest
@@ -42,7 +44,11 @@ describe('GET /api/admin/providers/[id]', () => {
 
   it('should return provider data', async () => {
     const mockProvider = { id: '1', name: 'OpenAI', baseUrl: 'https://api.openai.com', apiKey: 'sk-123', type: 'openai' }
-    mockStore.getProviders.mockResolvedValue([mockProvider])
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([mockProvider]),
+      updateProvider: vi.fn(),
+      deleteProvider: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {} as import('next/server').NextRequest
@@ -74,8 +80,11 @@ describe('PUT /api/admin/providers/[id]', () => {
   })
 
   it('should return 404 for non-existent provider', async () => {
-    mockStore.getProviders.mockResolvedValue([])
-    mockStore.updateProvider.mockResolvedValue(null)
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([]),
+      updateProvider: vi.fn().mockResolvedValue(null),
+      deleteProvider: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: 'non-existent' })
     const request = {
@@ -86,8 +95,11 @@ describe('PUT /api/admin/providers/[id]', () => {
   })
 
   it('should update provider fields', async () => {
-    mockStore.getProviders.mockResolvedValue([{ id: '1', name: 'OldName' }])
-    mockStore.updateProvider.mockResolvedValue({ id: '1', name: 'NewName' })
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([{ id: '1', name: 'OldName' }]),
+      updateProvider: vi.fn().mockResolvedValue({ id: '1', name: 'NewName' }),
+      deleteProvider: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {
@@ -101,8 +113,11 @@ describe('PUT /api/admin/providers/[id]', () => {
   })
 
   it('should return 500 on update error', async () => {
-    mockStore.getProviders.mockResolvedValue([{ id: '1' }])
-    mockStore.updateProvider.mockRejectedValue(new Error('Update failed'))
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([{ id: '1' }]),
+      updateProvider: vi.fn().mockRejectedValue(new Error('Update failed')),
+      deleteProvider: vi.fn(),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {
@@ -124,8 +139,11 @@ describe('DELETE /api/admin/providers/[id]', () => {
   })
 
   it('should return 404 for non-existent provider', async () => {
-    mockStore.getProviders.mockResolvedValue([])
-    mockStore.deleteProvider.mockResolvedValue(false)
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([]),
+      updateProvider: vi.fn(),
+      deleteProvider: vi.fn().mockResolvedValue(false),
+    })
 
     const params = Promise.resolve({ id: 'non-existent' })
     const request = {} as import('next/server').NextRequest
@@ -134,8 +152,11 @@ describe('DELETE /api/admin/providers/[id]', () => {
   })
 
   it('should delete provider and return 204', async () => {
-    mockStore.getProviders.mockResolvedValue([{ id: '1' }])
-    mockStore.deleteProvider.mockResolvedValue(true)
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([{ id: '1' }]),
+      updateProvider: vi.fn(),
+      deleteProvider: vi.fn().mockResolvedValue(true),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {} as import('next/server').NextRequest
@@ -144,8 +165,11 @@ describe('DELETE /api/admin/providers/[id]', () => {
   })
 
   it('should return 500 on delete error', async () => {
-    mockStore.getProviders.mockResolvedValue([{ id: '1' }])
-    mockStore.deleteProvider.mockRejectedValue(new Error('Delete failed'))
+    vi.mocked(getSettingsStore).mockReturnValue({
+      getProviders: vi.fn().mockResolvedValue([{ id: '1' }]),
+      updateProvider: vi.fn(),
+      deleteProvider: vi.fn().mockRejectedValue(new Error('Delete failed')),
+    })
 
     const params = Promise.resolve({ id: '1' })
     const request = {} as import('next/server').NextRequest

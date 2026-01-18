@@ -228,7 +228,7 @@ export function StatusDashboard({ showRestartButtons: _showRestartButtons = fals
       fetchStatus(true, true);
     }, 3000);
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, [isAdmin, fetchStatus]);
 
   const formatUptime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);

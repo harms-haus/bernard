@@ -198,13 +198,14 @@ describe('useAssistantMessageData', () => {
 
   describe('toolCallsHaveContents', () => {
     it('should be true when tool calls have args', () => {
-      const message = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const message: any = {
         content: 'Searching...',
         role: 'assistant',
         type: 'ai',
         tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'search', arguments: '{"query":"test"}' } }],
         id: 'msg-1',
-      } as unknown as Message;
+      };
 
       const { result } = renderHook(() => useAssistantMessageData(message));
 
@@ -212,15 +213,18 @@ describe('useAssistantMessageData', () => {
     });
 
     it('should be false when tool calls have empty args', () => {
-      const message = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const message: any = {
         content: 'Searching...',
         role: 'assistant',
         type: 'ai',
         tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'search', arguments: '{}' } }],
         id: 'msg-1',
-      } as unknown as Message;
+      };
 
-      const { result } = renderHook(() => useAssistantMessageData(message));
+      const { result } = renderHook(() =>
+        useAssistantMessageData(message)
+      );
 
       expect(result.current.toolCallsHaveContents).toBe(false);
     });

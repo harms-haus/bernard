@@ -63,8 +63,9 @@ describe('plex/client.ts', () => {
   });
 
   it('isValidPlexConfig accepts valid config and rejects invalid ones', () => {
-    // Import the function to test it directly
-    const { isValidPlexConfig } = require('./client');
+    // Import the function to test it directly using path resolution
+    const clientPath = path.join(__dirname, 'plex', 'client.ts');
+    const { isValidPlexConfig } = require(clientPath);
     
     // Valid config
     expect(isValidPlexConfig({ baseUrl: 'http://localhost:32400', token: 'abc123' })).toBe(true);

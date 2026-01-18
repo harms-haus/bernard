@@ -62,7 +62,7 @@ export function useAutoRename({
   useEffect(() => {
     if (!threadId) return;
     performAutoRename(threadId, messages);
-  }, [threadId, messages.length, performAutoRename]);
+  }, [threadId, messages, messages.length, performAutoRename]);
 
   return {
     hasTriggeredAutoRename: threadId ? hasTriggeredRef.current.has(threadId) : false,

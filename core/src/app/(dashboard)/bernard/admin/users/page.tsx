@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,12 +58,7 @@ function UsersContent() {
   const toast = useToast();
   const confirmDialog = useConfirmDialog();
 
-  useEffect(() => {
-    loadUsers();
-    loadLimitsSettings();
-  }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
       const userList = await adminApiClient.listUsers();
@@ -74,16 +69,21 @@ function UsersContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadLimitsSettings = async () => {
+  const loadLimitsSettings = useCallback(async () => {
     try {
       const limits = await adminApiClient.getLimitsSettings();
       setAllowSignups(limits.allowSignups);
     } catch (error) {
       console.error('Failed to load limits settings:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+    loadLimitsSettings();
+  }, [loadUsers, loadLimitsSettings]);
 
   const handleUserCreationToggle = async (enabled: boolean) => {
     setAllowSignups(enabled);

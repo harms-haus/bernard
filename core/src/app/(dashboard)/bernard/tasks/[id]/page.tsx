@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -138,13 +138,7 @@ function TaskDetailContent() {
   const [messages, setMessages] = useState<TaskDetailResponse['messages']>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (id) {
-      loadTask();
-    }
-  }, [id]);
-
-  const loadTask = async () => {
+  const loadTask = useCallback(async () => {
     if (!id) return;
 
     setLoading(true);
@@ -168,7 +162,13 @@ function TaskDetailContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      loadTask();
+    }
+  }, [id, loadTask]);
 
   const getStatusIcon = (status: Task['status']) => {
     switch (status) {
