@@ -59,7 +59,7 @@ export function UserBadge() {
           sideOffset={5}
           align="end"
         >
-          {user && (
+          {user && user.role !== 'guest' && (
             <>
               <DropdownMenu.Item
                 onSelect={handleProfile}

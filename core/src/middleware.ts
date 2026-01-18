@@ -41,14 +41,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // For admin routes, redirect to server-side verification
-  // Edge Runtime cannot cryptographically verify JWT signatures without the jose library
-  // Any role extracted from the token is untrusted - redirect for proper server-side verification
+  // For admin routes, verify session exists (role check done server-side in layout)
+  // Edge Runtime can't verify admin role without jose library - layout will return 403
   if (isAdminRoute) {
-    // Always redirect to server-side verification - never trust decoded role claims
-    const redirectUrl = new URL("/auth/verify-admin", request.url);
-    redirectUrl.searchParams.set("redirectTo", pathname);
-    return NextResponse.redirect(redirectUrl);
+    // Session exists - let the layout handle admin verification and return 403 if needed
+    return NextResponse.next();
   }
 
   // Session cookie exists and route is not admin-protected - allow access

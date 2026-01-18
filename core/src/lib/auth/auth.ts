@@ -26,6 +26,13 @@ export const auth = betterAuth({
     // To use SQLite:
     // database: sqlite,
 
+    // Allow requests from 0.0.0.0, localhost, and the app URL
+    trustedOrigins: [
+        "http://0.0.0.0:3456",
+        "http://localhost:3456",
+        "http://127.0.0.1:3456",
+    ],
+
     emailAndPassword: {
         enabled: true
     },
