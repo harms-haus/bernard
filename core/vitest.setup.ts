@@ -124,4 +124,13 @@ afterEach(() => {
   process.kill = originalKill
 })
 
+// ============================================================================
+// Import Shared Mock Infrastructure
+// ============================================================================
+
+// These will be available to all tests
+import '@/test/mocks';
+import '@/test/wrappers';
+import '@/test/helpers';
+
 export {}

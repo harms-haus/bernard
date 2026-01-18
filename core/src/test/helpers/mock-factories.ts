@@ -1,22 +1,76 @@
-import { vi } from 'vitest'
+// core/src/test/helpers/mock-factories.ts
+import { vi } from 'vitest';
 
-export function createMockFn<T extends (...args: any[]) => any>(
-  implementation?: T
-): ReturnType<typeof vi.fn<T>> {
-  return implementation ? vi.fn(implementation) : vi.fn()
+// ============================================================================
+// Async Mock Factory
+// ============================================================================
+
+export function createAsyncMock<T extends (...args: unknown[]) => Promise<unknown>>(
+  implementation?: (...args: Parameters<T>) => ReturnType<T>
+) {
+  return vi.fn(implementation);
 }
 
-export function createAsyncMockFn<T extends (...args: any[]) => Promise<any>>(
-  implementation?: T
-): ReturnType<typeof vi.fn<T>> {
-  return implementation ? vi.fn(implementation) : vi.fn()
+// ============================================================================
+// Resolved Value Mock Factory
+// ============================================================================
+
+export function mockResolvedValue<T>(value: T): () => Promise<T> {
+  return () => Promise.resolve(value);
 }
 
-export function mockResolvedValue<T>(value: T) {
-  return vi.fn().mockResolvedValue(value)
+// ============================================================================
+// Rejected Value Mock Factory
+// ============================================================================
+
+export function mockRejectedValue(error: Error): () => Promise<never> {
+  return () => Promise.reject(error);
 }
 
-export function mockRejectedValue(error: Error | string) {
-  const err = typeof error === 'string' ? new Error(error) : error
-  return vi.fn().mockRejectedValue(err)
+// ============================================================================
+// Spy Factory
+// ============================================================================
+
+export function createSpy<T extends (...args: unknown[]) => unknown>(
+  implementation?: (...args: Parameters<T>) => ReturnType<T>
+) {
+  const obj: Record<string, () => unknown> = { mockFn: () => {} };
+  return vi.spyOn(obj, 'mockFn').mockImplementation(
+    implementation as (...args: unknown[]) => unknown
+  );
+}
+
+// ============================================================================
+// Mock Function Factory
+// ============================================================================
+
+export function createMockFn<T extends (...args: unknown[]) => unknown>(): ReturnType<typeof vi.fn<T>> {
+  return vi.fn();
+}
+
+// ============================================================================
+// Once Call Mock Factory
+// ============================================================================
+
+export function mockOnce<T>(value: T): () => Promise<T> {
+  let called = false;
+  return async () => {
+    if (called) return value;
+    called = true;
+    return value;
+  };
+}
+
+// ============================================================================
+// Timeout Mock Factory
+// ============================================================================
+
+export function mockWithTimeout<T>(
+  value: T,
+  delayMs = 100
+): () => Promise<T> {
+  return async () => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return value;
+  };
 }
