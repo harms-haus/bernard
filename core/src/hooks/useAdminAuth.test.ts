@@ -347,4 +347,164 @@ describe('useAdminAuth', () => {
       });
     });
   });
+
+  // ============================================================================
+  // Gap Tests: Derived State & Edge Cases
+  // ============================================================================
+
+  describe('isAdminLoading State', () => {
+    it('should derive isAdminLoading from state.loading', async () => {
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: null, loading: true, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.isAdminLoading).toBe(true);
+      });
+    });
+
+    it('should be false when loading is false and user exists', async () => {
+      const mockUser: User = {
+        id: '123',
+        displayName: 'User',
+        email: 'user@test.com',
+        role: 'user',
+        status: 'active',
+        createdAt: '',
+        updatedAt: '',
+      };
+
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: mockUser, loading: false, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.isAdminLoading).toBe(false);
+      });
+    });
+  });
+
+  describe('user Property', () => {
+    it('should return user from auth state', async () => {
+      const mockUser: User = {
+        id: '123',
+        displayName: 'Admin',
+        email: 'admin@test.com',
+        role: 'admin',
+        status: 'active',
+        createdAt: '',
+        updatedAt: '',
+      };
+
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: mockUser, loading: false, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.user).toBe(mockUser);
+      });
+    });
+
+    it('should return null when no user', async () => {
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: null, loading: false, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.user).toBeNull();
+      });
+    });
+  });
+
+  describe('error Property', () => {
+    it('should return error from auth state', async () => {
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: null, loading: false, error: 'Auth failed' },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.error).toBe('Auth failed');
+      });
+    });
+  });
+
+  describe('loading Property', () => {
+    it('should return state.loading', async () => {
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: null, loading: true, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(true);
+      });
+    });
+  });
+
+  describe('isAdminLoading Edge Cases', () => {
+    it('should be true when no user and no error', async () => {
+      vi.mocked(useAuth).mockReturnValue({
+        state: { user: null, loading: false, error: null },
+        login: vi.fn(),
+        githubLogin: vi.fn(),
+        googleLogin: vi.fn(),
+        logout: vi.fn(),
+        updateProfile: vi.fn(),
+        clearError: vi.fn(),
+      });
+
+      const { result } = renderHook(() => useAdminAuth());
+
+      await waitFor(() => {
+        expect(result.current.isAdminLoading).toBe(true);
+      });
+    });
+  });
 });

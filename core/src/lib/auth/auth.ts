@@ -26,12 +26,45 @@ export const auth = betterAuth({
     // To use SQLite:
     // database: sqlite,
 
-    // Allow requests from 0.0.0.0, localhost, and the app URL
-    trustedOrigins: [
-        "http://0.0.0.0:3456",
-        "http://localhost:3456",
-        "http://127.0.0.1:3456",
-    ],
+    // Allow requests from configured origins
+    // Load from AUTH_TRUSTED_ORIGINS (comma-separated) or APP_URL, fall back to localhost in dev
+    trustedOrigins: (() => {
+        const origins: string[] = [];
+        const isProduction = process.env.NODE_ENV === "production";
+
+        // Load from environment variable (comma-separated list)
+        if (process.env.AUTH_TRUSTED_ORIGINS) {
+            const envOrigins = process.env.AUTH_TRUSTED_ORIGINS.split(",")
+                .map(origin => origin.trim())
+                .filter(origin => origin.length > 0);
+            origins.push(...envOrigins);
+        } else if (process.env.APP_URL) {
+            // Fall back to APP_URL if AUTH_TRUSTED_ORIGINS is not set
+            origins.push(process.env.APP_URL.trim());
+        }
+
+        // In development, add localhost origins if not in production
+        if (!isProduction) {
+            const devOrigins = [
+                "http://0.0.0.0:3456",
+                "http://localhost:3456",
+                "http://127.0.0.1:3456",
+            ];
+            // Only add dev origins if they're not already in the list
+            for (const devOrigin of devOrigins) {
+                if (!origins.includes(devOrigin)) {
+                    origins.push(devOrigin);
+                }
+            }
+        }
+
+        // If no origins configured, use localhost as fallback (for development)
+        if (origins.length === 0) {
+            origins.push("http://localhost:3456");
+        }
+
+        return origins;
+    })(),
 
     emailAndPassword: {
         enabled: true

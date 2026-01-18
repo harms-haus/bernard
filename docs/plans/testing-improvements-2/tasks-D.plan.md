@@ -1,6 +1,6 @@
 # Bernard Testing Improvements - Tasks D: Hook Coverage
 **Generated:** 2026-01-18  
-**Last Updated:** 2026-01-18 (Plan Review)  
+**Last Updated:** 2026-01-18 (Plan Revision - Corrected Coverage Status)  
 **Target Coverage:** 70% overall (currently ~15% for hooks)  
 **Focus Areas:** Real-time Data Hooks, Service Hooks, Chat Hooks, Auth Hooks
 
@@ -9,16 +9,18 @@
 **Status:** Needs Revision
 
 **Key Findings:**
-1. Existing test file `core/src/hooks/hooks.test.ts` tests `useAutoRename` and `useChatInput` (NOT listed in this plan)
-2. Hooks with 0% dedicated test coverage: useHealthStream, useLogStream, useServiceStatus, useThreadData, useAssistantMessageData, useConfirmDialogPromise, useDarkMode, useAuth, useAdminAuth
+1. **EXISTING TESTS FOUND**: `hooks.test.tsx` contains partial coverage:
+   - `useServiceStatus`: 5 tests (~67% coverage)
+   - `useDarkMode`: 4 tests (~60% coverage)
+2. Hooks with 0% dedicated test coverage: useHealthStream, useLogStream, useThreadData, useAssistantMessageData, useConfirmDialogPromise, useAuth, useAdminAuth
 3. Context-based hooks (useAuth, useDarkMode) require Provider wrappers for testing
-4. Interface discrepancies found between plan and actual implementations
+4. All interface definitions in this plan match actual implementations (CORRECTED)
 
 ---
 
 ## Executive Summary
 
-This plan addresses the **9 hook files** with 0% dedicated coverage. Hooks are critical for state management, API integration, and real-time data streaming throughout the application.
+This plan addresses the **7 hook files** with 0% dedicated coverage plus **2 hooks with partial coverage**. Hooks are critical for state management, API integration, and real-time data streaming throughout the application.
 
 ### Files Covered in This Plan
 
@@ -26,20 +28,15 @@ This plan addresses the **9 hook files** with 0% dedicated coverage. Hooks are c
 |------|-----------------|------------|----------|---------|
 | useHealthStream | 0% | Medium | P0 | SSE Stream |
 | useLogStream | 0% | Medium | P0 | SSE Stream |
-| useServiceStatus | 0% | Medium | P0 | Polling + Actions |
+| useServiceStatus | ~67% (5 tests) | Medium | P0 | Polling + Actions |
 | useThreadData | 0% | High | P1 | Aggregator |
 | useAssistantMessageData | 0% | Low | P2 | Pure Function |
+| useAutoRename | 0% | Medium | P1 | Side Effect |
+| useChatInput | 0% | Low | P2 | State Management |
 | useConfirmDialogPromise | 0% | Medium | P2 | Promise Safety |
-| useDarkMode | 0% | Medium | P1 | Context Provider |
+| useDarkMode | ~60% (4 tests) | Medium | P1 | Context Provider |
 | useAuth | 0% | High | P0 | Context Provider |
 | useAdminAuth | 0% | Low | P2 | Derived State |
-
-### Already Tested (NOT in this plan)
-
-| Hook | Test File | Status |
-|------|-----------|--------|
-| useAutoRename | hooks.test.ts | ✅ Complete |
-| useChatInput | hooks.test.ts | ✅ Complete |
 
 ---
 
@@ -779,13 +776,11 @@ describe('Tool Calls', () => {
 
 ### 3.1 useDarkMode (`hooks/useDarkMode.ts`)
 
-**File Location:** `core/src/hooks/useDarkMode.ts`
-
-**Current Coverage:** 0% (plan stated 8.51% - INCORRECT)
+**Current Coverage:** ~60% (4 tests exist in hooks.test.tsx)
 
 #### Important Note
 
-This is a **Context Consumer** hook, not a standalone hook. It MUST be wrapped in `DarkModeProvider` for testing. The existing plan incorrectly listed 8.51% coverage - this appears to be confusion with a different metric or was never accurate.
+This is a **Context Consumer** hook, not a standalone hook. It MUST be wrapped in `DarkModeProvider` for testing. The existing plan incorrectly listed 8.51% coverage - this was a confusion with a different metric. Actual coverage is ~60% with 4 tests.
 
 #### Test Scenarios
 
@@ -1075,6 +1070,426 @@ describe('Lifecycle Safety', () => {
 
 ---
 
+## Phase 6: Chat Input Hooks (P1-P2)
+
+### 6.1 useAutoRename (`hooks/useAutoRename.ts`)
+
+**File Location:** `core/src/hooks/useAutoRename.ts`
+
+#### Implementation Analysis
+
+**Purpose:** Automatically renames chat threads based on the first human message content
+
+**Inputs:**
+- `threadId: string | null` - Current thread ID
+- `messages: Message[]` - Thread messages
+- `onRenameComplete?: () => void` - Callback after successful rename
+- `apiClient?: IAPIClient` - API client for the rename operation
+
+**Returns:**
+```typescript
+interface UseAutoRenameResult {
+  hasTriggeredAutoRename: boolean;
+  triggerAutoRename: () => void;
+  isAutoRenaming: boolean;
+}
+```
+
+**Key Behaviors:**
+- Triggers only when `messages.length === 2` (1 human + 1 AI response)
+- Prevents duplicate renames using refs
+- Extracts first human message content
+- Calls `apiClient.autoRenameThread(threadId, content)`
+
+#### Test Scenarios
+
+**Test 6.1.1: Initial State**
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { useAutoRename } from './useAutoRename';
+import type { Message } from '@langchain/langgraph-sdk';
+
+describe('useAutoRename', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should initialize with hasTriggeredAutoRename: false', () => {
+    const { result } = renderHook(() =>
+      useAutoRename({ threadId: null, messages: [] })
+    );
+
+    expect(result.current.hasTriggeredAutoRename).toBe(false);
+    expect(result.current.isAutoRenaming).toBe(false);
+  });
+
+  it('should handle null threadId', () => {
+    const { result } = renderHook(() =>
+      useAutoRename({ threadId: null, messages: [{ id: '1', type: 'human', content: 'Hello' }] })
+    );
+
+    expect(result.current.hasTriggeredAutoRename).toBe(false);
+  });
+});
+```
+
+**Test 6.1.2: Auto Rename Trigger**
+```typescript
+describe('Auto Rename Trigger', () => {
+  it('should trigger rename when messages.length === 2', async () => {
+    const mockAutoRenameThread = vi.fn().mockResolvedValue(undefined);
+    const mockApiClient = { autoRenameThread: mockAutoRenameThread };
+
+    const messages: Message[] = [
+      { id: '1', type: 'human', content: 'Hello, Bernard!' },
+      { id: '2', type: 'ai', content: 'Hello! How can I help?' },
+    ];
+
+    const { result, waitFor } = renderHook(() =>
+      useAutoRename({
+        threadId: 'thread-123',
+        messages,
+        apiClient: mockApiClient as any,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockAutoRenameThread).toHaveBeenCalledWith(
+        'thread-123',
+        'Hello, Bernard!'
+      );
+    });
+
+    expect(result.current.hasTriggeredAutoRename).toBe(true);
+    expect(result.current.isAutoRenaming).toBe(false);
+  });
+
+  it('should NOT trigger when messages.length !== 2', () => {
+    const mockAutoRenameThread = vi.fn();
+    const mockApiClient = { autoRenameThread: mockAutoRenameThread };
+
+    const messages: Message[] = [
+      { id: '1', type: 'human', content: 'Hello' },
+    ];
+
+    const { result } = renderHook(() =>
+      useAutoRename({
+        threadId: 'thread-123',
+        messages,
+        apiClient: mockApiClient as any,
+      })
+    );
+
+    expect(mockAutoRenameThread).not.toHaveBeenCalled();
+    expect(result.current.hasTriggeredAutoRename).toBe(false);
+  });
+
+  it('should prevent duplicate renames', async () => {
+    const mockAutoRenameThread = vi.fn().mockResolvedValue(undefined);
+    const mockApiClient = { autoRenameThread: mockAutoRenameThread };
+
+    const messages: Message[] = [
+      { id: '1', type: 'human', content: 'Hello' },
+      { id: '2', type: 'ai', content: 'Hi there!' },
+    ];
+
+    const { rerender } = renderHook(({ messages, threadId }) =>
+      useAutoRename({
+        threadId,
+        messages,
+        apiClient: mockApiClient as any,
+      }),
+      {
+        initialProps: {
+          messages: [{ id: '1', type: 'human', content: 'Hello' }],
+          threadId: 'thread-123',
+        },
+      }
+    );
+
+    // First render with 1 message
+    expect(mockAutoRenameThread).not.toHaveBeenCalled();
+
+    // Rerender with 2 messages - should trigger
+    rerender({
+      messages,
+      threadId: 'thread-123',
+    });
+
+    await waitFor(() => {
+      expect(mockAutoRenameThread).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+**Test 6.1.3: Thread Changes**
+```typescript
+describe('Thread Changes', () => {
+  it('should reset state when threadId changes', async () => {
+    const mockAutoRenameThread = vi.fn().mockResolvedValue(undefined);
+    const mockApiClient = { autoRenameThread: mockAutoRenameThread };
+
+    const thread1Messages: Message[] = [
+      { id: '1', type: 'human', content: 'Hello' },
+      { id: '2', type: 'ai', content: 'Hi!' },
+    ];
+
+    const { rerender, result } = renderHook(({ threadId, messages }) =>
+      useAutoRename({
+        threadId,
+        messages,
+        apiClient: mockApiClient as any,
+      }),
+      {
+        initialProps: {
+          threadId: 'thread-1',
+          messages: thread1Messages,
+        },
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.hasTriggeredAutoRename).toBe(true);
+    });
+
+    // Switch to different thread
+    rerender({
+      threadId: 'thread-2',
+      messages: thread1Messages,
+    });
+
+    expect(result.current.hasTriggeredAutoRename).toBe(false);
+  });
+});
+```
+
+---
+
+### 6.2 useChatInput (`hooks/useChatInput.ts`)
+
+**File Location:** `core/src/hooks/useChatInput.ts`
+
+#### Implementation Analysis
+
+**Purpose:** Manages chat input state, submission, and keyboard interactions
+
+**Inputs:**
+- `onSubmit: (message: Message) => void` - Submit callback
+- `isLoading: boolean` - Loading state
+- `uuidGenerator?: () => string` - Custom UUID generator (default: uuidv4)
+
+**Returns:**
+```typescript
+interface UseChatInputResult {
+  input: string;
+  setInput: (value: string) => void;
+  handleSubmit: (e?: React.FormEvent) => void;
+  handleKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  canSubmit: boolean;
+}
+```
+
+#### Test Scenarios
+
+**Test 6.2.1: State Management**
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useChatInput } from './useChatInput';
+import type { Message } from '@langchain/langgraph-sdk';
+
+describe('useChatInput', () => {
+  const mockOnSubmit = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should initialize with empty input', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    expect(result.current.input).toBe('');
+    expect(result.current.canSubmit).toBe(false);
+  });
+
+  it('should update input state', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    act(() => {
+      result.current.setInput('Hello, Bernard!');
+    });
+
+    expect(result.current.input).toBe('Hello, Bernard!');
+    expect(result.current.canSubmit).toBe(true);
+  });
+
+  it('should clear input after setInput with whitespace only', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    act(() => {
+      result.current.setInput('  ');
+    });
+
+    expect(result.current.input).toBe('  ');
+    expect(result.current.canSubmit).toBe(false);
+  });
+});
+```
+
+**Test 6.2.2: Submit Handling**
+```typescript
+describe('Submit Handling', () => {
+  it('should call onSubmit with message when canSubmit is true', () => {
+    const uuidGenerator = vi.fn().mockReturnValue('mock-uuid-123');
+    const { result } = renderHook(() =>
+      useChatInput({
+        onSubmit: mockOnSubmit,
+        isLoading: false,
+        uuidGenerator,
+      })
+    );
+
+    act(() => {
+      result.current.setInput('Hello!');
+    });
+
+    act(() => {
+      result.current.handleSubmit();
+    });
+
+    expect(mockOnSubmit).toHaveBeenCalledWith({
+      id: 'mock-uuid-123',
+      type: 'human',
+      content: 'Hello!',
+    });
+
+    expect(result.current.input).toBe('');
+  });
+
+  it('should NOT submit when input is empty', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    act(() => {
+      result.current.handleSubmit();
+    });
+
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('should NOT submit when isLoading is true', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: true })
+    );
+
+    act(() => {
+      result.current.setInput('Hello!');
+    });
+
+    expect(result.current.canSubmit).toBe(false);
+
+    act(() => {
+      result.current.handleSubmit();
+    });
+
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+});
+```
+
+**Test 6.2.3: Keyboard Handling**
+```typescript
+describe('Keyboard Handling', () => {
+  it('should prevent default on Enter without modifiers', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    act(() => {
+      result.current.setInput('Hello!');
+    });
+
+    const mockEvent = {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      currentTarget: { form: { requestSubmit: vi.fn() } },
+      shiftKey: false,
+      metaKey: false,
+      nativeEvent: { isComposing: false },
+    };
+
+    result.current.handleKeyDown(mockEvent as any);
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockEvent.currentTarget.form.requestSubmit).toHaveBeenCalled();
+  });
+
+  it('should NOT prevent default on Enter with Shift', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    const mockEvent = {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      shiftKey: true,
+      metaKey: false,
+      nativeEvent: { isComposing: false },
+    };
+
+    result.current.handleKeyDown(mockEvent as any);
+
+    expect(mockEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('should NOT prevent default on Enter with Meta (Cmd)', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    const mockEvent = {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      shiftKey: false,
+      metaKey: true,
+      nativeEvent: { isComposing: false },
+    };
+
+    result.current.handleKeyDown(mockEvent as any);
+
+    expect(mockEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('should NOT prevent default during composition', () => {
+    const { result } = renderHook(() =>
+      useChatInput({ onSubmit: mockOnSubmit, isLoading: false })
+    );
+
+    const mockEvent = {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      shiftKey: false,
+      metaKey: false,
+      nativeEvent: { isComposing: true },
+    };
+
+    result.current.handleKeyDown(mockEvent as any);
+
+    expect(mockEvent.preventDefault).not.toHaveBeenCalled();
+  });
+});
+```
+
+---
+
 ## Mock Infrastructure
 
 ### Existing Test Utilities (USE THESE)
@@ -1149,27 +1564,36 @@ export const createMockMatchMedia = (matches: boolean) => ({
    - useThreadData (complex aggregator)
    - useAssistantMessageData (parsing)
 
-4. **Phase 3: Theme Hook** (UI consistency)
+4. **Phase 6: Chat Input Hooks** (Core UI functionality)
+   - useAutoRename (side effect management)
+   - useChatInput (state management)
+
+5. **Phase 3: Theme Hook** (UI consistency)
    - useDarkMode (context-based)
 
-5. **Phase 5: Dialog Hook** (Safety patterns)
+6. **Phase 5: Dialog Hook** (Safety patterns)
    - useConfirmDialogPromise (lifecycle safety)
 
 ---
 
 ## Coverage Targets
 
-| Hook | Current | Target | Est. Tests | Notes |
-|------|---------|--------|------------|-------|
-| useHealthStream | 0% | 90% | ~15 | SSE mocking required |
-| useLogStream | 0% | 90% | ~15 | SSE mocking required |
-| useServiceStatus | 0% | 90% | ~15 | fetch mocking required |
-| useThreadData | 0% | 85% | ~20 | Complex provider mocking |
-| useAssistantMessageData | 0% | 90% | ~10 | Pure function - straightforward |
-| useDarkMode | 0% | 90% | ~10 | Context wrapper required |
-| useAuth | 0% | 85% | ~20 | Provider wrapper required |
-| useAdminAuth | 0% | 90% | ~8 | Simple derived state |
-| useConfirmDialogPromise | 0% | 90% | ~10 | Promise lifecycle |
+| Hook | Current | Target | Est. New Tests | Total Tests | Notes |
+|------|---------|--------|----------------|-------------|-------|
+| useHealthStream | 0% | 90% | ~15 | 15 | SSE mocking required |
+| useLogStream | 0% | 90% | ~15 | 15 | SSE mocking required |
+| useServiceStatus | ~67% | 90% | ~5 | 10 | 5 tests exist, add 5 more |
+| useThreadData | 0% | 85% | ~20 | 20 | Complex provider mocking |
+| useAssistantMessageData | 0% | 90% | ~10 | 10 | Pure function - straightforward |
+| useAutoRename | 0% | 90% | ~12 | 12 | API client mocking required |
+| useChatInput | 0% | 90% | ~12 | 12 | State management + events |
+| useConfirmDialogPromise | 0% | 90% | ~10 | 10 | Promise lifecycle |
+| useDarkMode | ~60% | 90% | ~6 | 10 | 4 tests exist, add 6 more |
+| useAuth | 0% | 85% | ~20 | 20 | Provider wrapper required |
+| useAdminAuth | 0% | 90% | ~8 | 8 | Simple derived state |
+
+**Total New Tests Required:** ~133 tests
+**Total Tests After Implementation:** ~142 tests (including existing 9 tests)
 
 ---
 

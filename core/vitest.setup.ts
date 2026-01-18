@@ -115,70 +115,24 @@ beforeEach(() => {
   localStorageData.clear();
 });
 
-const TEST_DIR = path.join(process.cwd(), "test-temp");
-const LOGS_DIR = path.join(TEST_DIR, 'logs')
-const PIDS_DIR = path.join(TEST_DIR, 'pids')
+// ============================================================================
+// WINDOW.MATCHMEDIA MOCK (for useDarkMode)
+// ============================================================================
 
-beforeEach(() => {
-  if (!fs.existsSync(TEST_DIR)) {
-    fs.mkdirSync(TEST_DIR, { recursive: true })
-  }
-  if (!fs.existsSync(LOGS_DIR)) {
-    fs.mkdirSync(LOGS_DIR, { recursive: true })
-  }
-  if (!fs.existsSync(PIDS_DIR)) {
-    fs.mkdirSync(PIDS_DIR, { recursive: true })
-  }
-
-  vi.stubEnv('LOG_DIR', LOGS_DIR)
-  vi.stubEnv('TZ', 'America/Chicago')
-  // BetterAuth requires a secret, stub one for tests
-  vi.stubEnv('BETTER_AUTH_SECRET', 'Cz+yjqf9nUVK2xa5lMgQEAIkeuDbZwvrct9IKXyPaJw=')
-})
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  // Reset singleton instances after each test
-  resetSettingsManager();
-  resetSettingsStore();
+Object.defineProperty(window, 'matchMedia', {
+  value: vi.fn().mockImplementation((_query: string) => ({
+    matches: false,
+    media: _query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+  writable: true,
+  configurable: true,
 });
-
-vi.mock('node:child_process', () => ({
-  default: {
-    spawn: vi.fn().mockReturnValue({
-      pid: 12345,
-      on: vi.fn(),
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      kill: vi.fn(),
-    }),
-    execSync: vi.fn().mockReturnValue(''),
-    exec: vi.fn(),
-    execFile: vi.fn(),
-    spawnSync: vi.fn(),
-  },
-  spawn: vi.fn().mockReturnValue({
-    pid: 12345,
-    on: vi.fn(),
-    stdout: { on: vi.fn() },
-    stderr: { on: vi.fn() },
-    kill: vi.fn(),
-  }),
-  execSync: vi.fn().mockReturnValue(''),
-  exec: vi.fn(),
-  execFile: vi.fn(),
-  spawnSync: vi.fn(),
-}))
-
-const originalKill = process.kill
-
-beforeEach(() => {
-  process.kill = vi.fn().mockReturnValue(true) as any
-})
-
-afterEach(() => {
-  process.kill = originalKill
-})
 
 // ============================================================================
 // Import Shared Mock Infrastructure
