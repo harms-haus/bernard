@@ -51,11 +51,11 @@ function createMockToggleLightTool() {
       else if (on === false) action = 'turned off';
 
       let response = `[Demo] Light ${entity} ${action}`;
-      
+
       if (brightness_pct !== undefined && brightness_pct !== null) {
         response += ` to ${brightness_pct}% brightness`;
       }
-      
+
       if (color !== undefined && color !== null) {
         response += ` with color: ${JSON.stringify(color)}`;
       }
@@ -348,7 +348,7 @@ export const toggleLightToolFactory: ToolFactory = async (context?: ToolContext)
   // Return mock tool for guests
   if (context?.userRole === 'guest') {
     const mockTool = createMockToggleLightTool();
-    return { ok: true, tool: mockTool };
+    return { ok: true, tool: mockTool, name: mockTool.name };
   }
 
   const isValid = await verifyHomeAssistantConfigured();

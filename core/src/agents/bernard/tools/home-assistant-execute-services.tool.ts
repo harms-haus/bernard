@@ -83,15 +83,15 @@ export function createExecuteHomeAssistantServicesTool(
     ...defaultDeps,
     ...overrides,
   };
-  
+
   return tool(
     async ({ list }: { list: Array<{ domain: string; service: string; service_data: { entity_id: string | string[] } }> }) => {
       if (!Array.isArray(list) || list.length === 0) {
         return "No service calls provided. Please provide an array of service calls to execute.";
       }
-      
+
       const results: string[] = [];
-      
+
       for (const serviceCall of list) {
         try {
           const result = await executeSingleServiceCall(serviceCall, deps, restConfig);
@@ -105,7 +105,7 @@ export function createExecuteHomeAssistantServicesTool(
           results.push(`Failed to execute service: ${errorMessage}`);
         }
       }
-      
+
       return results.join('\n\n');
     },
     {
@@ -157,31 +157,31 @@ async function executeSingleServiceCall(
   restConfig?: HARestConfig
 ): Promise<string> {
   const { domain, service, service_data } = serviceCall;
-  
+
   // Validate domain and service are provided
   if (!domain || !service) {
     throw new Error("Domain and service are required for execute_services");
   }
-  
+
   const entityIds = service_data.entity_id;
   if (!entityIds) {
     throw new Error("entity_id is required in service_data");
   }
-  
+
   const entityIdsArray = Array.isArray(entityIds) ? entityIds : [entityIds];
-  
+
   // Validate each entity_id
   for (const entityId of entityIdsArray) {
     if (!deps.validateEntityIdImpl(entityId)) {
       throw new Error(`Invalid entity_id format: ${entityId}. Entity IDs must start with domain followed by a dot character.`);
     }
-    
+
     const entityDomain = deps.getDomainFromEntityIdImpl(entityId);
     if (entityDomain !== domain) {
       throw new Error(`Entity ID ${entityId} does not match domain ${domain}. Entity IDs must start with the same domain as the service.`);
     }
   }
-  
+
   // Priority logic: Prefer WebSocket API over tool calls
   if (restConfig && deps.callHAServiceWebSocketImpl) {
     // Primary behavior: Execute directly via WebSocket API
@@ -217,7 +217,7 @@ export const executeHomeAssistantServicesToolFactory: ToolFactory = async (conte
   // Return mock tool for guests
   if (context?.userRole === 'guest') {
     const mockTool = createMockExecuteHomeAssistantServicesTool();
-    return { ok: true, tool: mockTool };
+    return { ok: true, tool: mockTool, name: mockTool.name };
   }
 
   const isValid = await verifyHomeAssistantConfigured();
