@@ -19,9 +19,12 @@ export function DynamicSidebarProvider({ children }: { children: ReactNode }) {
     // Load state from localStorage on mount
     useEffect(() => {
         const savedState = localStorage.getItem(SIDEBAR_STATE_KEY);
-        if (savedState !== null) {
-            setIsOpen(savedState === 'true');
+        if (savedState === 'true') {
+            setIsOpen(true);
+        } else if (savedState === 'false') {
+            setIsOpen(false);
         }
+        // Invalid values are ignored, keeping default isOpen = true
     }, []);
 
     // Save state to localStorage when it changes

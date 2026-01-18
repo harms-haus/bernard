@@ -30,11 +30,11 @@ export type TestAuthContextType = {
     loading: boolean;
     error: string | null;
   };
-  login?: () => Promise<void>;
+  login?: (credentials: LoginCredentials) => Promise<void>;
   githubLogin?: () => Promise<void>;
   googleLogin?: () => Promise<void>;
   logout?: () => Promise<void>;
-  updateProfile?: () => Promise<unknown>;
+  updateProfile?: (data: { displayName?: string; email?: string }) => Promise<User>;
   clearError?: () => void;
 };
 
@@ -207,8 +207,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 }
 
 export function useAuth() {
-  // Check for test context first (used in test environment)
+  // Always call both context hooks at the top level (rules of hooks)
   const testContext = useContext(TestAuthContext);
+  const context = useContext(AuthContext);
+
+  // Check for test context first (used in test environment)
   if (testContext !== undefined) {
     // Adapt test context to AuthContextType
     return {
@@ -226,7 +229,6 @@ export function useAuth() {
     };
   }
 
-  const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }

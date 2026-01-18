@@ -57,9 +57,9 @@ interface AdminWrapperProps {
 }
 
 export const AdminWrapper = ({ children, isAdmin = false }: AdminWrapperProps) => {
-  const mockUser = isAdmin
-    ? { id: 'admin', role: 'admin' }
-    : { id: 'user', role: 'user' };
+  const mockUser: import('@/types/auth').User = isAdmin
+    ? { id: 'admin', role: 'admin', displayName: 'Admin User', email: 'admin@test.com', status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    : { id: 'user', role: 'user', displayName: 'Test User', email: 'user@test.com', status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 
   // AdminWrapper reuses AuthTestProvider since useAdminAuth depends on useAuth
   return (

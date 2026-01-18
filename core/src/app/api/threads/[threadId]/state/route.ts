@@ -16,5 +16,5 @@ export async function PUT(
   { params }: { params: Promise<{ threadId: string }> }
 ) {
   const { threadId } = await params
-  return proxyToLangGraph(request, `/threads/${threadId}/state`)
+  return proxyToLangGraph(request, `/threads/${threadId}/state`, { method: 'PUT' })
 }

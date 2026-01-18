@@ -149,3 +149,36 @@ export const mockUseAdminAuthLoading = () => mockUseAdminAuth({
   loading: true,
   error: null,
 });
+
+// ============================================================================
+// Router Mocks
+// ============================================================================
+
+export const createMockRouter = () => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  refresh: vi.fn(),
+  prefetch: vi.fn(),
+});
+
+export const createMockSearchParams = (params: Record<string, string> = {}) => {
+  const get = (key: string) => key in params ? params[key] : null;
+  const getAll = (key: string) => key in params ? [params[key]] : [];
+  const has = (key: string) => key in params;
+  const entries = () => Object.entries(params);
+  const keys = () => Object.keys(params);
+  const values = () => Object.values(params);
+  const toString = () => new URLSearchParams(params).toString();
+
+  return {
+    get,
+    getAll,
+    has,
+    entries,
+    keys,
+    values,
+    toString,
+  };
+};

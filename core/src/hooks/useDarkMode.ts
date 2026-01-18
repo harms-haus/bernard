@@ -87,13 +87,15 @@ export function DarkModeProvider({ children }: DarkModeProviderProps) {
 }
 
 export function useDarkMode() {
-  // Check for test context first (used in test environment)
+  // Always call both context hooks at the top level (rules of hooks)
   const testContext = useContext(TestDarkModeContext);
+  const context = useContext(DarkModeContext);
+
+  // Check for test context first (used in test environment)
   if (testContext !== undefined) {
     return testContext;
   }
 
-  const context = useContext(DarkModeContext);
   if (context === undefined) {
     throw new Error('useDarkMode must be used within a DarkModeProvider');
   }

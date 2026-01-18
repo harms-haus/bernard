@@ -9,6 +9,62 @@ import { resetSettingsStore } from "@/lib/config/settingsStore";
 // Make React available globally for JSX transformation in tests
 globalThis.React = React;
 
+// ============================================================================
+// MOCK next/headers to prevent "headers() called outside request scope" errors
+// ============================================================================
+
+vi.mock('next/headers', async () => {
+  const actual = await vi.importActual<typeof import('next/headers')>('next/headers');
+  return {
+    ...actual,
+    headers: vi.fn().mockImplementation(() => {
+      // Return a mock headers object that behaves like Headers
+      const headers = new Map<string, string>([
+        ['cookie', 'test-cookie'],
+        ['authorization', 'Bearer test-token'],
+      ]);
+      return headers;
+    }),
+  };
+});
+
+// ============================================================================
+// MOCK better-auth to return a mock session for tests
+// ============================================================================
+
+vi.mock('@/lib/auth/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/auth')>('@/lib/auth/auth');
+  // Safely handle missing nested objects with defaults
+  const defaultAuth = actual?.auth ?? {};
+  const defaultApi = defaultAuth?.api ?? {};
+  // Make role configurable via environment variable, default to 'admin'
+  const defaultRole = process.env.TEST_DEFAULT_ROLE ?? 'admin';
+  return {
+    ...actual,
+    auth: {
+      ...defaultAuth,
+      api: {
+        ...defaultApi,
+        getSession: vi.fn().mockResolvedValue({
+          user: {
+            id: 'test-user-123',
+            email: 'test@example.com',
+            name: 'Test User',
+            role: defaultRole,
+            image: null,
+          },
+          session: {
+            id: 'test-session-123',
+            userId: 'test-user-123',
+            token: 'test-token',
+            expiresAt: new Date(Date.now() + 86400000),
+          },
+        }),
+      },
+    },
+  };
+});
+
 // ============================================
 // LOCALSTORAGE MOCK (using Object.defineProperty)
 // ============================================

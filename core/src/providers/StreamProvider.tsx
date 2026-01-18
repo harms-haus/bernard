@@ -71,13 +71,15 @@ const TestStreamContext = createContext<TestStreamContextType | undefined>(undef
 export { TestStreamContext };
 
 export function useStreamContext() {
-  // Check for test context first (used in test environment)
+  // Always call both context hooks at the top level (rules of hooks)
   const testContext = useContext(TestStreamContext);
+  const context = useContext(StreamContext);
+
+  // Check for test context first (used in test environment)
   if (testContext !== undefined) {
     return testContext;
   }
 
-  const context = useContext(StreamContext);
   if (context === undefined) {
     throw new Error('useStreamContext must be used within a StreamProvider');
   }

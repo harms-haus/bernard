@@ -5,7 +5,8 @@ export interface MockAuthContextType {
     user: {
       id: string;
       displayName: string;
-      isAdmin: boolean;
+      email: string;
+      role: 'admin' | 'user' | 'guest';
       status: 'active' | 'inactive' | 'pending';
       createdAt: string;
       updatedAt: string;
@@ -17,7 +18,6 @@ export interface MockAuthContextType {
   githubLogin: () => Promise<void>;
   googleLogin: () => Promise<void>;
   logout: () => Promise<void>;
-  getCurrentUser: () => Promise<void>;
   updateProfile: (data: { displayName?: string; email?: string }) => Promise<any>;
   clearError: () => void;
 }
@@ -32,7 +32,8 @@ export function createDefaultAuthContext(): MockAuthContextType {
       user: {
         id: 'test-user-id',
         displayName: 'Test User',
-        isAdmin: false,
+        email: 'test@example.com',
+        role: 'user',
         status: 'active' as const,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -44,11 +45,11 @@ export function createDefaultAuthContext(): MockAuthContextType {
     githubLogin: vi.fn().mockResolvedValue(undefined),
     googleLogin: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
-    getCurrentUser: vi.fn().mockResolvedValue(undefined),
     updateProfile: vi.fn().mockResolvedValue({
       id: 'test-user-id',
       displayName: 'Test User',
-      isAdmin: false,
+      email: 'test@example.com',
+      role: 'user',
       status: 'active' as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -84,7 +85,8 @@ export function createAdminAuthContext(): MockAuthContextType {
       user: {
         id: 'admin-user-id',
         displayName: 'Admin User',
-        isAdmin: true,
+        email: 'admin@example.com',
+        role: 'admin',
         status: 'active' as const,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

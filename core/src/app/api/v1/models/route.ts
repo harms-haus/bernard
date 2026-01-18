@@ -5,14 +5,14 @@ import path from 'path';
 
 const LANGGRAPH_API_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 
-const client = new Client({
-  apiUrl: LANGGRAPH_API_URL,
-});
-
 export const dynamic = 'force-dynamic';
 
 async function getGraphsFromLangGraphServer(): Promise<string[]> {
   try {
+    // Create client inside function for testability
+    const client = new Client({
+      apiUrl: LANGGRAPH_API_URL,
+    });
     // Try to get assistants (SDK auto-creates one per graph)
     const assistants = await client.assistants.search({});
     // Return unique graph_ids from assistants

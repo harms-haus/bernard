@@ -19,6 +19,12 @@ function ProfileContent() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
+  // Track if there are unsaved changes
+  const hasChanges = state.user && (
+    displayName !== state.user.displayName ||
+    email !== state.user.email
+  );
+
   React.useEffect(() => {
     setTitle('User Settings');
     setSubtitle('Profile');
@@ -64,7 +70,7 @@ function ProfileContent() {
         <div className="container mx-auto px-6 py-6 max-w-2xl">
           <Card>
             <CardContent className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" data-testid="loading-spinner" />
             </CardContent>
           </Card>
         </div>
@@ -122,7 +128,10 @@ function ProfileContent() {
                 <Input
                   id="displayName"
                   value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value);
+                    clearError();
+                  }}
                   placeholder="Your display name"
                   className="max-w-md"
                   required
@@ -152,9 +161,9 @@ function ProfileContent() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
                   className="max-w-md"
+                  disabled
                 />
               </div>
 
@@ -205,7 +214,7 @@ function ProfileContent() {
                     clearError();
                     setSuccessMessage(null);
                   }}
-                  disabled={isSaving}
+                  disabled={isSaving || !hasChanges}
                 >
                   Reset
                 </Button>

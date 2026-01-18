@@ -1,18 +1,24 @@
 import 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
 import { Suspense } from 'react';
+import { SearchParamsTestProvider } from '@/test/providers';
 import { ThreadProvider } from './ThreadProvider';
 import { StreamProvider, useStreamContext } from './StreamProvider';
 
-// Mock next/navigation - must use vi.hoisted for references used in vi.mock
-const mockUseRouter = vi.hoisted(() => vi.fn());
-const mockUseSearchParams = vi.hoisted(() => vi.fn().mockReturnValue(new URLSearchParams()));
+// Create mock router object once
+const mockRouter = {
+  replace: vi.fn(),
+  push: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  refresh: vi.fn(),
+};
 
+// Mock next/navigation with a factory function
 vi.mock('next/navigation', () => ({
-  useRouter: mockUseRouter,
-  useSearchParams: mockUseSearchParams,
+  useRouter: vi.fn(() => mockRouter),
+  useSearchParams: vi.fn(() => new URLSearchParams()),
 }));
 
 // Mock fetch globally
@@ -35,15 +41,12 @@ const TestComponent = () => {
 describe('StreamProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Setup default router mock
-    mockUseRouter.mockReturnValue({
-      replace: vi.fn(),
-      push: vi.fn(),
-      back: vi.fn(),
-      forward: vi.fn(),
-      refresh: vi.fn(),
-      prefetch: vi.fn(),
-    });
+    // Reset mock router functions
+    mockRouter.replace = vi.fn();
+    mockRouter.push = vi.fn();
+    mockRouter.back = vi.fn();
+    mockRouter.forward = vi.fn();
+    mockRouter.refresh = vi.fn();
     // Default mock for fetch - returns a successful response
     mockFetch.mockResolvedValue({
       ok: true,
@@ -62,13 +65,13 @@ describe('StreamProvider', () => {
 
   const renderWithProviders = (ui: React.ReactElement) => {
     return render(
-      <MemoryRouter>
+      <SearchParamsTestProvider params={{}}>
         <ThreadProvider>
           <Suspense fallback={<div data-testid="suspense-loading">Loading...</div>}>
             {ui}
           </Suspense>
         </ThreadProvider>
-      </MemoryRouter>
+      </SearchParamsTestProvider>
     );
   };
 
