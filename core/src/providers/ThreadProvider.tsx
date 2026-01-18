@@ -32,16 +32,8 @@ export function ThreadProvider({ children, apiClient = getAPIClient() }: ThreadP
     setThreadsLoading(true);
     try {
       const response = await apiClient.listThreads(50);
-      const threadList = response.threads;
-      setThreads((prev) => {
-        const serverIds = new Set(threadList.map((t) => t.id));
-        const localOnly = prev.filter((t) => !serverIds.has(t.id));
-        return [...localOnly, ...threadList].sort(
-          (a, b) =>
-            new Date(b.lastTouchedAt).getTime() - new Date(a.lastTouchedAt).getTime()
-        );
-      });
-      return threadList;
+      setThreads(response.threads);
+      return response.threads;
     } catch (error) {
       const err = error as Error & { status?: number };
       if (err.status !== 404) {

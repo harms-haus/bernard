@@ -20,14 +20,6 @@ const levelColors: Record<string, string> = {
   trace: 'text-gray-500',
 };
 
-const levelBgColors: Record<string, string> = {
-  info: 'bg-blue-400/10',
-  warn: 'bg-yellow-400/10',
-  error: 'bg-red-400/10',
-  debug: 'bg-gray-400/10',
-  trace: 'bg-gray-500/10',
-};
-
 export function LogViewer({
   service,
   height = '400px',
@@ -55,8 +47,8 @@ export function LogViewer({
   });
 
   return (
-    <div className="rounded-lg border border-border bg-slate-950 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900/50 border-b border-border">
+    <div className="rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800/50 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-200">{service}</span>
           <div className="flex items-center gap-1">
@@ -70,7 +62,7 @@ export function LogViewer({
           <span className="text-xs text-gray-400">{filteredLogs.length} entries</span>
           <button
             onClick={clearLogs}
-            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-200 transition-colors"
+            className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
           >
             Clear
           </button>
@@ -111,7 +103,6 @@ export function LogViewer({
 function LogEntryRow({ entry, showService }: { entry: LogEntry; showService: boolean }) {
   const level = (entry.level || 'info').toLowerCase();
   const colorClass = levelColors[level] || levelColors.info;
-  const bgClass = levelBgColors[level] || levelBgColors.info;
 
   return (
     <div className={`flex gap-2 px-2 py-0`}>

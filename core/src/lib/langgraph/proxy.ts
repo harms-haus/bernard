@@ -10,6 +10,7 @@ export interface LangGraphProxyOptions {
   streaming?: boolean
   timeout?: number
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  userId?: string
 }
 
 export async function proxyToLangGraph(
@@ -17,13 +18,39 @@ export async function proxyToLangGraph(
   path: string,
   options: LangGraphProxyOptions = {}
 ): Promise<NextResponse> {
-  const { streaming = false, timeout = 120000, method } = options
+  const { streaming = false, timeout = 120000, method, userId } = options
   const targetUrl = getLangGraphUrl(path)
   const httpMethod = method || request.method
 
   try {
     // Clone the request body for streaming
-    const body = await request.arrayBuffer()
+    let body: ArrayBuffer | Uint8Array = await request.arrayBuffer()
+
+    // Create mutable headers from original request
+    const proxyHeaders = new Headers(request.headers)
+
+    // Inject user_id into thread creation/update requests (stored in metadata)
+    if (userId && (path === '/threads' || path.startsWith('/threads?') || path.match(/^\/threads\/[a-zA-Z0-9-]+$/)) && (httpMethod === 'POST' || httpMethod === 'PATCH')) {
+      try {
+        const textDecoder = new TextDecoder()
+        const bodyText = textDecoder.decode(body)
+        
+        if (bodyText) {
+          // Parse existing body and add user_id to metadata
+          const jsonBody = JSON.parse(bodyText)
+          jsonBody.metadata = { ...jsonBody.metadata, user_id: userId }
+          body = new TextEncoder().encode(JSON.stringify(jsonBody))
+        } else {
+          // Empty body - create new with user_id in metadata
+          body = new TextEncoder().encode(JSON.stringify({ metadata: { user_id: userId } }))
+        }
+
+        // Update content-length header to match new body size
+        proxyHeaders.set('content-length', String(body.byteLength))
+      } catch {
+        // Body is not JSON, pass through as-is
+      }
+    }
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -31,7 +58,7 @@ export async function proxyToLangGraph(
     try {
       const proxyReq = new Request(targetUrl, {
         method: httpMethod,
-        headers: request.headers,
+        headers: proxyHeaders,
         body,
         duplex: 'half',
         signal: controller.signal,

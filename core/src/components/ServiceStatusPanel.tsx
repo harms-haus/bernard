@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useHealthStream, type HealthStreamUpdate } from '@/hooks/useHealthStream'
 import { LogViewer } from '@/components/dashboard/LogViewer'
@@ -27,7 +26,6 @@ export function ServiceStatusPanel({
   showLogs = true,
   className = ''
 }: ServiceStatusPanelProps) {
-  const router = useRouter()
   const { serviceList, error, refresh } = useHealthStream({ enabled: true })
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [allActionLoading, setAllActionLoading] = useState<string | null>(null)
@@ -174,13 +172,9 @@ export function ServiceStatusPanel({
           <Card
             key={service.service}
             className={cn(
-              'cursor-pointer transition-colors hover:bg-muted/50',
+              'transition-colors hover:bg-muted/50',
               !(service.status === 'up') && 'border-amber-500/30 dark:border-amber-500/30'
             )}
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest('.action-buttons')) return
-              router.push(`/services/${service.service}`)
-            }}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-3">

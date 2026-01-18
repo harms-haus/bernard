@@ -1,10 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useHealthStream, type HealthStreamUpdate } from '@/hooks/useHealthStream'
 import { LogViewer } from '@/components/dashboard/LogViewer'
 import { Play, Square, RefreshCw, CheckCircle, ChevronDown } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import { AuthProvider } from '@/hooks/useAuth'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 const ALL_ACTIONS = [
   { value: 'start', label: 'Start All' },
@@ -13,13 +18,56 @@ const ALL_ACTIONS = [
   { value: 'check', label: 'Check All' },
 ] as const
 
-export default function StatusPage() {
+function StatusPageContent() {
   const router = useRouter()
+  const { state: authState } = useAuth()
   const { serviceList, isConnected, error, refresh } = useHealthStream({ enabled: true })
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [allActionLoading, setAllActionLoading] = useState<string | null>(null)
   const [selectedAllAction, setSelectedAllAction] = useState<'start' | 'stop' | 'restart' | 'check' | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authState.loading && !authState.user) {
+      router.replace('/auth/login')
+    }
+  }, [authState, router])
+
+  // Show loading state while checking auth
+  if (authState.loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-400">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Not logged in - show login prompt (should redirect, but as fallback)
+  if (!authState.user) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Authentication Required</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-400 mb-4">
+              You must be logged in to view the service status.
+            </p>
+            <Button asChild>
+              <Link href="/auth/login">Sign In</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const isAdmin = authState.user.role === 'admin'
 
   const services = serviceList.filter((s: HealthStreamUpdate) =>
     s.service !== 'bernard-ui' && s.service !== 'core'
@@ -95,6 +143,7 @@ export default function StatusPage() {
               {healthyCount}/{totalCount} services healthy
             </p>
           </div>
+          {isAdmin && (
           <div className="flex items-center gap-3">
             <div className="relative">
               <button
@@ -138,6 +187,7 @@ export default function StatusPage() {
               Refresh
             </button>
           </div>
+          )}
         </div>
 
         {error && (
@@ -151,10 +201,6 @@ export default function StatusPage() {
             <div
               key={service.service}
               className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors border border-gray-700 hover:border-gray-600"
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest('.action-buttons')) return
-                router.push(`/services/${service.service}`)
-              }}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -178,6 +224,7 @@ export default function StatusPage() {
                 </div>
               </div>
 
+              {isAdmin && (
               <div className="action-buttons flex items-center justify-center gap-2 pt-3 border-t border-gray-700">
                 <button
                   onClick={() => handleAction(service.service, 'start')}
@@ -220,15 +267,26 @@ export default function StatusPage() {
                   <CheckCircle className="w-4 h-4" />
                 </button>
               </div>
+              )}
             </div>
           ))}
         </div>
 
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-white mb-4">Live Logs</h2>
-          <LogViewer service="all" height="300px" />
+          <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <LogViewer service="all" height="300px" />
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function StatusPage() {
+  return (
+    <AuthProvider>
+      <StatusPageContent />
+    </AuthProvider>
   )
 }
