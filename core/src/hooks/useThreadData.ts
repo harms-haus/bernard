@@ -1,27 +1,18 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
+import type { Message } from '@langchain/langgraph-sdk';
 import { getAPIClient } from '@/lib/api/client';
 import { ensureToolCallsHaveResponses } from '@/lib/ensure-tool-responses';
 import { useStreamContext } from '@/providers/StreamProvider';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useThreads } from '@/providers/ThreadProvider';
 
-export interface ToolProgressEvent {
-  type: 'progress' | 'step' | 'complete' | 'error';
-  tool: string;
-  message: string;
-  data?: Record<string, unknown>;
-  timestamp: number;
-}
-
 export interface ThreadData {
   threadId: string | null;
   messages: Message[];
   isLoading: boolean;
   isDarkMode: boolean;
-  latestProgress: ToolProgressEvent | null;
   input: string;
   isGhostMode: boolean;
   chatStarted: boolean;
@@ -29,7 +20,6 @@ export interface ThreadData {
   setIsGhostMode: (value: boolean) => void;
   handleSubmit: (e: FormEvent) => void;
   handleNewChat: () => void;
-  handleRegenerate: (parentCheckpoint: Checkpoint | null | undefined) => void;
   handleCopyChatHistory: () => Promise<void>;
   handleDownloadChatHistory: () => void;
   toggleDarkMode: () => void;
@@ -41,7 +31,7 @@ export function useThreadData(): ThreadData {
   const threadId = searchParams.get('threadId');
 
   const stream = useStreamContext();
-  const { messages, submit, isLoading, latestProgress } = stream;
+  const { messages, submit, isLoading } = stream;
   const { isDarkMode: darkModeValue, toggleDarkMode: toggleDarkModeFn } = useDarkMode();
   const { getThreads } = useThreads();
 
@@ -92,7 +82,6 @@ export function useThreadData(): ThreadData {
     submit(
       { messages: [...toolMessages, newHumanMessage] },
       {
-        streamMode: ['values'],
         optimisticValues: (prev: any) => ({
           ...prev,
           messages: [...(prev.messages ?? []), ...toolMessages, newHumanMessage],
@@ -105,10 +94,6 @@ export function useThreadData(): ThreadData {
   const handleNewChat = useCallback(() => {
     router.replace('/bernard/chat');
   }, [router]);
-
-  const handleRegenerate = useCallback((parentCheckpoint: Checkpoint | null | undefined) => {
-    stream.submit(undefined, { checkpoint: parentCheckpoint, streamMode: ['values'] });
-  }, [stream]);
 
   const handleCopyChatHistory = useCallback(async () => {
     const historyData = messages.map((msg: Message) => ({
@@ -147,7 +132,6 @@ export function useThreadData(): ThreadData {
     messages,
     isLoading,
     isDarkMode: darkModeValue,
-    latestProgress,
     input,
     isGhostMode,
     chatStarted: messages.length > 0,
@@ -155,7 +139,6 @@ export function useThreadData(): ThreadData {
     setIsGhostMode,
     handleSubmit,
     handleNewChat,
-    handleRegenerate,
     handleCopyChatHistory,
     handleDownloadChatHistory,
     toggleDarkMode,

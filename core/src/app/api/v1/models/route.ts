@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@langchain/langgraph-sdk';
 import fs from 'fs';
 import path from 'path';
+import { logger } from '@/lib/logging/logger';
 
 const LANGGRAPH_API_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 
@@ -75,7 +76,7 @@ export async function GET(_request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('Models endpoint error:', error);
+    logger.error({ error: (error as Error).message }, 'Models endpoint error');
     return NextResponse.json(
       { error: (error as Error).message || 'Failed to list models' },
       { status: 500 }

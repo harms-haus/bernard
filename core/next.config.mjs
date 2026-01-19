@@ -32,11 +32,7 @@ const nextConfig = {
         source: '/api/settings/:path*',
         destination: '/api/settings/:path*',
       },
-      // LangGraph SDK routes (proxy to Bernard Agent via /api/*)
-      {
-        source: '/api/threads/:path*',
-        destination: 'http://127.0.0.1:2024/threads/:path*',
-      },
+      // LangGraph SDK routes (handled via route.ts with proper metadata injection)
       {
         source: '/api/runs/:path*',
         destination: 'http://127.0.0.1:2024/runs/:path*',

@@ -40,7 +40,7 @@ async function main() {
     port: 2024,
     nWorkers: 1,
     host: '0.0.0.0',
-    cwd: process.cwd(),
+    cwd: __dirname,
     graphs: langgraphConfig.graphs
   }).then(() => {
     console.log('✅ Bernard Agent server started on port 2024')

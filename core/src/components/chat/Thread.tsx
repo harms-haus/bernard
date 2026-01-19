@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -8,17 +8,14 @@ import { useStreamContext } from '@/providers/StreamProvider';
 import { useThreads } from '@/providers/ThreadProvider';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
-import { ProgressIndicator } from './messages/progress';
 import { cn } from '@/lib/utils';
 import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '@/lib/ensure-tool-responses';
 import { Plus, Send, StopCircle } from 'lucide-react';
-import { toast } from 'sonner';
-import type { Message, Checkpoint } from '@langchain/langgraph-sdk';
+import type { Message } from '@langchain/langgraph-sdk';
 import { getAPIClient } from '@/lib/api/client';
 
 export function Thread() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const threadId = searchParams.get('threadId');
 
   const stream = useStreamContext();
@@ -48,10 +45,6 @@ export function Thread() {
 
   // Auto-rename thread after first message exchange
   useEffect(() => {
-    // Only rename if:
-    // - We have a threadId
-    // - We haven't triggered rename yet
-    // - We have at least 2 messages (human + AI response)
     if (
       threadId &&
       !hasTriggeredAutoRename &&
@@ -64,15 +57,12 @@ export function Thread() {
           ? firstHumanMessage.content
           : JSON.stringify(firstHumanMessage.content);
 
-        // Trigger auto-rename (fire and forget)
         const apiClient = getAPIClient();
         apiClient.autoRenameThread(threadId, messageContent)
           .then(() => {
-            // Refresh thread list to show updated name
             getThreads();
           })
           .catch((err: unknown) => {
-            // Silent fail - don't interrupt user experience
             console.error('Auto-rename failed:', err);
           });
 
@@ -95,8 +85,7 @@ export function Thread() {
     submit(
       { messages: [...toolMessages, newHumanMessage] },
       {
-        streamMode: ['values'],
-        optimisticValues: (prev: any) => ({
+        optimisticValues: (prev) => ({
           ...prev,
           messages: [
             ...(prev.messages ?? []),
@@ -107,16 +96,6 @@ export function Thread() {
       }
     );
     setInput('');
-  };
-
-  const handleRegenerate = (
-    parentCheckpoint: Checkpoint | null | undefined,
-  ) => {
-    prevMessageLength.current = prevMessageLength.current - 1;
-    stream.submit(undefined, {
-      checkpoint: parentCheckpoint,
-      streamMode: ['values'],
-    });
   };
 
   const chatStarted = messages.length > 0;
@@ -131,7 +110,7 @@ export function Thread() {
         chatStarted && "pt-8"
       )}
     >
-      <div className="pt-8 pb-4 max-w-3xl mx-auto flex flex-col gap-0 w-full min-h-full" data-testid="chat-messages-list">
+      <div className="pt-8 pb-4 max-w-3xl mx-auto flex flex-col gap-0 w-full" data-testid="chat-messages-list">
         {!chatStarted && (
           <div className="flex flex-col items-center gap-4 mb-8" data-testid="welcome-message">
             <Avatar className="h-12 w-12">
@@ -160,18 +139,11 @@ export function Thread() {
                 message={message}
                 nextMessages={messages.slice(index + 1)}
                 isLoading={isLoading}
-                onRegenerate={handleRegenerate}
               />
             );
           })}
 
-        {isLoading && (
-          stream.latestProgress ? (
-            <ProgressIndicator />
-          ) : (
-            <AssistantMessageLoading />
-          )
-        )}
+        {isLoading && <AssistantMessageLoading />}
       </div>
 
       <div className={cn(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { handleAutoRename } from '@/lib/api/thread-auto-rename'
 import { requireAuth } from '@/lib/auth/server-helpers'
+import { logger } from '@/lib/logging/logger';
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     return handleAutoRename(threadId, body)
   } catch (err) {
-    console.error('Failed to perform auto-rename:', err)
+    logger.error({ error: (err as Error).message }, 'Failed to perform auto-rename');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

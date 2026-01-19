@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@langchain/langgraph-sdk';
+import { logger } from '@/lib/logging/logger';
+import { ensureRequestId } from '@/lib/logging/logger';
 
 const LANGGRAPH_API_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 
@@ -10,6 +12,9 @@ const client = new Client({
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const requestId = ensureRequestId(request.headers.get('x-request-id'));
+  const reqLogger = logger.child({ requestId, component: 'chat-completions' });
+
   try {
     const body = await request.json();
     const { messages, model, thread_id, stream } = body as {
@@ -131,7 +136,7 @@ export async function POST(request: NextRequest) {
             doneSent = true;
           }
         } catch (error) {
-          console.error('Stream error:', error);
+          reqLogger.error({ error: (error as Error).message }, 'Stream error');
           // Send error as SSE
           const errorData = JSON.stringify({
             id: `chatcmpl-${Date.now()}`,
@@ -158,7 +163,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Chat completions error:', error);
+    reqLogger.error({ error: (error as Error).message }, 'Chat completions error');
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

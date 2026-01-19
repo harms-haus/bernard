@@ -2,6 +2,7 @@ import { spawn, ChildProcess, SpawnOptions } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ServiceConfig } from '@/lib/services/ServiceConfig';
+import { logger } from '@/lib/logging/logger';
 
 interface ProcessInfo {
   pid: number
@@ -129,7 +130,7 @@ export class ProcessManager {
 
       child.on("exit", (code) => {
         if (code !== 0 && code !== null) {
-          console.error(`[ProcessManager] Process ${config.id} exited with code ${code}`)
+          logger.warn({ service: config.id, exitCode: code }, 'Process exited with non-zero code');
         }
       })
     })
@@ -159,7 +160,7 @@ export class ProcessManager {
       this.processes.delete(config.id)
       return true
     } catch (error) {
-      console.error(`[ProcessManager] Failed to stop ${config.id}:`, error)
+      logger.error({ service: config.id, error: (error as Error).message }, 'Failed to stop service');
       return false
     }
   }

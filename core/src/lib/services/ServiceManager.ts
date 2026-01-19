@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { logger } from '@/lib/logging/logger';
 import { ProcessManager } from '@/lib/services/ProcessManager';
 import { HealthChecker, HealthStatus } from '@/lib/services/HealthChecker';
 import {
@@ -65,7 +66,7 @@ export class ServiceManager {
     const config = SERVICES[serviceId]
     if (!config) return
 
-    console.log(`[ServiceManager] Initializing ${config.name}...`)
+    logger.info({ service: config.name }, 'Initializing service');
 
     if (config.type === "node" && config.directory) {
       await this.runNpmInstall(config.directory)
@@ -75,7 +76,7 @@ export class ServiceManager {
       await this.initRedis()
     }
 
-    console.log(`[ServiceManager] ${config.name} initialized`)
+    logger.info({ service: config.name }, 'Service initialized');
   }
 
   private async runNpmInstall(directory: string): Promise<void> {
@@ -90,7 +91,7 @@ export class ServiceManager {
         timeout: 300000,
       })
     } catch (error) {
-      console.error(`[ServiceManager] Failed to install dependencies in ${directory}`)
+      logger.error({ directory, error: (error as Error).message }, 'Failed to install dependencies');
       throw error
     }
   }
@@ -103,7 +104,7 @@ export class ServiceManager {
     const hasVenv = fs.existsSync(venvDir)
 
     if (!hasVenv) {
-      console.log(`[ServiceManager] Creating Python virtual environment...`)
+      logger.info({ directory }, 'Creating Python virtual environment');
       try {
         execSync("python3 -m venv .venv", {
           cwd,
@@ -119,7 +120,7 @@ export class ServiceManager {
       }
     }
 
-    console.log(`[ServiceManager] Installing Python dependencies...`)
+    logger.info({ directory }, 'Installing Python dependencies');
     try {
       execSync(".venv/bin/pip install -e .", {
         cwd,
@@ -146,9 +147,9 @@ export class ServiceManager {
         encoding: "utf-8",
         stdio: "pipe",
       })
-      console.log(`[ServiceManager] Redis container already exists`)
+      logger.info('Redis container already exists');
     } catch {
-      console.log(`[ServiceManager] Pulling Redis image...`)
+      logger.info('Pulling Redis image');
       execSync(
         "docker run -d --name bernard-redis -p 6379:6379 --restart unless-stopped -v bernard-redis-data:/data docker.io/redis/redis-stack-server:7.4.0-v0",
         {
@@ -174,7 +175,7 @@ export class ServiceManager {
     const config = SERVICES[serviceId]
     if (!config) return
 
-    console.log(`[ServiceManager] Cleaning ${config.name}...`)
+    logger.info({ service: config.name }, 'Cleaning service');
 
     if (config.type === "node" && config.directory) {
       const nodeModules = path.join(process.cwd(), config.directory, "node_modules")
@@ -198,7 +199,7 @@ export class ServiceManager {
       })
     }
 
-    console.log(`[ServiceManager] ${config.name} cleaned`)
+    logger.info({ service: config.name }, 'Service cleaned');
   }
 
   async start(serviceId?: string): Promise<StartResult> {
@@ -206,22 +207,22 @@ export class ServiceManager {
       return this.startService(serviceId)
     }
 
-    console.log("[ServiceManager] Starting all services...")
+    logger.info('Starting all services');
 
     for (const id of SERVICE_START_ORDER) {
       const result = await this.startService(id)
       if (!result.success) {
-        console.error(`[ServiceManager] Failed to start ${id}: ${result.error}`)
+        logger.error({ service: id, error: result.error }, 'Failed to start service');
       }
 
-    // Wait longer after Redis - it needs time to be fully ready for clients
-    const config = SERVICES[id]
-    if (result.success && config.dependencies.length > 0) {
-      await this.delay(3000)
-    }
+      // Wait longer after Redis - it needs time to be fully ready for clients
+      const config = SERVICES[id]
+      if (result.success && config.dependencies.length > 0) {
+        await this.delay(3000)
+      }
     }
 
-    console.log("[ServiceManager] All services started")
+    logger.info('All services started');
     return { success: true }
   }
 
@@ -231,7 +232,7 @@ export class ServiceManager {
       return { service: serviceId, success: false, error: "Unknown service" }
     }
 
-    console.log(`[ServiceManager] Starting ${config.name}...`)
+    logger.info({ service: config.name }, 'Starting service');
 
     if (config.type === "docker") {
       return this.startDockerService(config)
@@ -247,7 +248,7 @@ export class ServiceManager {
       
       if (healthy) {
         this.startTimes.set(serviceId, new Date())
-        console.log(`[ServiceManager] ${config.name} is ready!`)
+        logger.info({ service: config.name, pid: result.pid }, 'Service ready');
         return { service: serviceId, success: true, pid: result.pid }
       } else {
         return {
@@ -284,7 +285,7 @@ export class ServiceManager {
               stdio: "pipe",
             })
             this.startTimes.set(config.id, new Date())
-            console.log(`[ServiceManager] ${config.name} is ready!`)
+            logger.info({ service: config.name }, 'Service ready');
             return { service: config.id, success: true }
           } catch {
             await this.delay(1000)
@@ -314,7 +315,7 @@ export class ServiceManager {
       return this.stopService(serviceId)
     }
 
-    console.log("[ServiceManager] Stopping all services...")
+    logger.info('Stopping all services');
 
     const reverseOrder = [...SERVICE_START_ORDER].reverse()
     for (const id of reverseOrder) {
@@ -330,7 +331,7 @@ export class ServiceManager {
       return { service: serviceId, success: false }
     }
 
-    console.log(`[ServiceManager] Stopping ${config.name}...`)
+    logger.info({ service: config.name }, 'Stopping service');
 
     if (config.type === "docker") {
       return this.stopDockerService(config)

@@ -10,6 +10,7 @@ import { initChatModel } from 'langchain/chat_models/universal'
 import { Client } from '@langchain/langgraph-sdk'
 import { childLogger } from '../logging/logger'
 import type { LogContext } from '../logging/logger'
+import { initializeSettingsStore } from '../config/settingsStore'
 
 export interface ThreadNamingJobInput {
   threadId: string;
@@ -86,6 +87,9 @@ export async function processThreadNamingJob(
   
   try {
     log.info("[ThreadNaming] Processing naming job");
+    
+    // Initialize settings store (required for resolveModel -> getSettings -> getSettingsStore)
+    await initializeSettingsStore(undefined, getRedis());
     
     const title = await generateTitle(message);
     

@@ -1,14 +1,12 @@
-import type { Message, ToolMessage, Checkpoint } from '@langchain/langgraph-sdk';
+import type { Message, ToolMessage } from '@langchain/langgraph-sdk';
 import { getContentString } from '../utils';
 import { MarkdownText } from '../markdown-text';
 import { TooltipIconButton } from '../TooltipIconButton';
-import { RefreshCcw, Copy, Check } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ToolCalls } from './tool-calls';
 import { cn } from '@/lib/utils';
-import { BranchSwitcher } from '../BranchSwitcher';
-import { useStreamContext } from '../../../providers/StreamProvider';
 
 function ContentCopyable({ content, disabled, side = 'top' }: { content: string; disabled: boolean; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   const [copied, setCopied] = useState(false);
@@ -38,25 +36,14 @@ function ContentCopyable({ content, disabled, side = 'top' }: { content: string;
 
 export function AssistantMessage({
   message,
-  onRegenerate,
   nextMessages = [],
   isLoading = false,
 }: {
   message: Message;
-  onRegenerate?: (parentCheckpoint: Checkpoint | null | undefined) => void;
   nextMessages?: Message[];
   isLoading?: boolean;
 }) {
-  const thread = useStreamContext();
   const contentString = getContentString(message.content);
-
-  const meta = message ? thread.getMessagesMetadata(message) : undefined;
-  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
-  const hasBranches = meta?.branchOptions && meta.branchOptions.length > 1;
-
-  const handleRegenerate = () => {
-    onRegenerate?.(parentCheckpoint);
-  };
 
   const isToolResult = message.type === 'tool';
   const hasToolCalls = message && 'tool_calls' in message && message.tool_calls && message.tool_calls.length > 0;
@@ -78,28 +65,12 @@ export function AssistantMessage({
   return (
     <div
       data-testid="assistant-message"
-      className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", hasBranches ? "w-full" : "mr-auto")}
+      className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", "mr-auto")}
     >
       <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
         <ContentCopyable content={contentString} disabled={false} side="left" />
-        <TooltipIconButton
-          data-testid="regenerate-button"
-          onClick={handleRegenerate}
-          tooltip="Regenerate"
-          variant="ghost"
-          side="left"
-        >
-          <RefreshCcw className="w-4 h-4" />
-        </TooltipIconButton>
       </div>
       <div className="flex flex-col gap-0 w-full">
-        <BranchSwitcher
-          data-testid="assistant-branch-switcher"
-          branch={meta?.branch}
-          branchOptions={meta?.branchOptions}
-          onSelect={(branch) => thread.setBranch(branch)}
-          isLoading={isLoading}
-        />
         {contentString.length > 0 && (
           <div data-testid="assistant-message-content">
             <MarkdownText>{contentString}</MarkdownText>

@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { logger } from '@/lib/logging/logger';
 
 const globalForRedis = global as unknown as { redis?: Redis };
 
@@ -42,17 +43,17 @@ export function getRedis(): Redis {
       }
       
       // Log other unexpected errors
-      console.error("[Redis] Connection error:", errorMessage || err);
+      logger.error({ error: errorMessage || err }, 'Redis connection error');
     });
 
     // Log successful connection
     globalForRedis.redis.on("connect", () => {
-      console.log("[Redis] Connected successfully");
+      logger.info('Redis connected');
     });
 
     // Log when ready
     globalForRedis.redis.on("ready", () => {
-      console.log("[Redis] Ready to accept commands");
+      logger.info('Redis ready to accept commands');
     });
   }
   return globalForRedis.redis;

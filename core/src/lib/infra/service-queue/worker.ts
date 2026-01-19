@@ -143,13 +143,6 @@ export async function startServiceWorker(): Promise<void> {
     prefix: QUEUE_PREFIX,
   });
 
-  queueEvents.on('completed', ({ jobId, returnvalue }) => {
-    logger.debug(
-      { jobId, returnvalue },
-      '[ServiceQueue] Queue event: completed'
-    );
-  });
-
   queueEvents.on('failed', ({ jobId, failedReason }) => {
     logger.warn(
       { jobId, failedReason },

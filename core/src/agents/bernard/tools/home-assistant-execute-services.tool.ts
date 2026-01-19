@@ -14,6 +14,7 @@ import {
 import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
+import { logger } from "@/lib/logging";
 
 const TOOL_NAME = "execute_home_assistant_services";
 
@@ -143,7 +144,7 @@ async function callHAServiceWebSocket(
     const connection = await getHAConnection(baseUrl, accessToken);
     await callService(connection, domain, service, serviceData);
   } catch (error) {
-    console.error('[HA WebSocket] Failed to call service:', error);
+    logger.error({ error: (error as Error).message, domain, service }, 'HA WebSocket service call failed');
     throw error;
   }
 }

@@ -20,6 +20,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { dumpsTyped, loadsTyped, isUnserialized, deserializeUnserialized } from "./serde.js";
 import { parseCheckpointKey, formatCheckpointKey, toStorageSafeId, toStorageSafeNs } from "./redis-key.js";
 import type { RedisSaverConfig } from "./types.js";
+import { logger } from '@/lib/logging/logger';
 
 /**
  * Convert Uint8Array to a JSON-compatible value for Redis storage.
@@ -372,7 +373,7 @@ export class RedisSaver extends BaseCheckpointSaver {
         },
       };
     } catch (error) {
-      console.error(`Error loading checkpoint from ${key}:`, error);
+      logger.error({ key, error: (error as Error).message }, 'Error loading checkpoint');
       return undefined;
     }
   }
@@ -406,7 +407,7 @@ export class RedisSaver extends BaseCheckpointSaver {
             value,
           ]);
         } catch (error) {
-          console.error(`Failed to deserialize pending write for task ${writeData.task_id as string} from key ${writeKey}:`, error);
+          logger.error({ taskId: writeData.task_id, writeKey, error: (error as Error).message }, 'Failed to deserialize pending write');
           // Continue to next entry - corrupted entries should not abort loading all pending writes
         }
       }

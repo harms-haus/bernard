@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServiceJobStatus } from "@/lib/infra/service-queue"
 import { requireAuth } from "@/lib/auth/server-helpers"
+import { logger } from "@/lib/logging/logger";
 
 export async function GET(
   request: NextRequest,
@@ -22,7 +23,7 @@ export async function GET(
 
     return NextResponse.json(jobInfo);
   } catch (error) {
-    console.error('[API] Failed to get job status:', error);
+    logger.error({ error: (error as Error).message }, 'Failed to get job status');
     return NextResponse.json(
       { error: "Failed to get job status" },
       { status: 500 }

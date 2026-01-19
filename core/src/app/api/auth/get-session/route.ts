@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/server-helpers";
+import { logger } from "@/lib/logging/logger";
 
 export async function GET() {
     try {
@@ -10,7 +11,7 @@ export async function GET() {
 
         return NextResponse.json({ session });
     } catch (error) {
-        console.error("Error getting session:", error);
+        logger.error({ error: (error as Error).message }, 'Error getting session');
         return NextResponse.json({ session: null }, { status: 500 });
     }
 }

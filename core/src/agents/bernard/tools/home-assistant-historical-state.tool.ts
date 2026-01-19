@@ -5,6 +5,7 @@ import type { HARestConfig } from "./home-assistant-list-entities.tool";
 import { getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
 import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
+import { logger } from "@/lib/logging";
 
 const TOOL_NAME = "get_home_assistant_historical_state";
 
@@ -136,13 +137,13 @@ async function fetchHistoricalStateWebSocket(
 
     return response as HistoryResponse;
   } catch (error) {
-    console.error('[HA WebSocket] Failed to fetch historical state:', error);
+    logger.error({ error: (error as Error).message }, 'Failed to fetch historical state via HA WebSocket');
 
     // If WebSocket history API fails, try REST API as fallback
     try {
       return await fetchHistoricalStateREST(baseUrl, accessToken, entityIds, startTime, endTime);
     } catch (restError) {
-      console.error('[HA REST] Fallback historical state fetch also failed:', restError);
+      logger.error({ error: (restError as Error).message }, 'Fallback historical state fetch also failed');
       throw error; // Throw original WebSocket error
     }
   }

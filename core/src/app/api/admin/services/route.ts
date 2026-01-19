@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth/server-helpers'
 import { getSettingsStore, ServicesSettingsSchema, initializeSettingsStore } from '@/lib/config/settingsStore'
 import { getRedis } from '@/lib/infra/redis'
 import { error, ok, badRequest } from '@/lib/api/response'
+import { logger } from '@/lib/logging/logger';
 
 let initialized = false;
 
@@ -39,7 +40,7 @@ export async function PUT(request: NextRequest) {
     const saved = await store.setServices(parsed.data)
     return ok(saved)
   } catch (e) {
-    console.error('PUT services error:', e);
+    logger.error({ error: (e as Error).message }, 'Failed to save services settings');
     return error('Failed to save services settings', 500)
   }
 }

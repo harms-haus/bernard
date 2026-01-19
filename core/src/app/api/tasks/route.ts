@@ -3,6 +3,7 @@ import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from '@/lib/ap
 import { requireAuth } from '@/lib/auth/server-helpers'
 import { badRequest, error, ok } from '@/lib/api/response'
 import { getTaskKeeper } from '@/lib/api/factory'
+import { logger } from '@/lib/logging/logger'
 
 export async function GET(request: NextRequest) {
   return handleGetTasks(request)
@@ -42,7 +43,7 @@ export async function DELETE(request: NextRequest) {
 
     return ok({ success: true })
   } catch (err) {
-    console.error('Failed to delete task:', err)
+    logger.error({ error: (err as Error).message }, 'Failed to delete task');
     return error('Internal server error', 500)
   }
 }

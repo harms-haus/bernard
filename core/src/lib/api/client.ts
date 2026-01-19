@@ -143,6 +143,23 @@ class APIClient implements IAPIClient {
     return response.json();
   }
 
+  async getThreadState(threadId: string) {
+    const response = await fetch(`/api/threads/${threadId}/state`, {
+      credentials: 'same-origin',
+      headers: this.getAuthHeaders()
+    });
+    if (!response.ok) {
+      // 404 means thread doesn't exist - return empty state gracefully
+      if (response.status === 404) {
+        return { values: { messages: [] } };
+      }
+      const errorText = await response.text().catch(() => '');
+      console.error(`Failed to fetch thread state for ${threadId}: ${response.status} - ${errorText}`);
+      throw new Error(`Thread state error (${response.status}): ${errorText || 'Unknown error'}`);
+    }
+    return response.json();
+  }
+
   async createThread() {
     const response = await fetch(`/api/threads`, {
       credentials: 'same-origin',
@@ -161,7 +178,20 @@ class APIClient implements IAPIClient {
       headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
       body: JSON.stringify({ name })
     });
-    if (!response.ok) throw new Error('Failed to update thread');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      let errorMessage = `HTTP ${response.status}`;
+      if (errorData?.error?.issues) {
+        errorMessage = errorData.error.issues.map((i: { path: string[]; message: string }) =>
+          i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message
+        ).join('; ');
+      } else if (typeof errorData?.error === 'string') {
+        errorMessage = errorData.error;
+      } else if (typeof errorData?.message === 'string') {
+        errorMessage = errorData.message;
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   }
 

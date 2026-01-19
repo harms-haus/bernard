@@ -255,9 +255,6 @@ export function createSearchMediaTool(
                 }
               } catch {
                 // Failed to get Plex metadata, continue without it
-                logger.debug(
-                  `Failed to get Plex metadata for ratingKey: ${ratingKey}`
-                );
               }
             }
 

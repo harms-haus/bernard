@@ -319,10 +319,6 @@ export async function startUtilityWorker(): Promise<void> {
     prefix: UTILITY_QUEUE_PREFIX,
   });
 
-  queueEvents.on("completed", ({ jobId, returnvalue }) => {
-    logger.debug({ jobId, returnvalue }, "[UtilityQueue] Queue event: completed");
-  });
-
   queueEvents.on("failed", ({ jobId, failedReason }) => {
     logger.warn({ jobId, failedReason }, "[UtilityQueue] Queue event: failed");
   });

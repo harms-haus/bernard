@@ -7,6 +7,7 @@ import type { HomeAssistantEntity } from "@/lib/home-assistant";
 import { extractHomeAssistantContext, formatEntitiesForDisplay, getHAConnection, verifyHomeAssistantConfigured } from "@/lib/home-assistant";
 import { ToolFactory, ToolContext } from "./types";
 import { getSettings } from "@/lib/config/settingsCache";
+import { logger } from "@/lib/logging";
 
 const TOOL_NAME = "list_home_assistant_entities";
 
@@ -84,7 +85,7 @@ function filterEntitiesByRegex(entities: HomeAssistantEntity[], regex: string): 
     });
   } catch (error) {
     // If regex is invalid, return empty array with warning
-    console.warn(`Invalid regex pattern: ${regex}`, error);
+    logger.warn({ regex, error: (error as Error).message }, 'Invalid regex pattern');
     return [];
   }
 }
@@ -147,7 +148,7 @@ async function fetchHAEntitiesWebSocket(baseUrl: string, accessToken: string): P
     return filterEntitiesByVisibility(entities);
 
   } catch (error) {
-    console.error('[HA WebSocket] Failed to fetch entities:', error);
+    logger.error({ error: (error as Error).message }, 'Failed to fetch entities via HA WebSocket');
     throw error;
   }
 }

@@ -5,7 +5,6 @@ import { cn } from '../../../lib/utils';
 import { TooltipIconButton } from '../TooltipIconButton';
 import { Pencil, X, Send } from 'lucide-react';
 import { useStreamContext } from '../../../providers/StreamProvider';
-import { BranchSwitcher } from '../BranchSwitcher';
 
 interface HumanMessageProps {
   message: Message;
@@ -14,9 +13,6 @@ interface HumanMessageProps {
 
 export function HumanMessage({ message, isLoading = false }: HumanMessageProps) {
   const thread = useStreamContext();
-  const meta = thread.getMessagesMetadata(message);
-  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
-  const hasBranches = meta?.branchOptions && meta.branchOptions.length > 1;
 
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState('');
@@ -30,17 +26,10 @@ export function HumanMessage({ message, isLoading = false }: HumanMessageProps) 
       thread.submit(
         { messages: [newMessage] },
         {
-          checkpoint: parentCheckpoint,
-          streamMode: ["values"],
-          optimisticValues: (prev) => {
-            const values = meta?.firstSeenState?.values;
-            if (!values) return prev;
-
-            return {
-              ...values,
-              messages: [...(values.messages ?? []), newMessage],
-            };
-          },
+          optimisticValues: (prev) => ({
+            ...prev,
+            messages: [...(prev.messages ?? []), newMessage],
+          }),
         }
       );
     } else {
@@ -50,14 +39,6 @@ export function HumanMessage({ message, isLoading = false }: HumanMessageProps) 
 
   return (
     <div className={cn("flex flex-col items-center gap-2 group mb-6 w-full")} data-testid="human-message">
-      {hasBranches && (
-        <BranchSwitcher
-          branch={meta?.branch}
-          branchOptions={meta?.branchOptions}
-          onSelect={(branch) => thread.setBranch(branch)}
-          isLoading={isLoading}
-        />
-      )}
       <div className={cn("flex items-center ml-auto gap-2 relative w-full max-w-xl", isEditing && "w-full max-w-xl")}>
         <div className={cn("absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100", isEditing && "opacity-100")}>
           {isEditing ? (

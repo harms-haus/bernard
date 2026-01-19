@@ -60,7 +60,7 @@ async function callHAServiceWebSocket(
     const connection = await getHAConnection(baseUrl, accessToken);
     await callService(connection, domain, service, serviceData);
   } catch (error) {
-    console.error('[HA WebSocket] Failed to call service:', error);
+    logger.error({ error: (error as Error).message, domain, service }, 'HA WebSocket service call failed');
     throw error;
   }
 }
@@ -94,14 +94,14 @@ async function ensureTvOn(
   deps: PlayMediaTvDependencies
 ): Promise<void> {
   if (!haEntityId || !haRestConfig) {
-    console.warn(`No Home Assistant entity configured for ${deviceName} power control`);
+    logger.warn({ device: deviceName }, 'No HA entity configured for power control');
     return;
   }
 
   try {
     const state = await getEntityState(haRestConfig.baseUrl, haRestConfig.accessToken || '', haEntityId);
     if (state?.state === 'on') {
-      console.warn(`${deviceName} is already on`);
+      logger.debug({ device: deviceName }, 'Device already on');
       return;
     }
 
@@ -118,7 +118,7 @@ async function ensureTvOn(
     await new Promise(resolve => setTimeout(resolve, 9000));
 
   } catch (error) {
-    console.warn(`Failed to power on ${deviceName} via Home Assistant:`, error);
+    logger.warn({ device: deviceName, error: (error as Error).message }, 'Failed to power on via HA');
     actions.push(`Failed to power on ${deviceName} (continuing anyway)`);
   }
 }
@@ -150,7 +150,7 @@ async function ensurePlexActive(
         actions.push(`Selected Plex source on ${deviceName}`);
         await new Promise(resolve => setTimeout(resolve, 3000));
       } catch (error) {
-        console.warn(`Failed to select Plex source via HA:`, error);
+        logger.warn({ device: deviceName, error: (error as Error).message }, 'Failed to select Plex source via HA');
       }
     }
     return;
@@ -192,7 +192,7 @@ async function ensurePlexActive(
             }
           );
         } catch (error) {
-          console.warn(`Failed to launch Plex via HA fallback:`, error);
+          logger.warn({ device: deviceName, error: (error as Error).message }, 'Failed to launch Plex via HA fallback');
         }
       }
     } catch (error) {
@@ -246,47 +246,47 @@ async function playMediaOnPlex(
       mediaContentId.show_name = bestMatch.title;
     }
 
-    if (playback_mode === 'resume') {
-      try {
-        const itemMetadata = await deps.getPlexItemMetadataImpl(plexConfig, bestMatch.ratingKey);
+      if (playback_mode === 'resume') {
+        try {
+          const itemMetadata = await deps.getPlexItemMetadataImpl(plexConfig, bestMatch.ratingKey);
 
-        if (itemMetadata?.viewOffset && itemMetadata.viewOffset > 0) {
-          mediaContentId.offset = Math.floor(itemMetadata.viewOffset / 1000);
-        }
-      } catch (error) {
-        console.warn(`Failed to get viewOffset for ${bestMatch.title}:`, error);
-      }
-
-      if (mediaType === 'show') {
-        mediaContentId.inProgress = true;
-      }
-    }
-
-    const serviceData: Record<string, unknown> = {
-      media_content_type: mediaType === 'movie' ? 'MOVIE' : 'EPISODE',
-      media_content_id: `plex://${JSON.stringify(mediaContentId)}`
-    };
-
-    for (let i = 0; i < 3; i++) {
-      try {
-        await deps.callHAServiceWebSocketImpl(
-          haRestConfig.baseUrl,
-          haRestConfig.accessToken,
-          'media_player',
-          'play_media',
-          {
-            entity_id: haPlexEntityId,
-            ...serviceData
+          if (itemMetadata?.viewOffset && itemMetadata.viewOffset > 0) {
+            mediaContentId.offset = Math.floor(itemMetadata.viewOffset / 1000);
           }
-        );
-      } catch (error) {
-        console.warn(`Failed to play media on ${deviceName}:`, error);
-        if (i === 2) {
-          throw error;
+        } catch (error) {
+          logger.warn({ title: bestMatch.title, error: (error as Error).message }, 'Failed to get viewOffset');
+        }
+
+        if (mediaType === 'show') {
+          mediaContentId.inProgress = true;
         }
       }
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    }
+
+      const serviceData: Record<string, unknown> = {
+        media_content_type: mediaType === 'movie' ? 'MOVIE' : 'EPISODE',
+        media_content_id: `plex://${JSON.stringify(mediaContentId)}`
+      };
+
+      for (let i = 0; i < 3; i++) {
+        try {
+          await deps.callHAServiceWebSocketImpl(
+            haRestConfig.baseUrl,
+            haRestConfig.accessToken,
+            'media_player',
+            'play_media',
+            {
+              entity_id: haPlexEntityId,
+              ...serviceData
+            }
+          );
+        } catch (error) {
+          logger.warn({ device: deviceName, attempt: i + 1, error: (error as Error).message }, 'Failed to play media');
+          if (i === 2) {
+            throw error;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
 
     const playbackDescription = playback_mode === 'resume'
       ? ' (resuming if available)'

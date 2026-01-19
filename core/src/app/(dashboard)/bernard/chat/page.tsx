@@ -47,8 +47,9 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  // Use LangGraph native streaming endpoints (proxied through :3456)
-  const apiUrl = '/api/threads'; // Base URL for LangGraph API
+  // Use LangGraph native streaming endpoints
+  // The SDK expects the LangGraph server URL, not a relative path
+  const apiUrl = (process.env.NEXT_PUBLIC_BERNARD_AGENT_URL || 'http://localhost:2024').replace(/\/$/, '');
   const assistantId = 'bernard_agent';
 
   const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
@@ -56,7 +57,7 @@ export default function Chat() {
   return (
     <ChatSidebarConfig>
       <ChatHeaderConfig>
-        <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId} useLangGraphStream={true}>
+        <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
           <ChatHeaderController />
           <Thread />
         </StreamProvider>

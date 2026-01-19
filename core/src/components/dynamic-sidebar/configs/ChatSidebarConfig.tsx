@@ -133,6 +133,7 @@ const ThreadMenuItemInner = ({
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         onKeyDown={(e) => {
+                            e.stopPropagation();
                             if (e.key === 'Enter') handleRename();
                             if (e.key === 'Escape') setIsRenaming(false);
                         }}

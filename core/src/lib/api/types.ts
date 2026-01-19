@@ -112,6 +112,7 @@ export interface IAPIClient {
   // Threads
   listThreads(limit?: number): Promise<ThreadListResponse>;
   getThread(threadId: string): Promise<ThreadDetail>;
+  getThreadState(threadId: string): Promise<Record<string, unknown>>;
   createThread(): Promise<CreateThreadResponse>;
   updateThread(threadId: string, name: string): Promise<UpdateThreadResponse>;
   deleteThread(threadId: string): Promise<DeleteThreadResponse>;

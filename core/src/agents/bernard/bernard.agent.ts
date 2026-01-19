@@ -1,18 +1,18 @@
 import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
 
-import { RedisSaver } from "@/lib/checkpoint";
+import { RedisSaver } from "../../lib/checkpoint/index.js";
 import { initChatModel } from "langchain/chat_models/universal";
 
-import { getSettings } from "@/lib/config/settingsCache";
-import { resolveModel } from "@/lib/config/models";
+import { getSettings } from "../../lib/config/settingsCache.js";
+import { resolveModel } from "../../lib/config/models.js";
 
-import { buildReactSystemPrompt } from "./prompts/react.prompt";
-import { validateAndGetTools } from "./tools";
-import { ToolContext } from "./tools/types";
-import { startUtilityWorker } from "@/lib/infra/queue";
-import { startHealthMonitor } from "@/lib/services/HealthMonitor";
-import { initializeSettingsStore } from "@/lib/config/settingsStore";
-import { getRedis } from "@/lib/infra/redis";
+import { buildReactSystemPrompt } from "./prompts/react.prompt.js";
+import { validateAndGetTools } from "./tools/index.js";
+import { ToolContext } from "./tools/types.js";
+import { startUtilityWorker } from "../../lib/infra/queue.js";
+import { startHealthMonitor } from "../../lib/services/HealthMonitor.js";
+import { initializeSettingsStore } from "../../lib/config/settingsStore.js";
+import { getRedis } from "../../lib/infra/redis.js";
 
 // ============================================================================
 // Initialization State

@@ -21,33 +21,39 @@ export async function proxyToLangGraph(
   const { streaming = false, timeout = 120000, method, userId } = options
   const targetUrl = getLangGraphUrl(path)
   const httpMethod = method || request.method
+  const isBodyAllowed = httpMethod !== 'GET' && httpMethod !== 'HEAD'
 
   try {
-    // Clone the request body for streaming
-    let body: ArrayBuffer | Uint8Array = await request.arrayBuffer()
+    // Only read body for methods that allow it
+    let body: ArrayBuffer | Uint8Array | undefined = isBodyAllowed ? await request.arrayBuffer() : undefined
 
     // Create mutable headers from original request
     const proxyHeaders = new Headers(request.headers)
 
     // Inject user_id into thread creation/update requests (stored in metadata)
-    if (userId && (path === '/threads' || path.startsWith('/threads?') || path.match(/^\/threads\/[a-zA-Z0-9-]+$/)) && (httpMethod === 'POST' || httpMethod === 'PATCH')) {
+    if ((path === '/threads' || path.startsWith('/threads?') || path.match(/^\/\/threads\/[a-zA-Z0-9-]+$/)) && (httpMethod === 'POST' || httpMethod === 'PATCH')) {
       try {
-        const textDecoder = new TextDecoder()
-        const bodyText = textDecoder.decode(body)
-        
+        const bodyText = body ? new TextDecoder().decode(body) : ''
+
         if (bodyText) {
           // Parse existing body and add user_id to metadata
           const jsonBody = JSON.parse(bodyText)
-          jsonBody.metadata = { ...jsonBody.metadata, user_id: userId }
+          // Preserve existing metadata, merge user_id (if available), and ensure name is in metadata for updates
+          const newMetadata = {
+            ...(jsonBody.metadata || {}),
+            ...(userId ? { user_id: userId } : {}),
+            ...(httpMethod === 'PATCH' && jsonBody.name ? { name: jsonBody.name } : {})
+          }
+          jsonBody.metadata = newMetadata
           body = new TextEncoder().encode(JSON.stringify(jsonBody))
-        } else {
+        } else if (userId) {
           // Empty body - create new with user_id in metadata
           body = new TextEncoder().encode(JSON.stringify({ metadata: { user_id: userId } }))
         }
 
         // Update content-length header to match new body size
-        proxyHeaders.set('content-length', String(body.byteLength))
-      } catch {
+        proxyHeaders.set('content-length', String(body?.byteLength || 0))
+      } catch (err) {
         // Body is not JSON, pass through as-is
       }
     }
@@ -91,14 +97,24 @@ export async function proxyToLangGraph(
       }
 
       // Handle JSON responses
-      try {
-        const jsonData = await response.json()
-        return NextResponse.json(jsonData, { status: response.status })
-      } catch {
-        // Response is not JSON
-        const textData = await response.text()
-        return new NextResponse(textData, { status: response.status })
+      const contentType = response.headers.get('content-type') || ''
+      let responseData: unknown
+
+      if (contentType.includes('application/json')) {
+        try {
+          responseData = await response.json()
+        } catch {
+          // JSON parse failed - read as text instead
+          responseData = await response.text()
+        }
+      } else {
+        responseData = await response.text()
       }
+
+      if (typeof responseData === 'string') {
+        return new NextResponse(responseData, { status: response.status })
+      }
+      return NextResponse.json(responseData, { status: response.status })
     } catch (error) {
       clearTimeout(timeoutId)
       throw error
