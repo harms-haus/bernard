@@ -3,11 +3,11 @@
 import { useEffect, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { Thread } from '@/components/chat/Thread';
-import { StreamProvider } from '@/providers/StreamProvider';
-import { ThreadProvider } from '@/providers/ThreadProvider';
+import { Thread } from '@/components/chat/thread';
+import { StreamProvider } from '@/components/chat/thread/providers/Stream';
+import { ThreadProvider } from '@/components/chat/thread/providers/Thread';
 import { useDynamicHeader } from '@/components/dynamic-header';
-import { useThreads } from '@/providers/ThreadProvider';
+import { useThreads } from '@/components/chat/thread/providers/Thread';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -19,14 +19,18 @@ function ChatHeaderController() {
 
   useEffect(() => {
     if (threadId && UUID_REGEX.test(threadId)) {
-      const thread = threads.find(t => t.id === threadId);
+      const thread = threads.find(t => t.thread_id === threadId);
       setTitle('Chat');
-      setSubtitle(thread?.name || 'New Chat');
+      let threadName = 'New Chat';
+      if (thread?.values && 'messages' in thread.values && Array.isArray(thread.values.messages) && thread.values.messages.length > 0) {
+        const firstMsg = thread.values.messages[0];
+        threadName = typeof firstMsg.content === 'string' ? firstMsg.content : 'New Chat';
+      }
+      setSubtitle(threadName);
     } else {
       setTitle('Chat');
       setSubtitle('New Chat');
     }
-    // We don't call reset() here because it would clear actions set by useChatHeaderConfig
   }, [threadId, threads, setTitle, setSubtitle]);
 
   return null;
@@ -47,20 +51,18 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  // Use LangGraph native streaming endpoints
-  // The SDK expects the LangGraph server URL, not a relative path
   const apiUrl = (process.env.NEXT_PUBLIC_BERNARD_AGENT_URL || 'http://localhost:2024').replace(/\/$/, '');
   const assistantId = 'bernard_agent';
-
-  const validThreadId = threadId && UUID_REGEX.test(threadId) ? threadId : null;
 
   return (
     <ChatSidebarConfig>
       <ChatHeaderConfig>
-        <StreamProvider apiUrl={apiUrl} assistantId={assistantId} threadId={validThreadId}>
-          <ChatHeaderController />
-          <Thread />
-        </StreamProvider>
+        <ThreadProvider apiUrl={apiUrl} assistantId={assistantId}>
+          <StreamProvider apiUrl={apiUrl} assistantId={assistantId}>
+            <ChatHeaderController />
+            <Thread />
+          </StreamProvider>
+        </ThreadProvider>
       </ChatHeaderConfig>
     </ChatSidebarConfig>
   );

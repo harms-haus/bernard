@@ -160,7 +160,8 @@ export class ProcessManager {
       this.processes.delete(config.id)
       return true
     } catch (error) {
-      logger.error({ service: config.id, error: (error as Error).message }, 'Failed to stop service');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ service: config.id, error: errorMessage }, 'Failed to stop service');
       return false
     }
   }

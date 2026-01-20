@@ -11,7 +11,7 @@ export async function GET() {
 
         return NextResponse.json({ session });
     } catch (error) {
-        logger.error({ error: (error as Error).message }, 'Error getting session');
+        logger.error({ error }, 'Error getting session');
         return NextResponse.json({ session: null }, { status: 500 });
     }
 }

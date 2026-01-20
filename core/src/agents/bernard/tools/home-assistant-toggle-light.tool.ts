@@ -147,14 +147,25 @@ export function createToggleLightTool(
       on,
       brightness_pct,
       brightness_pct_delta,
-      color
+      color,
+      _userRole,
     }: {
       entity: string;
       on?: boolean | null;
       brightness_pct?: number | null;
       brightness_pct_delta?: number | null;
       color?: ColorInput | null;
+      _userRole?: string;
     }) => {
+      // Check userRole at runtime - if guest, return mock data
+      if (_userRole === 'guest' || restConfig === undefined) {
+        if (!entity || typeof entity !== 'string') {
+          return "[Demo] Error: entity parameter is required and must be a string";
+        }
+        const action = on === true ? "turn on" : on === false ? "turn off" : "toggle";
+        return `[Demo] Light ${entity} - ${action} (demo mode for guests - no actual device control)`;
+      }
+      
       // Validate entity_id format and domain
       if (!entity || typeof entity !== 'string') {
         return "Error: entity parameter is required and must be a string";

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@langchain/langgraph-sdk';
 import { logger } from '@/lib/logging/logger';
 import { ensureRequestId } from '@/lib/logging/logger';
+import { getSession } from '@/lib/auth/server-helpers';
 
 const LANGGRAPH_API_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest) {
       stream?: boolean;
     };
 
+    // Get user session to pass role to agent for tool filtering
+    const session = await getSession();
+    const userRole = session?.user?.role ?? 'guest';
+
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
         { error: 'messages is required and must be a non-empty array' },
@@ -45,8 +50,8 @@ export async function POST(request: NextRequest) {
         threadId,
         assistantId,
         {
-          input: { messages },
-        }
+          input: { messages, userRole },
+        } as any
       );
       // Wait for run to complete using join()
       const result = await client.runs.join(threadId, run.run_id);
@@ -58,9 +63,9 @@ export async function POST(request: NextRequest) {
       threadId,
       model || 'bernard_agent',
       {
-        input: { messages },
+        input: { messages, userRole },
         streamMode: ['messages'] as const,
-      }
+      } as any
     );
 
     const encoder = new TextEncoder();

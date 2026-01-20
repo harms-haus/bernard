@@ -22,14 +22,32 @@ export function HumanMessage({ message, isLoading = false }: HumanMessageProps) 
     if (value.trim() && value.trim() !== contentString) {
       setIsEditing(false);
 
-      const newMessage: Message = { type: "human", content: value.trim() };
+      const newMessage: Message = { 
+        ...message,
+        type: "human", 
+        content: value.trim() 
+      };
       thread.submit(
         { messages: [newMessage] },
         {
-          optimisticValues: (prev) => ({
-            ...prev,
-            messages: [...(prev.messages ?? []), newMessage],
-          }),
+          optimisticValues: (prev) => {
+            const prevMessages = prev.messages ?? [];
+            // Replace the existing message by id instead of appending
+            const messageIndex = prevMessages.findIndex(m => m.id === message.id);
+            if (messageIndex >= 0) {
+              const updatedMessages = [...prevMessages];
+              updatedMessages[messageIndex] = newMessage;
+              return {
+                ...prev,
+                messages: updatedMessages,
+              };
+            }
+            // Fallback: if message not found, append (shouldn't happen)
+            return {
+              ...prev,
+              messages: [...prevMessages, newMessage],
+            };
+          },
         }
       );
     } else {

@@ -42,6 +42,8 @@ export {
   validateAndGetTools,
   validateTools,
   getToolDefinitions,
+  getGuestToolDefinitions,
+  getRealToolDefinitions,
   type ToolDefinition,
   type ToolValidationResult,
   type ToolsValidationResult,

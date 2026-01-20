@@ -15,7 +15,9 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     return handleAutoRename(threadId, body)
   } catch (err) {
-    logger.error({ error: (err as Error).message }, 'Failed to perform auto-rename');
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    logger.error({ error: errorMessage, stack: errorStack }, 'Failed to perform auto-rename');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

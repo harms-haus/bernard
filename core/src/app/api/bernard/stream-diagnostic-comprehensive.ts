@@ -37,35 +37,60 @@ async function testAllStreamModes() {
 
         let eventCount = 0;
         let firstChunk: unknown = null;
-        let timeout = false;
 
-        // Set a timeout for each stream mode test
-        const timeoutHandle = setTimeout(() => {
-          timeout = true;
-          logger.warn({ mode }, 'Timeout after 5 seconds');
-        }, 5000);
+        // Use AbortController for proper timeout handling
+        const controller = new AbortController();
+        let timeoutHandle: NodeJS.Timeout | null = null;
 
-        for await (const chunk of runStream) {
-          clearTimeout(timeoutHandle);
-          eventCount++;
-          if (!firstChunk) {
-            firstChunk = chunk;
-            logger.debug({ mode, chunkType: typeof chunk }, 'First chunk received');
+        const resetTimeout = () => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+          timeoutHandle = setTimeout(() => {
+            controller.abort();
+            logger.warn({ mode, eventCount }, 'Timeout after 5 seconds');
+          }, 5000);
+        };
+
+        resetTimeout();
+
+        try {
+          for await (const chunk of runStream) {
+            if (controller.signal.aborted) {
+              break;
+            }
+            resetTimeout();
+            eventCount++;
+            if (!firstChunk) {
+              firstChunk = chunk;
+              logger.debug({ mode, chunkType: typeof chunk }, 'First chunk received');
+            }
+
+            // If we get too many events, break
+            if (eventCount > 5) {
+              logger.debug({ mode, eventCount }, 'Breaking after 5 events');
+              break;
+            }
           }
 
-          // If we get too many events, break
-          if (eventCount > 5) {
-            logger.debug({ mode, eventCount }, 'Breaking after 5 events');
-            break;
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
           }
-        }
 
-        clearTimeout(timeoutHandle);
-
-        if (timeout) {
-          logger.warn({ mode }, 'No events received within 5 seconds');
-        } else {
-          logger.info({ mode, eventCount }, 'Stream completed');
+          if (controller.signal.aborted) {
+            logger.warn({ mode, eventCount }, 'Stream aborted due to timeout');
+          } else {
+            logger.info({ mode, eventCount }, 'Stream completed');
+          }
+        } catch (error) {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+          if (controller.signal.aborted) {
+            logger.warn({ mode, eventCount }, 'Stream aborted due to timeout');
+          } else {
+            throw error;
+          }
         }
 
       } catch (error) {
@@ -86,15 +111,54 @@ async function testAllStreamModes() {
       );
 
       let eventCount = 0;
-      for await (const chunk of multiStream) {
-        eventCount++;
+      let timeoutHandle: NodeJS.Timeout | null = null;
+      const controller = new AbortController();
 
-        if (eventCount > 5) {
-          logger.debug({ eventCount }, 'Breaking after 5 events');
-          break;
+      const resetTimeout = () => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        timeoutHandle = setTimeout(() => {
+          controller.abort();
+          logger.warn({ eventCount }, 'Multi-mode stream timeout after 5 seconds');
+        }, 5000);
+      };
+
+      resetTimeout();
+
+      try {
+        for await (const chunk of multiStream) {
+          if (controller.signal.aborted) {
+            break;
+          }
+          resetTimeout();
+          eventCount++;
+
+          if (eventCount > 5) {
+            logger.debug({ eventCount }, 'Breaking after 5 events');
+            break;
+          }
+        }
+
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+
+        if (controller.signal.aborted) {
+          logger.warn({ eventCount }, 'Multi-mode stream aborted due to timeout');
+        } else {
+          logger.info({ eventCount }, 'Multi-mode stream completed');
+        }
+      } catch (error) {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        if (controller.signal.aborted) {
+          logger.warn({ eventCount }, 'Multi-mode stream aborted due to timeout');
+        } else {
+          throw error;
         }
       }
-      logger.info({ eventCount }, 'Multi-mode stream completed');
     } catch (error) {
       logger.error({ error: (error as Error).message }, 'Multi-mode stream error');
     }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@langchain/langgraph-sdk';
+import { getSession } from '@/lib/auth/server-helpers';
 
 const LANGGRAPH_API_URL = process.env.BERNARD_AGENT_URL || 'http://127.0.0.1:2024';
 
@@ -17,6 +18,10 @@ export async function POST(request: NextRequest) {
       messages: Array<{ role: string; content: string }>;
     };
 
+    // Get user session to pass role to agent for tool filtering
+    const session = await getSession();
+    const userRole = session?.user?.role ?? 'guest';
+
     if (!threadId) {
       return NextResponse.json(
         { error: 'threadId is required' },
@@ -31,6 +36,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate each message has required structure
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (!msg || typeof msg !== 'object') {
+        return NextResponse.json(
+          { error: `messages[${i}] must be an object` },
+          { status: 400 }
+        );
+      }
+      if (typeof msg.role !== 'string' || !msg.role) {
+        return NextResponse.json(
+          { error: `messages[${i}].role must be a non-empty string` },
+          { status: 400 }
+        );
+      }
+      if (typeof msg.content !== 'string') {
+        return NextResponse.json(
+          { error: `messages[${i}].content must be a string` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const runOptions = {
+      input: { messages, userRole },
+      streamMode: ['messages', 'updates'] as const,
+    } as any;
+
     // Check thread status - if it has a pending run, use interrupt strategy
     let thread = await client.threads.get(threadId);
       if (thread.status === 'busy') {
@@ -39,8 +72,7 @@ export async function POST(request: NextRequest) {
           threadId,
           'bernard_agent',
           {
-            input: { messages },
-            streamMode: ['messages', 'updates'] as const,
+            ...runOptions,
             multitaskStrategy: 'interrupt',
           }
         );
@@ -57,8 +89,7 @@ export async function POST(request: NextRequest) {
           threadId,
           'bernard_agent',
           {
-            input: { messages },
-            streamMode: ['messages', 'updates'] as const,
+            ...runOptions,
             multitaskStrategy: 'interrupt',
           }
         );
@@ -70,18 +101,14 @@ export async function POST(request: NextRequest) {
     const runStream = client.runs.stream(
       threadId,
       'bernard_agent',
-      {
-        input: { messages },
-        // Use both 'messages' (AI content) and 'updates' (tool calls/results)
-        streamMode: ['messages', 'updates'] as const,
-      }
+      runOptions
     );
 
     return createStreamResponse(runStream);
   } catch (error) {
     console.error('Stream API error:', error);
     return NextResponse.json(
-      { error: 'Internal server error', message: (error as Error).message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -279,13 +279,16 @@ async function playMediaOnPlex(
               ...serviceData
             }
           );
+          // Success - exit loop immediately
+          break;
         } catch (error) {
           logger.warn({ device: deviceName, attempt: i + 1, error: (error as Error).message }, 'Failed to play media');
           if (i === 2) {
             throw error;
           }
+          // Only wait before retrying on failure
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
     const playbackDescription = playback_mode === 'resume'

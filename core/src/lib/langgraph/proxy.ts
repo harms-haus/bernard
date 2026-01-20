@@ -11,6 +11,7 @@ export interface LangGraphProxyOptions {
   timeout?: number
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   userId?: string
+  userRole?: string
 }
 
 export async function proxyToLangGraph(
@@ -18,7 +19,7 @@ export async function proxyToLangGraph(
   path: string,
   options: LangGraphProxyOptions = {}
 ): Promise<NextResponse> {
-  const { streaming = false, timeout = 120000, method, userId } = options
+  const { streaming = false, timeout = 120000, method, userId, userRole } = options
   const targetUrl = getLangGraphUrl(path)
   const httpMethod = method || request.method
   const isBodyAllowed = httpMethod !== 'GET' && httpMethod !== 'HEAD'
@@ -31,7 +32,7 @@ export async function proxyToLangGraph(
     const proxyHeaders = new Headers(request.headers)
 
     // Inject user_id into thread creation/update requests (stored in metadata)
-    if ((path === '/threads' || path.startsWith('/threads?') || path.match(/^\/\/threads\/[a-zA-Z0-9-]+$/)) && (httpMethod === 'POST' || httpMethod === 'PATCH')) {
+    if ((path === '/threads' || path.startsWith('/threads?') || path.match(/^\/threads\/[a-zA-Z0-9-]+$/)) && (httpMethod === 'POST' || httpMethod === 'PATCH')) {
       try {
         const bodyText = body ? new TextDecoder().decode(body) : ''
 
@@ -53,6 +54,30 @@ export async function proxyToLangGraph(
 
         // Update content-length header to match new body size
         proxyHeaders.set('content-length', String(body?.byteLength || 0))
+      } catch (err) {
+        // Body is not JSON, pass through as-is
+      }
+    }
+
+    // Inject userRole into run input for tool selection
+    if (path.startsWith('/threads/') && path.includes('/runs') && (httpMethod === 'POST' || httpMethod === 'PUT')) {
+      try {
+        const bodyText = body ? new TextDecoder().decode(body) : ''
+
+        if (bodyText) {
+          const jsonBody = JSON.parse(bodyText)
+          
+          // Add userRole to input for runtime tool selection
+          if (userRole) {
+            jsonBody.input = {
+              ...(jsonBody.input || {}),
+              userRole,
+            }
+          }
+          
+          body = new TextEncoder().encode(JSON.stringify(jsonBody))
+          proxyHeaders.set('content-length', String(body?.byteLength || 0))
+        }
       } catch (err) {
         // Body is not JSON, pass through as-is
       }
@@ -100,18 +125,25 @@ export async function proxyToLangGraph(
       const contentType = response.headers.get('content-type') || ''
       let responseData: unknown
 
+      // Read body once as text, then attempt to parse as JSON
+      const rawBody = await response.text()
+
       if (contentType.includes('application/json')) {
         try {
-          responseData = await response.json()
+          responseData = JSON.parse(rawBody)
         } catch {
-          // JSON parse failed - read as text instead
-          responseData = await response.text()
+          // JSON parse failed - use raw text
+          responseData = rawBody
         }
       } else {
-        responseData = await response.text()
+        responseData = rawBody
       }
 
       if (typeof responseData === 'string') {
+        // Handle 204 No Content - it can't have a body
+        if (response.status === 204) {
+          return new NextResponse(null, { status: 204 })
+        }
         return new NextResponse(responseData, { status: response.status })
       }
       return NextResponse.json(responseData, { status: response.status })

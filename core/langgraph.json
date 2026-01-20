@@ -4,7 +4,7 @@
     "."
   ],
   "graphs": {
-    "bernard_agent": "./src/agents/bernard/bernard.agent.js:agent"
+    "bernard_agent": "./src/agents/bernard/bernard.agent.ts:agent"
   },
   "env": ".env"
 }

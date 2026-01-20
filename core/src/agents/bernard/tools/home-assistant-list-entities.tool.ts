@@ -163,7 +163,20 @@ export function createListHAEntitiesTool(
   const deps: ListHAEntitiesDependencies = { ...defaultDeps, ...overrides };
 
   return tool(
-    async ({ domain, regex }: { domain?: string; regex?: string }) => {
+    async ({
+      domain,
+      regex,
+      _userRole,
+    }: {
+      domain?: string;
+      regex?: string;
+      _userRole?: string;
+    } = {}) => {
+      // Check userRole at runtime - if guest, return mock data
+      if (_userRole === 'guest' || restConfig === undefined) {
+        return `[Demo] Home Assistant entities list (demo mode for guests)\n\nNo actual entities are shown in demo mode.\nTo see real entities, please upgrade to a non-guest account.`;
+      }
+      
       // Get entities from scoped context manager if available
       let entities: HomeAssistantEntity[] = [];
 

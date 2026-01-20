@@ -215,10 +215,16 @@ export class ServiceManager {
         logger.error({ service: id, error: result.error }, 'Failed to start service');
       }
 
-      // Wait longer after Redis - it needs time to be fully ready for clients
+      // Wait longer after services that others depend on (e.g., Redis) so dependents can connect
       const config = SERVICES[id]
-      if (result.success && config.dependencies.length > 0) {
-        await this.delay(3000)
+      if (result.success) {
+        // Check if any other service depends on this one
+        const isDependedOn = Object.values(SERVICES).some(service => 
+          service.dependencies.includes(id)
+        );
+        if (isDependedOn) {
+          await this.delay(3000)
+        }
       }
     }
 

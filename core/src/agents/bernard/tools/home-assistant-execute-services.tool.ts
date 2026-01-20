@@ -86,7 +86,24 @@ export function createExecuteHomeAssistantServicesTool(
   };
 
   return tool(
-    async ({ list }: { list: Array<{ domain: string; service: string; service_data: { entity_id: string | string[] } }> }) => {
+    async ({
+      list,
+      _userRole,
+    }: {
+      list: Array<{ domain: string; service: string; service_data: { entity_id: string | string[] } }>;
+      _userRole?: string;
+    } = { list: [] }) => {
+      // Check userRole at runtime - if guest, return mock data
+      if (_userRole === 'guest' || restConfig === undefined) {
+        if (!Array.isArray(list) || list.length === 0) {
+          return "No service calls provided.";
+        }
+        const results = list.map(call =>
+          `[Demo] ${call.domain}.${call.service} on ${call.service_data.entity_id}`
+        );
+        return "Home Assistant service calls simulated (demo mode for guests):\n" + results.join('\n');
+      }
+      
       if (!Array.isArray(list) || list.length === 0) {
         return "No service calls provided. Please provide an array of service calls to execute.";
       }

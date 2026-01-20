@@ -1,18 +1,17 @@
-import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware } from "langchain";
+import { ClearToolUsesEdit, contextEditingMiddleware, createAgent, createMiddleware, modelRetryMiddleware, toolCallLimitMiddleware, toolRetryMiddleware, type MiddlewareResult } from "langchain";
 
-import { RedisSaver } from "../../lib/checkpoint/index.js";
+import { RedisSaver } from "../../lib/checkpoint/index";
 import { initChatModel } from "langchain/chat_models/universal";
 
-import { getSettings } from "../../lib/config/settingsCache.js";
-import { resolveModel } from "../../lib/config/models.js";
+import { getSettings } from "../../lib/config/settingsCache";
+import { resolveModel } from "../../lib/config/models";
 
-import { buildReactSystemPrompt } from "./prompts/react.prompt.js";
-import { validateAndGetTools } from "./tools/index.js";
-import { ToolContext } from "./tools/types.js";
-import { startUtilityWorker } from "../../lib/infra/queue.js";
-import { startHealthMonitor } from "../../lib/services/HealthMonitor.js";
-import { initializeSettingsStore } from "../../lib/config/settingsStore.js";
-import { getRedis } from "../../lib/infra/redis.js";
+import { buildReactSystemPrompt } from "./prompts/react.prompt";
+import { getGuestToolDefinitions, validateAndGetTools } from "./tools/index";
+import { startUtilityWorker } from "../../lib/infra/queue";
+import { startHealthMonitor } from "../../lib/services/HealthMonitor";
+import { initializeSettingsStore } from "../../lib/config/settingsStore";
+import { getRedis } from "../../lib/infra/redis";
 
 // ============================================================================
 // Initialization State
@@ -58,12 +57,47 @@ const defaultDependencies: AgentDependencies = {
 };
 
 // ============================================================================
+// User Role Middleware
+// ============================================================================
+
+/**
+ * Extract userRole from input and store in state for tools to access at runtime.
+ * This allows tools to check the user's role without needing to modify the tool list.
+ */
+const userRoleMiddleware = createMiddleware({
+  name: "UserRoleExtractor",
+  beforeModel: (state): MiddlewareResult<{ userRole: string }> | undefined => {
+    // userRole is passed in the input from proxy routes
+    const directUserRole = (state as { userRole?: string }).userRole;
+    if (directUserRole) {
+      return { userRole: directUserRole };
+    }
+    return undefined;
+  },
+});
+
+/**
+ * Middleware that injects __userRole into tool call arguments.
+ * This allows tools to check the user's role at runtime.
+ */
+const dynamicToolCallMiddleware = createMiddleware({
+  name: "ToolSelector",
+  wrapModelCall: (request, handler) => {
+    const state = request.state as { userRole?: string };
+    const userRole = state?.userRole ?? "guest";
+    return handler({
+      ...request,
+      tools: userRole === 'guest' ? getGuestToolDefinitions() : request.tools,
+    });
+  },
+});
+
+// ============================================================================
 // Agent Creation
 // ============================================================================
 
 export async function createBernardAgent(
-  overrides?: Partial<AgentDependencies>,
-  toolContext?: ToolContext
+  overrides?: Partial<AgentDependencies>
 ) {
   const deps = { ...defaultDependencies, ...overrides };
 
@@ -87,7 +121,7 @@ export async function createBernardAgent(
   const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
   const checkpointer = await deps.RedisSaver.fromUrl(redisUrl);
 
-  const { validTools, disabledTools } = await deps.validateAndGetTools(toolContext);
+  const { validTools, disabledTools } = await deps.validateAndGetTools();
 
   return createAgent({
     model: await createModel(),
@@ -95,6 +129,8 @@ export async function createBernardAgent(
     systemPrompt: deps.buildReactSystemPrompt(new Date(), [], disabledTools),
     checkpointer,
     middleware: [
+      userRoleMiddleware,
+      dynamicToolCallMiddleware,
       modelware,
       toolCallLimitMiddleware({ runLimit: 10 }),
       toolRetryMiddleware({ maxRetries: 3, backoffFactor: 2, initialDelayMs: 1000 }),
