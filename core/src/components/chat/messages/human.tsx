@@ -8,10 +8,9 @@ import { useStreamContext } from '../../../providers/StreamProvider';
 
 interface HumanMessageProps {
   message: Message;
-  isLoading?: boolean;
 }
 
-export function HumanMessage({ message, isLoading = false }: HumanMessageProps) {
+export function HumanMessage({ message }: HumanMessageProps) {
   const thread = useStreamContext();
 
   const [isEditing, setIsEditing] = useState(false);

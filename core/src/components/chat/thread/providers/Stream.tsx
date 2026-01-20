@@ -14,9 +14,17 @@ import { toast } from "sonner";
 
 export type StateType = { messages: Message[] };
 
+export interface ToolProgressEvent {
+  _type: "tool_progress";
+  tool: string;
+  phase: "step" | "complete";
+  message: string;
+  timestamp: number;
+}
+
 const useTypedStream = useStream<StateType>;
 
-type StreamContextType = ReturnType<typeof useTypedStream>;
+type StreamContextType = ReturnType<typeof useTypedStream> & { latestProgress: ToolProgressEvent | null };
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -61,17 +69,43 @@ function StreamSession({
   const router = useRouter();
   const threadId = searchParams.get("threadId");
   const { getThreads, setThreads } = useThreads();
+  const [latestProgress, setLatestProgress] = useState<ToolProgressEvent | null>(null);
 
   const streamValue = useTypedStream({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
     threadId: threadId ?? null,
+    fetchStateHistory: true,
     onThreadId: (id) => {
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("threadId", id);
       router.replace(newUrl.pathname + newUrl.search);
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
+    },
+    onCustomEvent: (event, options) => {
+      const eventData = event as unknown as Record<string, unknown>;
+      // Handle tool_progress custom events
+      if (eventData._type === "tool_progress") {
+        const phase = eventData.phase;
+        if (phase !== "step" && phase !== "complete") {
+          console.error("Invalid phase value in tool_progress event:", phase);
+          return;
+        }
+        const progressEvent: ToolProgressEvent = {
+          _type: "tool_progress",
+          tool: String(eventData.tool),
+          phase: phase,
+          message: String(eventData.message),
+          timestamp: Number(eventData.timestamp),
+        };
+        setLatestProgress(progressEvent);
+        options.mutate((prev) => ({
+          ...prev,
+          latestProgress: progressEvent,
+        }));
+        return;
+      }
     },
   });
 
@@ -94,7 +128,7 @@ function StreamSession({
   }, [apiKey, apiUrl]);
 
   return (
-    <StreamContext.Provider value={streamValue}>
+    <StreamContext.Provider value={{ ...streamValue, latestProgress } as StreamContextType}>
       {children}
     </StreamContext.Provider>
   );
@@ -107,15 +141,15 @@ interface StreamProviderProps {
 }
 
 export function StreamProvider({ children, apiUrl, assistantId }: StreamProviderProps) {
-  const [apiKey, setApiKey] = useState(() => {
+  const [apiKey, setApiKey] = useState<string | null>(() => {
     const storedKey = getApiKey();
-    return storedKey || undefined;
+    return storedKey || null;
   });
 
   useEffect(() => {
     const updateApiKey = () => {
       const storedKey = getApiKey();
-      setApiKey(storedKey || undefined);
+      setApiKey(storedKey || null);
     };
 
     // Check for storage events (cross-tab updates)

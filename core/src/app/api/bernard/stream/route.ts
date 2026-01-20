@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const runOptions = {
       input: { messages, userRole },
-      streamMode: ['messages', 'updates'] as const,
+      streamMode: ['messages', 'updates', 'custom'] as const,
     } as any;
 
     // Check thread status - if it has a pending run, use interrupt strategy
@@ -246,6 +246,18 @@ function createStreamResponse(runStream: AsyncIterable<Record<string, unknown>>)
                   }
                 }
               }
+            }
+          }
+
+          // Handle custom events (tool_progress, etc.)
+          if (eventType === 'custom') {
+            const data = chunkAny.data as Record<string, unknown> | undefined;
+            if (data) {
+              const sseData = JSON.stringify({
+                event: 'custom',
+                data,
+              });
+              controller.enqueue(encoder.encode(`event: custom\ndata: ${sseData}\n\n`));
             }
           }
 

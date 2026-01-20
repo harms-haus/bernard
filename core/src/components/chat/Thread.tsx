@@ -8,6 +8,7 @@ import { useStreamContext } from '@/providers/StreamProvider';
 import { useThreads } from '@/providers/ThreadProvider';
 import { HumanMessage } from './messages/human';
 import { AssistantMessage, AssistantMessageLoading } from './messages/ai';
+import { ProgressIndicator } from './messages/progress';
 import { cn } from '@/lib/utils';
 import { ensureToolCallsHaveResponses, DO_NOT_RENDER_ID_PREFIX } from '@/lib/ensure-tool-responses';
 import { Plus, Send, StopCircle } from 'lucide-react';
@@ -131,17 +132,17 @@ export function Thread() {
               <HumanMessage
                 key={message.id || `human-${index}`}
                 message={message}
-                isLoading={isLoading}
               />
             ) : (
               <AssistantMessage
                 key={message.id || `ai-${index}`}
                 message={message}
                 nextMessages={messages.slice(index + 1)}
-                isLoading={isLoading}
               />
             );
           })}
+
+        {isLoading && <ProgressIndicator />}
 
         {isLoading && <AssistantMessageLoading />}
       </div>

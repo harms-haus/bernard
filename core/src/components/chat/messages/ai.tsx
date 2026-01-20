@@ -37,11 +37,9 @@ function ContentCopyable({ content, disabled, side = 'top' }: { content: string;
 export function AssistantMessage({
   message,
   nextMessages = [],
-  isLoading = false,
 }: {
   message: Message;
   nextMessages?: Message[];
-  isLoading?: boolean;
 }) {
   const contentString = getContentString(message.content);
 
@@ -55,9 +53,12 @@ export function AssistantMessage({
     : [];
 
   if (isToolResult) {
+    if (!message.tool_call_id) {
+      return null;
+    }
     return (
       <div data-testid="tool-result" className="flex items-start mr-auto gap-2 group">
-        <ToolCalls toolCalls={[{ id: message.tool_call_id!, name: message.name || 'unknown', args: {} }]} toolResults={[message]} />
+        <ToolCalls toolCalls={[{ id: message.tool_call_id, name: message.name || 'unknown', args: {} }]} toolResults={[message]} />
       </div>
     );
   }

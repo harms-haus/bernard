@@ -14,6 +14,14 @@ export type ProgressReporter = {
   reset: () => void;
 };
 
+export interface ToolProgressEvent {
+  _type: "tool_progress";
+  tool: string;
+  phase: "step" | "complete";
+  message: string;
+  timestamp: number;
+}
+
 export function createProgressReporter(config: LangGraphRunnableConfig, toolName: string): ProgressReporter {
   return {
     report: (message: string) =>
@@ -22,6 +30,7 @@ export function createProgressReporter(config: LangGraphRunnableConfig, toolName
         tool: toolName,
         phase: "step",
         message,
+        timestamp: Date.now(),
       }),
     reset: () =>
       config['writer']?.({
@@ -29,6 +38,7 @@ export function createProgressReporter(config: LangGraphRunnableConfig, toolName
         tool: toolName,
         phase: "complete",
         message: "Done",
+        timestamp: Date.now(),
       })
   };
 }

@@ -19,13 +19,6 @@ import {
 } from "lucide-react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { toast } from "sonner";
-import { GitHubSVG } from "@/components/icons/github";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -62,27 +55,6 @@ function ScrollToBottom(props: { className?: string }) {
       <ArrowDown className="w-4 h-4" />
       <span>Scroll to bottom</span>
     </Button>
-  );
-}
-
-function OpenGitHubRepo() {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <a
-            href="https://github.com/langchain-ai/agent-chat-ui"
-            target="_blank"
-            className="flex items-center justify-center"
-          >
-            <GitHubSVG width="24" height="24" />
-          </a>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          <p>Open GitHub repo</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
@@ -190,7 +162,6 @@ export function Thread() {
                     <HumanMessage
                       key={message.id || `${message.type}-${index}`}
                       message={message}
-                      isLoading={isLoading}
                     />
                   ) : (
                     <AssistantMessage
