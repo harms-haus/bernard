@@ -11,10 +11,29 @@ import { cn } from '@/lib/utils';
 function ContentCopyable({ content, disabled, side = 'top' }: { content: string; disabled: boolean; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      // Fallback for older browsers or non-secure contexts
+      const textArea = document.createElement('textarea');
+      textArea.value = content;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (fallbackError) {
+        console.error('Failed to copy text:', fallbackError);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   return (
@@ -74,7 +93,7 @@ export function AssistantMessage({
       className={cn("flex items-start gap-2 group relative", hasToolCalls ? "mb-2" : "mb-6", "mr-auto")}
     >
       <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-        <ContentCopyable content={contentString} disabled={false} side="left" />
+        <ContentCopyable content={contentString} disabled={false} side="bottom" />
       </div>
       <div className="flex flex-col gap-0 w-full">
         {contentString.length > 0 && (

@@ -3,8 +3,9 @@ import type { Message } from '@langchain/langgraph-sdk';
 import { getContentString } from '../utils';
 import { cn } from '@/lib/utils';
 import { TooltipIconButton } from '@/components/chat/TooltipIconButton';
-import { Pencil, X, Send } from 'lucide-react';
+import { Pencil, X, Send, RefreshCw } from 'lucide-react';
 import { useStreamContext } from '../providers/Stream';
+import { BranchSwitcher } from '../components/BranchSwitcher';
 
 interface HumanMessageProps {
   message: Message;
@@ -16,6 +17,37 @@ export function HumanMessage({ message }: HumanMessageProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState('');
   const contentString = getContentString(message.content);
+
+  // Get branch metadata for this message
+  const messageMetadata = thread.getMessagesMetadata?.(message);
+  const branch = messageMetadata?.branch;
+  const branchOptions = messageMetadata?.branchOptions;
+
+  const handleRetry = () => {
+    const parentCheckpoint = messageMetadata?.firstSeenState?.parent_checkpoint;
+
+    // Check if we even have checkpoint data
+    if (!parentCheckpoint) {
+      console.warn('[Retry] No parent checkpoint found - branching will not work');
+      // Fallback: submit normally (this will append, not branch)
+      thread.submit(
+        { messages: [message] },
+        {}
+      );
+      return;
+    }
+
+    // Re-submit the same message from the parent checkpoint to create a new branch
+    // According to the official docs, we should submit the message object with its id
+    thread.submit(
+      { messages: [message] },
+      { checkpoint: parentCheckpoint } as any
+    );
+  };
+
+  const handleBranchSelect = (selectedBranch: string) => {
+    thread.setBranch(selectedBranch);
+  };
 
   const handleSubmitEdit = () => {
     if (value.trim() && value.trim() !== contentString) {
@@ -57,20 +89,25 @@ export function HumanMessage({ message }: HumanMessageProps) {
   return (
     <div className={cn("flex flex-col items-center gap-2 group mb-6 w-full")} data-testid="human-message">
       <div className={cn("flex items-center ml-auto gap-2 relative w-full max-w-xl", isEditing && "w-full max-w-xl")}>
-        <div className={cn("absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100", isEditing && "opacity-100")}>
+        <div className={cn("absolute -right-20 top-1/2 -translate-y-1/2 flex flex-row gap-1 items-center transition-opacity opacity-0 group-focus-within:opacity-100 group-hover:opacity-100", isEditing && "opacity-100")}>
           {isEditing ? (
             <>
-              <TooltipIconButton onClick={() => setIsEditing(false)} tooltip="Cancel" variant="ghost" side="right" data-testid="cancel-edit-button">
+              <TooltipIconButton onClick={() => setIsEditing(false)} tooltip="Cancel" variant="ghost" side="bottom" data-testid="cancel-edit-button">
                 <X className="w-4 h-4" />
               </TooltipIconButton>
-              <TooltipIconButton onClick={handleSubmitEdit} tooltip="Submit" variant="secondary" side="right" data-testid="submit-edit-button">
+              <TooltipIconButton onClick={handleSubmitEdit} tooltip="Submit" variant="secondary" side="bottom" data-testid="submit-edit-button">
                 <Send className="w-4 h-4" />
               </TooltipIconButton>
             </>
           ) : (
-            <TooltipIconButton onClick={() => { setValue(contentString); setIsEditing(true); }} tooltip="Edit" variant="ghost" side="right" data-testid="edit-message-button">
-              <Pencil className="w-4 h-4" />
-            </TooltipIconButton>
+            <>
+              <TooltipIconButton onClick={() => { setValue(contentString); setIsEditing(true); }} tooltip="Edit" variant="ghost" side="bottom" data-testid="edit-message-button">
+                <Pencil className="w-4 h-4" />
+              </TooltipIconButton>
+              <TooltipIconButton onClick={handleRetry} tooltip="Retry" variant="ghost" side="bottom" data-testid="retry-message-button" disabled={thread.isLoading}>
+                <RefreshCw className="w-4 h-4" />
+              </TooltipIconButton>
+            </>
           )}
         </div>
         <div className={cn("flex flex-1 flex-col gap-2", isEditing && "w-full")}>
@@ -93,6 +130,14 @@ export function HumanMessage({ message }: HumanMessageProps) {
           )}
         </div>
       </div>
+
+      {/* BranchSwitcher appears after the user message */}
+      <BranchSwitcher
+        branch={branch}
+        branchOptions={branchOptions}
+        onSelect={handleBranchSelect}
+        isLoading={thread.isLoading}
+      />
     </div>
   );
 }

@@ -129,6 +129,8 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     const checkpointNs = (config.configurable as Record<string, string>).checkpoint_ns || "";
     const checkpointId = checkpoint.id;
+    // Store the parent checkpoint ID from config (this is the checkpoint BEFORE the current one)
+    const parentCheckpointId = (config.configurable as Record<string, string>).checkpoint_id;
 
     const key = formatCheckpointKey(threadId, checkpointNs, checkpointId);
 
@@ -146,6 +148,8 @@ export class RedisSaver extends BaseCheckpointSaver {
       thread_id: threadId,
       checkpoint_ns: checkpointNs,
       checkpoint_id: checkpointId,
+      // Store parent checkpoint ID for branching support
+      parent_checkpoint_id: parentCheckpointId || null,
       checkpoint: bufferToJsonValue(serializedCheckpoint),
       metadata: bufferToJsonValue(serializedMetadata),
       checkpoint_type: checkpointType,
@@ -360,7 +364,8 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       const pendingWrites = await this.getPendingWritesFromKey(key, parsed.threadId, parsed.checkpointNs, parsed.checkpointId);
 
-      return {
+      // Build the base checkpoint tuple
+      const tuple: CheckpointTuple = {
         checkpoint,
         metadata,
         pendingWrites,
@@ -372,6 +377,20 @@ export class RedisSaver extends BaseCheckpointSaver {
           },
         },
       };
+
+      // Add parentConfig if a parent checkpoint ID exists (for branching support)
+      const parentCheckpointId = data.parent_checkpoint_id as string | null | undefined;
+      if (parentCheckpointId) {
+        tuple.parentConfig = {
+          configurable: {
+            thread_id: parsed.threadId,
+            checkpoint_ns: parsed.checkpointNs,
+            checkpoint_id: parentCheckpointId,
+          },
+        };
+      }
+
+      return tuple;
     } catch (error) {
       logger.error({ key, error: (error as Error).message }, 'Error loading checkpoint');
       return undefined;

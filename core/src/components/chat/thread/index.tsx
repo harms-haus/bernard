@@ -34,11 +34,14 @@ function StickyToBottomContent(props: {
       style={{ width: "100%", height: "100%" }}
       className={props.className}
     >
-      <div ref={context.contentRef} className={props.contentClassName}>
-        {props.content}
+      <div className="flex flex-col h-full">
+        <div ref={context.contentRef} className={props.contentClassName}>
+          <div className="max-w-3xl mx-auto flex flex-col gap-4 w-full">
+            {props.content}
+          </div>
+        </div>
+        {props.footer}
       </div>
-
-      {props.footer}
     </div>
   );
 }
@@ -149,11 +152,11 @@ export function Thread() {
       <StickToBottom className="relative flex-1 overflow-hidden">
         <StickyToBottomContent
           className={cn(
-            "absolute px-4 inset-0 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-            !chatStarted && "flex flex-col items-stretch mt-[25vh]",
-            chatStarted && "grid grid-rows-[1fr_auto]",
+            "absolute inset-0 flex flex-col px-4",
+            !chatStarted && "justify-center pt-[25vh]",
+            chatStarted && "pt-8"
           )}
-          contentClassName="pt-8 pb-16  max-w-3xl mx-auto flex flex-col gap-4 w-full"
+          contentClassName="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent"
           content={
             <>
               {messages
@@ -189,7 +192,7 @@ export function Thread() {
             </>
           }
           footer={
-            <div className="sticky flex flex-col items-center gap-8 bottom-0">
+            <div className="flex flex-col items-center gap-8 shrink-0 pb-4">
               {!chatStarted && (
                 <div className="flex gap-3 items-center">
                   <LangGraphLogoSVG className="flex-shrink-0 h-8" />
@@ -199,7 +202,7 @@ export function Thread() {
                 </div>
               )}
 
-              <ScrollToBottom className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in fade-in-0 zoom-in-95" />
+              <ScrollToBottom className="self-center mb-4 animate-in fade-in-0 zoom-in-95" />
 
               <div className="bg-muted rounded-2xl border shadow-xs mx-auto mb-8 w-full max-w-3xl relative z-10">
                 <form

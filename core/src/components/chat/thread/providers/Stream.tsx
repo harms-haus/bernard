@@ -24,7 +24,19 @@ export interface ToolProgressEvent {
 
 const useTypedStream = useStream<StateType>;
 
-type StreamContextType = ReturnType<typeof useTypedStream> & { latestProgress: ToolProgressEvent | null };
+// Extend the UseStream return type to include latestProgress and ensure all SDK methods are available
+type StreamContextType = ReturnType<typeof useTypedStream> & {
+  latestProgress: ToolProgressEvent | null;
+  // Ensure branching methods from UseStream are available
+  getMessagesMetadata: (message: Message, index?: number) => {
+    messageId: string;
+    firstSeenState: { parent_checkpoint?: { thread_id: string; checkpoint_ns: string; checkpoint_id: string } | undefined } | undefined;
+    branch: string | undefined;
+    branchOptions: string[] | undefined;
+    streamMetadata: Record<string, unknown> | undefined;
+  } | undefined;
+  setBranch: (branch: string) => void;
+};
 
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
