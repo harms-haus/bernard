@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { toast } from "sonner";
+import { AgentSelectorButton } from "@/components/chat/AgentSelector";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -157,8 +158,13 @@ export function Thread() {
             <>
               {messages
                 .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                .map((message, index) =>
-                  message.type === "human" ? (
+                .map((message, index) => {
+                  // Skip standalone tool result messages - they're rendered inline with their AI messages
+                  if (message.type === "tool") {
+                    return null;
+                  }
+
+                  return message.type === "human" ? (
                     <HumanMessage
                       key={message.id || `${message.type}-${index}`}
                       message={message}
@@ -167,9 +173,10 @@ export function Thread() {
                     <AssistantMessage
                       key={message.id || `${message.type}-${index}`}
                       message={message}
+                      nextMessages={messages.slice(index + 1)}
                     />
-                  ),
-                )}
+                  );
+                })}
               {hasNoAIOrToolMessages && !!stream.interrupt && (
                 <AssistantMessage
                   key="interrupt-msg"
@@ -219,7 +226,8 @@ export function Thread() {
                     className="p-3.5 pb-0 border-none bg-transparent field-sizing-content shadow-none ring-0 outline-none focus:outline-none focus:ring-0 resize-none"
                   />
 
-                  <div className="flex items-center justify-end p-2 pt-4">
+                  <div className="flex items-center justify-between p-2 pt-4">
+                    <AgentSelectorButton />
                     {stream.isLoading ? (
                       <Button key="stop" type="button" onClick={() => stream.stop()}>
                         <Loader className="w-4 h-4 animate-spin" />

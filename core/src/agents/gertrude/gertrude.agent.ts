@@ -6,8 +6,8 @@ import { initChatModel } from "langchain/chat_models/universal";
 import { getSettings } from "../../lib/config/settingsCache";
 import { resolveModel } from "../../lib/config/models";
 
-import { buildReactSystemPrompt } from "./prompts/react.prompt";
-import { validateAndGetTools } from "./tools/index";
+import { buildReactSystemPrompt } from "../bernard/prompts/react.prompt";
+import { getGuestToolDefinitions } from "../bernard/tools/validation";
 import { startUtilityWorker } from "../../lib/infra/queue";
 import { startHealthMonitor } from "../../lib/services/HealthMonitor";
 import { initializeSettingsStore } from "../../lib/config/settingsStore";
@@ -18,20 +18,35 @@ import { getRedis } from "../../lib/infra/redis";
 // ============================================================================
 
 let initialized = false;
+let initializingPromise: Promise<void> | undefined = undefined;
 
 /**
  * Initialize agent services (utility worker and health monitor).
  * Safe to call multiple times - will only run once.
+ * Returns a promise that resolves when initialization is complete.
  */
-export function initializeAgentServices(): void {
-  if (!initialized) {
-    initializeSettingsStore(undefined, getRedis()).catch(err => {
-      console.error('[Bernard] Failed to initialize settings store:', err);
-    });
-    startUtilityWorker();
-    startHealthMonitor();
-    initialized = true;
+export function initializeGertrudeAgentServices(): Promise<void> {
+  if (initialized) {
+    return Promise.resolve();
   }
+  
+  if (initializingPromise) {
+    return initializingPromise;
+  }
+
+  initializingPromise = (async () => {
+    try {
+      await initializeSettingsStore(undefined, getRedis());
+      startUtilityWorker();
+      startHealthMonitor();
+      initialized = true;
+    } catch (err) {
+      console.error('[Gertrude] Failed to initialize settings store:', err);
+      throw err;
+    }
+  })();
+
+  return initializingPromise;
 }
 
 // ============================================================================
@@ -42,7 +57,6 @@ export interface AgentDependencies {
   resolveModel: typeof resolveModel;
   initChatModel: typeof initChatModel;
   getSettings: typeof getSettings;
-  validateAndGetTools: typeof validateAndGetTools;
   RedisSaver: typeof RedisSaver;
   buildReactSystemPrompt: typeof buildReactSystemPrompt;
 }
@@ -51,17 +65,15 @@ const defaultDependencies: AgentDependencies = {
   resolveModel,
   initChatModel,
   getSettings,
-  validateAndGetTools,
   RedisSaver,
   buildReactSystemPrompt,
 };
-
 
 // ============================================================================
 // Agent Creation
 // ============================================================================
 
-export async function createBernardAgent(
+export async function createGertrudeAgent(
   overrides?: Partial<AgentDependencies>
 ) {
   const deps = { ...defaultDependencies, ...overrides };
@@ -90,10 +102,30 @@ export async function createBernardAgent(
   const redisUrl = settings.services?.infrastructure?.redisUrl ?? "redis://localhost:6379";
   const checkpointer = await deps.RedisSaver.fromUrl(redisUrl);
 
-  const { validTools, disabledTools } = await deps.validateAndGetTools();
+  // Gertrude uses guest-only tools (no HA control, no media tools)
+  const guestToolDefinitions = getGuestToolDefinitions();
+  const disabledTools: Array<{ name: string; reason?: string }> = [];
+
+  // Validate guest tools
+  const validTools = [];
+  for (const definition of guestToolDefinitions) {
+    try {
+      const result = await definition.factory();
+      if (result.ok) {
+        validTools.push(result.tool);
+      } else {
+        disabledTools.push({ name: result.name, reason: result.reason });
+      }
+    } catch (error) {
+      disabledTools.push({
+        name: definition.name,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   return createAgent({
-    model: await createModel(),
+    model,
     tools: validTools,
     systemPrompt: deps.buildReactSystemPrompt(new Date(), [], disabledTools),
     checkpointer,
@@ -121,15 +153,15 @@ export async function createBernardAgent(
 // ============================================================================
 
 // Initialize services when module loads
-initializeAgentServices();
+initializeGertrudeAgentServices();
 
 // Lazy-loaded agent for LangGraph server compatibility
 // Using a getter function to avoid top-level await in CJS context
-let _agent: ReturnType<typeof createBernardAgent> | undefined = undefined;
+let _agent: ReturnType<typeof createGertrudeAgent> | undefined = undefined;
 
-export function getBernardAgent(): ReturnType<typeof createBernardAgent> {
+export function getGertrudeAgent(): ReturnType<typeof createGertrudeAgent> {
   if (!_agent) {
-    _agent = createBernardAgent();
+    _agent = createGertrudeAgent();
   }
   return _agent;
 }
@@ -138,4 +170,4 @@ export function getBernardAgent(): ReturnType<typeof createBernardAgent> {
  * Default agent instance for backward compatibility.
  * Note: This returns a Promise, callers must await it.
  */
-export const agent = getBernardAgent();
+export const agent = getGertrudeAgent();

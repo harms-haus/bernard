@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, use } from 'react';
+import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { Thread } from '@/components/chat/thread';
@@ -8,6 +8,9 @@ import { StreamProvider } from '@/components/chat/thread/providers/Stream';
 import { ThreadProvider } from '@/components/chat/thread/providers/Thread';
 import { useDynamicHeader } from '@/components/dynamic-header';
 import { useThreads } from '@/components/chat/thread/providers/Thread';
+import { AgentSelectorProvider, useAgentSelector } from '@/components/chat/AgentSelector';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/lib/auth/types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -36,10 +39,8 @@ function ChatHeaderController() {
   return null;
 }
 
-import { ChatSidebarConfig } from '@/components/dynamic-sidebar/configs';
-import { ChatHeaderConfig } from '@/components/dynamic-header/configs';
-
-export default function Chat() {
+function ChatContent() {
+  const { selectedAgent } = useAgentSelector();
   const searchParams = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get('threadId');
@@ -51,18 +52,33 @@ export default function Chat() {
     }
   }, [threadId, router]);
 
-  const apiUrl = (process.env.NEXT_PUBLIC_BERNARD_AGENT_URL || 'http://localhost:2024').replace(/\/$/, '');
-  const assistantId = 'bernard_agent';
+  const apiUrl = `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3456').replace(/\/$/, '')}/api`;
+
+  return (
+    <ThreadProvider apiUrl={apiUrl} assistantId={selectedAgent}>
+      <StreamProvider apiUrl={apiUrl} assistantId={selectedAgent}>
+        <ChatHeaderController />
+        <Thread />
+      </StreamProvider>
+    </ThreadProvider>
+  );
+}
+
+import { ChatSidebarConfig } from '@/components/dynamic-sidebar/configs';
+import { ChatHeaderConfig } from '@/components/dynamic-header/configs';
+
+export default function Chat() {
+  const { state } = useAuth();
+
+  // Use session role if available, otherwise default to guest
+  const userRole: UserRole = state.user?.role ?? 'guest';
 
   return (
     <ChatSidebarConfig>
       <ChatHeaderConfig>
-        <ThreadProvider apiUrl={apiUrl} assistantId={assistantId}>
-          <StreamProvider apiUrl={apiUrl} assistantId={assistantId}>
-            <ChatHeaderController />
-            <Thread />
-          </StreamProvider>
-        </ThreadProvider>
+        <AgentSelectorProvider userRole={userRole}>
+          <ChatContent />
+        </AgentSelectorProvider>
       </ChatHeaderConfig>
     </ChatSidebarConfig>
   );

@@ -171,6 +171,7 @@ export async function resolveModel(
       },
       temperature: modelSettings?.options?.temperature,
       maxTokens: modelSettings?.options?.maxTokens,
+      timeout: 60000, // 60 second timeout for model calls
     }};
   } else if (type === "ollama") {
     return { id, options: { 
@@ -178,6 +179,7 @@ export async function resolveModel(
       baseUrl: baseURL,
       temperature: modelSettings?.options?.temperature,
       maxTokens: modelSettings?.options?.maxTokens,
+      timeout: 60000, // 60 second timeout for model calls
     }};
   } else {
     throw new Error(`Unknown model type: ${type}`);

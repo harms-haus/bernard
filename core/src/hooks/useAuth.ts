@@ -75,15 +75,20 @@ function mapBetterAuthUser(betterAuthUser: {
 export function AuthProvider({ children }: AuthProviderProps) {
   const { data: session, isPending, error } = authClient.useSession();
 
-  // Fallback session detection - try to fetch session directly if hook doesn't work
+  // Fallback session detection - only if Better Auth completely fails
   const [fallbackSession, setFallbackSession] = useState<{ data: unknown } | null>(null);
   const [fallbackError, setFallbackError] = useState<string | null>(null);
+  const [hasTriedFallback, setHasTriedFallback] = useState(false);
   const prevSessionRef = useRef<string>('');
 
   useEffect(() => {
-    // If useSession doesn't return a session after a delay, try fallback
-    if (isPending && !session) {
+    // Only try fallback if Better Auth has an error (not just pending)
+    // or if it's been pending for more than 3 seconds without any data
+    if ((error || (isPending && !session && !hasTriedFallback)) && !fallbackSession) {
+      const delay = error ? 0 : 3000; // Immediate fallback if error, 3s if just pending
+
       const timer = setTimeout(async () => {
+        setHasTriedFallback(true);
         try {
           const response = await fetch('/api/auth/get-session', {
             method: 'GET',
@@ -99,11 +104,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } catch (err) {
           setFallbackError(err instanceof Error ? err.message : 'Failed to fetch session');
         }
-      }, 1000); // Wait 1 second before trying fallback
+      }, delay);
 
       return () => clearTimeout(timer);
     }
-  }, [isPending, session]);
+  }, [isPending, session, error, fallbackSession, hasTriedFallback]);
 
   // Use Better Auth session if available, otherwise use fallback
   const activeSession = session || fallbackSession;

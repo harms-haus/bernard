@@ -151,9 +151,9 @@ export function ToolCalls({
 
   return (
     <div className="space-y-2 w-full max-w-4xl">
-      {toolCalls.map((tc, idx) => {
+      {toolCalls.map((tc) => {
         const result = toolResults?.find((r) => r.tool_call_id === tc.id);
-        return <ToolCallItem key={idx} toolCall={tc} result={result} />;
+        return <ToolCallItem key={tc.id} toolCall={tc} result={result} />;
       })}
     </div>
   );

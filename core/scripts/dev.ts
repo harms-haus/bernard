@@ -118,11 +118,10 @@ async function startNextDev(): Promise<ChildProcess> {
     },
   })
 
-  const rl = readline.createInterface({ input: nextProcess.stdout! })
+  // Watch for ready message in the output
   let coreStarted = false
-
-  rl.on('line', async (line) => {
-    logService('next', line, 'blue')
+  const stdout = readline.createInterface({ input: nextProcess.stdout! })
+  stdout.on('line', async (line) => {
     if (!coreStarted && (line.includes('Ready in') || line.includes('compiled'))) {
       coreStarted = true
       log('\n=== Bernard Core is Ready! ===\n', 'green')

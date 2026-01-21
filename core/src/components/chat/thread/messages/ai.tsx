@@ -38,9 +38,14 @@ export function AssistantMessage({
   message,
   nextMessages = [],
 }: {
-  message: Message;
+  message?: Message;
   nextMessages?: Message[];
 }) {
+  // Handle undefined message (e.g., interrupt state)
+  if (!message) {
+    return null;
+  }
+
   const contentString = getContentString(message.content);
 
   const isToolResult = message.type === 'tool';
