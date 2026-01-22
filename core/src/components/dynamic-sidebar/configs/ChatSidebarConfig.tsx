@@ -26,7 +26,6 @@ import {
 } from '../../ui/dropdown-menu';
 import { AlertDialog } from '../../ui/dialog';
 import { toast } from 'sonner';
-import { Client } from '@langchain/langgraph-sdk';
 import { getAPIClient } from '@/lib/api/client';
 import { TypedText } from '../../chat/TypedText';
 import { cn } from '@/lib/utils';
@@ -90,14 +89,8 @@ const ThreadMenuItemInner = ({
 
         setIsAutoRenaming(true);
         try {
-            const client = new Client({
-                apiUrl: window.location.origin
-            });
-            const state = await client.threads.getState(thread.id) as { values?: { messages?: Array<{ type: string; content: unknown }> } };
-            const messages = state?.values?.messages || [];
-
             const apiClient = getAPIClient();
-            await apiClient.autoRenameThread(thread.id, undefined, messages);
+            await apiClient.autoRenameThread(thread.id);
             await getThreads();
             toast.success('Thread renamed successfully');
         } catch (error) {
@@ -168,7 +161,7 @@ const ThreadMenuItemInner = ({
                     >
                         <TypedText
                             text={thread.name || `Thread ${thread.id.slice(0, 8)}`}
-                            speed={10}
+                            speed={100}
                             className="truncate text-sm"
                         />
                     </Button>

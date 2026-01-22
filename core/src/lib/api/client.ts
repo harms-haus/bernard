@@ -206,20 +206,12 @@ class APIClient implements IAPIClient {
     catch { return { id: threadId, deleted: true }; }
   }
 
-  async autoRenameThread(
-    threadId: string,
-    firstMessage?: string,
-    messages?: Array<{ type: string; content: unknown }>
-  ) {
-    const body: Record<string, unknown> = {};
-    if (firstMessage) body.firstMessage = firstMessage;
-    if (messages) body.messages = messages;
-
+  async autoRenameThread(threadId: string) {
     const response = await fetch(`/api/threads/${threadId}/auto-rename`, {
       credentials: 'same-origin',
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
-      body: JSON.stringify(body)
+      body: JSON.stringify({})
     });
 
     if (!response.ok) {

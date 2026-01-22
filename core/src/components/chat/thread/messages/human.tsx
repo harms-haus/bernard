@@ -18,16 +18,16 @@ export function HumanMessage({ message }: HumanMessageProps) {
   const [value, setValue] = useState('');
   const contentString = getContentString(message.content);
 
-  // Get branch metadata for this message
+  // Use SDK's getMessagesMetadata - should now work with checkpoint injection
   const messageMetadata = thread.getMessagesMetadata?.(message);
   const branch = messageMetadata?.branch;
   const branchOptions = messageMetadata?.branchOptions;
+  // The checkpoint for retry is the parent checkpoint from firstSeenState
+  const parentCheckpoint = messageMetadata?.firstSeenState?.parent_checkpoint;
 
   const handleRetry = () => {
-    const parentCheckpoint = messageMetadata?.firstSeenState?.parent_checkpoint;
-
     // Check if we even have checkpoint data
-    if (!parentCheckpoint) {
+    if (!parentCheckpoint?.checkpoint_id) {
       console.warn('[Retry] No parent checkpoint found - branching will not work');
       // Fallback: submit normally (this will append, not branch)
       thread.submit(
@@ -38,7 +38,6 @@ export function HumanMessage({ message }: HumanMessageProps) {
     }
 
     // Re-submit the same message from the parent checkpoint to create a new branch
-    // According to the official docs, we should submit the message object with its id
     thread.submit(
       { messages: [message] },
       { checkpoint: parentCheckpoint } as any

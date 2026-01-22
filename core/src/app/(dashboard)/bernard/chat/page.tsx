@@ -25,7 +25,9 @@ function ChatHeaderController() {
       const thread = threads.find(t => t.thread_id === threadId);
       setTitle('Chat');
       let threadName = 'New Chat';
-      if (thread?.values && 'messages' in thread.values && Array.isArray(thread.values.messages) && thread.values.messages.length > 0) {
+      if (thread?.metadata?.name) {
+        threadName = typeof thread.metadata.name === 'string' ? thread.metadata.name : 'New Chat';
+      } else if (thread?.values && 'messages' in thread.values && Array.isArray(thread.values.messages) && thread.values.messages.length > 0) {
         const firstMsg = thread.values.messages[0];
         threadName = typeof firstMsg.content === 'string' ? firstMsg.content : 'New Chat';
       }

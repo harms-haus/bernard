@@ -116,11 +116,7 @@ export interface IAPIClient {
   createThread(): Promise<CreateThreadResponse>;
   updateThread(threadId: string, name: string): Promise<UpdateThreadResponse>;
   deleteThread(threadId: string): Promise<DeleteThreadResponse>;
-  autoRenameThread(
-    threadId: string,
-    firstMessage?: string,
-    messages?: Array<{ type: string; content: unknown }>
-  ): Promise<AutoRenameResponse>;
+  autoRenameThread(threadId: string): Promise<AutoRenameResponse>;
   
   // Users
   listUsers(): Promise<User[]>;

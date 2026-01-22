@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { Client } from '@langchain/langgraph-sdk'
 import { addUtilityJob } from '../infra/queue'
-import { error, ok, badRequest } from './response'
+import { error, ok } from './response'
 
 export interface AutoRenameBody {
   firstMessage?: string
@@ -11,26 +12,33 @@ export async function handleAutoRename(
   threadId: string,
   body: AutoRenameBody
 ): Promise<NextResponse> {
-  if (!body.firstMessage && (!body.messages || body.messages.length === 0)) {
-    return badRequest('firstMessage or messages is required')
-  }
+  let messages: Array<{ type: string; content: unknown }> = body.messages || []
 
-  let messageToUse = body.firstMessage
-  if (!messageToUse && body.messages) {
-    const firstHumanMessage = body.messages.find(m => m.type === 'human')
-    if (firstHumanMessage) {
-      messageToUse = typeof firstHumanMessage.content === 'string'
-        ? firstHumanMessage.content
-        : JSON.stringify(firstHumanMessage.content)
+  if (messages.length === 0) {
+    const langgraphUrl = process.env['LANGGRAPH_API_URL'] ?? 'http://localhost:2024'
+    const client = new Client({ apiUrl: langgraphUrl })
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, attempt * 500))
+        const thread = await client.threads.get(threadId)
+        const threadValues = thread.values as Record<string, unknown> | undefined
+        messages = (threadValues?.messages as Array<{ type: string; content: unknown }>) || []
+        if (messages.length > 0) break
+      } catch (e) {
+        if (attempt === 2) {
+          console.error('Failed to fetch thread state from LangGraph for auto-rename:', e)
+        }
+      }
     }
   }
 
-  if (!messageToUse) {
-    return error('Could not extract first human message', 400)
+  if (messages.length === 0) {
+    return error('Could not retrieve thread messages', 400)
   }
 
   try {
-    await addUtilityJob('thread-naming', { threadId, message: messageToUse }, {
+    await addUtilityJob('thread-naming', { threadId, messages }, {
       jobId: `thread-naming-${threadId}`,
       deduplicationId: `thread-naming-${threadId}`,
     })

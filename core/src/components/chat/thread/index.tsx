@@ -20,6 +20,8 @@ import {
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { toast } from "sonner";
 import { AgentSelectorButton } from "@/components/chat/AgentSelector";
+import { useThreads } from "./providers/Thread";
+import { getAPIClient } from "@/lib/api/client";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -67,12 +69,14 @@ export function Thread() {
   const threadId = searchParams.get("threadId");
   const [input, setInput] = useState("");
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+  const [hasTriggeredAutoRename, setHasTriggeredAutoRename] = useState(false);
 
   const stream = useStreamContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
 
   const lastError = useRef<string | undefined>(undefined);
+  const { getThreads } = useThreads();
 
   useEffect(() => {
     if (!stream.error) {
@@ -112,6 +116,34 @@ export function Thread() {
 
     prevMessageLength.current = messages.length;
   }, [messages]);
+
+  useEffect(() => {
+    if (
+      threadId &&
+      !hasTriggeredAutoRename &&
+      messages.length >= 2
+    ) {
+      const apiClient = getAPIClient();
+      apiClient.autoRenameThread(threadId)
+        .then(() => {
+          getThreads();
+          let pollAttempts = 0;
+          const maxAttempts = 6;
+          const pollInterval = window.setInterval(() => {
+            pollAttempts++;
+            getThreads();
+            if (pollAttempts >= maxAttempts) {
+              window.clearInterval(pollInterval);
+            }
+          }, 2000);
+        })
+        .catch((err: unknown) => {
+          console.error('Auto-rename failed:', err);
+        });
+
+      setHasTriggeredAutoRename(true);
+    }
+  }, [messages, hasTriggeredAutoRename, threadId, getThreads]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

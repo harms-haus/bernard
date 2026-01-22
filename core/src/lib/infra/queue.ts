@@ -17,7 +17,7 @@ import { childLogger, logger, startTimer, type LogContext } from '../logging/log
  */
 export interface ThreadNamingJobData {
   threadId: string;
-  message: string;
+  messages: Array<{ type: string; content: unknown }>;
 }
 
 /**
@@ -151,10 +151,18 @@ export function getUtilityQueue(): Queue<UtilityJobData, ThreadNamingJobData, st
         },
       },
     });
-    
+
+    connection.on('ready', () => {
+      logger.info("[UtilityQueue] Queue connection ready");
+    });
+
+    connection.on('error', (err) => {
+      logger.error({ error: err?.message }, "[UtilityQueue] Queue connection error");
+    });
+
     logger.info("[UtilityQueue] Queue initialized");
   }
-  
+
   return utilityQueue;
 }
 
@@ -165,7 +173,7 @@ async function processThreadNamingJob(
   jobData: ThreadNamingJobData,
   job: { id?: string | number | undefined }
 ): Promise<UtilityJobResult> {
-  const { threadId, message } = jobData;
+  const { threadId, messages } = jobData;
   const jobId = String(job.id ?? "unknown");
   const context: LogContext = {
     jobId,
@@ -182,7 +190,7 @@ async function processThreadNamingJob(
 
     // Import from worker file (no circular dependency)
     const { processThreadNamingJob: executeNaming } = await import("./thread-naming-job");
-    const result = await executeNaming({ threadId, message });
+    const result = await executeNaming({ threadId, messages });
 
     const durationMs = endTimer();
 
@@ -346,7 +354,7 @@ export async function addUtilityJob(
   const job = await queue.add(jobName, data, {
     jobId: options?.jobId,
     deduplicationId: options?.deduplicationId,
-  } as Record<string, unknown>);
+  } as any);
   
   const context: LogContext = {
     jobId: String(job.id ?? "unknown"),

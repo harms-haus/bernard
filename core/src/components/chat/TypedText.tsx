@@ -7,7 +7,7 @@ interface TypedTextProps {
   className?: string;
 }
 
-export function TypedText({ text, speed = 10, className }: TypedTextProps) {
+export function TypedText({ text, speed = 100, className }: TypedTextProps) {
   const [displayText, setDisplayText] = useState('');
   const [isComplete, setIsComplete] = useState(false);
   const prevTextRef = useRef<string | null>(null);

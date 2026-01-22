@@ -37,16 +37,9 @@ export function useAutoRename({
     if (hasTriggeredRef.current.has(currentThreadId)) return;
     if (currentMessages.length !== 2) return;
 
-    const firstHumanMessage = currentMessages.find(m => m.type === 'human');
-    if (!firstHumanMessage) return;
-
-    const messageContent = typeof firstHumanMessage.content === 'string'
-      ? firstHumanMessage.content
-      : JSON.stringify(firstHumanMessage.content);
-
     isRenamingRef.current.add(currentThreadId);
 
-    apiClient.autoRenameThread(currentThreadId, messageContent)
+    apiClient.autoRenameThread(currentThreadId)
       .then(() => {
         hasTriggeredRef.current.add(currentThreadId);
         onRenameComplete?.();

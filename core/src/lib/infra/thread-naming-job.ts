@@ -1,6 +1,6 @@
 /**
  * Thread Naming Job Processor
- * 
+ *
  * Handles thread naming job processing for the BullMQ worker.
  * This file exists to avoid circular dependencies between queue.ts and names.ts.
  */
@@ -14,7 +14,7 @@ import { initializeSettingsStore } from '../config/settingsStore'
 
 export interface ThreadNamingJobInput {
   threadId: string;
-  message: string;
+  messages: Array<{ type: string; content: unknown }>;
 }
 
 export interface ThreadNamingResult {
@@ -24,46 +24,86 @@ export interface ThreadNamingResult {
 }
 
 /**
- * Generate a title for a thread based on the first user message
+ * Generate a title for a thread based on the conversation messages
  */
-export async function generateTitle(message: string): Promise<string> {
+export async function generateTitle(messages: Array<{ type: string; content: unknown }>): Promise<string> {
   const context: LogContext = {
     stage: "generateTitle",
   };
   const log = childLogger(context);
-  
+
   try {
     const { id: modelId, options } = await resolveModel("utility");
-    
+
     const llm = await initChatModel(modelId, {
       ...options,
       temperature: 0.3,
       maxTokens: 30,
     });
-    
+
+    // Format messages for the prompt
+    const messageHistory = messages
+      .slice(0, 10) // Limit to first 10 messages for context
+      .map(m => {
+        let content = m.content;
+        // Handle complex LangChain message objects
+        if (typeof content === 'object' && content !== null) {
+          // Try to extract text from nested structures
+          const contentObj = content as Record<string, unknown>;
+          if (contentObj.content && typeof contentObj.content === 'string') {
+            content = contentObj.content;
+          } else if (contentObj.text && typeof contentObj.text === 'string') {
+            content = contentObj.text;
+          } else {
+            // Fallback to a short summary
+            content = `[complex message: ${Object.keys(contentObj).slice(0, 3).join(', ')}]`;
+          }
+        }
+        return `[${m.type}]: ${content}`;
+      })
+      .join('\n');
+
     const systemPrompt = `You are a helpful assistant that generates short, concise thread titles.
-Generate a title (3-6 words) that summarizes the user's message.
+Generate a title (3-6 words) that summarizes the conversation.
 Do not use quotes or punctuation in the title.
 Keep it simple and descriptive.
 Example: "Weather forecast for Tokyo"`;
-    
+
     const response = await llm.invoke([
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Generate a title for this message: "${message}"` },
+      { role: "user", content: `Generate a title for this conversation:\n\n${messageHistory}` },
     ]);
-    
+
     // Clean response and sanitize
-    const responseText = typeof response.content === "string" 
-      ? response.content 
+    const responseText = typeof response.content === "string"
+      ? response.content
       : JSON.stringify(response.content);
     let title = responseText.trim();
     title = title.replace(/^["']|["']$/g, "");
     if (title.length > 50) {
       title = title.substring(0, 47) + "...";
     }
-    
-    log.info({ messagePreview: message.substring(0, 50), title }, "[ThreadNaming] Generated title");
-    
+
+    // Fallback title if empty
+    if (!title) {
+      // Try to extract a title from the first human message
+      const firstHuman = messages.find(m => m.type === 'human');
+      if (firstHuman) {
+        let content = typeof firstHuman.content === 'string' 
+          ? firstHuman.content 
+          : '[complex message]';
+        // Take first few words
+        title = content.split(' ').slice(0, 5).join(' ').replace(/[^a-zA-Z0-9 ]/g, '');
+      }
+    }
+
+    // Final fallback
+    if (!title) {
+      title = 'New Chat';
+    }
+
+    log.info({ messageCount: messages.length, messagePreview: messageHistory.substring(0, 100), title, rawResponse: responseText }, "[ThreadNaming] Generated title");
+
     return title;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -78,49 +118,49 @@ Example: "Weather forecast for Tokyo"`;
 export async function processThreadNamingJob(
   input: ThreadNamingJobInput
 ): Promise<ThreadNamingResult> {
-  const { threadId, message } = input;
+  const { threadId, messages } = input;
   const context: LogContext = {
     threadId,
     stage: "processThreadNamingJob",
   };
   const log = childLogger(context);
-  
+
   try {
     log.info("[ThreadNaming] Processing naming job");
-    
+
     // Initialize settings store (required for resolveModel -> getSettings -> getSettingsStore)
     await initializeSettingsStore(undefined, getRedis());
-    
-    const title = await generateTitle(message);
-    
+
+    const title = await generateTitle(messages);
+
     const redis = getRedis();
     const threadKey = `bernard:thread:${threadId}`;
-    
+
     const existingData = await redis.get(threadKey);
     let threadData = existingData ? JSON.parse(existingData) : {};
-    
+
     threadData = {
       ...threadData,
       title,
       namedAt: new Date().toISOString(),
     };
-    
+
     await redis.set(threadKey, JSON.stringify(threadData));
-    
+
     // Also update via LangGraph SDK so UI sees the new name
     const client = new Client({
       apiUrl: process.env['LANGGRAPH_API_URL'] ?? "http://localhost:2024",
     });
-    
+
     await client.threads.update(threadId, {
       metadata: {
         name: title,
         updatedAt: new Date().toISOString(),
       },
     });
-    
+
     log.info({ threadId, title }, "[ThreadNaming] ✓ Thread named successfully");
-    
+
     return {
       success: true,
       threadId,
@@ -129,7 +169,7 @@ export async function processThreadNamingJob(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error({ error: errorMessage }, "[ThreadNaming] ✗ Failed to name thread");
-    
+
     return {
       success: false,
       threadId,

@@ -49,22 +49,15 @@ export function useThreadData(): ThreadData {
 
   useEffect(() => {
     if (threadId && !hasTriggeredAutoRename && messages.length === 2) {
-      const firstHumanMessage = messages.find((m: Message) => m.type === 'human');
-      if (firstHumanMessage) {
-        const messageContent = typeof firstHumanMessage.content === 'string'
-          ? firstHumanMessage.content
-          : JSON.stringify(firstHumanMessage.content);
-
-        const apiClient = getAPIClient();
-        apiClient.autoRenameThread(threadId, messageContent)
-          .then(() => {
-            getThreads();
-            setHasTriggeredAutoRename(true);
-          })
-          .catch((error) => {
-            console.error('Failed to auto-rename thread:', error);
-          });
-      }
+      const apiClient = getAPIClient();
+      apiClient.autoRenameThread(threadId)
+        .then(() => {
+          getThreads();
+          setHasTriggeredAutoRename(true);
+        })
+        .catch((error) => {
+          console.error('Failed to auto-rename thread:', error);
+        });
     }
   }, [messages, hasTriggeredAutoRename, threadId, getThreads]);
 

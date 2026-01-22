@@ -62,6 +62,15 @@ export function Thread() {
         apiClient.autoRenameThread(threadId, messageContent)
           .then(() => {
             getThreads();
+            let pollAttempts = 0;
+            const maxAttempts = 6;
+            const pollInterval = setInterval(() => {
+              pollAttempts++;
+              getThreads();
+              if (pollAttempts >= maxAttempts) {
+                clearInterval(pollInterval);
+              }
+            }, 2000);
           })
           .catch((err: unknown) => {
             console.error('Auto-rename failed:', err);
