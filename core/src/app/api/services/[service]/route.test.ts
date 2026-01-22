@@ -6,13 +6,13 @@ vi.mock('../../../../lib/api/factory', () => ({
   getServiceManager: vi.fn(),
 }))
 
-vi.mock('../../../../lib/infra/service-queue', () => ({
-  addServiceJob: vi.fn(),
+vi.mock('../../../../lib/infra/worker-queue', () => ({
+  addJob: vi.fn(),
 }))
 
 // Re-import to get mocked versions
 const { getServiceManager }: any = await import('../../../../lib/api/factory')
-const { addServiceJob }: any = await import('../../../../lib/infra/service-queue')
+const { addJob }: any = await import('../../../../lib/infra/worker-queue')
 
 describe('GET /api/services/[service]', () => {
   beforeEach(() => {
@@ -74,7 +74,7 @@ describe('GET /api/services/[service]', () => {
 
   describe('handleServiceCommand', () => {
     it('should queue start command', async () => {
-      addServiceJob.mockResolvedValue('job-123')
+      addJob.mockResolvedValue('job-123')
 
       const result = await handleServiceCommand('redis', { command: 'start' })
 
@@ -83,11 +83,15 @@ describe('GET /api/services/[service]', () => {
       expect(data.success).toBe(true)
       expect(data.data.jobId).toBe('job-123')
       expect(data.data.status).toBe('queued')
-      expect(addServiceJob).toHaveBeenCalledWith('redis', 'start', { initiatedBy: 'api' })
+      expect(addJob).toHaveBeenCalledWith('service:start', {
+        serviceId: 'redis',
+        action: 'start',
+        initiatedBy: 'api',
+      })
     })
 
     it('should queue stop command', async () => {
-      addServiceJob.mockResolvedValue('job-456')
+      addJob.mockResolvedValue('job-456')
 
       const result = await handleServiceCommand('bernard-agent', { command: 'stop' })
 
@@ -97,7 +101,7 @@ describe('GET /api/services/[service]', () => {
     })
 
     it('should queue restart command', async () => {
-      addServiceJob.mockResolvedValue('job-789')
+      addJob.mockResolvedValue('job-789')
 
       const result = await handleServiceCommand('kokoro', { command: 'restart' })
 
@@ -126,8 +130,8 @@ describe('GET /api/services/[service]', () => {
       expect(result.status).toBe(400)
     })
 
-    it('should return 500 when addServiceJob throws', async () => {
-      addServiceJob.mockRejectedValue(new Error('Queue error'))
+    it('should return 500 when addJob throws', async () => {
+      addJob.mockRejectedValue(new Error('Queue error'))
 
       const result = await handleServiceCommand('redis', { command: 'start' })
 

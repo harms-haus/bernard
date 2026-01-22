@@ -129,8 +129,12 @@ async function startNextDev(): Promise<ChildProcess> {
       // Automatically enqueue bernard-agent start after core is ready
       log('Enqueueing bernard-agent start command...', 'cyan')
       try {
-        const { addServiceJob } = await import('../src/lib/infra/service-queue')
-        await addServiceJob('bernard-agent', 'start', { initiatedBy: 'dev-script' })
+        const { addJob } = await import('../src/lib/infra/worker-queue')
+        await addJob('service:start', {
+          serviceId: 'bernard-agent',
+          action: 'start',
+          initiatedBy: 'dev-script',
+        })
         log('Bernard Agent start command enqueued successfully', 'green')
       } catch (error) {
         log(`Failed to enqueue bernard-agent start: ${error}`, 'red')
@@ -144,7 +148,7 @@ async function startNextDev(): Promise<ChildProcess> {
 async function startWorker(): Promise<ChildProcess> {
   log('\n=== Starting Unified Worker Queue ===\n', 'magenta')
 
-  const process = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
+  const worker = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
     cwd: CORE_DIR,
     name: 'worker',
     color: 'green',
@@ -154,7 +158,7 @@ async function startWorker(): Promise<ChildProcess> {
     },
   })
 
-  return process
+  return worker
 }
 
 // Rename local variable to avoid shadowing global process

@@ -287,7 +287,7 @@ function StatusPageContent() {
               </div>
               )}
             </div>
-            ))}
+            ))
           )}
         </div>
 

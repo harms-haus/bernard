@@ -5,8 +5,8 @@
  * Exports queue management functions and job operations.
  */
 import { Queue, QueueEvents, Job } from 'bullmq';
-import { getBullMqRedis } from '../queue';
-import { logger } from '../logging/logger';
+import { getRedis } from '../redis';
+import { logger } from '@/lib/logging/logger';
 import { setupQueueLogging } from './logger';
 import { createWorker } from './processor';
 import { jobHistoryService } from './history';
@@ -41,7 +41,7 @@ export async function getWorkerQueue(): Promise<Queue<WorkerJobData, any, string
 
   workerQueueInitPromise = (async () => {
     try {
-      const connection = getBullMqRedis();
+      const connection = getRedis();
 
       workerQueue = new Queue<WorkerJobData, any, string>(
         WORKER_QUEUE_CONFIG.name,
@@ -234,7 +234,11 @@ export async function cancelJob(jobId: string): Promise<boolean> {
   // For active jobs, mark as failed with cancellation error so processor can handle it
   if (state === 'active') {
     try {
-      await job.moveToFailed(new Error('Job cancelled by user'), job.token);
+      if (job.token) {
+        await job.moveToFailed(new Error('Job cancelled by user'), job.token);
+      } else {
+        await job.remove();
+      }
     } catch (error) {
       // If moveToFailed fails, try remove as fallback
       logger.warn({ jobId, error: error instanceof Error ? error.message : String(error) }, '[WorkerQueue] Failed to move active job to failed, removing instead');

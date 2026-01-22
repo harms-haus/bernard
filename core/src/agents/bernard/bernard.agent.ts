@@ -8,7 +8,7 @@ import { resolveModel } from "../../lib/config/models";
 
 import { buildReactSystemPrompt } from "./prompts/react.prompt";
 import { validateAndGetTools } from "./tools/index";
-import { startUtilityWorker } from "../../lib/infra/queue";
+import { startWorker } from "../../lib/infra/worker-queue";
 import { startHealthMonitor } from "../../lib/services/HealthMonitor";
 import { initializeSettingsStore } from "../../lib/config/settingsStore";
 import { getRedis } from "../../lib/infra/redis";
@@ -28,7 +28,7 @@ export function initializeAgentServices(): void {
     initializeSettingsStore(undefined, getRedis()).catch(err => {
       console.error('[Bernard] Failed to initialize settings store:', err);
     });
-    startUtilityWorker();
+    startWorker();
     startHealthMonitor();
     initialized = true;
   }

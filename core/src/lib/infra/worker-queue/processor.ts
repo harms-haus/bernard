@@ -4,10 +4,10 @@
  * Handles all job types: thread-naming and service actions.
  */
 import { Job, Worker } from 'bullmq';
-import { logger } from '../logging/logger';
-import { childLogger, type LogContext } from '../logging/logger';
+import { logger } from '../../logging/logger';
+import { childLogger, type LogContext } from '../../logging/logger';
 import { jobHistoryService } from './history';
-import { getBullMqRedis } from '../queue';
+import { getRedis } from '../redis';
 import { WORKER_QUEUE_CONFIG } from './config';
 import type {
   WorkerJobData,
@@ -39,19 +39,97 @@ async function processThreadNamingJob(
 
     log.info('[WorkerQueue] Processing thread naming job');
 
-    // Import from thread-naming-job module
-    const { processThreadNamingJob: executeNaming } = await import('../thread-naming-job');
-    const result = await executeNaming({ threadId, messages });
+    // Import the utility model resolver and execute naming inline
+    const { resolveUtilityModel } = await import('../../config/models');
+    const { initChatModel } = await import('langchain/chat_models/universal');
 
-    await job.log(`Thread naming completed: ${result.title}`);
+    const modelConfig = await resolveUtilityModel();
+    const model = await initChatModel(modelConfig.id, modelConfig.options);
+
+    // Extract message content for naming
+    const messageContent = messages
+      .map(m => {
+        if (m.type === 'human') {
+          const content = m.content;
+          if (typeof content === 'string') return content;
+          if (Array.isArray(content)) {
+            return content
+              .filter(c => c.type === 'text')
+              .map(c => (c as any).text)
+              .join('\n');
+          }
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 2000); // Limit to 2000 characters
+
+    // Guard against empty messageContent
+    if (!messageContent || messageContent.trim().length === 0) {
+      const defaultTitle = 'Untitled Conversation';
+      await job.log(`Thread naming skipped: no message content, using default title`);
+      await jobHistoryService.updateStatus(jobId, 'finished');
+
+      log.info({ threadId, title: defaultTitle }, '[WorkerQueue] Thread naming completed with default title');
+
+      return {
+        success: true,
+        threadId,
+        title: defaultTitle,
+      };
+    }
+
+    // Generate title using LLM
+    const prompt = `Generate a concise, descriptive title (max 6 words) for this conversation:\n\n${messageContent}\n\nTitle:`;
+
+    // Wrap model.invoke with timeout (30 seconds)
+    const timeoutMs = 30000;
+    const invokePromise = model.invoke([
+      { role: 'user', content: prompt }
+    ]);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`LLM invocation timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    const response = await Promise.race([invokePromise, timeoutPromise]);
+
+    // Validate response structure
+    if (!response) {
+      throw new Error('LLM returned null or undefined response');
+    }
+
+    if (response.content === null || response.content === undefined) {
+      throw new Error('LLM response.content is null or undefined');
+    }
+
+    // Validate content type and extract title
+    let title: string;
+    if (typeof response.content === 'string') {
+      title = response.content.trim().replace(/^["']|["']$/g, '');
+    } else if (typeof response.content === 'object' && 'toString' in response.content) {
+      title = response.content.toString().trim().replace(/^["']|["']$/g, '');
+    } else {
+      throw new Error(`Unexpected response.content type: ${typeof response.content}`);
+    }
+
+    // Ensure title is not empty after processing
+    if (!title || title.trim().length === 0) {
+      title = 'Untitled Conversation';
+      log.warn({ threadId }, '[WorkerQueue] LLM returned empty title, using default');
+    }
+
+    await job.log(`Thread naming completed: ${title}`);
     await jobHistoryService.updateStatus(jobId, 'finished');
 
-    log.info({ threadId, title: result.title }, '[WorkerQueue] Thread naming completed');
+    log.info({ threadId, title }, '[WorkerQueue] Thread naming completed');
 
     return {
       success: true,
       threadId,
-      title: result.title,
+      title,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -79,7 +157,7 @@ async function processServiceActionJob(
     jobId,
     queue: 'workerQueue',
     requestId,
-    serviceId,
+    component: serviceId,
     stage: 'processServiceAction',
   };
 
@@ -91,7 +169,7 @@ async function processServiceActionJob(
     log.info({ serviceId, action }, '[WorkerQueue] Processing service action');
 
     // Import ServiceManager
-    const { ServiceManager } = await import('../services/ServiceManager');
+    const { ServiceManager } = await import('../../services/ServiceManager');
     const manager = new ServiceManager();
 
     let result: any;
@@ -116,7 +194,6 @@ async function processServiceActionJob(
           serviceId,
           action,
           timestamp: new Date().toISOString(),
-          error: stopResult.error,
         };
         break;
       }
@@ -199,7 +276,7 @@ export async function createWorker(): Promise<Worker> {
       }
     },
     {
-      connection: getBullMqRedis() as any,
+      connection: getRedis() as any,
       prefix: WORKER_QUEUE_CONFIG.prefix,
       concurrency,
     }

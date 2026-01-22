@@ -8,7 +8,7 @@ import { resolveModel } from "../../lib/config/models";
 
 import { buildReactSystemPrompt } from "../bernard/prompts/react.prompt";
 import { getGuestToolDefinitions } from "../bernard/tools/validation";
-import { startUtilityWorker } from "../../lib/infra/queue";
+import { startWorker } from "../../lib/infra/worker-queue";
 import { startHealthMonitor } from "../../lib/services/HealthMonitor";
 import { initializeSettingsStore } from "../../lib/config/settingsStore";
 import { getRedis } from "../../lib/infra/redis";
@@ -37,7 +37,7 @@ export function initializeGertrudeAgentServices(): Promise<void> {
   initializingPromise = (async () => {
     try {
       await initializeSettingsStore(undefined, getRedis());
-      startUtilityWorker();
+      startWorker();
       startHealthMonitor();
       initialized = true;
     } catch (err) {

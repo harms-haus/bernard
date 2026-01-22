@@ -5,7 +5,7 @@
  */
 import Redis from 'ioredis';
 import type { JobHistory, JobLog, WorkerJobStatus, ListJobsOptions, WorkerJobData } from './types';
-import { getBullMqRedis } from '../queue';
+import { getRedis } from '../redis';
 import { WORKER_QUEUE_CONFIG } from './config';
 
 class JobHistoryService {
@@ -13,7 +13,7 @@ class JobHistoryService {
   private prefix = "bernard:job-history";
 
   constructor() {
-    this.redis = getBullMqRedis();
+    this.redis = getRedis();
   }
 
   /**
@@ -259,8 +259,8 @@ class JobHistoryService {
           candidateJobIds.map(id => this.redis.zscore(sortedSetKey, id))
         );
         const jobsWithScores = candidateJobIds
-          .map((id, i) => ({ id, score: scores[i] ?? 0 }))
-          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+          .map((id, i) => ({ id, score: (scores[i] ?? 0) as number }))
+          .sort((a, b) => b.score - a.score)
           .slice(offset, offset + limit)
           .map(j => j.id);
         candidateJobIds = jobsWithScores;
@@ -279,35 +279,37 @@ class JobHistoryService {
     const results = await pipeline.exec();
 
     const jobs: JobHistory[] = [];
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      if (!result || !result[1] || Object.keys(result[1]).length === 0) continue;
+    if (results) {
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (!result || !result[1] || Object.keys(result[1]).length === 0) continue;
 
-      const job = result[1] as Record<string, string>;
-      const jobId = candidateJobIds[i];
-      
-      // Get logs from LIST
-      const logs = await this.getLogs(jobId);
+        const job = result[1] as Record<string, string>;
+        const jobId = candidateJobIds[i];
 
-      const parsedJob: JobHistory = {
-        jobId: job.jobId || jobId,
-        type: job.type as any,
-        status: job.status as WorkerJobStatus,
-        queuedAt: job.queuedAt || '',
-        startedAt: job.startedAt,
-        completedAt: job.completedAt,
-        durationMs: job.durationMs ? parseInt(job.durationMs) : undefined,
-        waitTimeMs: job.waitTimeMs ? parseInt(job.waitTimeMs) : undefined,
-        runTimeMs: job.runTimeMs ? parseInt(job.runTimeMs) : undefined,
-        logs,
-        data: job.jobData ? JSON.parse(job.jobData) : undefined,
-        result: job.result ? JSON.parse(job.result) : undefined,
-        error: job.error,
-        attempts: job.attempts ? parseInt(job.attempts) : 0,
-        rerunOf: job.rerunOf,
-      } as JobHistory;
+        // Get logs from LIST
+        const logs = await this.getLogs(jobId);
 
-      jobs.push(parsedJob);
+        const parsedJob: JobHistory = {
+          jobId: job.jobId || jobId,
+          type: job.type as any,
+          status: job.status as WorkerJobStatus,
+          queuedAt: job.queuedAt || '',
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+          durationMs: job.durationMs ? parseInt(job.durationMs) : undefined,
+          waitTimeMs: job.waitTimeMs ? parseInt(job.waitTimeMs) : undefined,
+          runTimeMs: job.runTimeMs ? parseInt(job.runTimeMs) : undefined,
+          logs,
+          data: job.jobData ? JSON.parse(job.jobData) : undefined,
+          result: job.result ? JSON.parse(job.result) : undefined,
+          error: job.error,
+          attempts: job.attempts ? parseInt(job.attempts) : 0,
+          rerunOf: job.rerunOf,
+        } as JobHistory;
+
+        jobs.push(parsedJob);
+      }
     }
 
     return jobs;

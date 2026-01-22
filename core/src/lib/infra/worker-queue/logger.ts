@@ -4,7 +4,7 @@
  * Forwards BullMQ events to Pino logger and job history service.
  */
 import { QueueEvents } from 'bullmq';
-import { logger } from '../logging/logger';
+import { logger } from '@/lib/logging/logger';
 import { jobHistoryService } from './history';
 
 /**
