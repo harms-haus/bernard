@@ -156,9 +156,8 @@ export function getUtilityQueue(): Queue<UtilityJobData, ThreadNamingJobData, st
       logger.info("[UtilityQueue] Queue connection ready");
     });
 
-    connection.on('error', (err) => {
-      logger.error({ error: err?.message }, "[UtilityQueue] Queue connection error");
-    });
+    // Error handling is centralized in getBullMqRedis()
+    // No need to duplicate the error handler here
 
     logger.info("[UtilityQueue] Queue initialized");
   }

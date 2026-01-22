@@ -5,17 +5,21 @@ import type { z } from 'zod'
 import type { SettingsManagerCore, Section, BernardSettings, ModelsSettings, Provider, ServicesSettings, OAuthSettings, BackupSettings, LimitsSettings, AutomationsSettings, AutomationSettings } from '@/lib/config/appSettings'
 import { SettingsManagerCore as CoreClass } from '@/lib/config/appSettings'
 
-export { 
-  ProviderSchema, 
-  ModelCategorySchema, 
-  ModelsSettingsSchema, 
-  ServicesSettingsSchema, 
-  OAuthSettingsSchema, 
+export {
+  ProviderSchema,
+  ModelsSettingsSchema,
+  ServicesSettingsSchema,
+  OAuthSettingsSchema,
   BackupSettingsSchema,
   LimitsSettingsSchema,
   OverseerrServiceSchema,
+  AgentModelRoleSchema,
+  AgentModelsSchema,
+  UtilityModelSchema,
   type Provider,
-  type ModelCategorySettings,
+  type UtilityModelSettings,
+  type AgentModelRoleSettings,
+  type AgentModelSettings,
   type ModelsSettings,
   type ServicesSettings,
   type OverseerrServiceSettings,

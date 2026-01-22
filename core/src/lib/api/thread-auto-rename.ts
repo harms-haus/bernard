@@ -21,8 +21,8 @@ export async function handleAutoRename(
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await new Promise(resolve => setTimeout(resolve, attempt * 500))
-        const thread = await client.threads.get(threadId)
-        const threadValues = thread.values as Record<string, unknown> | undefined
+        const threadState = await client.threads.getState(threadId)
+        const threadValues = threadState.values as Record<string, unknown> | undefined
         messages = (threadValues?.messages as Array<{ type: string; content: unknown }>) || []
         if (messages.length > 0) break
       } catch (e) {

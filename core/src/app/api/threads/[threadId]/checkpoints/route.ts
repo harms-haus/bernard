@@ -4,6 +4,7 @@ import { createClient } from 'redis';
 import { parseCheckpointKey } from '@/lib/checkpoint/redis-key';
 import { logger } from '@/lib/logging/logger';
 import { loadsTyped } from '@/lib/checkpoint/serde';
+import { getLangGraphUrl } from '@/lib/langgraph/proxy';
 
 /**
  * Convert base64 string back to Uint8Array after reading from Redis.
@@ -34,13 +35,11 @@ interface CheckpointHistoryItem {
   message_ids: string[];  // IDs of messages in this checkpoint's state
 }
 
-interface CheckpointWithParent extends CheckpointHistoryItem {
-  parent?: CheckpointHistoryItem;
-}
 
 async function verifyThreadOwnership(threadId: string, userId: string): Promise<boolean> {
   try {
-    const response = await fetch(`http://localhost:2024/threads/${threadId}`, {
+    const threadsBaseUrl = process.env.BERNARD_AGENT_URL || process.env.LANGGRAPH_API_URL || 'http://localhost:2024';
+    const response = await fetch(`${threadsBaseUrl}/threads/${threadId}`, {
       method: 'GET',
       headers: { 'content-type': 'application/json' }
     });
@@ -80,17 +79,25 @@ export async function GET(
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
+  let redis: ReturnType<typeof createClient> | null = null;
   try {
     // Create Redis client (using same config as RedisSaver)
     const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-    const redis = createClient({ url: redisUrl });
+    redis = createClient({ url: redisUrl });
     await redis.connect();
 
     const pattern = `checkpoint:${threadId}:*`;
-    const keys = await redis.keys(pattern);
+    
+    // Use SCAN instead of keys() to avoid blocking
+    const keys: string[] = [];
+    let cursor = 0;
+    do {
+      const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = result.cursor;
+      keys.push(...result.keys);
+    } while (cursor !== 0);
 
     if (keys.length === 0) {
-      await redis.quit();
       return NextResponse.json({ checkpoints: [] });
     }
 
@@ -143,37 +150,51 @@ export async function GET(
 
     const checkpoints = (await Promise.all(checkpointPromises)).filter((c): c is CheckpointHistoryItem => c !== null);
 
-    await redis.quit();
-
     // Sort by timestamp descending (newest first)
     checkpoints.sort((a: CheckpointHistoryItem, b: CheckpointHistoryItem) => b.checkpoint_ts - a.checkpoint_ts);
 
     // Build a map for quick parent lookup
-    const checkpointMap = new Map<string, CheckpointWithParent>();
+    const checkpointMap = new Map<string, CheckpointHistoryItem>();
     for (const cp of checkpoints) {
-      checkpointMap.set(cp.checkpoint_id, { ...cp, parent: undefined });
+      checkpointMap.set(cp.checkpoint_id, cp);
     }
 
-    // Link parents
-    for (const cp of checkpointMap.values()) {
+    // Build result with safe parent references (only IDs, not full objects)
+    const result = Array.from(checkpointMap.values()).map(cp => {
+      const resultItem: CheckpointHistoryItem & { parent?: Pick<CheckpointHistoryItem, 'checkpoint_id' | 'checkpoint_ts' | 'step' | 'source'> } = { ...cp };
       if (cp.parent_checkpoint_id) {
         const parent = checkpointMap.get(cp.parent_checkpoint_id);
         if (parent) {
-          cp.parent = parent;
+          // Only include non-nested fields to avoid circular references
+          resultItem.parent = {
+            checkpoint_id: parent.checkpoint_id,
+            checkpoint_ts: parent.checkpoint_ts,
+            step: parent.step,
+            source: parent.source,
+          };
         }
       }
-    }
+      return resultItem;
+    });
 
     return NextResponse.json({
-      checkpoints: Array.from(checkpointMap.values()),
+      checkpoints: result,
       total: checkpoints.length,
     });
 
   } catch (error) {
-    logger.error({ threadId, error: (error as Error).message }, 'Failed to fetch checkpoint history');
+    logger.error({ threadId, error: error instanceof Error ? error : String(error), stack: error instanceof Error ? error.stack : undefined }, 'Failed to fetch checkpoint history');
     return NextResponse.json(
-      { error: 'Failed to fetch checkpoint history', details: (error as Error).message },
+      { error: 'Failed to fetch checkpoint history' },
       { status: 500 }
     );
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn({ threadId, error: quitError instanceof Error ? quitError.message : String(quitError) }, 'Failed to close Redis connection');
+      }
+    }
   }
 }

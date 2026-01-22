@@ -11,7 +11,7 @@ vi.mock('../../../../../lib/infra/queue', () => ({
 vi.mock('@langchain/langgraph-sdk', () => ({
   Client: vi.fn().mockImplementation(() => ({
     threads: {
-      get: vi.fn(),
+      getState: vi.fn(),
     },
   })),
 }))
@@ -54,7 +54,7 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
 
     it('should fetch thread state from LangGraph when no messages provided', async () => {
       const { Client } = await import('@langchain/langgraph-sdk')
-      const mockGet = vi.fn().mockResolvedValue({
+      const mockGetState = vi.fn().mockResolvedValue({
         values: {
           messages: [
             { type: 'human', content: 'Fetched message' },
@@ -67,7 +67,7 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
       vi.resetModules()
       vi.doMock('@langchain/langgraph-sdk', () => ({
         Client: vi.fn().mockImplementation(() => ({
-          threads: { get: mockGet },
+          threads: { getState: mockGetState },
         })),
       }))
 
@@ -77,7 +77,7 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
       const result = await handleAutoRenameFresh('thread-456', {})
 
       expect(result.status).toBe(200)
-      expect(mockGet).toHaveBeenCalledWith('thread-456')
+      expect(mockGetState).toHaveBeenCalledWith('thread-456')
       expect(addUtilityJob).toHaveBeenCalledWith(
         'thread-naming',
         {
@@ -93,14 +93,14 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
 
     it('should return 400 when thread has no messages', async () => {
       const { Client } = await import('@langchain/langgraph-sdk')
-      const mockGet = vi.fn().mockResolvedValue({
+      const mockGetState = vi.fn().mockResolvedValue({
         values: { messages: [] }
       })
 
       vi.resetModules()
       vi.doMock('@langchain/langgraph-sdk', () => ({
         Client: vi.fn().mockImplementation(() => ({
-          threads: { get: mockGet },
+          threads: { getState: mockGetState },
         })),
       }))
 
@@ -114,12 +114,12 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
     })
 
     it('should return 400 when LangGraph fetch fails', async () => {
-      const mockGet = vi.fn().mockRejectedValue(new Error('Connection refused'))
+      const mockGetState = vi.fn().mockRejectedValue(new Error('Connection refused'))
 
       vi.resetModules()
       vi.doMock('@langchain/langgraph-sdk', () => ({
         Client: vi.fn().mockImplementation(() => ({
-          threads: { get: mockGet },
+          threads: { getState: mockGetState },
         })),
       }))
 

@@ -18,21 +18,24 @@ vi.mock('@/lib/config/settingsCache', () => ({
       },
     },
     models: {
-      router: {
-        provider: 'openai',
+      utility: {
+        primary: 'gpt-3.5-turbo',
         providerId: 'openai-default',
-        options: { temperature: 0.2 },
+        options: { temperature: 0 },
       },
-      speech: {
-        provider: 'openai',
-        providerId: 'openai-default',
-        options: { temperature: 0.2 },
-      },
-      response: {
-        provider: 'openai',
-        providerId: 'openai-default',
-        options: { temperature: 0.2 },
-      },
+      agents: [
+        {
+          agentId: 'bernard_agent',
+          roles: [
+            {
+              id: 'main',
+              primary: 'gpt-4o',
+              providerId: 'openai-default',
+              options: { temperature: 0.2 },
+            }
+          ]
+        }
+      ],
       providers: [
         {
           id: 'openai-default',
@@ -40,7 +43,6 @@ vi.mock('@/lib/config/settingsCache', () => ({
           name: 'OpenAI',
           apiKey: 'test-key',
           baseUrl: 'https://api.openai.com/v1',
-          isDefault: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -216,7 +218,7 @@ describe.skip('BernardAgent', () => {
       expect(typeof agent.stream).toBe('function');
     });
 
-    it('should call resolveModel with router model type', async () => {
+    it('should call resolveModel with bernard_agent and main role', async () => {
       await createBernardAgent({
         resolveModel: mockResolveModel,
         initChatModel: mockInitChatModel,
@@ -228,7 +230,7 @@ describe.skip('BernardAgent', () => {
         buildReactSystemPrompt: mockBuildReactSystemPrompt,
       });
 
-      expect(mockResolveModel).toHaveBeenCalledWith('router');
+      expect(mockResolveModel).toHaveBeenCalledWith('bernard_agent', 'main');
     });
 
     it('should call initChatModel with resolved model id and options', async () => {
@@ -417,7 +419,7 @@ describe.skip('BernardAgent', () => {
         buildReactSystemPrompt: mockBuildReactSystemPrompt,
       });
 
-      expect(customResolveModel).toHaveBeenCalledWith('router');
+      expect(customResolveModel).toHaveBeenCalledWith('bernard_agent', 'main');
     });
 
     it('should call initChatModel for agent model', async () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useHealthStream, type HealthStreamUpdate } from '@/hooks/useHealthStream'
@@ -21,11 +22,14 @@ const ALL_ACTIONS = [
 function StatusPageContent() {
   const router = useRouter()
   const { state: authState } = useAuth()
-  const { serviceList, isConnected, error, refresh } = useHealthStream({ enabled: true })
+  const { serviceList, error, refresh } = useHealthStream({ enabled: true })
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [allActionLoading, setAllActionLoading] = useState<string | null>(null)
   const [selectedAllAction, setSelectedAllAction] = useState<'start' | 'stop' | 'restart' | 'check' | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
+
+  // Show loading skeletons while services are being loaded
+  const isInitialLoading = serviceList.length === 0 && !error
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -197,7 +201,21 @@ function StatusPageContent() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {services.map((service: HealthStreamUpdate) => (
+          {isInitialLoading ? (
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-gray-800 rounded-lg p-4 border border-gray-700 animate-pulse">
+                  <div className="h-6 bg-gray-700 rounded w-1/3 mb-4"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-700 rounded w-full"></div>
+                    <div className="h-4 bg-gray-700 rounded w-2/3"></div>
+                    <div className="h-4 bg-gray-700 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            services.map((service: HealthStreamUpdate) => (
             <div
               key={service.service}
               className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors border border-gray-700 hover:border-gray-600"
@@ -269,7 +287,8 @@ function StatusPageContent() {
               </div>
               )}
             </div>
-          ))}
+            ))}
+          )}
         </div>
 
         <div className="mb-8">
@@ -286,7 +305,9 @@ function StatusPageContent() {
 export default function StatusPage() {
   return (
     <AuthProvider>
-      <StatusPageContent />
+      <Suspense fallback={<div>Loading...</div>}>
+        <StatusPageContent />
+      </Suspense>
     </AuthProvider>
   )
 }

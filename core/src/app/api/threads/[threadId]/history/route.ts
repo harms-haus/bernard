@@ -2,11 +2,56 @@ import { NextRequest, NextResponse } from 'next/server'
 import { proxyToLangGraph, getLangGraphUrl } from '@/lib/langgraph/proxy'
 import { getSession } from '@/lib/auth/server-helpers'
 import { logger } from '@/lib/logging/logger'
-import { createClient } from 'redis'
+import { createClient, RedisClientType } from 'redis'
 import { parseCheckpointKey } from '@/lib/checkpoint/redis-key'
 import { loadsTyped } from '@/lib/checkpoint/serde'
 
 export const dynamic = 'force-dynamic'
+
+// Singleton Redis client for node-redis (needed for JSON operations)
+const globalForNodeRedis = global as unknown as { nodeRedis?: RedisClientType; redisConnectPromise?: Promise<void> }
+
+function getNodeRedisClient(): RedisClientType {
+  if (!globalForNodeRedis.nodeRedis) {
+    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    globalForNodeRedis.nodeRedis = createClient({ url: redisUrl });
+    
+    globalForNodeRedis.nodeRedis.on('error', (err) => {
+      logger.error({ error: err.message }, 'Node Redis connection error');
+    });
+    
+    globalForNodeRedis.nodeRedis.on('connect', () => {
+      logger.info('Node Redis connected');
+    });
+  }
+  return globalForNodeRedis.nodeRedis;
+}
+
+async function ensureRedisConnection(): Promise<void> {
+  const redis = getNodeRedisClient();
+  
+  if (redis.isOpen) {
+    return;
+  }
+  
+  // If a connection is already in progress, wait for it
+  if (globalForNodeRedis.redisConnectPromise) {
+    await globalForNodeRedis.redisConnectPromise;
+    return;
+  }
+  
+  // Start a new connection and store the promise
+  globalForNodeRedis.redisConnectPromise = redis.connect().catch((error) => {
+    // Clear the promise on error so we can retry
+    globalForNodeRedis.redisConnectPromise = undefined;
+    throw error;
+  });
+  
+  await globalForNodeRedis.redisConnectPromise;
+  
+  // Clear the promise after successful connection
+  globalForNodeRedis.redisConnectPromise = undefined;
+}
 
 /**
  * Convert base64 string back to Uint8Array after reading from Redis.
@@ -51,16 +96,24 @@ async function verifyThreadOwnership(threadId: string, userId: string): Promise<
  * This is needed because the LangGraph server doesn't include checkpoint info in history.
  */
 async function fetchCheckpointMap(threadId: string): Promise<Map<string, { checkpoint_id: string; parent_checkpoint_id: string | null }>> {
+  const redis = getNodeRedisClient();
+  
   try {
-    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-    const redis = createClient({ url: redisUrl });
-    await redis.connect();
+    // Ensure connection is established
+    await ensureRedisConnection();
 
     const pattern = `checkpoint:${threadId}:*`;
-    const keys = await redis.keys(pattern);
+    
+    // Use SCAN instead of keys() to avoid blocking
+    const keys: string[] = [];
+    let cursor = 0;
+    do {
+      const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = result.cursor;
+      keys.push(...result.keys);
+    } while (cursor !== 0);
 
     if (keys.length === 0) {
-      await redis.quit();
       return new Map();
     }
 
@@ -105,13 +158,12 @@ async function fetchCheckpointMap(threadId: string): Promise<Map<string, { check
     });
 
     const checkpoints = (await Promise.all(checkpointPromises)).filter((c): c is NonNullable<typeof checkpoints[number]> => c !== null);
-    await redis.quit();
 
     // Sort by timestamp ascending (oldest first) to match history order
     checkpoints.sort((a, b) => a.checkpoint_ts - b.checkpoint_ts);
 
     // Build map: message_id -> { checkpoint_id, parent_checkpoint_id }
-    // For messages that appear in multiple checkpoints, use the most recent one
+    // For messages that appear in multiple checkpoints, keep the first/oldest occurrence
     const messageToCheckpoint = new Map<string, { checkpoint_id: string; parent_checkpoint_id: string | null }>();
 
     for (const cp of checkpoints) {
@@ -154,6 +206,16 @@ export async function POST(
 
   // Fetch the original history from LangGraph server
   const originalResponse = await proxyToLangGraph(request, `/threads/${threadId}/history`)
+  
+  if (!originalResponse.ok) {
+    const errorText = await originalResponse.text();
+    logger.error({ threadId, status: originalResponse.status, error: errorText }, 'Failed to fetch history from LangGraph');
+    return NextResponse.json(
+      { error: 'Failed to fetch thread history' },
+      { status: originalResponse.status }
+    );
+  }
+  
   const originalData = await originalResponse.json() as Array<{ values: { messages: Array<{ id: string }> }; [key: string]: unknown }>;
 
   // Fetch checkpoint data from Redis
@@ -206,6 +268,16 @@ export async function GET(
 
   // Fetch the original history from LangGraph server
   const originalResponse = await proxyToLangGraph(request, `/threads/${threadId}/history`)
+  
+  if (!originalResponse.ok) {
+    const errorText = await originalResponse.text();
+    logger.error({ threadId, status: originalResponse.status, error: errorText }, 'Failed to fetch history from LangGraph');
+    return NextResponse.json(
+      { error: 'Failed to fetch thread history' },
+      { status: originalResponse.status }
+    );
+  }
+  
   const originalData = await originalResponse.json() as Array<{ values: { messages: Array<{ id: string }> }; [key: string]: unknown }>;
 
   // Fetch checkpoint data from Redis

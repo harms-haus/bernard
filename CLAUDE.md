@@ -64,11 +64,12 @@ Agents are defined in `core/src/agents/*/` and exported via `core/langgraph.json
 
 ### Model Configuration
 
-Models are configured through a runtime settings system stored in Redis:
-- Categories: `response`, `router`, `aggregation`, `utility`, `memory`, `embedding`
-- Each category has a `primary` model and optional `providerId`
-- Providers define `baseUrl`, `apiKey`, and `type` (openai/ollama)
-- Resolution via `resolveModel()` in `core/src/lib/config/models.ts`
+Models are configured through an agent-centric runtime settings system stored in Redis:
+- **Agent-centric**: Each agent defines its model roles (e.g., `main`, `planner`, `executor`)
+- **Utility model**: System-wide model for background tasks like thread naming
+- **Agent registry**: `AGENT_MODEL_REGISTRY` in `core/src/lib/config/agentModelRegistry.ts` defines all agents
+- **Resolution**: `resolveModel(agentId, roleId)` for agents, `resolveUtilityModel()` for system tasks
+- **Providers**: Define `baseUrl`, `apiKey`, and `type` (openai/ollama)
 
 ### Settings System
 

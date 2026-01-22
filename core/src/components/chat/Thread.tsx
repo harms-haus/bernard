@@ -26,6 +26,7 @@ export function Thread() {
   const [input, setInput] = useState('');
   const prevMessageLength = useRef(0);
   const [hasTriggeredAutoRename, setHasTriggeredAutoRename] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { getThreads } = useThreads();
 
   useEffect(() => {
@@ -64,11 +65,20 @@ export function Thread() {
             getThreads();
             let pollAttempts = 0;
             const maxAttempts = 6;
-            const pollInterval = setInterval(() => {
+            
+            // Clear any existing interval
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+            }
+            
+            pollIntervalRef.current = setInterval(() => {
               pollAttempts++;
               getThreads();
               if (pollAttempts >= maxAttempts) {
-                clearInterval(pollInterval);
+                if (pollIntervalRef.current) {
+                  clearInterval(pollIntervalRef.current);
+                  pollIntervalRef.current = null;
+                }
               }
             }, 2000);
           })
@@ -80,6 +90,16 @@ export function Thread() {
       }
     }
   }, [messages, hasTriggeredAutoRename, threadId, getThreads]);
+
+  // Cleanup polling interval when threadId changes or on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [threadId]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       model || 'bernard_agent',
       {
         input: { messages, userRole },
-        streamMode: ['messages'] as const,
+        streamMode: ['messages', 'updates', 'custom'] as const,
       } as any
     );
 
@@ -89,10 +89,10 @@ export async function POST(request: NextRequest) {
                   if (msgObj?.type === 'ai' && msgObj?.content) {
                     const content = Array.isArray(msgObj.content)
                       ? msgObj.content.map((c: Record<string, unknown>) => {
-                          // Handle different content formats
-                          if (typeof c === 'string') return c;
-                          return (c as Record<string, unknown>).text || (c as Record<string, unknown>).content || '';
-                        }).join('')
+                        // Handle different content formats
+                        if (typeof c === 'string') return c;
+                        return (c as Record<string, unknown>).text || (c as Record<string, unknown>).content || '';
+                      }).join('')
                       : String(msgObj.content);
 
                     if (content) {

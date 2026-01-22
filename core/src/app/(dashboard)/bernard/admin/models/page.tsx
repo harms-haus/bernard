@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,19 +30,19 @@ import {
   Edit
 } from 'lucide-react';
 import { adminApiClient } from '@/services/adminApi';
-import type { ProviderType, ModelsSettings, ModelInfo } from '@/services/adminApi';
+import type { ProviderType, ModelsSettings, ModelInfo, UtilityModelSettings, AgentModelSettings } from '@/services/adminApi';
 import { useConfirmDialog, useAlertDialog } from '@/components/DialogManager';
 import { useToast } from '@/components/ToastManager';
 import { AdminLayout } from '@/components/AdminLayout';
-
-type ModelCategory = 'response' | 'router' | 'utility' | 'aggregation' | 'embedding';
+import { PageHeaderConfig } from '@/components/dynamic-header/configs';
+import { AGENT_MODEL_REGISTRY, listAgentDefinitions } from '@/lib/config/agentModelRegistry';
+import { AgentModelRoleConfigurator, UtilityModelConfigurator } from '@/components/AgentModelRoleConfigurator';
 
 interface ProviderForm {
   name: string;
   baseUrl: string;
   apiKey: string;
 }
-import { PageHeaderConfig } from '@/components/dynamic-header/configs';
 
 function ModelsContent() {
   const [loading, setLoading] = useState(false);
@@ -59,21 +59,13 @@ function ModelsContent() {
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
   const [providerModels, setProviderModels] = useState<Record<string, ModelInfo[]>>({});
-  const [embeddingDimensionChanged, setEmbeddingDimensionChanged] = useState(false);
-  const [embeddingDimension, setEmbeddingDimension] = useState<string>('');
 
-  // Hook calls - must be at the top level of the component function
   const confirm = useConfirmDialog();
   const alert = useAlertDialog();
   const toast = useToast();
 
-  const categories: { key: ModelCategory; label: string; description: string }[] = [
-    { key: 'response', label: 'Response', description: 'Final answer model used to reply.' },
-    { key: 'router', label: 'Router', description: 'Routing and tool selection model.' },
-    { key: 'utility', label: 'Utility', description: 'Helper model for tools and misc tasks.' },
-    { key: 'aggregation', label: 'Aggregation', description: 'Summaries and rollups.' },
-    { key: 'embedding', label: 'Embedding', description: 'Model used for text embeddings and indexing.' }
-  ];
+  // Get registered agents sorted alphabetically
+  const registeredAgents = listAgentDefinitions();
 
   useEffect(() => {
     loadSettings();
@@ -101,9 +93,6 @@ function ModelsContent() {
       ]);
       setSettings(settingsData);
       setProviders(Array.isArray(providersData) ? providersData : []);
-
-      // Initialize embedding dimension
-      setEmbeddingDimension(settingsData.embedding?.dimension?.toString() || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -133,22 +122,18 @@ function ModelsContent() {
         }
         const updatedProvider = await adminApiClient.updateProvider(editingProvider.id, updates);
         setProviders(Array.isArray(providers) ? providers.map(p => p.id === updatedProvider.id ? updatedProvider : p) : [updatedProvider]);
-        // Also update the provider in settings
         setSettings(prev => prev ? {
           ...prev,
           providers: prev.providers.map(p => p.id === updatedProvider.id ? updatedProvider : p)
         } : prev);
         toast.success('Provider updated successfully');
       } else {
-        // Create new provider
         const newProvider = await adminApiClient.createProvider(providerForm);
         setProviders(Array.isArray(providers) ? [...providers, newProvider] : [newProvider]);
-        // Also add the provider to settings
         setSettings(prev => prev ? {
           ...prev,
           providers: [...prev.providers, newProvider]
         } : prev);
-        // Fetch models for the new provider
         await loadProviderModels(newProvider.id);
         toast.success('Provider created successfully');
       }
@@ -175,20 +160,25 @@ function ModelsContent() {
         try {
           await adminApiClient.deleteProvider(providerId);
           setProviders(Array.isArray(providers) ? providers.filter(p => p.id !== providerId) : []);
-          // Clear any selected models from this provider and remove provider from settings
           setSettings(prev => {
             if (!prev) return prev;
             const updatedSettings = { ...prev };
-            const allCategories: ModelCategory[] = ['response', 'router', 'utility', 'aggregation', 'embedding'];
-            allCategories.forEach(category => {
-              const categorySettings = updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>];
-              if (categorySettings && typeof categorySettings === 'object' && 'providerId' in categorySettings) {
-                if (categorySettings.providerId === providerId) {
-                  updatedSettings[category as keyof Omit<ModelsSettings, 'providers'>] = { primary: '', providerId: '', options: {} };
-                }
-              }
-            });
-            // Remove the provider from settings.providers
+            // Update utility model if it was using this provider
+            if (updatedSettings.utility?.providerId === providerId) {
+              updatedSettings.utility = { ...updatedSettings.utility, primary: '', providerId: '' };
+            }
+            // Update agent roles if they were using this provider
+            if (Array.isArray(updatedSettings.agents)) {
+              updatedSettings.agents = updatedSettings.agents.map(agent => ({
+                ...agent,
+                roles: (agent.roles || []).map(role => 
+                  role.providerId === providerId 
+                    ? { ...role, primary: '', providerId: '' }
+                    : role
+                )
+              }));
+            }
+            // Remove provider from list
             updatedSettings.providers = updatedSettings.providers.filter(p => p.id !== providerId);
             return updatedSettings;
           });
@@ -211,7 +201,6 @@ function ModelsContent() {
           description: 'Provider test successful!',
           variant: 'success'
         });
-        // Fetch models after successful test
         await loadProviderModels(providerId);
       } else {
         alert({
@@ -238,7 +227,6 @@ function ModelsContent() {
       const models = await adminApiClient.getProviderModels(providerId);
       const updatedModels = { ...providerModels, [providerId]: models };
       setProviderModels(updatedModels);
-      // Save to localStorage
       localStorage.setItem('providerModels', JSON.stringify(updatedModels));
 
       if (models.length === 0) {
@@ -276,63 +264,42 @@ function ModelsContent() {
     }
   };
 
-  const handleModelChange = (category: ModelCategory, modelId: string, providerId: string) => {
-    setSettings(prev => {
-      if (!prev) return prev;
-      const newSettings = {
-        ...prev,
-        [category]: {
-          ...(prev[category as keyof ModelsSettings] || {}),
-          primary: modelId,
-          providerId: providerId
-        }
-      };
-      return newSettings;
-    });
-  };
-
-  const handleProviderChange = (category: ModelCategory, providerId: string) => {
-    // When provider changes, keep the existing model selection
-    // Users should be able to select a provider and type any model name
-
+  const handleUtilityModelUpdate = (primary: string, providerId: string) => {
     setSettings(prev => {
       if (!prev) return prev;
       return {
         ...prev,
-        [category]: {
-          ...(prev[category as keyof ModelsSettings] || {}),
-          providerId: providerId
-          // Don't clear the primary model - let users keep their custom model names
+        utility: {
+          ...prev.utility,
+          primary,
+          providerId
         }
       };
     });
   };
 
-  const handleEmbeddingDimensionChange = (dimension: string) => {
-    setEmbeddingDimension(dimension);
-
-    const numericDimension = dimension ? parseInt(dimension, 10) : undefined;
-
-    // Check if the dimension has changed from the original value
-    const originalDimension = settings?.embedding?.dimension;
-    const hasChanged = numericDimension !== originalDimension;
-    setEmbeddingDimensionChanged(hasChanged);
-
+  const handleAgentRoleUpdate = (agentId: string, roleId: string, primary: string, providerId: string) => {
     setSettings(prev => {
       if (!prev) return prev;
-      const updatedSettings: ModelsSettings = {
+      if (!prev.agents) return prev;
+      return {
         ...prev,
-        embedding: {
-          ...(prev.embedding || {}),
-          dimension: numericDimension
-        }
+        agents: prev.agents.map(agent => {
+          if (agent.agentId !== agentId) return agent;
+          return {
+            ...agent,
+            roles: (agent.roles || []).map(role => {
+              if (role.id !== roleId) return role;
+              return {
+                ...role,
+                primary,
+                providerId
+              };
+            })
+          };
+        })
       };
-      return updatedSettings;
     });
-  };
-
-  const dismissDimensionWarning = () => {
-    setEmbeddingDimensionChanged(false);
   };
 
   const handleSave = async () => {
@@ -343,12 +310,7 @@ function ModelsContent() {
     setSaving(true);
     try {
       const updatedSettings = await adminApiClient.updateModelsSettings(settings);
-
       setSettings(updatedSettings);
-
-      // Reset the embedding dimension warning after successful save
-      setEmbeddingDimensionChanged(false);
-
       toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -371,204 +333,11 @@ function ModelsContent() {
     );
   }
 
-  // ProviderSelector Component - Dropdown for provider selection
-  const ProviderSelector = ({
-    value,
-    onChange,
-    providers,
-    disabled,
-    placeholder = "Select a provider..."
-  }: {
-    value: string;
-    onChange: (providerId: string) => void;
-    providers: ProviderType[];
-    disabled?: boolean;
-    placeholder?: string;
-  }) => {
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:ring-2 focus:ring-ring focus:outline-none"
-      >
-        <option value="">{placeholder}</option>
-        {providers.map(provider => (
-          <option key={provider.id} value={provider.id}>
-            {provider.name}
-          </option>
-        ))}
-      </select>
-    );
-  };
-
-  // ModelSelector Component - Searchable dropdown for model selection
-  const ModelSelector = ({
-    value,
-    onChange,
-    models,
-    disabled,
-    placeholder = "Select or type a model..."
-  }: {
-    value: string;
-    onChange: (modelId: string) => void;
-    models: ModelInfo[];
-    disabled?: boolean;
-    placeholder?: string;
-  }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [search, setSearch] = useState('');
-    const [inputValue, setInputValue] = useState(value);
-    const [selectedIndex, setSelectedIndex] = useState(-1);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const lastEmittedValueRef = useRef(value);
-
-    // Update input when value changes externally, but only if the dropdown is closed
-    // This preserves user-typed values when the dropdown is open
-    useEffect(() => {
-      if (!isOpen && value !== inputValue) {
-        setInputValue(value);
-        lastEmittedValueRef.current = value;
-      }
-    }, [value, isOpen, inputValue]);
-
-    // Close dropdown when clicking outside
-    useEffect(() => {
-      function handleClickOutside(event: MouseEvent) {
-        if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-          setIsOpen(false);
-          setSelectedIndex(-1);
-        }
-      }
-
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const filteredModels = models.filter(model =>
-      model.id.toLowerCase().includes(search.toLowerCase())
-    );
-
-    const handleSelect = (modelId: string) => {
-      // Only call onChange if the value has actually changed
-      if (modelId !== lastEmittedValueRef.current) {
-        onChange(modelId);
-        lastEmittedValueRef.current = modelId;
-      }
-      setInputValue(modelId);
-      setIsOpen(false);
-      setSearch('');
-      setSelectedIndex(-1);
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.value;
-      setInputValue(newValue);
-      setSearch(newValue);
-      setSelectedIndex(-1); // Reset selection when typing
-      // Don't call onChange on every keystroke to avoid losing focus
-      // The value will be propagated on blur or when selecting from dropdown
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const filteredModelsCount = filteredModels.length;
-
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          if (!isOpen) {
-            setIsOpen(true);
-            setSelectedIndex(0);
-          } else {
-            setSelectedIndex(prev =>
-              prev < filteredModelsCount - 1 ? prev + 1 : 0
-            );
-          }
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          if (!isOpen) {
-            setIsOpen(true);
-            setSelectedIndex(filteredModelsCount - 1);
-          } else {
-            setSelectedIndex(prev =>
-              prev > 0 ? prev - 1 : filteredModelsCount - 1
-            );
-          }
-          break;
-        case 'Enter':
-          e.preventDefault();
-          if (isOpen && selectedIndex >= 0 && selectedIndex < filteredModelsCount) {
-            handleSelect(filteredModels[selectedIndex].id);
-          } else if (isOpen && filteredModelsCount > 0) {
-            // If no selection but dropdown is open, select the first item
-            handleSelect(filteredModels[0].id);
-          }
-          break;
-        case 'Escape':
-          e.preventDefault();
-          setIsOpen(false);
-          setSelectedIndex(-1);
-          break;
-      }
-    };
-
-    return (
-      <div ref={containerRef} className="relative">
-        <Input
-          value={inputValue}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setIsOpen(true)}
-          onBlur={() => {
-            // When input loses focus, update the parent with the current input value
-            // This ensures custom model names are preserved even if not in the dropdown
-            if (inputValue !== lastEmittedValueRef.current) {
-              onChange(inputValue);
-              lastEmittedValueRef.current = inputValue;
-            }
-            setIsOpen(false);
-            setSelectedIndex(-1);
-          }}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="pr-8"
-        />
-        {isOpen && (
-          <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
-            {filteredModels.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground">
-                No models found
-              </div>
-            ) : (
-              filteredModels.map((model, index) => (
-                <button
-                  key={model.id}
-                  type="button"
-                  className={`w-full text-left px-3 py-2 cursor-pointer ${index === selectedIndex
-                    ? 'bg-primary/10'
-                    : 'hover:bg-muted'
-                    }`}
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // Prevent input blur
-                    handleSelect(model.id);
-                  }}
-                >
-                  <div className="font-medium">{model.id}</div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
       <PageHeaderConfig title="Admin Panel" subtitle="Models Configuration" />
       <div className="flex items-center justify-end">
-        <Button onClick={() => { handleSave(); }} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
           {saving ? 'Saving...' : 'Save Configuration'}
         </Button>
@@ -668,87 +437,58 @@ function ModelsContent() {
         </CardContent>
       </Card>
 
-      {/* Model Assignment Section */}
+      {/* Utility Model Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Model Assignment</CardTitle>
-          <CardDescription>Assign models to different harness categories. You can select from the dropdown or type any model name.</CardDescription>
+          <CardTitle>Utility Model</CardTitle>
+          <CardDescription>System-wide model for background tasks like thread naming and summarization</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categories.map(category => (
-                <div key={category.key} className="border border-border rounded-lg p-4">
-                  <div className="space-y-3">
-                    <div>
-                      <h3 className="font-semibold text-lg">{category.label}</h3>
-                      <p className="text-sm text-muted-foreground">{category.description}</p>
-                    </div>
-                    <div className="space-y-3">
-                      <div>
-                        <Label htmlFor={`${category.key}-provider`}>Provider</Label>
-                        <ProviderSelector
-                          value={settings?.[category.key]?.providerId || ''}
-                          onChange={(providerId) => handleProviderChange(category.key, providerId)}
-                          providers={Array.isArray(providers) ? providers : []}
-                          disabled={false}
-                          placeholder="Select a provider..."
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor={`${category.key}-model`}>Model</Label>
-                        <ModelSelector
-                          value={settings?.[category.key]?.primary || ''}
-                          onChange={(modelId) => handleModelChange(category.key, modelId, settings?.[category.key]?.providerId || '')}
-                          models={getModelsForProvider(settings?.[category.key]?.providerId || '')}
-                          disabled={getModelsForProvider(settings?.[category.key]?.providerId || '').length === 0}
-                          placeholder="Select or type any model name..."
-                        />
-                      </div>
-
-                      {category.key === 'embedding' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="embedding-dimension">Dimension</Label>
-                          <Input
-                            id="embedding-dimension"
-                            type="number"
-                            value={embeddingDimension}
-                            onChange={(e) => handleEmbeddingDimensionChange(e.target.value)}
-                            placeholder="e.g., 1536"
-                            className={embeddingDimensionChanged ? "border-orange-500 focus:border-orange-500" : ""}
-                          />
-                          {embeddingDimensionChanged && (
-                            <div className="flex items-start space-x-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                              <div className="text-yellow-500 mt-0.5">⚠️</div>
-                              <div className="flex-1 space-y-1">
-                                <div className="text-sm font-medium text-yellow-500">
-                                  Dimension Change Warning
-                                </div>
-                                <p className="text-sm text-yellow-500/80">
-                                  Changing the embedding dimension will clear the existing index and queue all historical conversations to be re-indexed.
-                                  This may take some time and temporarily affect search functionality.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={dismissDimensionWarning}
-                                className="text-yellow-500 hover:text-yellow-400 text-sm font-medium"
-                              >
-                                Dismiss
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <UtilityModelConfigurator
+              settings={settings?.utility}
+              providers={Array.isArray(providers) ? providers : []}
+              providerModels={providerModels}
+              onUpdate={handleUtilityModelUpdate}
+            />
           </div>
         </CardContent>
       </Card>
+
+      {/* Agent Sections */}
+      {registeredAgents.map(agent => {
+        // Find the agent configuration in settings
+        const agentConfig = (settings?.agents ?? []).find(a => a.agentId === agent.agentId);
+        
+        return (
+          <Card key={agent.agentId}>
+            <CardHeader>
+              <CardTitle>{agent.name}</CardTitle>
+              {agent.description && <CardDescription>{agent.description}</CardDescription>}
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {agent.modelRoles.map(role => {
+                  const roleSettings = (agentConfig?.roles ?? []).find(r => r.id === role.id);
+                  return (
+                    <AgentModelRoleConfigurator
+                      key={`${agent.agentId}-${role.id}`}
+                      agentId={agent.agentId}
+                      roleId={role.id}
+                      roleLabel={role.label}
+                      roleDescription={role.description}
+                      agentRoleSettings={roleSettings}
+                      providers={Array.isArray(providers) ? providers : []}
+                      providerModels={providerModels}
+                      onUpdate={handleAgentRoleUpdate}
+                    />
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
 
       {/* Provider Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {

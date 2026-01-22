@@ -27,7 +27,7 @@ Add automatic thread naming functionality using LLM-generated titles. Feature in
 ┌─────────────────────────────────────┐
 │        bernard-api                │
 │                                   │
-│  - resolveModel("utility")         │
+│  - resolveUtilityModel()            │
 │  - initChatModel()                │
 │  - Generate title (3-5 words)     │
 │  - Update via LangGraph Client     │
@@ -123,7 +123,7 @@ interface ModelsSettings {
   utility?: ModelCategorySettings;
 }
 
-export async function resolveModel(category: "utility"): Promise<{
+export async function resolveUtilityModel(): Promise<{
   id: string;
   options: any;
 }> {
@@ -137,11 +137,11 @@ export async function resolveModel(category: "utility"): Promise<{
   }
 
   const settings: ModelsSettings = JSON.parse(settingsJson);
-  const modelSettings = settings[category];
+  const modelSettings = settings.utility;
 
   if (!modelSettings) {
     await redis.quit();
-    throw new Error(`No model configured for category: ${category}`);
+    throw new Error("No utility model configured");
   }
 
   const provider = settings.providers.find(p => p.id === modelSettings.providerId);
@@ -200,7 +200,7 @@ fastify.post<{
     fastify.log.info({ threadId }, "Starting auto-rename");
 
     // Resolve utility model
-    const { id: modelId, options } = await resolveModel("utility");
+    const { id: modelId, options } = await resolveUtilityModel();
     const namingModel = await initChatModel(modelId, options);
 
     // Generate title

@@ -80,7 +80,7 @@ export async function createGertrudeAgent(
 
   // Create model once and reuse
   const createModel = async () => {
-    const { id, options } = await deps.resolveModel("router");
+    const { id, options } = await deps.resolveModel("gertrude_agent", "main");
     return await deps.initChatModel(id, options);
   };
 

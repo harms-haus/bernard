@@ -28,22 +28,24 @@ export function mockModelConfig(overrides: Record<string, any> = {}): Record<str
 export function mockModelsSettings(overrides: Partial<z.infer<typeof ModelsSettingsSchema>> = {}): z.infer<typeof ModelsSettingsSchema> {
   return {
     providers: [mockProviderSchema()],
-    response: {
-      primary: 'openai|gpt-4',
-      providerId: 'openai',
-    },
-    router: {
-      primary: 'openai|gpt-4',
-      providerId: 'openai',
-    },
-    memory: {
-      primary: 'openai|gpt-4',
-      providerId: 'openai',
-    },
     utility: {
       primary: 'openai|gpt-4',
       providerId: 'openai',
     },
+    agents: [
+      {
+        agentId: 'bernard_agent',
+        roles: [
+          { id: 'main', primary: 'openai|gpt-4', providerId: 'openai' },
+        ],
+      },
+      {
+        agentId: 'gertrude_agent',
+        roles: [
+          { id: 'main', primary: 'openai|gpt-4', providerId: 'openai' },
+        ],
+      },
+    ],
     ...overrides,
   }
 }

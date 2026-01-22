@@ -27,12 +27,20 @@ vi.mock('@/hooks/useAdminAuth', () => ({
 
 const mockAdminApiClient = {
   getModelsSettings: vi.fn().mockResolvedValue({
-    providers: [],
-    responseModel: 'gpt-4',
-    routerModel: 'gpt-4o',
-    utilityModel: 'gpt-4o-mini',
-    aggregationModel: 'gpt-4o-mini',
-    embeddingModel: 'text-embedding-3-small',
+    providers: [
+      { id: 'openai-provider', name: 'OpenAI', type: 'openai', baseUrl: 'https://api.openai.com', createdAt: '', updatedAt: '' }
+    ],
+    utility: { primary: 'gpt-4o-mini', providerId: 'openai-provider' },
+    agents: [
+      {
+        agentId: 'bernard_agent',
+        roles: [{ id: 'main', primary: 'gpt-4', providerId: 'openai-provider' }]
+      },
+      {
+        agentId: 'gertrude_agent',
+        roles: [{ id: 'main', primary: 'gpt-4o', providerId: 'openai-provider' }]
+      }
+    ],
   }),
   updateModelsSettings: vi.fn().mockResolvedValue({}),
   listProviders: vi.fn().mockResolvedValue([]),
@@ -45,6 +53,28 @@ const mockAdminApiClient = {
 
 vi.mock('@/services/adminApi', () => ({
   adminApiClient: mockAdminApiClient,
+}));
+
+// Mock the agent model registry
+vi.mock('@/lib/config/agentModelRegistry', () => ({
+  AGENT_MODEL_REGISTRY: [
+    { name: 'Bernard', agentId: 'bernard_agent', description: 'Primary AI assistant', modelRoles: [{ id: 'main', label: 'Main Model', description: 'Primary model', required: true }] },
+    { name: 'Gertrude', agentId: 'gertrude_agent', description: 'Guest-only assistant', modelRoles: [{ id: 'main', label: 'Main Model', description: 'Primary model', required: true }] },
+  ],
+  listAgentDefinitions: () => [
+    { name: 'Bernard', agentId: 'bernard_agent', description: 'Primary AI assistant', modelRoles: [{ id: 'main', label: 'Main Model', description: 'Primary model', required: true }] },
+    { name: 'Gertrude', agentId: 'gertrude_agent', description: 'Guest-only assistant', modelRoles: [{ id: 'main', label: 'Main Model', description: 'Primary model', required: true }] },
+  ],
+}));
+
+// Mock the AgentModelRoleConfigurator component
+vi.mock('@/components/AgentModelRoleConfigurator', () => ({
+  AgentModelRoleConfigurator: ({ agentId, roleId, roleLabel }: any) => (
+    <div data-testid="agent-model-role-configurator" data-agent={agentId} data-role={roleId}>{roleLabel}</div>
+  ),
+  UtilityModelConfigurator: () => (
+    <div data-testid="utility-model-configurator">Utility Model</div>
+  ),
 }));
 
 vi.mock('@/components/AdminLayout', () => ({
@@ -80,6 +110,7 @@ vi.mock('@/components/ToastManager', () => ({
   useToast: () => ({
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   }),
 }));
 
@@ -103,8 +134,8 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('@/components/ui/input', () => ({
-  Input: ({ className, value, onChange, placeholder, id }: any) => (
-    <input className={className} value={value} onChange={onChange} placeholder={placeholder} id={id} />
+  Input: ({ className, value, onChange, placeholder, id, type, disabled }: any) => (
+    <input className={className} value={value} onChange={onChange} placeholder={placeholder} id={id} type={type} disabled={disabled} />
   ),
 }));
 
@@ -155,7 +186,7 @@ describe('Models Management Page', () => {
 
   it('should render without crashing', async () => {
     render(<ModelsPage />);
-    // Just verify the component renders
+    // Verify the component renders
     await waitFor(() => {
       expect(screen.getByTestId('admin-layout')).toBeInTheDocument();
     }, { timeout: 5000 });
@@ -166,6 +197,48 @@ describe('Models Management Page', () => {
 
     await waitFor(() => {
       expect(mockAdminApiClient.getModelsSettings).toHaveBeenCalledTimes(1);
+    }, { timeout: 5000 });
+  });
+
+  it('should render providers section', async () => {
+    render(<ModelsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Providers')).toBeInTheDocument();
+    }, { timeout: 5000 });
+  });
+
+  it('should render utility model section', async () => {
+    render(<ModelsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('utility-model-configurator')).toBeInTheDocument();
+    }, { timeout: 5000 });
+  });
+
+  it('should render agent sections from registry', async () => {
+    render(<ModelsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bernard')).toBeInTheDocument();
+      expect(screen.getByText('Gertrude')).toBeInTheDocument();
+    }, { timeout: 5000 });
+  });
+
+  it('should render agent model role configurators', async () => {
+    render(<ModelsPage />);
+
+    await waitFor(() => {
+      const configurators = screen.getAllByTestId('agent-model-role-configurator');
+      expect(configurators.length).toBeGreaterThan(0);
+    }, { timeout: 5000 });
+  });
+
+  it('should show save button', async () => {
+    render(<ModelsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Configuration')).toBeInTheDocument();
     }, { timeout: 5000 });
   });
 });

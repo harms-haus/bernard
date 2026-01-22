@@ -76,6 +76,7 @@ export function Thread() {
   const isLoading = stream.isLoading;
 
   const lastError = useRef<string | undefined>(undefined);
+  const pollIntervalRef = useRef<number | null>(null);
   const { getThreads } = useThreads();
 
   useEffect(() => {
@@ -129,21 +130,45 @@ export function Thread() {
           getThreads();
           let pollAttempts = 0;
           const maxAttempts = 6;
-          const pollInterval = window.setInterval(() => {
+          
+          // Clear any existing interval
+          if (pollIntervalRef.current !== null) {
+            window.clearInterval(pollIntervalRef.current);
+          }
+          
+          pollIntervalRef.current = window.setInterval(() => {
             pollAttempts++;
             getThreads();
             if (pollAttempts >= maxAttempts) {
-              window.clearInterval(pollInterval);
+              if (pollIntervalRef.current !== null) {
+                window.clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
             }
           }, 2000);
         })
         .catch((err: unknown) => {
           console.error('Auto-rename failed:', err);
+          // Clear interval on error
+          if (pollIntervalRef.current !== null) {
+            window.clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
         });
 
       setHasTriggeredAutoRename(true);
     }
-  }, [messages, hasTriggeredAutoRename, threadId, getThreads]);
+  }, [hasTriggeredAutoRename, threadId, getThreads, messages.length]);
+
+  // Cleanup polling interval when threadId changes or on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current !== null) {
+        window.clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [threadId]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

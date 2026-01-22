@@ -15,12 +15,21 @@ export {
   DEFAULT_MODEL_ID,
   setSettingsFetcher as setModelSettingsFetcher,
   resetSettingsFetcher,
-  getModelList,
-  getPrimaryModel,
   resolveModel,
+  resolveUtilityModel,
   resolveApiKey,
   resolveBaseUrl,
   splitModelAndProvider,
-  listFromSettings,
   normalizeList as normalizeModelList
 } from '@/lib/config/models';
+
+export {
+  AGENT_MODEL_REGISTRY,
+  getAgentDefinition,
+  getAgentRoleDefinition,
+  listAgentDefinitions,
+  isRegisteredAgent,
+  getRequiredRoleIds,
+  type AgentModelDefinition,
+  type ModelRoleDefinition
+} from '@/lib/config/agentModelRegistry';

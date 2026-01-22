@@ -20,28 +20,126 @@ export const ProviderSchema = z.object({
   testError: z.string().optional()
 })
 
-export const ModelCategorySchema = z.object({
+// ============================================================================
+// NEW: Agent-centric Model Configuration Schemas
+// ============================================================================
+
+/**
+ * Schema for a single model role configuration within an agent.
+ * Defines which model and provider is used for a specific role (e.g., "main", "planner").
+ */
+export const AgentModelRoleSchema = z.object({
+  /** The role identifier (e.g., "main", "planner") */
+  id: z.string().min(1),
+  /** Primary model ID to use for this role */
   primary: z.string().min(1),
+  /** Provider ID for this model */
   providerId: z.string().min(1),
+  /** Optional model configuration options */
   options: z
     .object({
       temperature: z.number().min(0).max(2).optional(),
       topP: z.number().min(0).max(1).optional(),
       maxTokens: z.number().int().positive().optional()
     })
-    .optional(),
-  dimension: z.number().int().positive().optional()
+    .optional()
 })
 
+/**
+ * Schema for an agent's complete model configuration.
+ * Contains all model roles configured for a specific agent.
+ */
+export const AgentModelsSchema = z.object({
+  /** The agent's graph ID (e.g., "bernard_agent") */
+  agentId: z.string().min(1),
+  /** Array of configured model roles for this agent */
+  roles: z.array(AgentModelRoleSchema)
+})
+
+/**
+ * Schema for the system-wide utility model configuration.
+ * Used for system tasks like thread naming and summarization.
+ */
+export const UtilityModelSchema = z.object({
+  /** Primary model ID for utility tasks */
+  primary: z.string().min(1),
+  /** Provider ID for utility model */
+  providerId: z.string().min(1),
+  /** Optional model configuration options */
+  options: z
+    .object({
+      temperature: z.number().min(0).max(2).optional(),
+      topP: z.number().min(0).max(1).optional(),
+      maxTokens: z.number().int().positive().optional()
+    })
+    .optional()
+})
+
+/**
+ * NEW schema for model settings using agent-centric configuration.
+ * Replaces the old category-based ModelsSettingsSchema.
+ */
 export const ModelsSettingsSchema = z.object({
   providers: z.array(ProviderSchema),
-  response: ModelCategorySchema,
-  router: ModelCategorySchema,
-  memory: ModelCategorySchema,
-  utility: ModelCategorySchema,
-  aggregation: ModelCategorySchema.optional(),
-  embedding: ModelCategorySchema.optional()
+  /** System-wide utility model for background tasks */
+  utility: UtilityModelSchema,
+  /** Per-agent model configurations */
+  agents: z.array(AgentModelsSchema)
 })
+
+// ============================================================================
+// Type Exports
+// ============================================================================
+
+export type Provider = {
+  id: string;
+  name: string;
+  type: "openai" | "ollama";
+  baseUrl: string;
+  apiKey?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  lastTestedAt?: string | undefined;
+  testStatus?: "untested" | "working" | "failed" | undefined;
+  testError?: string | undefined;
+};
+
+// Agent-centric type definitions
+export type UtilityModelSettings = {
+  primary: string;
+  providerId: string;
+  options?: {
+    temperature?: number | undefined;
+    topP?: number | undefined;
+    maxTokens?: number | undefined;
+  } | undefined;
+};
+
+export type AgentModelRoleSettings = {
+  id: string;
+  primary: string;
+  providerId: string;
+  options?: {
+    temperature?: number | undefined;
+    topP?: number | undefined;
+    maxTokens?: number | undefined;
+  } | undefined;
+};
+
+export type AgentModelSettings = {
+  agentId: string;
+  roles: AgentModelRoleSettings[];
+};
+
+export type ModelsSettings = {
+  providers: Provider[];
+  utility: UtilityModelSettings;
+  agents: AgentModelSettings[];
+};
+
+// ============================================================================
+// Service Schemas (restored)
+// ============================================================================
 
 const MemoryServiceSchema = z.object({
   embeddingModel: z.string().optional(),
@@ -178,40 +276,6 @@ export const LimitsSettingsSchema = z.object({
   responseMaxTokens: z.coerce.number().int().positive(),
   allowSignups: z.boolean().default(true)
 })
-
-export type Provider = {
-  id: string;
-  name: string;
-  type: "openai" | "ollama";
-  baseUrl: string;
-  apiKey?: string | undefined;
-  createdAt: string;
-  updatedAt: string;
-  lastTestedAt?: string | undefined;
-  testStatus?: "untested" | "working" | "failed" | undefined;
-  testError?: string | undefined;
-};
-
-export type ModelCategorySettings = {
-  primary: string;
-  providerId: string;
-  options?: {
-    temperature?: number | undefined;
-    topP?: number | undefined;
-    maxTokens?: number | undefined;
-  } | undefined;
-  dimension?: number | undefined;
-};
-
-export type ModelsSettings = {
-  providers: Provider[];
-  response: ModelCategorySettings;
-  router: ModelCategorySettings;
-  memory: ModelCategorySettings;
-  utility: ModelCategorySettings;
-  aggregation?: ModelCategorySettings | undefined;
-  embedding?: ModelCategorySettings | undefined;
-};
 
 export type MemoryServiceSettings = {
   embeddingModel?: string | undefined;
@@ -588,23 +652,45 @@ export class SettingsManagerCore {
       ? { ...defaultProviderBase, apiKey: openrouterApiKey }
       : defaultProviderBase
 
-    const responseModel = this.getFromEnv("RESPONSE_MODELS")?.split(",")[0]?.trim() ?? DEFAULT_MODEL
+    const utilityModelRaw = this.getFromEnv("UTILITY_MODELS")?.split(",")[0]?.trim();
+    const utilityModel = (utilityModelRaw && utilityModelRaw.length > 0) ? utilityModelRaw : DEFAULT_MODEL
 
+    // NEW: Agent-centric default models
     const settings: ModelsSettings = {
       providers: [ollamaProvider, defaultProvider],
-      response: { primary: responseModel, providerId: defaultProvider.id, options: { temperature: 0.5 } },
-      router: { primary: this.getFromEnv("ROUTER_MODELS")?.split(",")[0]?.trim() ?? responseModel, providerId: defaultProvider.id, options: { temperature: 0 } },
-      memory: { primary: this.getFromEnv("MEMORY_MODELS")?.split(",")[0]?.trim() ?? responseModel, providerId: defaultProvider.id, options: { temperature: 0 } },
-      utility: { primary: this.getFromEnv("UTILITY_MODELS")?.split(",")[0]?.trim() ?? responseModel, providerId: defaultProvider.id, options: { temperature: 0 } }
+      utility: {
+        primary: utilityModel,
+        providerId: defaultProvider.id,
+        options: { temperature: 0 }
+      },
+      agents: [
+        {
+          agentId: "bernard_agent",
+          roles: [
+            {
+              id: "main",
+              primary: (() => {
+                const routerModelRaw = this.getFromEnv("ROUTER_MODELS")?.split(",")[0]?.trim();
+                return (routerModelRaw && routerModelRaw.length > 0) ? routerModelRaw : utilityModel;
+              })(),
+              providerId: defaultProvider.id,
+              options: { temperature: 0 }
+            }
+          ]
+        },
+        {
+          agentId: "gertrude_agent",
+          roles: [
+            {
+              id: "main",
+              primary: utilityModel,
+              providerId: defaultProvider.id,
+              options: { temperature: 0 }
+            }
+          ]
+        }
+      ]
     }
-
-    const aggregationModel = this.getFromEnv("AGGREGATION_MODELS")?.split(",")[0]?.trim()
-    if (aggregationModel) {
-      settings.aggregation = { primary: aggregationModel, providerId: defaultProvider.id, options: { temperature: 0 } }
-    }
-
-    const embeddingModel = this.getFromEnv("EMBEDDING_MODELS")?.split(",")[0]?.trim() ?? "nomic-embed-text"
-    settings.embedding = { primary: embeddingModel, providerId: ollamaProvider.id }
 
     return settings
   }

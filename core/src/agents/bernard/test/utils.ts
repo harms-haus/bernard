@@ -9,7 +9,7 @@ import { vi, type Mock } from 'vitest';
 import type { StructuredTool } from '@langchain/core/tools';
 import { type LangGraphRunnableConfig } from '@langchain/langgraph';
 import type { BernardSettings } from '@/lib/config/settingsStore';
-import type { ModelCategorySettings } from '@/lib/config/appSettings';
+import type { UtilityModelSettings, AgentModelSettings, AgentModelRoleSettings } from '@/lib/config/appSettings';
 import type { WeatherServiceSettings } from '@/lib/config/appSettings';
 import type { KokoroServiceSettings } from '@/lib/config/appSettings';
 
@@ -17,8 +17,22 @@ import type { KokoroServiceSettings } from '@/lib/config/appSettings';
 // Mock Settings
 // ============================================================================
 
-function createModelCategorySettings(overrides: Partial<ModelCategorySettings> = {}): ModelCategorySettings {
+function createUtilityModelSettings(overrides: Partial<UtilityModelSettings> = {}): UtilityModelSettings {
   return {
+    primary: 'gpt-4o',
+    providerId: 'openai',
+    options: {
+      temperature: 0.7,
+      topP: 1.0,
+      maxTokens: 4096,
+    },
+    ...overrides,
+  };
+}
+
+function createAgentModelRoleSettings(overrides: Partial<AgentModelRoleSettings> = {}): AgentModelRoleSettings {
+  return {
+    id: 'main',
     primary: 'gpt-4o',
     providerId: 'openai',
     options: {
@@ -91,10 +105,17 @@ export function createMockSettings(overrides: Partial<BernardSettings> = {}): Be
     },
     models: {
       providers: [],
-      response: createModelCategorySettings(),
-      router: createModelCategorySettings(),
-      memory: createModelCategorySettings(),
-      utility: createModelCategorySettings(),
+      utility: createUtilityModelSettings(),
+      agents: [
+        {
+          agentId: 'bernard_agent',
+          roles: [createAgentModelRoleSettings()],
+        },
+        {
+          agentId: 'gertrude_agent',
+          roles: [createAgentModelRoleSettings()],
+        },
+      ],
       ...overrides.models,
     },
     oauth: {

@@ -83,16 +83,23 @@ describe('SettingsManagerCore', () => {
       expect(models.providers).toHaveLength(2)
       expect(models.providers[0].id).toBe('ollama-provider')
       expect(models.providers[1].id).toBe('default-provider')
-      expect(models.response.primary).toBe('gpt-3.5-turbo')
+      // New agent-centric structure
+      expect(models.utility).toBeDefined()
+      expect(models.utility.primary).toBe('gpt-3.5-turbo')
+      expect(models.agents).toHaveLength(2)
+      expect(models.agents[0].agentId).toBe('bernard_agent')
+      expect(models.agents[0].roles[0].id).toBe('main')
     })
 
-    it('should use environment variables for defaults', () => {
+    it('should use ROUTER_MODELS for bernard agent', () => {
       const managerWithCustomEnv = new SettingsManagerCore(mockRedis, {
-        RESPONSE_MODELS: 'gpt-4-custom',
+        ROUTER_MODELS: 'gpt-4-custom',
       })
       const models = managerWithCustomEnv.getDefaultModels()
 
-      expect(models.response.primary).toBe('gpt-4-custom')
+      const bernardAgent = models.agents.find(a => a.agentId === 'bernard_agent')
+      expect(bernardAgent).toBeDefined()
+      expect(bernardAgent?.roles[0].primary).toBe('gpt-4-custom')
     })
   })
 

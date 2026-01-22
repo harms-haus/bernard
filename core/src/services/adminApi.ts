@@ -23,20 +23,40 @@ export interface ModelCallOptions {
   maxTokens?: number;
 }
 
-export interface ModelCategorySettings {
+/**
+ * Settings for a single model role within an agent.
+ */
+export interface AgentModelRoleSettings {
+  id: string;
   primary: string;
   providerId: string;
   options?: ModelCallOptions;
-  dimension?: number;
 }
 
+/**
+ * Complete model configuration for an agent.
+ */
+export interface AgentModelSettings {
+  agentId: string;
+  roles: AgentModelRoleSettings[];
+}
+
+/**
+ * System-wide utility model settings for background tasks.
+ */
+export interface UtilityModelSettings {
+  primary: string;
+  providerId: string;
+  options?: ModelCallOptions;
+}
+
+/**
+ * Complete models settings using agent-centric configuration.
+ */
 export interface ModelsSettings {
   providers: ProviderType[];
-  response: ModelCategorySettings;
-  router: ModelCategorySettings;
-  utility: ModelCategorySettings;
-  aggregation: ModelCategorySettings;
-  embedding: ModelCategorySettings;
+  utility: UtilityModelSettings;
+  agents: AgentModelSettings[];
 }
 
 export interface ConversationListItem {

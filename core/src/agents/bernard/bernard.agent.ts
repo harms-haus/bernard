@@ -68,7 +68,7 @@ export async function createBernardAgent(
 
   // Create model once and reuse
   const createModel = async () => {
-    const { id, options } = await deps.resolveModel("router");
+    const { id, options } = await deps.resolveModel("bernard_agent", "main");
     return await deps.initChatModel(id, options);
   };
 

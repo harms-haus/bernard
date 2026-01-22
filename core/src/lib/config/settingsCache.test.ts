@@ -28,12 +28,21 @@ describe('settingsCache', () => {
     return {
       models: {
         providers: [defaultProvider],
-        response: { primary: 'gpt-4', providerId: defaultProvider.id, options: { temperature: 0.5 } },
-        router: { primary: 'gpt-3.5-turbo', providerId: defaultProvider.id, options: { temperature: 0 } },
-        memory: { primary: 'gpt-4o-mini', providerId: defaultProvider.id, options: { temperature: 0 } },
         utility: { primary: 'gpt-3.5-turbo', providerId: defaultProvider.id, options: { temperature: 0 } },
-        aggregation: { primary: 'gpt-4', providerId: defaultProvider.id },
-        embedding: { primary: 'text-embedding-3-small', providerId: defaultProvider.id },
+        agents: [
+          {
+            agentId: 'bernard_agent',
+            roles: [
+              { id: 'main', primary: 'gpt-4', providerId: defaultProvider.id, options: { temperature: 0.5 } },
+            ],
+          },
+          {
+            agentId: 'gertrude_agent',
+            roles: [
+              { id: 'main', primary: 'gpt-3.5-turbo', providerId: defaultProvider.id, options: { temperature: 0 } },
+            ],
+          },
+        ],
       },
       services: {
         memory: {
@@ -147,38 +156,38 @@ describe('settingsCache', () => {
 
     it('should use cached value when within TTL', async () => {
       const mockSettings = createMockSettings()
-      mockSettings.models.response.primary = 'first-call'
+      mockSettings.models.agents[0].roles[0].primary = 'first-call'
       mockGetAll.mockResolvedValue(mockSettings)
 
       const settings1 = await getSettings()
 
       // Change the mock to return different settings
       const mockSettings2 = createMockSettings()
-      mockSettings2.models.response.primary = 'second-call'
+      mockSettings2.models.agents[0].roles[0].primary = 'second-call'
       mockGetAll.mockResolvedValue(mockSettings2)
 
       const settings2 = await getSettings()
 
-      expect(settings1.models.response.primary).toBe('first-call')
-      expect(settings2.models.response.primary).toBe('first-call') // Still cached
+      expect(settings1.models.agents[0].roles[0].primary).toBe('first-call')
+      expect(settings2.models.agents[0].roles[0].primary).toBe('first-call') // Still cached
     })
 
     it('should bypass cache when forceRefresh is true', async () => {
       const mockSettings = createMockSettings()
-      mockSettings.models.response.primary = 'initial'
+      mockSettings.models.agents[0].roles[0].primary = 'initial'
       mockGetAll.mockResolvedValue(mockSettings)
 
       await getSettings()
 
       // Change the mock
       const mockSettings2 = createMockSettings()
-      mockSettings2.models.response.primary = 'refreshed'
+      mockSettings2.models.agents[0].roles[0].primary = 'refreshed'
       mockGetAll.mockResolvedValue(mockSettings2)
 
       const settings = await getSettings(true)
 
       expect(mockGetAll).toHaveBeenCalledTimes(2)
-      expect(settings.models.response.primary).toBe('refreshed')
+      expect(settings.models.agents[0].roles[0].primary).toBe('refreshed')
     })
   })
 
@@ -202,27 +211,27 @@ describe('settingsCache', () => {
 
     it('should force new fetch after cache clear even within TTL', async () => {
       const mockSettings = createMockSettings()
-      mockSettings.models.response.primary = 'cached'
+      mockSettings.models.agents[0].roles[0].primary = 'cached'
       mockGetAll.mockResolvedValue(mockSettings)
 
       await getSettings()
 
       // Change mock to return different settings
       const mockSettings2 = createMockSettings()
-      mockSettings2.models.response.primary = 'fresh'
+      mockSettings2.models.agents[0].roles[0].primary = 'fresh'
       mockGetAll.mockResolvedValue(mockSettings2)
 
       clearSettingsCache()
       const settings = await getSettings()
 
-      expect(settings.models.response.primary).toBe('fresh')
+      expect(settings.models.agents[0].roles[0].primary).toBe('fresh')
     })
   })
 
   describe('TTL expiration', () => {
     it('should fetch new settings after TTL expires', async () => {
       const mockSettings = createMockSettings()
-      mockSettings.models.response.primary = 'original'
+      mockSettings.models.agents[0].roles[0].primary = 'original'
       mockGetAll.mockResolvedValue(mockSettings)
 
       await getSettings()
@@ -232,13 +241,13 @@ describe('settingsCache', () => {
 
       // Change mock for the new call
       const mockSettings2 = createMockSettings()
-      mockSettings2.models.response.primary = 'expired'
+      mockSettings2.models.agents[0].roles[0].primary = 'expired'
       mockGetAll.mockResolvedValue(mockSettings2)
 
       const settings = await getSettings()
 
       expect(mockGetAll).toHaveBeenCalledTimes(2)
-      expect(settings.models.response.primary).toBe('expired')
+      expect(settings.models.agents[0].roles[0].primary).toBe('expired')
     })
   })
 })

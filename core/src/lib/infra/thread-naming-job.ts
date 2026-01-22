@@ -5,7 +5,7 @@
  * This file exists to avoid circular dependencies between queue.ts and names.ts.
  */
 import { getRedis } from '@/lib/infra/redis'
-import { resolveModel } from '../config/models'
+import { resolveUtilityModel } from '../config/models'
 import { initChatModel } from 'langchain/chat_models/universal'
 import { Client } from '@langchain/langgraph-sdk'
 import { childLogger } from '../logging/logger'
@@ -33,7 +33,7 @@ export async function generateTitle(messages: Array<{ type: string; content: unk
   const log = childLogger(context);
 
   try {
-    const { id: modelId, options } = await resolveModel("utility");
+    const { id: modelId, options } = await resolveUtilityModel();
 
     const llm = await initChatModel(modelId, {
       ...options,
@@ -46,9 +46,23 @@ export async function generateTitle(messages: Array<{ type: string; content: unk
       .slice(0, 10) // Limit to first 10 messages for context
       .map(m => {
         let content = m.content;
-        // Handle complex LangChain message objects
-        if (typeof content === 'object' && content !== null) {
-          // Try to extract text from nested structures
+        // Handle arrays first
+        if (Array.isArray(content)) {
+          // Extract text/content from array elements
+          const textParts = content
+            .map((item: unknown) => {
+              if (typeof item === 'string') return item;
+              if (typeof item === 'object' && item !== null) {
+                const itemObj = item as Record<string, unknown>;
+                if (typeof itemObj.content === 'string') return itemObj.content;
+                if (typeof itemObj.text === 'string') return itemObj.text;
+              }
+              return null;
+            })
+            .filter((part): part is string => part !== null);
+          content = textParts.length > 0 ? textParts.join(' ') : '[array message]';
+        } else if (typeof content === 'object' && content !== null) {
+          // Handle plain objects (not arrays)
           const contentObj = content as Record<string, unknown>;
           if (contentObj.content && typeof contentObj.content === 'string') {
             content = contentObj.content;
@@ -102,7 +116,9 @@ Example: "Weather forecast for Tokyo"`;
       title = 'New Chat';
     }
 
-    log.info({ messageCount: messages.length, messagePreview: messageHistory.substring(0, 100), title, rawResponse: responseText }, "[ThreadNaming] Generated title");
+    // Log at info level without PII - use debug for detailed info
+    log.info({ messageCount: messages.length, title }, "[ThreadNaming] Generated title");
+    log.debug({ messagePreview: messageHistory.substring(0, 100), rawResponse: responseText }, "[ThreadNaming] Title generation details");
 
     return title;
   } catch (error) {
@@ -137,7 +153,17 @@ export async function processThreadNamingJob(
     const threadKey = `bernard:thread:${threadId}`;
 
     const existingData = await redis.get(threadKey);
-    let threadData = existingData ? JSON.parse(existingData) : {};
+    let threadData: Record<string, unknown> = {};
+    
+    if (existingData) {
+      try {
+        threadData = JSON.parse(existingData);
+      } catch (parseError) {
+        log.warn({ threadKey, error: parseError instanceof Error ? parseError.message : String(parseError) }, "[ThreadNaming] Failed to parse existing thread data, using empty object");
+        // Optionally delete or overwrite malformed key
+        threadData = {};
+      }
+    }
 
     threadData = {
       ...threadData,

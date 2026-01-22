@@ -1,7 +1,15 @@
-import { getSettings } from "./settingsCache";
-import type { BernardSettings, ModelCategorySettings } from "./settingsStore";
+/**
+ * Model Resolution System
+ * 
+ * Provides model configuration resolution for agents and utility tasks.
+ * Replaces the old category-based resolution with agent-centric resolution.
+ */
 
-export type { ModelCategorySettings };
+import { getSettings } from "./settingsCache";
+import type { BernardSettings, UtilityModelSettings, AgentModelSettings, AgentModelRoleSettings } from "./appSettings";
+import { getAgentDefinition, getAgentRoleDefinition, isRegisteredAgent } from "./agentModelRegistry";
+
+export type { UtilityModelSettings, AgentModelSettings, AgentModelRoleSettings };
 
 const DEFAULT_MODEL = "gpt-3.5-turbo";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -24,8 +32,6 @@ export function setSettingsFetcher(fetcher: SettingsFetcher) {
 export function resetSettingsFetcher(this: void) {
   fetchSettings = getSettings;
 }
-
-export type ModelCategory = "response" | "router" | "aggregation" | "utility" | "memory" | "embedding";
 
 export type ModelCallOptions = {
   temperature?: number;
@@ -69,43 +75,156 @@ export function normalizeList(raw?: string | string[] | null): string[] {
 }
 
 /**
- * Resolve a model list for a category from settings.
+ * Get the provider information for a given provider ID.
  */
-export function listFromSettings(category: ModelCategory, settings?: ModelCategorySettings): string[] {
-  if (!settings) return [];
-  const models = [settings.primary].map((m) => m.trim()).filter(Boolean);
-  return models;
+async function getProviderInfo(
+  providerId: string,
+  settings: BernardSettings
+): Promise<{ baseURL: string | undefined; apiKey: string | undefined; type: "openai" | "ollama" }> {
+  const provider = settings.models.providers?.find(p => p.id === providerId);
+  if (!provider) {
+    return { baseURL: undefined, apiKey: undefined, type: "openai" };
+  }
+  return {
+    baseURL: provider.baseUrl,
+    apiKey: provider.apiKey,
+    type: provider.type,
+  };
 }
 
 /**
- * Resolve a prioritized list of models for a category.
+ * Build resolved model options from settings.
  */
-export async function getModelList(
-  category: ModelCategory,
+function buildModelOptions(
+  providerInfo: { baseURL: string | undefined; apiKey: string | undefined; type: "openai" | "ollama" },
+  roleSettings?: AgentModelRoleSettings | UtilityModelSettings
+): { id: string; options: Partial<Record<string, any>> } {
+  const { baseURL, apiKey, type } = providerInfo;
+
+  if (type === "openai") {
+    return {
+      id: roleSettings?.primary ?? DEFAULT_MODEL,
+      options: {
+        modelProvider: "openai",
+        configuration: {
+          baseURL,
+          apiKey,
+        },
+        temperature: roleSettings?.options?.temperature,
+        maxTokens: roleSettings?.options?.maxTokens,
+        timeout: 60000, // 60 second timeout for model calls
+      },
+    };
+  } else if (type === "ollama") {
+    return {
+      id: roleSettings?.primary ?? DEFAULT_MODEL,
+      options: {
+        modelProvider: "ollama",
+        baseUrl: baseURL,
+        temperature: roleSettings?.options?.temperature,
+        maxTokens: roleSettings?.options?.maxTokens,
+        timeout: 60000, // 60 second timeout for model calls
+      },
+    };
+  } else {
+    throw new Error(`Unknown model type: ${type}`);
+  }
+}
+
+/**
+ * Resolve a model configuration for a specific agent and role.
+ * 
+ * @param agentId - The agent's graph ID (e.g., "bernard_agent")
+ * @param roleId - The role ID within the agent (e.g., "main")
+ * @param opts - Optional override for fallback behavior
+ * @returns Resolved model ID and call options
+ * 
+ * @throws Error if agent is not registered
+ * @throws Error if role is not defined for the agent
+ */
+export async function resolveModel(
+  agentId: string,
+  roleId: string,
   opts: { fallback?: string[]; override?: string | string[] } = {}
-): Promise<string[]> {
-  const override = normalizeList(opts.override);
-  if (override.length) return override;
+): Promise<{ id: string; options: Partial<Record<string, any>> }> {
+  // Validate agent is registered
+  if (!isRegisteredAgent(agentId)) {
+    throw new Error(`Unknown agent: ${agentId}. Agents must be registered in agentModelRegistry.ts`);
+  }
+
+  // Get role definition for validation
+  const roleDefinition = getAgentRoleDefinition(agentId, roleId);
+  if (!roleDefinition) {
+    throw new Error(`Unknown role '${roleId}' for agent '${agentId}'. Check agentModelRegistry.ts for valid roles.`);
+  }
 
   const settings = await fetchSettings();
-  const fromSettings = listFromSettings(category, settings.models[category]);
-  if (fromSettings.length) return fromSettings;
 
-  const fallback = normalizeList(opts.fallback);
-  if (fallback.length) return fallback;
+  // Find the agent configuration in settings
+  const agentConfig = settings.models.agents.find(a => a.agentId === agentId);
+  if (!agentConfig) {
+    throw new Error(`Agent '${agentId}' not configured in settings. Add agent configuration to models.agents.`);
+  }
 
-  return [DEFAULT_MODEL];
+  // Find the role configuration
+  const roleConfig = agentConfig.roles.find(r => r.id === roleId);
+  if (!roleConfig) {
+    throw new Error(`Role '${roleId}' not configured for agent '${agentId}'. Add role configuration to models.agents[].roles.`);
+  }
+
+  // Handle override
+  const override = normalizeList(opts.override);
+  if (override.length > 0) {
+    return {
+      id: override[0],
+      options: {
+        modelProvider: "openai",
+        configuration: { baseURL: undefined, apiKey: undefined },
+        temperature: 0,
+        maxTokens: undefined,
+        timeout: 60000,
+      },
+    };
+  }
+
+  // Get provider information
+  const providerInfo = await getProviderInfo(roleConfig.providerId, settings);
+
+  return buildModelOptions(providerInfo, roleConfig);
 }
 
 /**
- * Resolve the first model id for a category (or a default).
+ * Resolve the utility model for system-wide tasks.
+ * 
+ * @param opts - Optional override for fallback behavior
+ * @returns Resolved model ID and call options
  */
-export async function getPrimaryModel(
-  category: ModelCategory,
+export async function resolveUtilityModel(
   opts: { fallback?: string[]; override?: string | string[] } = {}
-): Promise<string> {
-  const models = await getModelList(category, opts);
-  return models[0] ?? DEFAULT_MODEL;
+): Promise<{ id: string; options: Partial<Record<string, any>> }> {
+  const settings = await fetchSettings();
+
+  // Handle override
+  const override = normalizeList(opts.override);
+  if (override.length > 0) {
+    return {
+      id: override[0],
+      options: {
+        modelProvider: "openai",
+        configuration: { baseURL: undefined, apiKey: undefined },
+        temperature: 0,
+        maxTokens: undefined,
+        timeout: 60000,
+      },
+    };
+  }
+
+  const utilitySettings = settings.models.utility;
+
+  // Get provider information
+  const providerInfo = await getProviderInfo(utilitySettings.providerId, settings);
+
+  return buildModelOptions(providerInfo, utilitySettings);
 }
 
 /**
@@ -135,55 +254,3 @@ export function splitModelAndProvider(modelId: string): { model: string; provide
   const base = { model: model || modelId };
   return providerOnly?.length ? { ...base, providerOnly } : base;
 }
-
-/**
- * Resolve the primary model and any configured call options for a category.
- */
-export async function resolveModel(
-  category: ModelCategory,
-  opts: { fallback?: string[]; override?: string | string[] } = {}
-): Promise<{id: string, options: Partial<Record<string, any>>}> {
-  const settings = await fetchSettings();
-  const modelSettings = settings.models[category];
-  const list = await getModelList(category, opts);
-  const id = list[0] ?? DEFAULT_MODEL;
-
-  // Get provider information
-  const providerId = modelSettings?.providerId;
-  let baseURL: string | undefined;
-  let apiKey: string | undefined;
-  let type: "openai" | "ollama" = "openai";
-  if (providerId) {
-    const provider = settings.models.providers?.find(p => p.id === providerId);
-    if (provider) {
-      baseURL = provider.baseUrl;
-      apiKey = provider.apiKey;
-      type = provider.type;
-    }
-  }
-
-  if (type === "openai") {
-    return { id, options: { 
-      modelProvider: "openai",
-      configuration: {
-        baseURL,
-        apiKey,
-      },
-      temperature: modelSettings?.options?.temperature,
-      maxTokens: modelSettings?.options?.maxTokens,
-      timeout: 60000, // 60 second timeout for model calls
-    }};
-  } else if (type === "ollama") {
-    return { id, options: { 
-      modelProvider: "ollama",
-      baseUrl: baseURL,
-      temperature: modelSettings?.options?.temperature,
-      maxTokens: modelSettings?.options?.maxTokens,
-      timeout: 60000, // 60 second timeout for model calls
-    }};
-  } else {
-    throw new Error(`Unknown model type: ${type}`);
-  }
-}
-
-

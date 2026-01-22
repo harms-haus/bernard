@@ -47,9 +47,115 @@ core/src/
 | Log streaming | `lib/services/LogStreamer.ts` | Process logs with redaction |
 | Session storage | `lib/auth/sessionStore.ts` | Redis-backed session storage |
 | Settings cache | `lib/config/settingsCache.ts` | In-memory cache with refresh |
-| API routes | `lib/config/models.ts` | Model selection and validation |
-| BullMQ queue | `lib/infra/queue.ts` | Utility queue singleton |
-| Service actions | `lib/infra/service-queue/` | Async service command queue |
+| Model resolution | `lib/config/models.ts` | Agent-centric model selection API |
+| Agent registry | `lib/config/agentModelRegistry.ts` | Agent model definitions |
+
+## MODEL CONFIGURATION
+
+### Agent-Centric Model System
+
+The model configuration uses an **agent-centric** approach instead of the old category-based system. Each agent declares its model requirements in the registry, and the resolution API uses agent ID and role ID.
+
+### Agent Model Registry
+
+Agents are registered in `lib/config/agentModelRegistry.ts`:
+
+```typescript
+export const AGENT_MODEL_REGISTRY = [
+  {
+    name: "Bernard",
+    agentId: "bernard_agent",
+    description: "Primary AI assistant with full tool access",
+    modelRoles: [
+      {
+        id: "main",
+        label: "Main Model",
+        description: "Primary model for reasoning and responses",
+        required: true,
+      },
+    ],
+  },
+  {
+    name: "Gertrude",
+    agentId: "gertrude_agent",
+    description: "Guest-only assistant with limited tool access",
+    modelRoles: [
+      {
+        id: "main",
+        label: "Main Model",
+        description: "Primary model for guest conversations",
+        required: true,
+      },
+    ],
+  },
+] as const;
+```
+
+### Model Resolution API
+
+**For agents:**
+```typescript
+import { resolveModel } from '@/lib/config/models';
+
+const { id, options } = await resolveModel("bernard_agent", "main");
+```
+
+**For system utility tasks:**
+```typescript
+import { resolveUtilityModel } from '@/lib/config/models';
+
+const { id, options } = await resolveUtilityModel();
+```
+
+### Adding a New Agent
+
+1. **Register the agent** in `lib/config/agentModelRegistry.ts`:
+   ```typescript
+   export const AGENT_MODEL_REGISTRY = [
+     // ...existing agents
+     {
+       name: "Dexter",
+       agentId: "dexter_agent",
+       description: "Multi-model planning agent",
+       modelRoles: [
+         { id: "planner", label: "Planner Model", description: "High-capability model for complex planning", required: true },
+         { id: "executor", label: "Executor Model", description: "Fast model for tool execution", required: true },
+       ],
+     },
+   ];
+   ```
+
+2. **Update agent code** to use new signature:
+   ```typescript
+   // Old: resolveModel("router")
+   // New: resolveModel("dexter_agent", "planner")
+   ```
+
+3. **UI automatically shows** the new agent section on the models configuration page.
+
+### Settings Schema
+
+Models settings use the new agent-centric structure:
+
+```typescript
+type ModelsSettings = {
+  providers: Provider[];
+  utility: {
+    primary: string;
+    providerId: string;
+    options?: { temperature?: number; topP?: number; maxTokens?: number };
+  };
+  agents: Array<{
+    agentId: string;
+    roles: Array<{
+      id: string;
+      primary: string;
+      providerId: string;
+      options?: { temperature?: number; topP?: number; maxTokens?: number };
+    }>;
+  }>;
+};
+```
 
 ## CONVENTIONS
 - **Tool factory pattern**: Async functions returning `{ok: true; tool} | {ok: false; name, reason}`
