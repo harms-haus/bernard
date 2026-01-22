@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SERVICES } from '@/lib/services/ServiceConfig'
 import { getServiceManager } from '@/lib/api/factory'
-import { addServiceJob } from '@/lib/infra/service-queue'
-import type { ServiceAction } from '@/lib/infra/service-queue/types'
+import { addJob } from '@/lib/infra/worker-queue'
+import type { ServiceActionJobData } from '@/lib/infra/worker-queue'
 import { error, ok, notFound, badRequest } from './response'
 
 export interface ServiceStatusResponse {
@@ -61,11 +61,12 @@ export async function handleServiceCommand(
   }
 
   try {
-    const jobId = await addServiceJob(
+    const jobData: ServiceActionJobData = {
       serviceId,
-      command as ServiceAction,
-      { initiatedBy: 'api' }
-    )
+      action: command as 'start' | 'stop' | 'restart',
+      initiatedBy: 'api',
+    }
+    const jobId = await addJob(`service:${command}`, jobData)
 
     return ok<ServiceCommandResponse>({
       service: serviceId,

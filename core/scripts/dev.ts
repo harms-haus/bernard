@@ -40,8 +40,7 @@ function logService(service: string, message: string, color: keyof typeof colors
 }
 
 let nextDevProcess: ChildProcess | null = null
-let utilityWorkerProcess: ChildProcess | null = null
-let serviceWorkerProcess: ChildProcess | null = null
+let workerProcess: ChildProcess | null = null
 let shuttingDown = false
 
 function spawnProcess(
@@ -142,28 +141,12 @@ async function startNextDev(): Promise<ChildProcess> {
   return nextProcess
 }
 
-async function startUtilityWorker(): Promise<ChildProcess> {
-  log('\n=== Starting Utility Queue Worker ===\n', 'magenta')
+async function startWorker(): Promise<ChildProcess> {
+  log('\n=== Starting Unified Worker Queue ===\n', 'magenta')
 
-  const workerProcess = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
+  const process = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
     cwd: CORE_DIR,
-    name: 'utility-worker',
-    color: 'yellow',
-    env: {
-      ...process.env,
-      REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
-    },
-  })
-
-  return workerProcess
-}
-
-async function startServiceWorker(): Promise<ChildProcess> {
-  log('\n=== Starting Service Queue Worker ===\n', 'magenta')
-
-  const workerProcess = spawnProcess('npx', ['tsx', 'scripts/service-worker.ts'], {
-    cwd: CORE_DIR,
-    name: 'service-worker',
+    name: 'worker',
     color: 'green',
     env: {
       ...process.env,
@@ -171,8 +154,10 @@ async function startServiceWorker(): Promise<ChildProcess> {
     },
   })
 
-  return workerProcess
+  return process
 }
+
+// Rename local variable to avoid shadowing global process
 
 async function stopAllServices(): Promise<void> {
   if (shuttingDown) return
@@ -180,15 +165,9 @@ async function stopAllServices(): Promise<void> {
 
   log('\n=== Stopping Services ===\n', 'magenta')
 
-  if (serviceWorkerProcess && !serviceWorkerProcess.killed) {
-    logService('service-worker', 'Sending SIGINT...', 'green')
-    serviceWorkerProcess.kill('SIGINT')
-    await sleep(1000)
-  }
-
-  if (utilityWorkerProcess && !utilityWorkerProcess.killed) {
-    logService('utility-worker', 'Sending SIGINT...', 'yellow')
-    utilityWorkerProcess.kill('SIGINT')
+  if (workerProcess && !workerProcess.killed) {
+    logService('worker', 'Sending SIGINT...', 'green')
+    workerProcess.kill('SIGINT')
     await sleep(1000)
   }
 
@@ -221,11 +200,8 @@ async function main() {
     log('Services are now managed via queue', 'cyan')
     log('Access dashboard to start services: http://localhost:3456', 'green')
 
-    log('\n=== Starting Service Queue Worker ===\n', 'magenta')
-    serviceWorkerProcess = await startServiceWorker()
-
-    log('\n=== Starting Utility Queue Worker ===\n', 'magenta')
-    utilityWorkerProcess = await startUtilityWorker()
+    log('\n=== Starting Unified Worker ===\n', 'magenta')
+    workerProcess = await startWorker()
 
     log('\n=== Starting Next.js Dev Server ===\n', 'magenta')
 

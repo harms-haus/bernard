@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { handleAutoRename } from '@/lib/api/thread-auto-rename'
-import * as queueModule from '../../../../../lib/infra/queue'
+import * as queueModule from '../../../../../lib/infra/worker-queue'
 
 // Mock the queue module
-vi.mock('../../../../../lib/infra/queue', () => ({
-  addUtilityJob: vi.fn(),
+vi.mock('../../../../../lib/infra/worker-queue', () => ({
+  addJob: vi.fn(),
 }))
 
 // Mock the LangGraph SDK
@@ -17,12 +17,12 @@ vi.mock('@langchain/langgraph-sdk', () => ({
 }))
 
 describe('POST /api/threads/[threadId]/auto-rename', () => {
-  let addUtilityJob: any
+  let addJob: any
 
   beforeEach(() => {
     vi.clearAllMocks()
-    addUtilityJob = vi.mocked(queueModule.addUtilityJob)
-    addUtilityJob.mockResolvedValue('job-123')
+    addJob = vi.mocked(queueModule.addJob)
+    addJob.mockResolvedValue('job-123')
   })
 
   afterEach(() => {
@@ -42,7 +42,7 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
       const data = await result.json()
       expect(data.success).toBe(true)
       expect(data.data.threadId).toBe('thread-123')
-      expect(addUtilityJob).toHaveBeenCalledWith(
+      expect(addJob).toHaveBeenCalledWith(
         'thread-naming',
         { threadId: 'thread-123', messages },
         expect.objectContaining({
@@ -78,7 +78,7 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
 
       expect(result.status).toBe(200)
       expect(mockGetState).toHaveBeenCalledWith('thread-456')
-      expect(addUtilityJob).toHaveBeenCalledWith(
+      expect(addJob).toHaveBeenCalledWith(
         'thread-naming',
         {
           threadId: 'thread-456',
@@ -138,13 +138,13 @@ describe('POST /api/threads/[threadId]/auto-rename', () => {
       const result = await handleAutoRename('thread-complex', { messages })
 
       expect(result.status).toBe(200)
-      expect(addUtilityJob).toHaveBeenCalled()
-      const callArgs = addUtilityJob.mock.calls[0][1]
+      expect(addJob).toHaveBeenCalled()
+      const callArgs = addJob.mock.calls[0][1]
       expect(callArgs.messages).toEqual(messages)
     })
 
-    it('should return 500 when addUtilityJob fails', async () => {
-      addUtilityJob.mockRejectedValue(new Error('Queue error'))
+    it('should return 500 when addJob fails', async () => {
+      addJob.mockRejectedValue(new Error('Queue error'))
 
       const result = await handleAutoRename('thread-error', {
         messages: [{ type: 'human', content: 'Test' }]

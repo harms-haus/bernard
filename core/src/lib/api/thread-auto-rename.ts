@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Client } from '@langchain/langgraph-sdk'
-import { addUtilityJob } from '../infra/queue'
+import { addJob } from '../infra/worker-queue'
 import { error, ok } from './response'
 
 export interface AutoRenameBody {
@@ -38,7 +38,7 @@ export async function handleAutoRename(
   }
 
   try {
-    await addUtilityJob('thread-naming', { threadId, messages }, {
+    await addJob('thread-naming', { threadId, messages }, {
       jobId: `thread-naming-${threadId}`,
       deduplicationId: `thread-naming-${threadId}`,
     })

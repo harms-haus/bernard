@@ -1,31 +1,38 @@
 #!/usr/bin/env tsx
 /**
- * Utility Queue Worker
+ * Unified Worker Queue Worker
  *
- * Processes background jobs like thread naming.
+ * Processes all background jobs:
+ * - Thread naming
+ * - Service actions (start/stop/restart/check)
+ *
  * Run this alongside the main application.
  */
 
-import { startUtilityWorker } from '../src/lib/infra/queue'
+import { startWorker } from '../src/lib/infra/worker-queue'
 
-console.log('[UtilityWorker] Starting utility queue worker...')
+console.log('[WorkerQueue] Starting unified worker queue worker...')
 
-startUtilityWorker()
+startWorker()
   .then(() => {
-    console.log('[UtilityWorker] Utility queue worker started')
+    console.log('[WorkerQueue] Unified worker queue worker started')
   })
   .catch((error: Error) => {
-    console.error('[UtilityWorker] Failed to start:', error)
+    console.error('[WorkerQueue] Failed to start:', error)
     process.exit(1)
   })
 
 // Keep the process running
-process.on('SIGINT', () => {
-  console.log('[UtilityWorker] Shutting down...')
+process.on('SIGINT', async () => {
+  console.log('[WorkerQueue] Shutting down...')
+  const { stopWorker } = await import('../src/lib/infra/worker-queue')
+  await stopWorker()
   process.exit(0)
 })
 
-process.on('SIGTERM', () => {
-  console.log('[UtilityWorker] Shutting down...')
+process.on('SIGTERM', async () => {
+  console.log('[WorkerQueue] Shutting down...')
+  const { stopWorker } = await import('../src/lib/infra/worker-queue')
+  await stopWorker()
   process.exit(0)
 })
