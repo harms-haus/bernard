@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { LayoutDashboard, Settings, Server, Users as UsersIcon, Home } from 'lucide-react';
+import { LayoutDashboard, Settings, Server, Users as UsersIcon, Home, Briefcase } from 'lucide-react';
 import { useDynamicSidebar } from '../DynamicSidebarContext';
 import { Button } from '../../ui/button';
 import Link from 'next/link';
@@ -40,6 +40,16 @@ export function useAdminSidebarConfig() {
                     <>
                         <Server className={isOpen ? "mr-3 h-5 w-5" : "h-5 w-5"} />
                         {isOpen && <span>Services</span>}
+                    </>
+                )
+            },
+            {
+                id: 'jobs',
+                href: '/bernard/admin/jobs',
+                children: (
+                    <>
+                        <Briefcase className={isOpen ? "mr-3 h-5 w-5" : "h-5 w-5"} />
+                        {isOpen && <span>Jobs</span>}
                     </>
                 )
             },

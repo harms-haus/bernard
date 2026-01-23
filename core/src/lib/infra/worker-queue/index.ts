@@ -5,7 +5,7 @@
  * Exports queue management functions and job operations.
  */
 import { Queue, QueueEvents, Job } from 'bullmq';
-import { getRedis } from '../redis';
+import { getBullMQRedis } from '../redis';
 import { logger } from '@/lib/logging/logger';
 import { setupQueueLogging } from './logger';
 import { createWorker } from './processor';
@@ -41,7 +41,7 @@ export async function getWorkerQueue(): Promise<Queue<WorkerJobData, any, string
 
   workerQueueInitPromise = (async () => {
     try {
-      const connection = getRedis();
+      const connection = getBullMQRedis();
 
       workerQueue = new Queue<WorkerJobData, any, string>(
         WORKER_QUEUE_CONFIG.name,
@@ -204,15 +204,15 @@ export async function rerunJob(jobId: string): Promise<string | null> {
 
   if (!job || !job.data) return null;
 
-  const queue = await getWorkerQueue();
-  const newJob = await queue.add(job.name, job.data, {});
+  // Use addJob to ensure the new job is properly recorded in history
+  const newJobId = await addJob(job.name, job.data.data);
 
   // Record rerun relationship
-  await jobHistoryService.recordRerun(jobId, newJob.id!);
+  await jobHistoryService.recordRerun(jobId, newJobId);
 
-  logger.info({ originalJobId: jobId, newJobId: newJob.id }, '[WorkerQueue] Job rerun');
+  logger.info({ originalJobId: jobId, newJobId }, '[WorkerQueue] Job rerun');
 
-  return newJob.id ?? null;
+  return newJobId;
 }
 
 /**
@@ -302,10 +302,11 @@ export async function startWorker(): Promise<void> {
 
 /**
  * Stop the unified worker gracefully.
+ * When force is true, does not wait for active jobs to complete.
  */
-export async function stopWorker(): Promise<void> {
+export async function stopWorker(force = true): Promise<void> {
   if (worker) {
-    await worker.close();
+    await worker.close(force);
     worker = null;
     logger.info('[WorkerQueue] Worker stopped');
   }

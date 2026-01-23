@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/auth/server-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { QueueEvents } from 'bullmq';
-import { getRedis } from '@/lib/infra/redis';
+import { getBullMQRedis } from '@/lib/infra/redis';
 import { WORKER_QUEUE_CONFIG } from '@/lib/infra/worker-queue/config';
 
 /**
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const queueEvents = new QueueEvents(WORKER_QUEUE_CONFIG.name, {
-        connection: getRedis() as any,
+        connection: getBullMQRedis() as any,
         prefix: WORKER_QUEUE_CONFIG.prefix,
       });
 
@@ -65,10 +65,18 @@ export async function GET(req: NextRequest) {
 
       // Cleanup on client disconnect
       req.signal.addEventListener('abort', async () => {
+        if (isClosed) return;
         isClosed = true;
         clearInterval(keepalive);
-        await queueEvents.close();
-        controller.close();
+        try {
+          await queueEvents.close();
+        } finally {
+          try {
+            controller.close();
+          } catch {
+            // Controller may already be closed
+          }
+        }
       });
     },
   });

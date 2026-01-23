@@ -7,7 +7,7 @@ import { Job, Worker } from 'bullmq';
 import { logger } from '../../logging/logger';
 import { childLogger, type LogContext } from '../../logging/logger';
 import { jobHistoryService } from './history';
-import { getRedis } from '../redis';
+import { getBullMQRedis } from '../redis';
 import { WORKER_QUEUE_CONFIG } from './config';
 import type {
   WorkerJobData,
@@ -276,7 +276,7 @@ export async function createWorker(): Promise<Worker> {
       }
     },
     {
-      connection: getRedis() as any,
+      connection: getBullMQRedis() as any,
       prefix: WORKER_QUEUE_CONFIG.prefix,
       concurrency,
     }

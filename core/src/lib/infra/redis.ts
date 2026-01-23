@@ -1,7 +1,7 @@
 import { Redis } from "ioredis";
 import { logger } from '@/lib/logging/logger';
 
-const globalForRedis = global as unknown as { redis?: Redis };
+const globalForRedis = global as unknown as { redis?: Redis; bullmqRedis?: Redis };
 
 export function retryStrategy(times: number): number {
   // Linear backoff with cap at 5 seconds
@@ -57,5 +57,54 @@ export function getRedis(): Redis {
     });
   }
   return globalForRedis.redis;
+}
+
+/**
+ * Get a Redis connection optimized for BullMQ.
+ *
+ * BullMQ requires maxRetriesPerRequest to be null because it handles
+ * its own retry logic. Sharing a Redis connection with maxRetriesPerRequest
+ * set to a number causes BullMQ to throw an error.
+ */
+export function getBullMQRedis(): Redis {
+  if (!globalForRedis.bullmqRedis) {
+    const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+    globalForRedis.bullmqRedis = new Redis(url, {
+      retryStrategy,
+      maxRetriesPerRequest: null, // Required by BullMQ
+      enableReadyCheck: true,
+      lazyConnect: true,
+    });
+
+    // Share the same error handling logic
+    globalForRedis.bullmqRedis.on("error", (err: unknown) => {
+      if (err && typeof err === "object" && "name" in err && err.name === "AggregateError") {
+        return;
+      }
+
+      const error = err as Error & { code?: string; message?: string };
+      const errorMessage = error?.message || String(err);
+      const errorCode = error?.code || "";
+
+      if (
+        errorCode === "ECONNREFUSED" ||
+        errorMessage.includes("ECONNREFUSED") ||
+        errorMessage.includes("connect")
+      ) {
+        return;
+      }
+
+      logger.error({ error: errorMessage || err }, 'BullMQ Redis connection error');
+    });
+
+    globalForRedis.bullmqRedis.on("connect", () => {
+      logger.info('BullMQ Redis connected');
+    });
+
+    globalForRedis.bullmqRedis.on("ready", () => {
+      logger.info('BullMQ Redis ready to accept commands');
+    });
+  }
+  return globalForRedis.bullmqRedis;
 }
 
