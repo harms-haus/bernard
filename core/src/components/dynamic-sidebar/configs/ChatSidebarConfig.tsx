@@ -242,7 +242,7 @@ export function useChatSidebarConfig() {
     const { setHeader, setMenuItems, setFooterItems, reset, isOpen } = useDynamicSidebar();
     const { threads, threadsLoading, getThreads, createNewThread } = useThreads();
     const { state } = useAuth();
-    const searchParams = useSearchParams();
+    const [searchParams] = useSearchParams();
     const router = useRouter();
     const threadId = searchParams.get('threadId');
     const [isCreating, setIsCreating] = useState(false);

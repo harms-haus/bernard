@@ -51,7 +51,7 @@ export function DynamicSidebarMenuItem({
     if (href && !isDisabled) {
         return (
             <Link
-                href={href}
+                to={href}
                 className={baseClasses}
                 onClick={onClick}
                 title={!isOpen ? (typeof children === 'string' ? children : id) : undefined}

@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { SERVICES } from '@/lib/services/ServiceConfig'
 import { getServiceManager } from '@/lib/api/factory'
 import { addJob } from '@/lib/infra/worker-queue'
@@ -23,7 +22,7 @@ export interface ServiceCommandResponse {
   message: string
 }
 
-export async function handleGetService(serviceId: string): Promise<NextResponse> {
+export async function handleGetService(serviceId: string) {
   const config = SERVICES[serviceId]
 
   if (!config) {
@@ -47,7 +46,7 @@ export async function handleGetService(serviceId: string): Promise<NextResponse>
 export async function handleServiceCommand(
   serviceId: string,
   body: ServiceCommandBody
-): Promise<NextResponse> {
+) {
   const config = SERVICES[serviceId]
 
   if (!config) {

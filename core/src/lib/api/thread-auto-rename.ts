@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { Client } from '@langchain/langgraph-sdk'
 import { addJob } from '../infra/worker-queue'
 import { error, ok } from './response'
@@ -11,7 +10,7 @@ export interface AutoRenameBody {
 export async function handleAutoRename(
   threadId: string,
   body: AutoRenameBody
-): Promise<NextResponse> {
+) {
   let messages: Array<{ type: string; content: unknown }> = body.messages || []
 
   if (messages.length === 0) {

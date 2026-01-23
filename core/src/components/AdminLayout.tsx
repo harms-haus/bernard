@@ -3,8 +3,23 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { AdminSidebarConfig } from './dynamic-sidebar/configs/AdminSidebarConfig'
+import { PageHeaderConfig } from './dynamic-header/configs/PageHeaderConfig'
+import { cn } from '@/lib/utils'
 
-export function AdminLayout() {
+export function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AdminSidebarConfig>
+      <main className="flex-1 p-6 overflow-y-auto">
+        <PageHeaderConfig title="Admin Panel" subtitle="System Management">
+          {children}
+        </PageHeaderConfig>
+      </main>
+    </AdminSidebarConfig>
+  )
+}
+
+export function AdminLayoutWrapper() {
   const navigate = useNavigate()
   const { state: authState } = useAuth()
 
@@ -27,5 +42,9 @@ export function AdminLayout() {
     return null
   }
 
-  return <Outlet />
+  return (
+    <AdminLayout>
+      <Outlet />
+    </AdminLayout>
+  )
 }

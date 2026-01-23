@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { DashboardLayout } from './components/DashboardLayout'
 import { BernardLayout } from './components/BernardLayout'
 import { ChatLayout } from './components/ChatLayout'
-import { AdminLayout } from './components/AdminLayout'
+import { AdminLayoutWrapper } from './components/AdminLayout'
 import { UserLayoutWrapper } from './components/UserLayout'
 
 // Public routes
@@ -77,7 +77,7 @@ export function App() {
             </Route>
 
             {/* Admin routes */}
-            <Route path="/bernard/admin" element={<AdminLayout />}>
+            <Route path="/bernard/admin" element={<AdminLayoutWrapper />}>
               <Route index element={<AdminPanel />} />
               <Route path="models" element={<Models />} />
               <Route path="services" element={<Services />} />

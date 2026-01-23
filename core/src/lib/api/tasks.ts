@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth/server-helpers'
+import type { Context } from 'hono'
+import { requireAuth } from '@/lib/auth/hono-helpers'
 import { getTaskKeeper } from './factory'
 import { error, ok, badRequest } from './response'
 
@@ -8,16 +8,15 @@ interface TaskActionBody {
   taskId?: unknown
 }
 
-export async function handleGetTasks(request: NextRequest): Promise<NextResponse> {
+export async function handleGetTasks(c: Context) {
   try {
-    const authUser = await requireAuth()
-    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    const authUser = await requireAuth(c)
+    if (!authUser) return error('Admin access required', 403)
 
     const userId = authUser.user.id
-    const searchParams = request.nextUrl.searchParams
-    const includeArchived = searchParams.get('includeArchived') === 'true'
-    const limit = parseInt(searchParams.get('limit') || '50', 10)
-    const offset = parseInt(searchParams.get('offset') || '0', 10)
+    const includeArchived = c.req.query('includeArchived') === 'true'
+    const limit = parseInt(c.req.query('limit') || '50', 10)
+    const offset = parseInt(c.req.query('offset') || '0', 10)
 
     const keeper = getTaskKeeper()
     const result = await keeper.listTasks({ userId, includeArchived, limit, offset })
@@ -28,7 +27,7 @@ export async function handleGetTasks(request: NextRequest): Promise<NextResponse
       limit,
       offset,
     }
-    return NextResponse.json({ success: true, data: responseData })
+    return ok(responseData)
   } catch (err) {
     console.error('Failed to list tasks:', err)
     return error('Internal server error', 500)
@@ -36,12 +35,12 @@ export async function handleGetTasks(request: NextRequest): Promise<NextResponse
 }
 
 export async function handlePostTaskAction(
-  request: NextRequest,
+  c: Context,
   body: TaskActionBody
-): Promise<NextResponse> {
+) {
   try {
-    const authUser = await requireAuth()
-    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    const authUser = await requireAuth(c)
+    if (!authUser) return error('Admin access required', 403)
 
     const userId = authUser.user.id
     const { action, taskId } = body
@@ -76,15 +75,14 @@ export async function handlePostTaskAction(
 }
 
 export async function handleDeleteTask(
-  request: NextRequest,
-  searchParams: URLSearchParams
-): Promise<NextResponse> {
+  c: Context
+) {
   try {
-    const authUser = await requireAuth()
-    if (!authUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    const authUser = await requireAuth(c)
+    if (!authUser) return error('Admin access required', 403)
 
     const userId = authUser.user.id
-    const taskId = searchParams.get('taskId')
+    const taskId = c.req.query('taskId')
 
     if (!taskId) {
       return badRequest('taskId is required')

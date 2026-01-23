@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, ReactNode } from 'react';
+import React, { useState, useCallback, useMemo, ReactNode } from 'react';
 import { DynamicHeaderContext } from './DynamicHeaderContext';
 import { DynamicHeaderAction } from './types';
 
@@ -23,7 +23,20 @@ export function DynamicHeaderProvider({ children, defaultTitle = 'Bernard' }: Dy
     }, []);
 
     const setActions = useCallback((newActions: DynamicHeaderAction[]) => {
-        setActionsState(newActions);
+        setActionsState(prev => {
+            // Shallow comparison to prevent unnecessary updates
+            if (prev.length !== newActions.length) {
+                return newActions;
+            }
+            for (let i = 0; i < prev.length; i++) {
+                if (prev[i].id !== newActions[i].id || 
+                    prev[i].label !== newActions[i].label ||
+                    prev[i].onClick !== newActions[i].onClick) {
+                    return newActions;
+                }
+            }
+            return prev; // No changes, return previous reference
+        });
     }, []);
 
     const reset = useCallback(() => {
@@ -32,7 +45,7 @@ export function DynamicHeaderProvider({ children, defaultTitle = 'Bernard' }: Dy
         setActionsState([]);
     }, [defaultTitle]);
 
-    const value = {
+    const value = useMemo(() => ({
         title,
         subtitle,
         actions,
@@ -40,7 +53,7 @@ export function DynamicHeaderProvider({ children, defaultTitle = 'Bernard' }: Dy
         setSubtitle,
         setActions,
         reset,
-    };
+    }), [title, subtitle, actions, setTitle, setSubtitle, setActions, reset]);
 
     return (
         <DynamicHeaderContext.Provider value={value}>

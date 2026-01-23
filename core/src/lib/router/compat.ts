@@ -5,18 +5,19 @@ import {
   useNavigate,
   Link as LinkRR,
 } from 'react-router-dom'
+import { useMemo, useCallback } from 'react'
 
 // UseSearchParams compatibility
 export function useSearchParams() {
   const [rrSearchParams, rrSetSearchParams] = useSearchParamsRR()
 
-  const setParams = (params: Record<string, string>) => {
+  const setParams = useCallback((params: Record<string, string>) => {
     const newSearchParams = new URLSearchParams(rrSearchParams)
     Object.entries(params).forEach(([key, value]) => {
       newSearchParams.set(key, value)
     })
     rrSetSearchParams(newSearchParams)
-  }
+  }, [rrSearchParams, rrSetSearchParams])
 
   return [rrSearchParams, setParams] as const
 }
@@ -26,12 +27,20 @@ export function useRouter() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  return {
-    push: (path: string) => navigate(path),
-    replace: (path: string) => navigate(path, { replace: true }),
+  const push = useCallback((path: string) => {
+    navigate(path)
+  }, [navigate])
+
+  const replace = useCallback((path: string) => {
+    navigate(path, { replace: true })
+  }, [navigate])
+
+  return useMemo(() => ({
+    push,
+    replace,
     pathname: location.pathname,
     query: Object.fromEntries(new URLSearchParams(location.search)),
-  }
+  }), [push, replace, location.pathname, location.search])
 }
 
 // UsePathname compatibility

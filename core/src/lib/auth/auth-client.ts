@@ -11,7 +11,7 @@ if (!import.meta.env.PROD && !betterAuthUrl) {
     console.warn("VITE_BETTER_AUTH_URL is not set, using default localhost fallback");
 }
 
-const baseURL = betterAuthUrl || "http://127.0.0.1:3456";
+const baseURL = betterAuthUrl || "http://localhost:3456";
 
 export const authClient = createAuthClient({
     baseURL,
