@@ -10,8 +10,8 @@ import { type TestAuthContextType, TestAuthContext } from '@/hooks/useAuth';
 // Import TestDarkModeContext from useDarkMode
 import { type TestDarkModeContextType, TestDarkModeContext } from '@/hooks/useDarkMode';
 
-// Import TestStreamContext from StreamProvider
-import { type TestStreamContextType, TestStreamContext } from '@/providers/StreamProvider';
+// Import TestStreamContext from test-only utilities
+import { type TestStreamContextType, TestStreamContext } from '@/providers/StreamProvider.test-utils';
 
 // Import TestHealthStreamContext from useHealthStream
 import { type TestHealthStreamContextType, TestHealthStreamContext, HealthStreamTestProvider } from '@/hooks/useHealthStream';

@@ -1,6 +1,6 @@
 # Bernard Core Service
 
-The core service is a Next.js application running on port 3456. It serves as single entry point for all client interactions, handling authentication, request routing, and service orchestration.
+The core service is a Next.js application running on port 3456. It serves as a single entry point for all client interactions, handling authentication, request routing, and service orchestration.
 
 ## Setup
 

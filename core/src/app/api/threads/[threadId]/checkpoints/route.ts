@@ -103,7 +103,7 @@ export async function GET(
 
     // Fetch all checkpoint data
     const checkpointPromises = keys.map(async (key: string) => {
-      const data = await redis.json.get(key) as Record<string, unknown> | null;
+      const data = await redis!.json.get(key) as Record<string, unknown> | null;
       if (!data) return null;
 
       const parsed = parseCheckpointKey(key);

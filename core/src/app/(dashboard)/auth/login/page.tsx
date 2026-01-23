@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { Suspense } from "react";
 import { authClient } from "@/lib/auth/auth-client";
 import { getSafeRedirect } from "@/lib/auth/client-helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isSignUp, setIsSignUp] = useState(false);
@@ -99,5 +100,13 @@ export default function LoginPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <LoginForm />
+        </Suspense>
     );
 }

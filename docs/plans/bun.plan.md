@@ -405,7 +405,7 @@ FROM oven/bun:1.3.6-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # Copy source
@@ -486,10 +486,18 @@ npm run test
 ### 8.1 Consider bun:test migration (Optional)
 Vitest works with Bun, but `bun test` may offer better performance:
 
-```bash
-# Optional migration to bun:test
-bun add -d bun:test
-# Update vitest.config.ts to use bun:test runner
+**Note:** `bun:test` is built into Bun and does not require installation. To migrate:
+1. Rewrite test files to use Bun's built-in test API: `import { test, expect } from "bun:test"`
+2. Update `vitest.config.ts` (or test runner config) to use Bun's built-in runner instead of Vitest
+3. Remove Vitest dependencies if fully migrating
+
+**Example migration:**
+```typescript
+// Before (Vitest)
+import { test, expect } from 'vitest'
+
+// After (bun:test)
+import { test, expect } from "bun:test"
 ```
 
 ### 8.2 Leverage Bun-specific features
@@ -666,7 +674,7 @@ Track Bun releases for:
 ## References
 
 - [Bun Documentation](https://bun.sh/docs)
-- [Bun + Next.js Guide](https://bun.com/docs/guides/ecosystem/nextjs)
+- [Bun + Next.js Guide](https://bun.sh/docs/guides/ecosystem/nextjs)
 - [BullMQ Bun Support Issue #23629](https://github.com/oven-sh/bun/issues/23629)
 - [Better Auth Bun Issue #6781](https://github.com/better-auth/better-auth/issues/6781)
 - [Bun TypeScript Support](https://bun.sh/docs/runtime/typescript)

@@ -12,7 +12,7 @@ interface ThreadViewProps {
 
 export function ThreadView({ interrupt, apiUrl }: ThreadViewProps) {
   const searchParams = useSearchParams();
-  const threadId = searchParams.get("threadId") ?? undefined;
+  const threadId = searchParams.get("threadId");
   const interruptObj = Array.isArray(interrupt) 
     ? (interrupt.length > 0 ? interrupt[0] : undefined)
     : interrupt;

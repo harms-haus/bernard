@@ -8,10 +8,37 @@ const nextConfig = {
     },
   },
   webpack: (config, { isServer }) => {
+    // Suppress critical dependency warning from langchain/chat_models/universal
+    // which uses dynamic require() internally
+    config.module.exprContextCritical = false;
+
+    // Fix for Next.js dev server vendor chunk issue
     if (isServer) {
-      // Enable Node.js externals for server-side rendering
-      config.externalsPresets = { node: true };
-    } else {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: false,
+      };
+
+      // Externalize worker_threads to prevent bundling issues
+      if (typeof config.externals === 'function') {
+        const originalExternals = config.externals;
+        config.externals = (context, request, callback) => {
+          originalExternals(context, request, (err, result) => {
+            if (err) return callback(err);
+            if (result === undefined && request === 'worker_threads') {
+              return callback(null, 'worker_threads');
+            }
+            callback(null, result);
+          });
+        };
+      } else {
+        const existingExternals = Array.isArray(config.externals) ? config.externals : [];
+        config.externals = [...existingExternals, 'worker_threads'];
+      }
+    }
+
+    // Only configure for client builds
+    if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -20,9 +47,7 @@ const nextConfig = {
         crypto: false,
       }
     }
-    // Suppress critical dependency warning from langchain/chat_models/universal
-    // which uses dynamic require() internally
-    config.module.exprContextCritical = false;
+
     return config
   },
   async rewrites() {

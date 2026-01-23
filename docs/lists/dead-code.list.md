@@ -48,8 +48,7 @@
 #### `/examples/langgraph/` (14MB)
 - **Likelihood Dead:** 10/10
 - **References:**
-  - No imports from core codebase
-  - Only test files reference this as external template
+  - No production imports, but test fixtures reference schemas as mocks
 - **Description:** Complete LangGraph.js CLI and SDK repository copy
 - **Includes:**
   - `libs/cli/` - Command-line interface
@@ -86,7 +85,7 @@
   - Has own CHANGELOG.md, CONTRIBUTING.md
 - **Potential Original Use:** Reference implementation or copy-paste for development
 
-**Cleanup Impact:** Removing these would eliminate 60MB+ and 45+ orphaned test files
+**Cleanup Impact:** Removing these would eliminate 60MB+ and 50+ orphaned test files
 
 ---
 
@@ -182,12 +181,6 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
 - **Possible Original Use:** Display list of services in dashboard
 - **Evidence:** Replaced by ServiceCard or other components
 
-#### `/core/src/components/chat/ErrorState.tsx` (MessageErrorState)
-- **Likelihood Dead:** 6/10
-- **Current References:** Only used in test files: `ErrorState.test.tsx`
-- **Possible Original Use:** Display error state in chat
-- **Evidence:** Test-only component, production uses different error handling
-
 #### `/core/src/components/icons/github.tsx` (GitHubSVG)
 - **Likelihood Dead:** 9/10
 - **Current References:** Zero imports (GitHub appears in useAuth.ts error messages but as text, not component)
@@ -249,15 +242,18 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
 - **Evidence:** Helper function not used by weather tool
 
 #### `/core/src/lib/config/settingsCache.ts`
-- **Likelihood Dead:** 5/10
+- **Category:** Test-Only Exports
+- **Likelihood Dead:** 2/10 (Test-only, keep)
 - **Unused Exports:**
   - `clearSettingsCache()` - Line 18
 - **Current References:** Only used in test files, never in production
 - **Possible Original Use:** Clear Redis cache for settings
-- **Evidence:** Test-only utility
+- **Evidence:** Test-only utility - used by tests
+- **Recommendation:** Used only in tests — keep or remove only if tests updated/removed
 
 #### `/core/src/lib/config/settingsStore.ts`
-- **Likelihood Dead:** 4/10
+- **Category:** Test-Only Exports
+- **Likelihood Dead:** 2/10 (Test-only, keep)
 - **Unused Exports:**
   - `ensureDirectory(dir)` - Line 225
   - `parseJson(raw, schema)` - Line 231
@@ -267,7 +263,8 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
   - `defaultOauth()` - Line 268
 - **Current References:** Only used in test files (`settingsCache.test.ts`, `appSettings.test.ts`)
 - **Possible Original Use:** Test fixtures for configuration
-- **Evidence:** Test helper functions exposed publicly but not used
+- **Evidence:** Test helper functions exposed publicly but used by tests
+- **Recommendation:** Used only in tests — keep or remove only if tests updated/removed
 
 ---
 
@@ -442,13 +439,6 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
 - **Possible Original Use:** Example code for documentation
 - **Evidence:** Disabled for active demo, kept as reference
 
-#### `/examples/langgraphjs/libs/create-langgraph/src/tests/config.test.ts`
-- **Lines:** 261-262
-- **Content:** Commented code examples in test cases
-- **Likelihood Dead:** 3/10
-- **Possible Original Use:** Test examples
-- **Evidence:** Intentional comments for regex testing
-
 #### `/examples/langgraphjs/libs/langgraph-core/src/tests/python_port/interrupt.test.ts`
 - **Line:** 542
 - **Content:** Commented variable declaration `thread1root`
@@ -477,16 +467,6 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
   - Used by web-search tool when `SEARXNG_API_URL` env var not set
 - **Impact:** Search tool will fail silently if misconfigured
 - **Recommendation:** Replace with real public instance or document required config
-
-#### Memory Service Schema (Defined But Deferred)
-- **Likelihood Dead:** 6/10
-- **Location:** `/core/src/lib/config/appSettings.ts:144-151`
-- **Schema:** `MemoryServiceSchema` fully defined with embeddingModel, embeddingBaseUrl, etc.
-- **Current References:**
-  - Exported in `ServicesSettingsSchema` (line 238)
-  - Types exported (lines 280-286, 349)
-  - BUT system explicitly deferred: "No memory fields - memory system deferred to future implementation" (bernard/state.ts:4)
-- **Recommendation:** Implement memory system or remove unused schema
 
 #### Test Fixture Mock Configurations
 - **Likelihood Dead:** 3/10
@@ -618,6 +598,16 @@ All components in `/core/src/components/chat/thread/agent-inbox/` appear to be f
 
 ## ACTIVE CODE (DO NOT DELETE)
 
+### Active Test Infrastructure (NOT DEAD CODE)
+
+#### `/core/src/components/chat/ErrorState.tsx` (MessageErrorState)
+- **Category:** Test-only component (Keep)
+- **Likelihood Dead:** 1/10 (Test-only infrastructure)
+- **Current References:** Only used in test files: `ErrorState.test.tsx`
+- **Possible Original Use:** Display error state in chat
+- **Evidence:** Test-only component used in ErrorState.test.tsx - removing it would require updating tests
+- **Recommendation:** Safe to keep as test helper - referenced by ErrorState.test.tsx so future scans should treat it as active test code
+
 ### Admin API Routes (2/10 - LIKELY ACTIVE)
 
 The following routes are actively used via `adminApiClient` and should NOT be deleted:
@@ -696,7 +686,7 @@ The following routes are actively used via `adminApiClient` and should NOT be de
 ### Phase 2: High Priority (Week 1)
 4. **Remove Unused Utility Modules**
    - Delete: `formatDuration.ts` (entire module)
-   - Make string utility functions private or unused
+   - Make string utility functions private or remove unused ones
    - Remove unused exports from `tokenCounter.ts`, `searxng/index.ts`, `geocoding.ts`
    - **Impact:** ~200 LOC, smaller bundle size
 

@@ -198,7 +198,6 @@ describe('useAssistantMessageData', () => {
 
   describe('toolCallsHaveContents', () => {
     it('should be true when tool calls have args', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const message: any = {
         content: 'Searching...',
         role: 'assistant',
@@ -213,7 +212,6 @@ describe('useAssistantMessageData', () => {
     });
 
     it('should be false when tool calls have empty args', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const message: any = {
         content: 'Searching...',
         role: 'assistant',

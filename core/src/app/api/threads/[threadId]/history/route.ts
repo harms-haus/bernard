@@ -47,10 +47,12 @@ async function ensureRedisConnection(): Promise<void> {
     throw error;
   });
   
-  await globalForNodeRedis.redisConnectPromise;
-  
-  // Clear the promise after successful connection
-  globalForNodeRedis.redisConnectPromise = undefined;
+  try {
+    await globalForNodeRedis.redisConnectPromise;
+  } finally {
+    // Clear the promise after successful connection
+    globalForNodeRedis.redisConnectPromise = undefined;
+  }
 }
 
 /**
@@ -157,7 +159,7 @@ async function fetchCheckpointMap(threadId: string): Promise<Map<string, { check
       };
     });
 
-    const checkpoints = (await Promise.all(checkpointPromises)).filter((c): c is NonNullable<typeof checkpoints[number]> => c !== null);
+    const checkpoints = (await Promise.all(checkpointPromises)).filter((c): c is Exclude<typeof checkpointPromises[number] extends Promise<infer T> ? T : never, null> => c !== null);
 
     // Sort by timestamp ascending (oldest first) to match history order
     checkpoints.sort((a, b) => a.checkpoint_ts - b.checkpoint_ts);
