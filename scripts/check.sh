@@ -9,7 +9,7 @@ run_check() {
   local dir="$2"
   local cmd="$3"
   echo "=== $name ==="
-  (cd "$ROOT/$dir" && npm run $cmd)
+  (cd "$ROOT/$dir" && bun run $cmd)
   if [ $? -ne 0 ]; then
     FAILED=1
     echo "$name FAILED"

@@ -10,7 +10,7 @@ cd "$BERNARD_UI_DIR" || exit 1
 case "$1" in
     start)
         echo "Starting Bernard UI..."
-        npm run dev
+        bun run dev
         ;;
     stop)
         echo "Stopping Bernard UI..."

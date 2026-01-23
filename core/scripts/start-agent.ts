@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 import { startServer } from '@langchain/langgraph-api/server'
 import { readFileSync } from 'node:fs'
 import * as path from 'node:path'

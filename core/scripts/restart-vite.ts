@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 /**
  * Vite restart wrapper script
  * Kills any existing Vite process on port 8810 and starts fresh

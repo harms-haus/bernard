@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 /**
  * Development startup script for Bernard Core
  *
@@ -148,7 +148,7 @@ async function startNextDev(): Promise<ChildProcess> {
 async function startWorker(): Promise<ChildProcess> {
   log('\n=== Starting Unified Worker Queue ===\n', 'magenta')
 
-  const worker = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
+  const worker = spawnProcess('bun', ['run', 'scripts/worker.ts'], {
     cwd: CORE_DIR,
     name: 'worker',
     color: 'green',
