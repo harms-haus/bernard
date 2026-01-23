@@ -17,13 +17,30 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Client-side Node.js polyfills (for browser compatibility)
+      // These are empty modules since Node.js built-ins aren't available in browser
+      fs: path.resolve(__dirname, './src/lib/polyfills/empty.ts'),
+      net: path.resolve(__dirname, './src/lib/polyfills/empty.ts'),
+      tls: path.resolve(__dirname, './src/lib/polyfills/empty.ts'),
+      crypto: path.resolve(__dirname, './src/lib/polyfills/empty.ts'),
     },
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      // Externalize worker_threads for server-side builds (handled by Bun)
+      external: (id) => {
+        // Only externalize for server builds (backend/server.ts)
+        if (id === 'worker_threads') {
+          return true
+        }
+        return false
+      },
+    },
   },
   optimizeDeps: {
+    // Suppress langchain warnings (equivalent to webpack exprContextCritical: false)
     exclude: ['langchain/chat_models/universal'],
   },
   define: {

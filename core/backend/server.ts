@@ -4,6 +4,7 @@ import { serveStatic } from 'hono/bun'
 import { corsConfig } from './middleware/cors'
 import { errorHandler } from './middleware/errorHandler'
 import { authMiddleware } from './middleware/auth'
+import { routeHeadersMiddleware } from './middleware/headers'
 import routes from './routes'
 
 const app = new Hono()
@@ -13,6 +14,9 @@ app.use('*', logger())
 
 // CORS configuration
 app.use('*', corsConfig)
+
+// Route-specific headers middleware (applies no-cache headers to streaming routes)
+app.use('/api/*', routeHeadersMiddleware)
 
 // Apply API routes first (API routes handle their own auth)
 app.route('/api', routes)
