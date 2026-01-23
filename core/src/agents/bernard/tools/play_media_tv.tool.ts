@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { callService } from "home-assistant-js-websocket";
-import { exec } from "child_process";
+import { exec } from "node:child_process";
 import { promisify } from "util";
 
 import type { HARestConfig } from "./home-assistant-list-entities.tool";

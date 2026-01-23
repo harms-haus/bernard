@@ -1,0 +1,9 @@
+# bunfig.toml - Bun configuration
+
+[install]
+# Use hoisted linker strategy
+linker = "hoisted"
+
+[run]
+# Enable system shell (supports bash scripts)
+shell = "system"

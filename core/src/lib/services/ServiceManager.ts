@@ -84,7 +84,7 @@ export class ServiceManager {
     const cwd = path.join(process.cwd(), directory)
 
     try {
-      execSync("npm install --legacy-peer-deps", {
+      execSync("bun install", {
         cwd,
         encoding: "utf-8",
         stdio: "inherit",
