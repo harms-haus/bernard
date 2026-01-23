@@ -3,7 +3,7 @@ import { ReactNode, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "./providers/Stream";
 import { useState, FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/lib/router/compat";
 import { Button } from "@/components/ui/button";
 import { Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
@@ -65,7 +65,7 @@ function ScrollToBottom(props: { className?: string }) {
 }
 
 export function Thread() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const threadId = searchParams.get("threadId");
   const [input, setInput] = useState("");
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);

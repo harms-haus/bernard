@@ -1,8 +1,7 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { Link, usePathname } from '@/lib/router/compat';
 import { cn } from '@/lib/utils';
 import { useDynamicSidebar } from './DynamicSidebarContext';
 

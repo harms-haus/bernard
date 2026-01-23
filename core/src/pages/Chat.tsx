@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from '@/lib/router/compat';
+import { useRouter } from '@/lib/router/compat';
 import { Thread } from '@/components/chat/thread';
 import { StreamProvider } from '@/components/chat/thread/providers/Stream';
 import { ThreadProvider } from '@/components/chat/thread/providers/Thread';
@@ -11,11 +11,13 @@ import { useThreads } from '@/components/chat/thread/providers/Thread';
 import { AgentSelectorProvider, useAgentSelector } from '@/components/chat/AgentSelector';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/lib/auth/types';
+import { ChatSidebarConfig } from '@/components/dynamic-sidebar/configs';
+import { ChatHeaderConfig } from '@/components/dynamic-header/configs';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function ChatHeaderController() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const threadId = searchParams.get('threadId');
   const { threads } = useThreads();
   const { setTitle, setSubtitle, reset } = useDynamicHeader();
@@ -43,7 +45,7 @@ function ChatHeaderController() {
 
 function ChatContent() {
   const { selectedAgent } = useAgentSelector();
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get('threadId');
 
@@ -66,10 +68,7 @@ function ChatContent() {
   );
 }
 
-import { ChatSidebarConfig } from '@/components/dynamic-sidebar/configs';
-import { ChatHeaderConfig } from '@/components/dynamic-header/configs';
-
-export default function Chat() {
+export function Chat() {
   const { state } = useAuth();
 
   // Use session role if available, otherwise default to guest

@@ -24,8 +24,8 @@ beforeAll(() => {
 // Using vi.spyOn in individual tests instead of vi.mock at module level
 // to avoid overriding the global document object which breaks renderHook
 
-vi.mock('next/navigation', async () => {
-  const actual = await vi.importActual('next/navigation');
+vi.mock('@/lib/router/compat', async () => {
+  const actual = await vi.importActual('@/lib/router/compat');
   return {
     ...actual,
     useSearchParams: vi.fn(() => ({
@@ -75,7 +75,7 @@ import { useStreamContext } from '@/providers/StreamProvider';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useThreads } from '@/providers/ThreadProvider';
 import { getAPIClient } from '@/lib/api/client';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from '@/lib/router/compat';
 
 describe('useThreadData', () => {
   beforeEach(() => {

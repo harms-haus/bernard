@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useCallback } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from '@/lib/router/compat';
 import { v4 as uuidv4 } from 'uuid';
 import type { Message } from '@langchain/langgraph-sdk';
 import { getAPIClient } from '@/lib/api/client';
@@ -26,7 +26,7 @@ export interface ThreadData {
 }
 
 export function useThreadData(): ThreadData {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get('threadId');
 

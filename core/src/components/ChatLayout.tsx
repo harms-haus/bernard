@@ -4,7 +4,7 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
-export function AdminLayout() {
+export function ChatLayout() {
   const navigate = useNavigate()
   const { state: authState } = useAuth()
 
@@ -14,16 +14,10 @@ export function AdminLayout() {
       navigate('/auth/login', { replace: true })
       return
     }
-
-    // Redirect to 403 when user is not admin
-    if (!authState.loading && authState.user?.role !== 'admin') {
-      navigate('/403', { replace: true })
-      return
-    }
   }, [authState, navigate])
 
-  // Don't render anything while checking auth, if unauthenticated, or if not admin
-  if (authState.loading || !authState.user || authState.user?.role !== 'admin') {
+  // Don't render anything while checking auth or if unauthenticated
+  if (authState.loading || !authState.user) {
     return null
   }
 

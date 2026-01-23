@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "@/lib/router/compat";
 import { getApiKey } from "../api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -77,7 +77,7 @@ function StreamSession({
   apiUrl,
   assistantId,
 }: StreamSessionProps) {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const router = useRouter();
   const threadId = searchParams.get("threadId");
   const { getThreads, setThreads } = useThreads();

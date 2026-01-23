@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useDynamicSidebar } from '../DynamicSidebarContext';
 import { useAuth } from '@/hooks/useAuth';
-import Link from 'next/link';
+import { Link } from '@/lib/router/compat';
 
 export function useUserSidebarConfig() {
     const { setHeader, setMenuItems, setFooterItems, reset, isOpen } = useDynamicSidebar();
@@ -49,7 +49,7 @@ export function useUserSidebarConfig() {
             footerItems.push(
                 <Link
                     key="admin-link"
-                    href="/bernard/admin"
+                    to="/bernard/admin"
                     className="flex items-center px-2 py-2 text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
                 >
                     <Shield className={isOpen ? "mr-3 h-5 w-5" : "h-5 w-5"} />

@@ -3,7 +3,7 @@ import { ThreadActionsView } from "./components/thread-actions-view";
 import { useState } from "react";
 import { HumanInterrupt } from "@langchain/langgraph/prebuilt";
 import { useStreamContext } from "../providers/Stream";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/lib/router/compat";
 
 interface ThreadViewProps {
   interrupt: HumanInterrupt | HumanInterrupt[];
@@ -11,7 +11,7 @@ interface ThreadViewProps {
 }
 
 export function ThreadView({ interrupt, apiUrl }: ThreadViewProps) {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const threadId = searchParams.get("threadId");
   const interruptObj = Array.isArray(interrupt) 
     ? (interrupt.length > 0 ? interrupt[0] : undefined)

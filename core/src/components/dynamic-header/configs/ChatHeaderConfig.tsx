@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useDynamicHeader } from '../DynamicHeaderContext';
 import { PenSquare, Ghost } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/router/compat';
 
 export function useChatHeaderConfig() {
     const { setTitle, setSubtitle, setActions, reset } = useDynamicHeader();

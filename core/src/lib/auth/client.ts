@@ -1,6 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 
-const BETTER_AUTH_URL = process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "http://127.0.0.1:3456";
+const BETTER_AUTH_URL = import.meta.env.VITE_BETTER_AUTH_URL || "http://127.0.0.1:3456";
 
 export const authClient = createAuthClient({
   baseURL: BETTER_AUTH_URL,
