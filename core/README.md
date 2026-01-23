@@ -1,60 +1,117 @@
-# Better Auth Test Demo
+# Bernard Core Service
 
-This project is a Next.js application demonstrating the integration of [Better Auth](https://better-auth.com/) with SQLite and Tailwind CSS.
-
-## Features
-
-- **Authentication**: Email and Password scheme.
-- **Database**: SQLite (via `better-sqlite3`).
-- **Authorisation**: Role-based access control with an Admin plugin.
-- **Pages**:
-  - `/bernard/hello`: Publicly accessible page.
-  - `/bernard/user`: Protected page (requires login).
-  - `/bernard/admin`: Admin-only page (requires `admin` role).
-  - `/auth/login`: Custom login and registration UI.
-  - `/auth/logout`: Sign out functionality.
-- **API**:
-  - `/api/auth/*`: Better Auth handlers.
-  - `/api/admin`: Example admin-restricted API endpoint.
+The core service is a Next.js application running on port 3456. It serves as single entry point for all client interactions, handling authentication, request routing, and service orchestration.
 
 ## Setup
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### 1. Install Bun
 
-2. **Environment Variables**:
-   Create a `.env` file (one has been provided for you):
-   ```env
-   BETTER_AUTH_SECRET=<your-secret>
-   BETTER_AUTH_URL=http://localhost:3456
-   NEXT_PUBLIC_APP_URL=http://localhost:3456
-   ```
+Bun is required for this project. Install via:
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
 
-3. **Database Migration**:
-   Run the following to initialize the SQLite database:
-   ```bash
-   npx @better-auth/cli migrate
-   ```
+Verify installation: `bun --version` (should be ≥1.3.6)
 
-4. **Run the Development Server**:
-   ```bash
-   npm run dev
-   ```
+### 2. Install Dependencies
 
-## Testing Roles
+From the `core/` directory:
+```bash
+bun install
+```
 
-By default, new users do not have the `admin` role. To test the admin page:
-1. Sign up a new user via `/auth/login`.
-2. Update the user's role in the `auth.db` database to `admin`.
-   - You can use a SQLite explorer or the `@better-auth/cli` if available.
-   - Alternatively, you can add your user ID to the `adminUserIds` array in `src/lib/auth.ts`.
+### 3. Environment Variables
 
-## Tech Stack
+Create a `.env` file (one has been provided for you):
+```env
+BETTER_AUTH_SECRET=<your-secret>
+BETTER_AUTH_URL=http://localhost:3456
+NEXT_PUBLIC_APP_URL=http://localhost:3456
+```
 
-- **Framework**: Next.js 15+
-- **Auth**: Better Auth
-- **DB**: SQLite
-- **Styling**: Tailwind CSS
-- **Design**: Premium Dark Mode
+### 4. Run Development Server
+
+Start the Next.js development server:
+```bash
+bun run dev
+```
+
+The server will be available at http://localhost:3456
+
+### 5. Start Bernard Agent
+
+Start the Bernard LangGraph agent separately:
+```bash
+bun run agent:bernard
+```
+
+The agent will be available at http://localhost:2024
+
+## Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `bun run dev` | Start Next.js dev server (port 3456) |
+| `bun run dev:core` | Start core server only |
+| `bun run agent:bernard` | Start Bernard LangGraph agent (port 2024) |
+| `bun run build` | Build for production |
+| `bun run start` | Start production server |
+| `bun run lint` | Run ESLint |
+| `bun run type-check` | TypeScript type checking |
+| `bun run test` | Run tests |
+| `bun run test:watch` | Run tests in watch mode |
+| `bun run test:coverage` | Run tests with coverage report |
+| `bun run test:ui` | Run tests with UI |
+
+## Architecture
+
+The core service follows an API gateway pattern:
+
+- **OpenAI-compatible endpoints** at `/api/v1/*` proxy requests to appropriate services:
+  - Chat completions → Bernard agent
+  - Audio transcription → whisper.cpp
+  - Speech synthesis → Kokoro
+
+- **LangGraph SDK endpoints** at `/threads/*`, `/runs/*`, `/assistants/*` for direct agent access
+
+- **Admin endpoints** at `/api/admin/*`, `/api/services/*` for service management
+
+## Authentication
+
+Authentication is implemented using Better-Auth with:
+- Email/password credentials
+- OAuth providers (GitHub, Google)
+- Session-based authentication with Redis backend
+- Role-based access control (admin role for elevated permissions)
+
+## Services
+
+| Service | Port | Type | Description |
+|----------|-------|-------|-------------|
+| Core API | 3456 | node | API gateway and frontend |
+| Bernard Agent | 2024 | node | LangGraph agent |
+| Redis | 6379 | docker | Session storage and queues |
+
+## Testing
+
+Run tests with:
+```bash
+bun run test
+```
+
+Run tests in watch mode during development:
+```bash
+bun run test:watch
+```
+
+## Building for Production
+
+Build the application:
+```bash
+bun run build
+```
+
+Start the production server:
+```bash
+bun run start
+```
