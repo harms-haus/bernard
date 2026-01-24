@@ -5,23 +5,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Root-Level Commands (run from repository root)
-- `npm run dev` - Start development server (core Next.js app on port 3456)
-- `npm run build` - Build the core Next.js application
-- `npm run start` - Start production server
-- `npm run check` - Run full check suite (type-check, lint, test)
-- `npm run type-check` - Run TypeScript type checking
-- `npm run test` - Run Vitest tests
+- `bun run dev` - Start development server (core Next.js app on port 3456)
+- `bun run build` - Build core Next.js application
+- `bun run start` - Start production server
+- `bun run check` - Run full check suite (type-check, lint, test)
+- `bun run type-check` - Run TypeScript type checking
+- `bun run test` - Run Vitest tests
 
 ### Core-Specific Commands (run from `core/` directory)
-- `npm run dev` - Start Next.js dev server on port 3456
-- `npm run agent:bernard` - Start Bernard LangGraph agent server (port 2024)
-- `npm run build` - Build for production
-- `npm run lint` - Run ESLint
-- `npm run type-check` - TypeScript type checking
-- `npm run test` - Run tests once
-- `npm run test:watch` - Run tests in watch mode
-- `npm run test:coverage` - Run tests with coverage report
-- `npm run test:ui` - Run tests with UI
+- `bun run dev` - Start Next.js dev server on port 3456
+- `bun run agent:bernard` - Start Bernard LangGraph agent server (port 2024)
+- `bun run build` - Build for production
+- `bun run lint` - Run ESLint
+- `bun run type-check` - TypeScript type checking
+- `bun run test` - Run tests once
+- `bun run test:watch` - Run tests in watch mode
+- `bun run test:coverage` - Run tests with coverage report
+- `bun run test:ui` - Run tests with UI
 
 ### Service-Specific Commands
 - **Whisper.cpp (STT)**: Located at `services/whisper.cpp/` - requires CMake build, runs on port 8870
@@ -31,8 +31,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Running Individual Tests
 ```bash
 # From core/ directory
-npx vitest run path/to/test.test.ts
-npx vitest run path/to/test.test.ts -t "test name"
+bunx vitest run path/to/test.test.ts
+bunx vitest run path/to/test.test.ts -t "test name"
 ```
 
 ## Architecture Overview
@@ -114,7 +114,7 @@ Settings include: models, providers, services, OAuth, backups, limits, automatio
 ### Environment Configuration
 
 - `core/langgraph.json` defines agent graphs and references `.env`
-- Node version: 20
+- Runtime: Bun v1.3.6+
 - TypeScript strict mode enabled
 - Path alias: `@/*` maps to `core/src/*`
 

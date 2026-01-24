@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { LayoutDashboard, Settings, Server, Users as UsersIcon, Home, Briefcase } from 'lucide-react';
 import { useDynamicSidebar } from '../DynamicSidebarContext';
 import { Button } from '../../ui/button';
-import Link from 'next/link';
+import { Link } from '@/lib/router/compat';
 
 export function useAdminSidebarConfig() {
     const { setHeader, setMenuItems, setFooterItems, reset, isOpen } = useDynamicSidebar();
@@ -72,7 +72,7 @@ export function useAdminSidebarConfig() {
                 className="w-full justify-start"
                 asChild
             >
-                <Link href="/bernard/chat">
+                <Link to="/bernard/chat">
                     <Home className={isOpen ? "mr-2 h-4 w-4" : "h-4 w-4"} />
                     {isOpen && "Chat"}
                 </Link>

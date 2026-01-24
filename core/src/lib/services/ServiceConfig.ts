@@ -52,10 +52,9 @@ export const SERVICES: Record<string, ServiceConfig> = {
     port: 2024,
     type: "node",
     directory: "core",
-    script: "./node_modules/.bin/tsx scripts/start-agent.ts restart",
-    healthPath: "/info",
+    script: "bun run scripts/start-agent.ts restart",
     dependencies: ["redis"],
-    startupTimeout: 20,
+    startupTimeout: 45,
     color: "#1dd1a1",
   },
   whisper: {

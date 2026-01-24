@@ -10,11 +10,11 @@ cd "$BERNARD_AGENT_DIR" || exit 1
 case "$1" in
     start)
         echo "Starting Bernard Agent..."
-        npm run agent:bernard
+        bun run agent:bernard
         ;;
     stop)
         echo "Stopping Bernard Agent..."
-        pkill -f "tsx.*start-agent.ts"
+        pkill -f "bun.*start-agent.ts"
         ;;
     restart)
         echo "Restarting Bernard Agent..."
@@ -23,7 +23,7 @@ case "$1" in
         "$0" start
         ;;
     status)
-        if pgrep -f "tsx.*start-agent.ts" > /dev/null; then
+        if pgrep -f "bun.*start-agent.ts" > /dev/null; then
             echo "Bernard Agent: running"
         else
             echo "Bernard Agent: stopped"

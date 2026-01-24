@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { Context } from 'hono'
 import { getHealthChecker } from './factory'
 import { ok, error } from './response'
 
@@ -16,9 +16,8 @@ export interface HealthCheckResponse {
   timestamp: string
 }
 
-export async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
-  const searchParams = request.nextUrl.searchParams
-  const service = searchParams.get("service")
+export async function handleHealthCheck(c: Context) {
+  const service = c.req.query("service")
 
   try {
     const checker = getHealthChecker()

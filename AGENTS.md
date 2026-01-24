@@ -1,6 +1,6 @@
 # Bernard - AI Agent Monorepo
 
-**Generated:** 2026-01-19
+**Generated:** 2026-01-23
 **Commit:** 7e4a504
 **Branch:** dev
 
@@ -43,18 +43,34 @@ Monorepo with Next.js API server, LangGraph AI agent (Bernard), Python FastAPI T
 | whisper | 8870 | cpp | Speech-to-text |
 | kokoro | 8880 | python | Text-to-speech |
 
+## BUN INSTALLATION
+Bun is required for this project. Install via:
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+Verify installation: `bun --version` (should be ≥1.3.6)
+
+## COMMAND MAPPING
+| Command | npm (old) | bun (current) |
+|---------|------------|---------------|
+| dev | npm run dev | bun run dev |
+| build | npm run build | bun run build |
+| type-check | npm run type-check | bun run type-check |
+| test | npm run test | bun run test |
+| lint | npm run lint | bun run lint |
+
 ## COMMANDS
 ```bash
 # Root (delegates to core)
-npm run dev              # Start core dev server
-npm run build            # Build core app
-npm run type-check       # TypeScript type check
+bun run dev              # Start core dev server
+bun run build            # Build core app
+bun run type-check       # TypeScript type check
 
 # Core (TypeScript)
 cd core
-npm run agent:bernard   # Start LangGraph agent
-npm run test            # Vitest (node environment)
-npm run lint            # ESLint check
+bun run agent:bernard   # Start LangGraph agent
+bun run test            # Vitest tests
+bun run lint            # ESLint check
 
 # Kokoro (Python)
 cd services/kokoro
@@ -86,3 +102,4 @@ cmake -B build && cmake --build build --config Release
 ## GAPS & TODOS
 - **No CI/CD**: No GitHub Actions workflows configured
 - **No Prettier**: Formatting relies on ESLint only
+- **Bun Migration**: Completed Phase 1 (2026-01-23) - Runtime and package manager migrated to Bun

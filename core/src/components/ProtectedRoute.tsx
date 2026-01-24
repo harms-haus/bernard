@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/router/compat';
 import { useAuth } from '@/hooks/useAuth';
 
 interface ProtectedRouteProps {

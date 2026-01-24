@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, memo } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from '@/lib/router/compat';
 import {
     Plus,
     Shield,
@@ -30,7 +30,7 @@ import { getAPIClient } from '@/lib/api/client';
 import { TypedText } from '../../chat/TypedText';
 import { cn } from '@/lib/utils';
 import { ThreadListItem } from '@/services/api';
-import Link from 'next/link';
+import { Link } from '@/lib/router/compat';
 
 // Memoized Thread Item Component
 const ThreadMenuItemInner = ({
@@ -45,7 +45,7 @@ const ThreadMenuItemInner = ({
     isOpen: boolean;
 }) => {
     const { updateThread, deleteThread, getThreads } = useThreads();
-    const searchParams = useSearchParams();
+    const [searchParams] = useSearchParams();
     const router = useRouter();
     const currentThreadId = searchParams.get('threadId');
     const [isRenaming, setIsRenaming] = useState(false);
@@ -242,7 +242,7 @@ export function useChatSidebarConfig() {
     const { setHeader, setMenuItems, setFooterItems, reset, isOpen } = useDynamicSidebar();
     const { threads, threadsLoading, getThreads, createNewThread } = useThreads();
     const { state } = useAuth();
-    const searchParams = useSearchParams();
+    const [searchParams] = useSearchParams();
     const router = useRouter();
     const threadId = searchParams.get('threadId');
     const [isCreating, setIsCreating] = useState(false);
@@ -325,7 +325,7 @@ export function useChatSidebarConfig() {
             footerItems.push(
                 <Link
                     key="admin-link"
-                    href="/bernard/admin"
+                    to="/bernard/admin"
                     className="flex items-center px-2 py-2 text-sm font-medium rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
                 >
                     <Shield className={isOpen ? "mr-3 h-5 w-5" : "h-5 w-5"} />

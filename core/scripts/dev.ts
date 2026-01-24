@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 /**
  * Development startup script for Bernard Core
  *
@@ -51,9 +51,10 @@ function spawnProcess(
     env?: NodeJS.ProcessEnv
     name: string
     color?: keyof typeof colors
+    inheritStdio?: boolean
   }
 ): ChildProcess {
-  const { cwd = CORE_DIR, env = process.env, name, color = 'white' } = options
+  const { cwd = CORE_DIR, env = process.env, name, color = 'white', inheritStdio = false } = options
   const currentProcessEnv = process.env
 
   logService(name, `Starting: ${command} ${args.join(' ')}`, color)
@@ -61,18 +62,20 @@ function spawnProcess(
   const spawnedProcess = spawn(command, args, {
     cwd,
     env: { ...currentProcessEnv, FORCE_COLOR: '1' },
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: inheritStdio ? 'inherit' : ['pipe', 'pipe', 'pipe'],
   })
 
-  const stdout = readline.createInterface({ input: spawnedProcess.stdout! })
-  stdout.on('line', (line) => {
-    logService(name, line, color)
-  })
+  if (!inheritStdio) {
+    const stdout = readline.createInterface({ input: spawnedProcess.stdout! })
+    stdout.on('line', (line) => {
+      logService(name, line, color)
+    })
 
-  const stderr = readline.createInterface({ input: spawnedProcess.stderr! })
-  stderr.on('line', (line) => {
-    logService(name, line, 'red')
-  })
+    const stderr = readline.createInterface({ input: spawnedProcess.stderr! })
+    stderr.on('line', (line) => {
+      logService(name, line, 'red')
+    })
+  }
 
   spawnedProcess.on('exit', (code: number | null) => {
     if (!shuttingDown) {
@@ -121,7 +124,7 @@ async function startNextDev(): Promise<ChildProcess> {
   let coreStarted = false
   const stdout = readline.createInterface({ input: nextProcess.stdout! })
   stdout.on('line', async (line) => {
-    if (!coreStarted && (line.includes('Ready in') || line.includes('compiled'))) {
+    if (!coreStarted && (line.toLowerCase().includes('ready in') || line.includes('compiled'))) {
       coreStarted = true
       log('\n=== Bernard Core is Ready! ===\n', 'green')
       log('Access dashboard to manage services: http://localhost:3456', 'green')
@@ -148,10 +151,11 @@ async function startNextDev(): Promise<ChildProcess> {
 async function startWorker(): Promise<ChildProcess> {
   log('\n=== Starting Unified Worker Queue ===\n', 'magenta')
 
-  const worker = spawnProcess('npx', ['tsx', 'scripts/worker.ts'], {
+  const worker = spawnProcess('bun', ['run', 'bin/queue-runner.ts'], {
     cwd: CORE_DIR,
     name: 'worker',
     color: 'green',
+    inheritStdio: true,
     env: {
       ...process.env,
       REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',

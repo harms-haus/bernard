@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/router/compat';
 import { User as UserIcon, ChevronDown } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useDynamicSidebar } from './dynamic-sidebar/DynamicSidebarContext';

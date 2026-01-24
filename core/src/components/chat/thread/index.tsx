@@ -3,7 +3,7 @@ import { ReactNode, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "./providers/Stream";
 import { useState, FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/lib/router/compat";
 import { Button } from "@/components/ui/button";
 import { Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
@@ -16,6 +16,7 @@ import { LangGraphLogoSVG } from "@/components/icons/langgraph";
 import {
   ArrowDown,
   Loader,
+  Mic,
 } from "lucide-react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ function ScrollToBottom(props: { className?: string }) {
 }
 
 export function Thread() {
-  const searchParams = useSearchParams();
+  const [searchParams] = useSearchParams();
   const threadId = searchParams.get("threadId");
   const [input, setInput] = useState("");
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
@@ -130,12 +131,12 @@ export function Thread() {
           getThreads();
           let pollAttempts = 0;
           const maxAttempts = 6;
-          
+
           // Clear any existing interval
           if (pollIntervalRef.current !== null) {
             window.clearInterval(pollIntervalRef.current);
           }
-          
+
           pollIntervalRef.current = window.setInterval(() => {
             pollAttempts++;
             getThreads();
@@ -205,11 +206,11 @@ export function Thread() {
   );
 
   return (
-    <div className="flex w-full h-screen overflow-hidden">
+    <div className="flex w-full h-full overflow-hidden">
       <StickToBottom className="relative flex-1 overflow-hidden">
         <StickyToBottomContent
           className={cn(
-            "absolute inset-0 flex flex-col px-4",
+            "h-full flex flex-col px-4",
             !chatStarted && "justify-center pt-[25vh]",
             chatStarted && "pt-8"
           )}
@@ -249,7 +250,7 @@ export function Thread() {
             </>
           }
           footer={
-            <div className="flex flex-col items-center gap-8 shrink-0 pb-4">
+            <div className="flex flex-col items-center gap-8 shrink-0 pb-4 w-full px-4">
               {!chatStarted && (
                 <div className="flex gap-3 items-center">
                   <LangGraphLogoSVG className="flex-shrink-0 h-8" />
@@ -289,17 +290,17 @@ export function Thread() {
                   <div className="flex items-center justify-between p-2 pt-4">
                     <AgentSelectorButton />
                     {stream.isLoading ? (
-                      <Button key="stop" type="button" onClick={() => stream.stop()}>
+                      <Button key="stop" type="button" onClick={() => stream.stop()} variant="ghost" size="icon">
                         <Loader className="w-4 h-4 animate-spin" />
-                        Cancel
                       </Button>
                     ) : (
                       <Button
-                        type="submit"
-                        className="transition-all shadow-md"
-                        disabled={isLoading || !input.trim()}
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="transition-all hover:bg-muted"
                       >
-                        Send
+                        <Mic className="w-5 h-5 text-muted-foreground" />
                       </Button>
                     )}
                   </div>

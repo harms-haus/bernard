@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams } from '@/lib/router/compat'
 import { useService } from '@/hooks/useServiceStatus'
 import { LogViewer } from '@/components/dashboard/LogViewer'
 import type { Session } from '@/lib/auth/client-helpers'

@@ -46,6 +46,28 @@ The platform follows an API gateway pattern where a Next.js core service (port 3
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Prerequisites
+
+Bun is required for this monorepo. Install via:
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+Verify installation: `bun --version` (should be ≥1.3.6)
+
+## Bun Migration
+
+This project has migrated from npm/Node.js to Bun runtime and package manager (Phase 1 completed 2026-01-23).
+- **Runtime**: Bun v1.3.6+
+- **Package Manager**: Bun (built-in)
+- **TypeScript Runner**: Bun (native, replaced tsx)
+- **Compatibility**: Full Node.js compatibility layer for all packages
+
+Migration benefits:
+- 10x faster dependency installation
+- Native TypeScript execution
+- Drop-in replacement for npm commands
+
 ## Core Service
 
 The core service is a Next.js application running on port 3456. It serves as the single entry point for all client interactions, handling authentication, request routing, and service orchestration.
@@ -190,7 +212,7 @@ Each service exposes a health endpoint that the core uses for monitoring. Servic
 
 ## Development Workflow
 
-The monorepo structure supports parallel development of all components. The core TypeScript application uses npm with scripts for development, building, linting, and testing. Services can be started independently for focused development, or together through the root npm scripts.
+The monorepo structure supports parallel development of all components. The core TypeScript application uses Bun with scripts for development, building, linting, and testing. Services can be started independently for focused development, or together through the root bun scripts.
 
 ### Building Services
 

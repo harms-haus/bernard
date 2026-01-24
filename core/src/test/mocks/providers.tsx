@@ -1,5 +1,5 @@
 // core/src/test/mocks/providers.tsx
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import type { ReactNode } from 'react';
 
 // ============================================================================
@@ -96,8 +96,8 @@ export const MockStreamProvider = ({ children }: { children: ReactNode }) => (
 export type MockStreamContextValue = {
   messages: unknown[];
   isLoading: boolean;
-  submit: (message: unknown) => void;
-  stop: () => void;
+  submit: Mock;
+  stop: Mock;
 };
 
 export const createMockStreamContextValue = (overrides: Record<string, unknown> = {}): MockStreamContextValue => ({

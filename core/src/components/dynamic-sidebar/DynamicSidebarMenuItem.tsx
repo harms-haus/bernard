@@ -1,8 +1,7 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { Link, usePathname } from '@/lib/router/compat';
 import { cn } from '@/lib/utils';
 import { useDynamicSidebar } from './DynamicSidebarContext';
 
@@ -52,7 +51,7 @@ export function DynamicSidebarMenuItem({
     if (href && !isDisabled) {
         return (
             <Link
-                href={href}
+                to={href}
                 className={baseClasses}
                 onClick={onClick}
                 title={!isOpen ? (typeof children === 'string' ? children : id) : undefined}

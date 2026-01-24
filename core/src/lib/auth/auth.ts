@@ -4,6 +4,7 @@ import { redisAdapter } from "./redis-adapter";
 import Redis from "ioredis";
 import { getSettingsStore, initializeSettingsStore } from '@/lib/config/settingsStore';
 import { getRedis } from '@/lib/infra/redis';
+import { env } from '@/lib/config/env';
 
 // Redis Instance (Ensure Redis is running locally or provide a connection string)
 const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
@@ -20,6 +21,12 @@ async function getSettings() {
 }
 
 export const auth = betterAuth({
+    // Base URL for the application (required for cookie domain and CORS)
+    baseURL: env.BETTER_AUTH_URL,
+    // Base path where auth routes are mounted (defaults to /api/auth)
+    basePath: "/api/auth",
+    // Secret for signing cookies and tokens (required)
+    secret: env.BETTER_AUTH_SECRET || "dev-secret-change-in-production-min-32-chars",
     // To use Redis:
     database: redisAdapter(redis),
 

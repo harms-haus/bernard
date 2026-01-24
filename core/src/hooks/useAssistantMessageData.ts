@@ -37,7 +37,6 @@ export function useAssistantMessageData(
   const hasToolCalls = 'tool_calls' in message && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   const toolCallsHaveContents = hasToolCalls && (message.tool_calls?.some((tc) => {
     // LangChain stores arguments as a string in tc.function.arguments
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const args = (tc as any).function?.arguments;
     if (typeof args !== 'string') return false;
     try {

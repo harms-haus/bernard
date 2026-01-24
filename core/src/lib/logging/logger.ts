@@ -47,6 +47,8 @@ const service = process.env["SERVICE_NAME"] ?? "bernard";
 const env = process.env["NODE_ENV"] ?? "development";
 const version = process.env["VERCEL_GIT_COMMIT_SHA"] ?? process.env["npm_package_version"];
 
+const isDevelopment = env === "development";
+
 const options: LoggerOptions = {
   level: process.env["LOG_LEVEL"] ?? "info",
   base: { service, env, ...(version ? { version } : {}) },
@@ -56,7 +58,7 @@ const options: LoggerOptions = {
       return { level: label };
     }
   },
-  timestamp: stdTimeFunctions.isoTime
+  timestamp: stdTimeFunctions.isoTime,
 };
 
 export const logger = pino(options);
