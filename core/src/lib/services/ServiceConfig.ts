@@ -53,9 +53,8 @@ export const SERVICES: Record<string, ServiceConfig> = {
     type: "node",
     directory: "core",
     script: "bun run scripts/start-agent.ts restart",
-    healthPath: "/info",
     dependencies: ["redis"],
-    startupTimeout: 20,
+    startupTimeout: 45,
     color: "#1dd1a1",
   },
   whisper: {

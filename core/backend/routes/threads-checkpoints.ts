@@ -211,7 +211,7 @@ checkpointsRoutes.post('/:threadId/auto-rename', async (c) => {
     const { threadId } = c.req.param()
     const body = await c.req.json().catch(() => ({}))
     const response = await handleAutoRename(threadId, body)
-    return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+    return c.json(response.data, response.status)
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     logger.error({ error: errorMessage }, 'Failed to perform auto-rename')

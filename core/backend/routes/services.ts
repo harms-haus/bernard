@@ -26,7 +26,7 @@ servicesRoutes.get('/:service', async (c) => {
   if (!session) return c.json(error('Session required', 401).data, 401)
   const { service } = c.req.param()
   const response = await handleGetService(service)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  return c.json(response.data, response.status)
 })
 
 // POST /api/services/:service - Execute service command
@@ -36,7 +36,7 @@ servicesRoutes.post('/:service', async (c) => {
   const { service } = c.req.param()
   const body = await c.req.json().catch(() => ({}))
   const response = await handleServiceCommand(service, body)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  return c.json(response.data, response.status)
 })
 
 export default servicesRoutes

@@ -583,7 +583,7 @@ function ServicesContent() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Overseerr</CardTitle>
-              <CardDescription>Connect Bernard to Overseerr for media request management</CardDescription>
+              <CardDescription>Connect Bernard to Overseerr for media request management (requires /api/v1 endpoint)</CardDescription>
             </div>
             <ServiceTestButton
               serviceName="Overseerr"

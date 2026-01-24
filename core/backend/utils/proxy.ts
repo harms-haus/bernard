@@ -114,7 +114,7 @@ export async function proxyRequest(
       })
 
       // Stream response body using Hono's streaming
-      return c.body(response.body, 200, { headers: Object.fromEntries(streamHeaders) })
+      return c.body(response.body, 200, Object.fromEntries(streamHeaders))
     }
 
     // Copy allowed headers from response (excluding hop-by-hop headers)
@@ -165,7 +165,7 @@ export async function proxyToLangGraph(
 ): Promise<Response> {
   const { streaming = false, timeout = 120000, method, userId, userRole } = options
   const targetUrl = getLangGraphUrl(path)
-  const httpMethod = method || (c.req.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH')
+  const httpMethod = method || (c.req.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD')
   const isBodyAllowed = httpMethod !== 'GET' && httpMethod !== 'HEAD'
 
   try {
@@ -214,7 +214,7 @@ export async function proxyToLangGraph(
     if (path.startsWith('/threads/') && path.includes('/runs') && (httpMethod === 'POST' || httpMethod === 'PUT')) {
       try {
         const bodyText = body ? new TextDecoder().decode(body) : ''
-
+        
         if (bodyText) {
           const jsonBody = JSON.parse(bodyText)
           
@@ -233,6 +233,34 @@ export async function proxyToLangGraph(
         // Body is not JSON, pass through as-is
       }
     }
+    
+    // For thread-based runs, ensure CONFIG_KEY_RESUMING is set in configurable
+    // This prevents EmptyInputError in LangGraph's PregelLoop
+    if (path.startsWith('/threads/') && path.includes('/runs/stream') && httpMethod === 'POST') {
+      try {
+        const bodyText = body ? new TextDecoder().decode(body) : ''
+        
+        if (bodyText) {
+          const jsonBody = JSON.parse(bodyText)
+          
+          // Ensure config object exists and set CONFIG_KEY_RESUMING
+          if (!jsonBody.config) {
+            jsonBody.config = {}
+          }
+          if (!jsonBody.config.configurable) {
+            jsonBody.config.configurable = {}
+          }
+          
+          // Set resumption flag to indicate this is a new run (not resuming from checkpoint)
+          jsonBody.config.configurable.__resuming__ = false
+          
+          body = new TextEncoder().encode(JSON.stringify(jsonBody))
+          proxyHeaders.set('content-length', String(body?.byteLength || 0))
+        }
+      } catch (err) {
+        // Body is not JSON, pass through as-is
+      }
+    }
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -241,10 +269,9 @@ export async function proxyToLangGraph(
       const proxyReq = new Request(targetUrl, {
         method: httpMethod,
         headers: proxyHeaders,
-        body,
-        duplex: 'half',
+        body: body ? new TextDecoder().decode(body) : undefined,
         signal: controller.signal,
-      } as RequestInit)
+      })
 
       const response = await fetch(proxyReq)
       clearTimeout(timeoutId)
@@ -266,7 +293,7 @@ export async function proxyToLangGraph(
           }
         }
 
-        return c.body(response.body, response.status, { headers: Object.fromEntries(headers) })
+        return c.body(response.body, response.status as any, Object.fromEntries(headers))
       }
 
       // Handle JSON responses
@@ -292,9 +319,9 @@ export async function proxyToLangGraph(
         if (response.status === 204) {
           return new Response(null, { status: 204 })
         }
-        return c.text(responseData, response.status)
+        return c.text(responseData, response.status as any)
       }
-      return c.json(responseData, response.status)
+      return c.json(responseData, response.status as any)
     } catch (error) {
       clearTimeout(timeoutId)
       throw error

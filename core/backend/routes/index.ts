@@ -14,6 +14,7 @@ import usersRoutes from './users'
 import healthRoutes from './health'
 import threadsCheckpointsRoutes from './threads-checkpoints'
 import bernardStreamRoutes from './bernard-stream'
+import logsRoutes from './logs'
 
 const routes = new Hono()
 
@@ -35,5 +36,6 @@ routes.route('/tokens', tokensRoutes)
 routes.route('/users', usersRoutes)
 routes.route('/health', healthRoutes)
 routes.route('/bernard', bernardStreamRoutes) // Bernard stream route
+routes.route('/logs', logsRoutes) // Logs streaming route
 
 export default routes

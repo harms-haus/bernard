@@ -1,7 +1,7 @@
 import { Context, Next } from 'hono'
 import { getSessionCookie } from 'better-auth/cookies'
 import { auth } from '../../src/lib/auth/auth'
-import '../../types'
+import '../types'
 
 // Routes that require authentication (any logged-in user)
 const protectedRoutes = [
@@ -32,6 +32,11 @@ const publicRoutes = [
 
 export async function authMiddleware(c: Context, next: Next) {
   const pathname = new URL(c.req.url).pathname
+
+  // Skip auth check for static assets under /assets/ prefix only
+  if (pathname.startsWith('/assets/') || pathname === '/favicon.png') {
+    return next()
+  }
 
   // Skip auth check for public routes (strict whole-segment matching)
   if (publicRoutes.some(route => pathname === route || pathname.startsWith(route + '/'))) {

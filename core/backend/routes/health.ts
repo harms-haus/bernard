@@ -11,8 +11,8 @@ const healthRoutes = new Hono()
 
 // GET /api/health - Health check
 healthRoutes.get('/', async (c) => {
-  const response = await handleHealthCheck(c.req.raw as any)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  const response = await handleHealthCheck(c)
+  return c.json(response.data, response.status)
 })
 
 // GET /api/health/ok - Simple health check

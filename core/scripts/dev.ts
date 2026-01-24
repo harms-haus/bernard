@@ -124,7 +124,7 @@ async function startNextDev(): Promise<ChildProcess> {
   let coreStarted = false
   const stdout = readline.createInterface({ input: nextProcess.stdout! })
   stdout.on('line', async (line) => {
-    if (!coreStarted && (line.includes('Ready in') || line.includes('compiled'))) {
+    if (!coreStarted && (line.toLowerCase().includes('ready in') || line.includes('compiled'))) {
       coreStarted = true
       log('\n=== Bernard Core is Ready! ===\n', 'green')
       log('Access dashboard to manage services: http://localhost:3456', 'green')

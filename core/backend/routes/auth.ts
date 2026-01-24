@@ -37,15 +37,8 @@ authRoutes.get('/logout', async (c) => {
 authRoutes.all('/*', async (c) => {
   const response = await auth.handler(c.req.raw)
   
-  // Convert Response to Hono response
-  const headers: Record<string, string> = {}
-  response.headers.forEach((value, key) => {
-    headers[key] = value
-  })
-
-  const body = await response.text().catch(() => '')
-  
-  return c.body(body, response.status, headers)
+  // Hono can return Response objects directly, which preserves all headers including Set-Cookie
+  return response
 })
 
 export default authRoutes

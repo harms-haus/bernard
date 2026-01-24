@@ -1,14 +1,24 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { hono } from '@hono/vite-dev-server'
+import devServer, { defaultOptions } from '@hono/vite-dev-server'
 import path from 'path'
 
 export default defineConfig({
   plugins: [
     react(),
     // Hono dev server for unified frontend + backend
-    hono({
+    devServer({
       entry: './backend/server.ts',
+      // Exclude frontend routes from Hono handling - let Vite handle them
+      // This allows React Router to handle client-side routing
+      // Only /api/* and /health routes go to Hono, everything else goes to Vite
+      exclude: [
+        // Exclude all routes that don't start with /api or /health
+        // Use regex to match frontend routes (everything except /api/* and /health)
+        /^\/(?!api|health).*$/,
+        // Keep default exclusions for static assets
+        ...defaultOptions.exclude,
+      ],
     }),
   ],
   css: {

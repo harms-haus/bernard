@@ -13,6 +13,7 @@ export interface HealthStatus {
 
 export class HealthChecker {
   private lastCheckTimes: Map<string, Date> = new Map()
+  private startupTimes: Map<string, number> = new Map() // Track service start times for grace periods
 
   async check(serviceId: string): Promise<HealthStatus> {
     const config = SERVICES[serviceId]
@@ -25,30 +26,39 @@ export class HealthChecker {
       }
     }
 
-    const startTime = Date.now()
+    const requestStartTime = Date.now()
+    const startupStart = this.startupTimes.get(serviceId) ?? 0
+    
+    if (startupStart > 0 && Date.now() - startupStart < config.startupTimeout * 1000) {
+      return {
+        service: serviceId,
+        status: "starting",
+        lastChecked: new Date(),
+      }
+    }
 
     try {
       if (config.type === "docker") {
         const result = await this.checkDocker(config)
-        return this.buildResponse(serviceId, result, startTime)
+        return this.buildResponse(serviceId, result, requestStartTime)
       }
 
       if (config.port) {
         const result = await this.checkPort(config.port)
-        return this.buildResponse(serviceId, result, startTime)
+        return this.buildResponse(serviceId, result, requestStartTime)
       }
 
       if (config.healthPath) {
         const result = await this.checkHttp(config)
-        return this.buildResponse(serviceId, result, startTime)
+        return this.buildResponse(serviceId, result, requestStartTime)
       }
 
-      return this.buildResponse(serviceId, { healthy: true }, startTime)
+      return this.buildResponse(serviceId, { healthy: true }, requestStartTime)
     } catch (error) {
       return this.buildResponse(
         serviceId,
         { healthy: false, error: error instanceof Error ? error.message : String(error) },
-        startTime
+        requestStartTime
       )
     }
   }
@@ -72,6 +82,9 @@ export class HealthChecker {
     if (!config) {
       return false
     }
+
+    // Record start time for grace period
+    this.startupTimes.set(serviceId, Date.now())
 
     const maxAttempts = Math.ceil((timeout * 1000) / 500)
     

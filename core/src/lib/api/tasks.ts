@@ -34,6 +34,29 @@ export async function handleGetTasks(c: Context) {
   }
 }
 
+export async function handleGetTaskById(c: Context, taskId: string) {
+  try {
+    const authUser = await requireAuth(c)
+    if (!authUser) return error('Admin access required', 403)
+
+    const userId = authUser.user.id
+    const keeper = getTaskKeeper()
+    const task = await keeper.getTask(taskId)
+
+    if (!task) {
+      return error('Task not found', 404)
+    }
+    if (task.userId !== userId) {
+      return error('Forbidden', 403)
+    }
+
+    return ok(task)
+  } catch (err) {
+    console.error('Failed to get task:', err)
+    return error('Internal server error', 500)
+  }
+}
+
 export async function handlePostTaskAction(
   c: Context,
   body: TaskActionBody

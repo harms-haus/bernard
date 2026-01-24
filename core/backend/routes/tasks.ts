@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { handleGetTasks, handlePostTaskAction, handleDeleteTask } from '../../src/lib/api/tasks'
+import { handleGetTasks, handleGetTaskById, handlePostTaskAction, handleDeleteTask } from '../../src/lib/api/tasks'
 import { requireAuth } from '../utils/auth'
 import { badRequest, error, ok } from '../../src/lib/api/response'
 import { getTaskKeeper } from '../../src/lib/api/factory'
@@ -9,16 +9,15 @@ const tasksRoutes = new Hono()
 
 // GET /api/tasks - List tasks
 tasksRoutes.get('/', async (c) => {
-  // handleGetTasks expects NextRequest, but we can adapt
-  const response = await handleGetTasks(c.req.raw as any)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  const response = await handleGetTasks(c)
+  return c.json(response.data, response.status)
 })
 
 // POST /api/tasks - Create or update task
 tasksRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const response = await handlePostTaskAction(c.req.raw as any, body)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  const response = await handlePostTaskAction(c, body)
+  return c.json(response.data, response.status)
 })
 
 // DELETE /api/tasks - Delete task
@@ -59,15 +58,8 @@ tasksRoutes.delete('/', async (c) => {
 // GET /api/tasks/:id - Get task details
 tasksRoutes.get('/:id', async (c) => {
   const { id } = c.req.param()
-  // Adapt handleGetTasks to work with Hono
-  const url = new URL(c.req.url)
-  url.searchParams.set('taskId', id)
-  const adaptedRequest = new Request(url.toString(), {
-    method: 'GET',
-    headers: Object.fromEntries(c.req.raw.headers.entries()),
-  })
-  const response = await handleGetTasks(adaptedRequest as any)
-  return c.body(await response.text(), response.status, Object.fromEntries(response.headers.entries()))
+  const response = await handleGetTaskById(c, id)
+  return c.json(response.data, response.status)
 })
 
 // DELETE /api/tasks/:id - Delete task by ID
