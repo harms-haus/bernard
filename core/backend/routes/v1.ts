@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import { Client } from '@langchain/langgraph-sdk'
+import { z } from 'zod'
 import { logger } from '../../src/lib/logging/logger'
 import { ensureRequestId } from '../../src/lib/logging/logger'
 import { getSession } from '../utils/auth'
+import { createInvalidRequestError, createInternalError } from '../utils/errors'
 import fs from 'fs'
 import path from 'path'
 
@@ -14,6 +16,32 @@ const client = new Client({
 
 const v1Routes = new Hono()
 
+const ChatCompletionRequestSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['system', 'user', 'assistant', 'tool']),
+    content: z.union([z.string(), z.array(z.any())]).refine((val) => {
+      const contentStr = typeof val === 'string' ? val : val.map((c) => typeof c === 'string' ? c : JSON.stringify(c)).join('')
+      return contentStr && contentStr.length > 0
+    }, { message: 'content must be non-empty' }),
+    name: z.string().optional(),
+    tool_call_id: z.string().optional(),
+  })).min(1, { message: 'messages must contain at least one message' }),
+
+  model: z.string().optional(),
+  thread_id: z.string().regex(/^[a-zA-Z0-9-_]+$/).optional(),
+  stream: z.boolean().default(false),
+
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().int().positive().optional(),
+  max_completion_tokens: z.number().int().positive().optional(),
+  top_p: z.number().min(0).max(1).optional(),
+
+  presence_penalty: z.number().min(-2).max(2).optional(),
+  frequency_penalty: z.number().min(-2).max(2).optional(),
+  stop: z.union([z.string(), z.array(z.string())]).optional(),
+  n: z.number().int().min(1).max(128).optional(),
+})
+
 // POST /api/v1/chat/completions - OpenAI-compatible chat endpoint
 v1Routes.post('/chat/completions', async (c) => {
   const requestId = ensureRequestId(c.req.header('x-request-id'))
@@ -21,20 +49,51 @@ v1Routes.post('/chat/completions', async (c) => {
 
   try {
     const body = await c.req.json()
-    const { messages, model, thread_id, stream } = body as {
-      messages: Array<{ role: string; content: string }>
-      model: string
-      thread_id?: string
-      stream?: boolean
-    }
 
-    // Get user session to pass role to agent for tool filtering
+    const validated = ChatCompletionRequestSchema.parse(body)
+
+    const {
+      messages,
+      model,
+      thread_id,
+      stream,
+      temperature,
+      max_tokens,
+      max_completion_tokens,
+      top_p,
+      presence_penalty,
+      frequency_penalty,
+      stop,
+      n,
+    } = validated
+
     const session = await getSession(c)
     const userRole = session?.user?.role ?? 'guest'
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    if (presence_penalty !== undefined) {
       return c.json(
-        { error: 'messages is required and must be a non-empty array' },
+        createInvalidRequestError('presence_penalty parameter is not supported', 'presence_penalty'),
+        400
+      )
+    }
+
+    if (frequency_penalty !== undefined) {
+      return c.json(
+        createInvalidRequestError('frequency_penalty parameter is not supported', 'frequency_penalty'),
+        400
+      )
+    }
+
+    if (stop !== undefined) {
+      return c.json(
+        createInvalidRequestError('stop parameter is not supported', 'stop'),
+        400
+      )
+    }
+
+    if (n !== undefined && n !== 1) {
+      return c.json(
+        createInvalidRequestError('Only n=1 is supported', 'n'),
         400
       )
     }
@@ -46,6 +105,25 @@ v1Routes.post('/chat/completions', async (c) => {
       threadId = thread.thread_id
     }
 
+    const agentInput: Record<string, unknown> = {
+      messages,
+      userRole,
+    }
+
+    if (temperature !== undefined) {
+      agentInput.temperature = temperature
+    }
+
+    if (max_completion_tokens !== undefined) {
+      agentInput.maxTokens = max_completion_tokens
+    } else if (max_tokens !== undefined) {
+      agentInput.maxTokens = max_tokens
+    }
+
+    if (top_p !== undefined) {
+      agentInput.topP = top_p
+    }
+
     // Non-streaming: use create() + join()
     if (!stream) {
       const assistantId = model || 'bernard_agent'
@@ -53,12 +131,83 @@ v1Routes.post('/chat/completions', async (c) => {
         threadId,
         assistantId,
         {
-          input: { messages, userRole },
+          input: agentInput,
         } as any
       )
       // Wait for run to complete using join()
-      const result = await client.runs.join(threadId, run.run_id)
-      return c.json(result)
+      const result = await client.runs.join(threadId, run.run_id) as {
+        messages?: Array<{ type: string; content: unknown; tool_calls?: unknown[]; id?: string }>
+        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+      }
+
+      // Transform to OpenAI format
+      const completionId = `chatcmpl-${Date.now()}`
+      const created = Math.floor(Date.now() / 1000)
+
+      // Extract final assistant message from run result
+      const finalMessage = result.messages?.find((m) => m.type === 'ai')
+
+      // Extract content from AI message (can be string or array)
+      let content = ''
+      if (finalMessage?.content) {
+        if (typeof finalMessage.content === 'string') {
+          content = finalMessage.content
+        } else if (Array.isArray(finalMessage.content)) {
+          // Extract text from content parts
+          content = finalMessage.content
+            .map((c: any) => {
+              if (typeof c === 'string') return c
+              return c.text || c.content || ''
+            })
+            .join('')
+        }
+      }
+
+      // Extract tool calls if present
+      const toolCalls = finalMessage?.tool_calls || []
+
+      // Build OpenAI completion response
+      const response = {
+        id: completionId,
+        object: 'chat.completion',
+        created,
+        model: assistantId,
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content,
+            tool_calls: toolCalls.length > 0 ? toolCalls.map((tc: any) => ({
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+              },
+            })) : undefined,
+            refusal: null,
+          },
+          finish_reason: 'stop',
+        }],
+        usage: {
+          prompt_tokens: result.usage?.prompt_tokens ?? 0,
+          completion_tokens: result.usage?.completion_tokens ?? 0,
+          total_tokens: result.usage?.total_tokens ?? 0,
+          prompt_tokens_details: {
+            cached_tokens: 0,
+            audio_tokens: 0,
+          },
+          completion_tokens_details: {
+            reasoning_tokens: 0,
+            audio_tokens: 0,
+            accepted_prediction_tokens: 0,
+            rejected_prediction_tokens: 0,
+          },
+        },
+        service_tier: 'default',
+      }
+
+      return c.json(response)
     }
 
     // Streaming: use stream() with proper event handling
@@ -66,7 +215,7 @@ v1Routes.post('/chat/completions', async (c) => {
       threadId,
       model || 'bernard_agent',
       {
-        input: { messages, userRole },
+        input: agentInput,
         streamMode: ['messages', 'updates', 'custom'] as const,
       } as any
     )
@@ -210,8 +359,20 @@ v1Routes.post('/chat/completions', async (c) => {
     })
   } catch (error) {
     reqLogger.error({ error }, 'Chat completions error')
+
+    if (error instanceof z.ZodError) {
+      return c.json(
+        createInvalidRequestError(
+          'Invalid request body',
+          undefined,
+          { validation_errors: error.issues }
+        ),
+        400
+      )
+    }
+
     return c.json(
-      { error: 'Internal server error', message: error instanceof Error ? error.message : String(error) },
+      createInternalError(error instanceof Error ? error.message : String(error)),
       500
     )
   }

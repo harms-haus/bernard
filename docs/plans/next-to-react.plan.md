@@ -1625,9 +1625,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
 ## Phase 6: Testing & Validation
 
-### 6.1 Update Tests
+### 6.1 Update Vitest Configuration
 
-**Vitest setup:**
+**Update vitest.config.ts for Vite + React Router:**
 
 ```typescript
 // vitest.config.ts
@@ -1640,7 +1640,30 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    include: ['**/*.test.{ts,tsx}'],
+    exclude: ['node_modules', '.next', 'dist', 'backend'],
     setupFiles: ['./vitest.setup.ts'],
+    testTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'node_modules/',
+        '.next/',
+        'dist/',
+        'backend/',
+        '**/*.d.ts',
+        '**/*.test.{ts,tsx}',
+        '**/vitest.setup.ts',
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
+    },
   },
   resolve: {
     alias: {
@@ -1650,22 +1673,568 @@ export default defineConfig({
 })
 ```
 
-### 6.2 Mock React Router in Tests
+**Key Changes:**
+- Add `react` plugin for JSX transformation
+- Exclude `backend/` directory from test runs (backend tests run separately)
+- Keep coverage thresholds at 80% (existing standard)
+
+### 6.2 Update Test Setup Files
+
+**Remove Next.js mocks, add React Router mocks:**
 
 ```typescript
 // vitest.setup.ts
-import { vi } from 'vitest'
+import { beforeAll, beforeEach, afterEach, vi, expect } from "vitest";
+import React from "react";
+import "@testing-library/jest-dom";
+import { resetSettingsManager } from "@/lib/config/appSettings";
+import { resetSettingsStore } from "@/lib/config/settingsStore";
 
-vi.mock('react-router-dom', () => ({
+// Make React available globally for JSX transformation
+globalThis.React = React;
+
+// ============================================================================
+// REMOVE: Next.js mocks (no longer needed)
+// ============================================================================
+// vi.mock('next/headers', ...)  // REMOVE THIS
+// vi.mock('next/navigation', ...)  // REMOVE THIS
+
+// ============================================================================
+// ADD: React Router mocks
+// ============================================================================
+vi.mock('react-router-dom', () => {
+  const mockNavigate = vi.fn();
+  const mockSearchParams = new URLSearchParams();
+  const mockSetSearchParams = vi.fn();
+  
+  return {
+    useNavigate: () => mockNavigate,
+    useSearchParams: () => [mockSearchParams, mockSetSearchParams],
+    useParams: () => ({}),
+    useLocation: () => ({ pathname: '/', search: '', hash: '', state: null }),
+    Link: ({ children, to, ...props }: any) => <a href={to} {...props}>{children}</a>,
+    BrowserRouter: ({ children }: any) => <div>{children}</div>,
+    Routes: ({ children }: any) => <div>{children}</div>,
+    Route: ({ element }: any) => element,
+    Outlet: () => null,
+    Navigate: ({ to }: any) => <div data-testid="navigate">{to}</div>,
+  };
+});
+
+// ============================================================================
+// KEEP: Better-Auth mocks (still needed for backend tests)
+// ============================================================================
+vi.mock('@/lib/auth/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/auth')>('@/lib/auth/auth');
+  const defaultRole = process.env.TEST_DEFAULT_ROLE ?? 'admin';
+  return {
+    ...actual,
+    auth: {
+      ...actual?.auth,
+      api: {
+        ...actual?.auth?.api,
+        getSession: vi.fn().mockResolvedValue({
+          user: {
+            id: 'test-user-123',
+            email: 'test@example.com',
+            name: 'Test User',
+            role: defaultRole,
+            image: null,
+          },
+          session: {
+            id: 'test-session-123',
+            userId: 'test-user-123',
+            token: 'test-token',
+            expiresAt: new Date(Date.now() + 86400000),
+          },
+        }),
+      },
+    },
+  };
+});
+
+// ============================================================================
+// KEEP: localStorage, matchMedia, and other mocks
+// ============================================================================
+// ... (existing localStorage, matchMedia mocks remain unchanged)
+
+// ============================================================================
+// Import Shared Mock Infrastructure
+// ============================================================================
+import '@/test/mocks';
+import '@/test/wrappers';
+import '@/test/helpers';
+
+export {}
+```
+
+### 6.3 Migrate API Route Tests (Next.js → Hono)
+
+**Before (Next.js pattern):**
+
+```typescript
+// src/app/api/tasks/route.test.ts
+import { GET } from './route'
+import { NextRequest } from 'next/server'
+
+describe('GET /api/tasks', () => {
+  it('should return tasks', async () => {
+    const request = {
+      nextUrl: { searchParams: new URLSearchParams() },
+    } as unknown as NextRequest
+
+    const response = await GET(request)
+    expect(response.status).toBe(200)
+  })
+})
+```
+
+**After (Hono pattern):**
+
+```typescript
+// backend/routes/tasks.test.ts
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { Hono } from 'hono'
+import tasksRoutes from './tasks'
+import * as helpers from '@/lib/auth/server-helpers'
+
+// Create test app
+const app = new Hono().route('/tasks', tasksRoutes)
+
+describe('GET /api/tasks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(helpers, 'requireAuth').mockResolvedValue({
+      user: { id: 'user-123' },
+    } as any)
+  })
+
+  it('should return tasks', async () => {
+    const req = new Request('http://localhost/api/tasks')
+    const res = await app.request(req)
+    
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should return 403 when not authenticated', async () => {
+    vi.spyOn(helpers, 'requireAuth').mockResolvedValue(null)
+    
+    const req = new Request('http://localhost/api/tasks')
+    const res = await app.request(req)
+    
+    expect(res.status).toBe(403)
+  })
+})
+```
+
+**Key Differences:**
+- Use `Hono().route()` to mount routes for testing
+- Use `app.request()` instead of calling route handlers directly
+- Use standard `Request` objects instead of `NextRequest`
+- Route params accessed via `c.req.param()` (synchronous, not `Promise.resolve()`)
+
+**Dynamic Route Testing:**
+
+```typescript
+// Before (Next.js):
+const params = Promise.resolve({ id: 'task-123' })
+const response = await GET(request, { params })
+
+// After (Hono):
+const req = new Request('http://localhost/api/tasks/task-123')
+const res = await app.request(req)
+// Params extracted automatically from URL path
+```
+
+### 6.4 Migrate Component Tests (Next.js → React Router)
+
+**Before (Next.js navigation hooks):**
+
+```typescript
+// src/components/Chat.test.tsx
+import { useRouter, useSearchParams } from 'next/navigation'
+import { render, screen } from '@testing-library/react'
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => [new URLSearchParams(), vi.fn()],
-  useParams: () => ({}),
-  useNavigate: () => vi.fn(),
-  Link: ({ children, to }: any) => <a href={to}>{children}</a>,
-  BrowserRouter: ({ children }: any) => <div>{children}</div>,
 }))
 ```
 
-### 6.3 Migration Checklist
+**After (React Router hooks):**
+
+```typescript
+// src/components/Chat.test.tsx
+import { render, screen } from '@testing-library/react'
+import { BrowserRouter } from 'react-router-dom'
+import { Chat } from './Chat'
+
+// Use test wrapper with React Router
+const renderWithRouter = (ui: React.ReactElement) => {
+  return render(<BrowserRouter>{ui}</BrowserRouter>)
+}
+
+describe('Chat', () => {
+  it('should render chat interface', () => {
+    renderWithRouter(<Chat />)
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+  })
+})
+```
+
+**Or use existing test wrappers:**
+
+```typescript
+import { renderWithRouter } from '@/test/helpers'
+
+describe('Chat', () => {
+  it('should render', () => {
+    renderWithRouter(<Chat />)
+    // ...
+  })
+})
+```
+
+### 6.5 Integration Testing Strategy
+
+**Create integration test utilities for Hono:**
+
+```typescript
+// src/test/integration/hono-helpers.ts
+import { Hono } from 'hono'
+import type { Context } from 'hono'
+
+export function createTestApp(routes: (app: Hono) => void) {
+  const app = new Hono()
+  routes(app)
+  return app
+}
+
+export async function testRequest(
+  app: Hono,
+  method: string,
+  path: string,
+  options?: {
+    body?: unknown
+    headers?: Record<string, string>
+    query?: Record<string, string>
+  }
+) {
+  const url = new URL(path, 'http://localhost')
+  if (options?.query) {
+    Object.entries(options.query).forEach(([key, value]) => {
+      url.searchParams.set(key, value)
+    })
+  }
+
+  const headers = new Headers(options?.headers)
+  if (options?.body) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const request = new Request(url.toString(), {
+    method,
+    headers,
+    body: options?.body ? JSON.stringify(options.body) : undefined,
+  })
+
+  return app.request(request)
+}
+```
+
+**Example integration test:**
+
+```typescript
+// src/test/integration/api-threads.test.ts
+import { describe, it, expect, beforeEach } from 'vitest'
+import { createTestApp, testRequest } from '../integration/hono-helpers'
+import routes from '@/backend/routes'
+
+const app = createTestApp((hono) => {
+  hono.route('/api', routes)
+})
+
+describe('Integration: Threads API', () => {
+  it('should create and retrieve thread', async () => {
+    // Create thread
+    const createRes = await testRequest(app, 'POST', '/api/threads', {
+      body: { name: 'Test Thread' },
+      headers: { Cookie: 'session=test-session' },
+    })
+    expect(createRes.status).toBe(200)
+    const thread = await createRes.json()
+
+    // Retrieve thread
+    const getRes = await testRequest(app, 'GET', `/api/threads/${thread.id}`, {
+      headers: { Cookie: 'session=test-session' },
+    })
+    expect(getRes.status).toBe(200)
+  })
+})
+```
+
+### 6.6 End-to-End Validation Procedures
+
+**6.6.1 Service Health Validation**
+
+```bash
+# Test all service proxies
+curl http://localhost:3456/api/status
+curl http://localhost:3456/api/health
+curl http://localhost:3456/api/services
+
+# Test external service proxies
+curl -X POST http://localhost:3456/api/v1/audio/transcriptions \
+  -F "file=@test.wav"
+curl -X POST http://localhost:3456/api/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Hello", "voice": "alloy"}'
+```
+
+**6.6.2 Authentication Flow Validation**
+
+```bash
+# Test public routes (no auth)
+curl http://localhost:3456/auth/login
+curl http://localhost:3456/status
+
+# Test protected routes (should redirect)
+curl -v http://localhost:3456/bernard/chat
+# Should return 302 redirect to /auth/login?redirectTo=/bernard/chat
+
+# Test authenticated routes
+curl http://localhost:3456/bernard/chat \
+  -H "Cookie: better-auth.session_token=valid-token"
+
+# Test admin routes (should check role)
+curl http://localhost:3456/bernard/admin \
+  -H "Cookie: better-auth.session_token=user-token"
+# Should return 403 if user is not admin
+```
+
+**6.6.3 SSE Streaming Validation**
+
+```bash
+# Test SSE endpoints
+curl -N http://localhost:3456/api/bernard/stream
+curl -N http://localhost:3456/api/health/stream
+curl -N http://localhost:3456/api/admin/jobs/stream
+
+# Verify SSE format:
+# - Content-Type: text/event-stream
+# - Cache-Control: no-cache
+# - Connection: keep-alive
+# - X-Accel-Buffering: no
+# - Events formatted as: "event: <type>\ndata: <json>\n\n"
+```
+
+**6.6.4 Frontend Route Validation**
+
+```bash
+# Test all frontend routes load without errors
+# Use browser DevTools Network tab to verify:
+# - No 404s for route components
+# - No missing assets (CSS, JS, images)
+# - React Router navigation works (no full page reloads)
+# - Protected routes redirect to login
+# - Admin routes show 403 for non-admin users
+```
+
+### 6.7 Performance Testing
+
+**6.7.1 Build Performance**
+
+```bash
+# Measure build times
+time bun run build
+
+# Compare bundle sizes
+bunx vite-bundle-visualizer
+
+# Verify no regressions:
+# - Frontend bundle < 2MB (gzipped)
+# - Backend bundle < 1MB
+# - Build time < 30 seconds
+```
+
+**6.7.2 Runtime Performance**
+
+```typescript
+// src/test/performance/api-benchmark.test.ts
+import { describe, it, expect } from 'vitest'
+import { createTestApp, testRequest } from '../integration/hono-helpers'
+import routes from '@/backend/routes'
+
+const app = createTestApp((hono) => {
+  hono.route('/api', routes)
+})
+
+describe('Performance: API Response Times', () => {
+  it('should respond to health check in < 50ms', async () => {
+    const start = performance.now()
+    await testRequest(app, 'GET', '/api/health')
+    const duration = performance.now() - start
+    
+    expect(duration).toBeLessThan(50)
+  })
+
+  it('should handle concurrent requests', async () => {
+    const requests = Array.from({ length: 10 }, () =>
+      testRequest(app, 'GET', '/api/health')
+    )
+    
+    const start = performance.now()
+    await Promise.all(requests)
+    const duration = performance.now() - start
+    
+    expect(duration).toBeLessThan(500) // All 10 requests in < 500ms
+  })
+})
+```
+
+### 6.8 Test Migration Checklist
+
+**Backend Test Migration:**
+- [ ] Remove `next/headers` mocks from `vitest.setup.ts`
+- [ ] Remove `next/navigation` mocks from component tests
+- [ ] Convert all API route tests to use Hono `app.request()` pattern
+- [ ] Update dynamic route param tests (remove `Promise.resolve()`)
+- [ ] Update `NextRequest` → `Request` in all tests
+- [ ] Update `NextResponse` assertions → standard `Response` assertions
+- [ ] Test all proxy routes with mock upstream services
+- [ ] Test SSE streaming endpoints with EventSource mocks
+- [ ] Test auth middleware with various session states
+- [ ] Test admin role verification in middleware
+
+**Frontend Test Migration:**
+- [ ] Add React Router mocks to `vitest.setup.ts`
+- [ ] Update component tests to use `BrowserRouter` wrapper
+- [ ] Update navigation hook tests (useRouter, useSearchParams, useParams)
+- [ ] Update `Link` component tests
+- [ ] Test nested route layouts (Outlet components)
+- [ ] Test protected route redirects
+- [ ] Test admin route 403 handling
+- [ ] Test client-side navigation (no full page reloads)
+
+**Integration Tests:**
+- [ ] Create Hono test helpers (`createTestApp`, `testRequest`)
+- [ ] Write integration tests for complete API flows
+- [ ] Test service proxy chains (core → LangGraph → services)
+- [ ] Test auth flow end-to-end (login → protected route → logout)
+- [ ] Test SSE streaming with real EventSource connections
+
+### 6.9 Rollback Procedures
+
+**If migration fails, rollback steps:**
+
+1. **Git Branch Strategy:**
+   ```bash
+   # Create migration branch
+   git checkout -b chore/next-to-react-migration
+   
+   # If rollback needed:
+   git checkout main
+   git branch -D chore/next-to-react-migration
+   ```
+
+2. **Dependency Rollback:**
+   ```bash
+   # Restore Next.js dependencies
+   bun add next@latest eslint-config-next@latest
+   
+   # Remove Hono/Vite dependencies
+   bun remove hono @hono/vite-dev-server vite @vitejs/plugin-react
+   ```
+
+3. **File Restoration:**
+   ```bash
+   # Restore Next.js config
+   git checkout main -- next.config.mjs
+   
+   # Restore App Router structure
+   git checkout main -- src/app/
+   ```
+
+4. **Test Rollback:**
+   ```bash
+   # Restore original test setup
+   git checkout main -- vitest.setup.ts
+   git checkout main -- vitest.config.ts
+   ```
+
+### 6.10 Documentation Updates
+
+**Update documentation after successful migration:**
+
+1. **README.md:**
+   - Update development commands (remove Next.js references)
+   - Update architecture diagram (Hono + Vite instead of Next.js)
+   - Update service port documentation
+
+2. **CLAUDE.md:**
+   - Update command mapping (remove Next.js commands)
+   - Update architecture overview
+   - Update API endpoint patterns
+
+3. **AGENTS.md:**
+   - Update structure section (remove `src/app/` references)
+   - Update API route locations (`backend/routes/` instead of `app/api/`)
+   - Update testing section
+
+4. **Create Migration Report:**
+   ```markdown
+   # Next.js → React Migration Report
+   
+   **Date:** 2026-01-XX
+   **Status:** ✅ Complete
+   
+   ## Changes Summary
+   - Migrated 60+ API routes from Next.js to Hono
+   - Migrated 18+ pages from App Router to React Router
+   - Replaced Next.js build system with Vite
+   - Unified dev server (Hono + Vite on port 3456)
+   
+   ## Performance Improvements
+   - Dev server startup: 2.3s → 0.8s (65% faster)
+   - Build time: 45s → 18s (60% faster)
+   - Bundle size: 2.1MB → 1.7MB (19% smaller)
+   
+   ## Breaking Changes
+   - Environment variables: NEXT_PUBLIC_* → VITE_*
+   - Navigation hooks: next/navigation → react-router-dom
+   - API route signatures: NextRequest → Hono Context
+   ```
+
+### 6.11 Final Validation Checklist
+
+**Pre-Production Validation:**
+- [ ] All TypeScript compilation errors resolved
+- [ ] All tests passing (unit + integration)
+- [ ] Coverage thresholds met (80%+)
+- [ ] Dev server starts without errors
+- [ ] Production build completes successfully
+- [ ] All API endpoints respond correctly
+- [ ] All frontend routes render without errors
+- [ ] Authentication flows work (login, logout, protected routes)
+- [ ] Admin role verification works
+- [ ] SSE streaming endpoints functional
+- [ ] Service proxies functional (LangGraph, Whisper, Kokoro)
+- [ ] No console errors in browser
+- [ ] No network errors in DevTools
+- [ ] Performance benchmarks met
+- [ ] Documentation updated
+- [ ] Migration report created
+
+**Post-Migration Monitoring:**
+- [ ] Monitor error logs for 48 hours
+- [ ] Verify service health checks passing
+- [ ] Check user-reported issues
+- [ ] Monitor performance metrics
+- [ ] Review test coverage reports
+
+### 6.12 Overall Migration Checklist (Summary)
 
 **Backend Migration:**
 - [ ] All API routes migrated to Hono (threads, auth, proxy, v1, admin, tasks, tokens, users, assistants, health, info, bernard stream, checkpoints/history)
